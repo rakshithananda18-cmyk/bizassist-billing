@@ -239,21 +239,19 @@ def invoice_account(
         "note": p.note or "",
     } for p in payments]
 
-    # Returns: credit notes referencing this invoice via the exact note phrase
-    # written by create_credit_note — "Credit note against <invoice_no>." The
-    # trailing '.' is the delimiter that disambiguates numbers that are prefixes
-    # of one another (a bare substring LIKE matched 'INV-1' against 'INV-10' /
-    # 'INV-100', and could pull credit notes for unrelated invoices).
+    # Modern returns use the structural parent. The historical read-only
+    # fallback accepts only an exact delimited reference in the same account.
     returns = []
     if inv.invoice_id:
-        marker = f"Credit note against {inv.invoice_id}."
         cns = (
             db.query(Invoice)
             .filter(Invoice.business_id == bid,
                     Invoice.invoice_type == "credit_note",
-                    Invoice.notes.ilike(f"%{marker}%"))
+                    Invoice.parent_invoice_id == inv.id)
             .all()
         )
+        from core.billing.balances import legacy_credit_notes
+        cns += legacy_credit_notes(db, [inv]).get(inv.id, [])
         returns = [{
             "id": cn.id,
             "credit_note_no": cn.invoice_id,
@@ -261,6 +259,11 @@ def invoice_account(
             "amount": round(cn.total_amount or cn.amount or 0.0, 2),
         } for cn in cns]
 
+    from core.accounting.settlement_models import CustomerRefund, CustomerCreditAllocation
+    from core.api.settlements import _out as settlement_out
+    refunds = db.query(CustomerRefund).filter(CustomerRefund.business_id == bid, CustomerRefund.source_invoice_id == inv.id).all()
+    allocations = db.query(CustomerCreditAllocation).filter(CustomerCreditAllocation.business_id == bid,
+        (CustomerCreditAllocation.source_invoice_id == inv.id) | (CustomerCreditAllocation.target_invoice_id == inv.id)).all()
     return {
         "invoice_id": inv.id,
         "invoice_no": inv.invoice_id,
@@ -273,6 +276,8 @@ def invoice_account(
         "return_credit": balance["credit_due"],
         "payments": payment_rows,
         "returns": returns,
+        "refunds": [settlement_out(row) for row in refunds],
+        "credit_allocations": [settlement_out(row) for row in allocations],
     }
 
 

@@ -9,6 +9,7 @@ All business logic lives in services/ and routes/.
 from __future__ import annotations  # PEP 604 (X | Y) on Python 3.9 dev venvs
 from contextlib import asynccontextmanager
 from sqlalchemy import text
+from sqlalchemy.exc import TimeoutError as DatabasePoolTimeout
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -406,6 +407,18 @@ async def _set_rls_business_id(request: Request, call_next):
         current_bizid_var.reset(t_bizid)
 
 
+@app.exception_handler(DatabasePoolTimeout)
+async def database_pool_timeout_handler(request: Request, exc: DatabasePoolTimeout):
+    # Capacity exhaustion is temporary. Expose a retry signal without leaking
+    # driver/connection details or logging the same multi-page traceback per poll.
+    logger.warning("Database connection capacity exhausted for %s %s", request.method, request.url.path)
+    return JSONResponse(
+        status_code=503,
+        content={"detail": "Database is busy. Please retry shortly."},
+        headers={"Retry-After": "5"},
+    )
+
+
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception):
     """Log all unhandled exceptions so no crashes or errors go silent."""
@@ -414,7 +427,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
     logger.error("Unhandled exception during request %s %s: %s", request.method, request.url, exc, exc_info=True)
     return JSONResponse(
         status_code=500,
-        content={"detail": "Internal Server Error", "error": str(exc)}
+        content={"detail": "Internal Server Error"}
     )
 
 

@@ -57,10 +57,11 @@ def test_identical_lines_are_a_multiset_and_retry_is_idempotent(net):
         assert len(stored.line_items) == 2
 
 
-def test_conflicting_extra_line_rolls_back_the_entire_import(net):
+@pytest.mark.parametrize('quantity,line_total', [(9, 9000), (0, 0)])
+def test_conflicting_extra_line_rolls_back_the_entire_import(net, quantity, line_total):
     data = payload(net)
     line = data['tables']['b2b_order_line_items'][0]
-    data['tables']['b2b_order_line_items'] = [dict(line, uid=str(uuid.uuid4()), quantity=9, line_total=9000)]
+    data['tables']['b2b_order_line_items'] = [dict(line, uid=str(uuid.uuid4()), quantity=quantity, line_total=line_total)]
     marker = 'must-rollback-' + uuid.uuid4().hex
     data['tables']['products'] = [{'name': marker, 'uid': str(uuid.uuid4()), 'business_id': net['seller']['bid']}]
     response = post(net, data)

@@ -1,0 +1,132 @@
+[
+  {
+    "id": "WEB-01",
+    "status": "fixed",
+    "evidence": [
+      "frontend-billing/src/sync/syncManager.js:51 captures the store, scope and generation before asynchronous work; mutate and queue retain that immutable owner.",
+      "frontend-billing/src/hooks/usePaymentFlow.js:164 captures checkout ownership before awaiting; line310 queues into its original scope and line313 prevents updating another account's UI.",
+      "frontend-billing/src/__tests__/checkoutOwnership.test.jsx and sync_manager.test.js verify delayed failure/replay across account changes."
+    ],
+    "remaining": []
+  },
+  {
+    "id": "WEB-02",
+    "status": "fixed",
+    "evidence": [
+      "frontend-billing/src/utils/share.js:18 resolves a validated current merchant VPA without a global, phone-derived or hardcoded payee.",
+      "Sales, invoice sharing, party sharing and checkout use the merchant resolver; missing destinations suppress payment links/QR.",
+      "frontend-task/src/pages/staff/Today.jsx:278 uses only billing_business.upi_vpa; Today.test.jsx verifies a personal staff VPA cannot substitute for a missing merchant VPA."
+    ],
+    "remaining": []
+  },
+  {
+    "id": "WEB-03",
+    "status": "fixed",
+    "evidence": [
+      "frontend-billing/src/hooks/useInvoiceActions.jsx:89 uses authoritative invoice.outstanding for shared collection links.",
+      "Party sharing and settle-dues prefill use credit-adjusted balances; invoice settlement summaries preserve fiscal totals while presenting credits/refunds/allocations separately.",
+      "Frontend invoice/share and payment tests passed in the 883-test complete Billing implementation run."
+    ],
+    "remaining": []
+  },
+  {
+    "id": "WEB-04",
+    "status": "fixed",
+    "evidence": [
+      "frontend-ai/src/pages/Chat.jsx:119 guards history loading by request generation; line189 binds each stream to its generation and AbortController.",
+      "Stream writes target the immutable assistant message ID; session/new-chat/account changes cancel the reader and prevent stale catch/finally writes.",
+      "frontend-ai/src/__tests__/requestOwnership.test.jsx verifies delayed history and stream ownership; complete AI suite passed19 tests."
+    ],
+    "remaining": []
+  },
+  {
+    "id": "WEB-05",
+    "status": "fixed",
+    "evidence": [
+      "frontend-billing/src/contexts/AuthContext.jsx:597 invalidates pending auth work on logout; line598 notifies the opened AI window.",
+      "frontend-billing/src/config/aiDashboard.js:37 posts an exact-origin logout; AI receives validated AUTH_LOGOUT and storage/BroadcastChannel logout events.",
+      "Both app trees reset identity-owned child state; logout and handoffAuth regression tests pass."
+    ],
+    "remaining": []
+  },
+  {
+    "id": "WEB-06",
+    "status": "fixed",
+    "evidence": [
+      "frontend-ai/src/utils/handoff.js:1 and frontend-admin/src/utils/handoff.js:1 require the bound window.opener source and exact configured/same-host permitted origin.",
+      "No arbitrary localhost-prefix or all-ports origin acceptance remains; retained AI windows receive new single-use ticket navigation.",
+      "AI handoffOrigins.test.jsx and handoffAuth.test.jsx pass."
+    ],
+    "remaining": []
+  },
+  {
+    "id": "WEB-07",
+    "status": "fixed",
+    "evidence": [
+      "frontend-billing/src/hooks/useBillingProfile.js:63 keys cached profiles by backend, stable business identity, operator and mode; line98 rejects stale results and line118 invalidates generations.",
+      "Sales session caches include backend/BizID/operator identity; authenticated child state remounts on identity changes in App.jsx:50.",
+      "billingProfileOwnership.test.jsx verifies late previous-business results and overlapping integer IDs cannot repopulate the current profile."
+    ],
+    "remaining": []
+  },
+  {
+    "id": "WEB-08",
+    "status": "fixed",
+    "evidence": [
+      "frontend-billing/src/components/payments/InvoicesListView.jsx:6 imports logger; line68 uses the defined logger and renders a required-read error/retry state.",
+      "Stock, Purchases, Reports, purchase intake, Money and sales reads distinguish failures from a successful empty list and reject stale loads.",
+      "InvoicesListView, WorkspaceLoadFailures and ReportsNavigation tests pass; latest Field NewRequest also distinguishes failed history from an empty list."
+    ],
+    "remaining": []
+  },
+  {
+    "id": "WEB-09",
+    "status": "fixed",
+    "evidence": [
+      "frontend-billing/src/utils/readPages.js:10 follows server page/per_page continuations rather than silently stopping at500/1000 records.",
+      "Invoice lists, Stock, contacts, Sales catalog/customer refresh, Money, Reports party picker and payment/purchase pickers consume this paging helper.",
+      "readPages.test.js reaches record501 and rejects repeated/malformed pages and failed continuations; backend invoice pagination/search is separately implemented and tested by the domain/root agents."
+    ],
+    "remaining": []
+  },
+  {
+    "id": "WEB-10",
+    "status": "fixed",
+    "evidence": [
+      "frontend-admin/src/pages/admin/AdminBusinessDetail.jsx resets route-owned state, guards all required/optional responses by load identity, and exposes failed required reads with retry.",
+      "Lines118/134 require loaded business.id to match the current route before destructive mutations; logout confirmation rechecks request identity after awaiting.",
+      "Admin merchant ownership/load-state tests passed in the47-test complete Admin implementation run."
+    ],
+    "remaining": []
+  },
+  {
+    "id": "WEB-11",
+    "status": "fixed",
+    "evidence": [
+      "frontend-billing/src/components/sales/CheckoutModal.jsx:8 uses QRCodeSVG locally for payment QR rendering.",
+      "frontend-task/src/pages/staff/Today.jsx:471 also renders its new QR locally; no external QR-generation request receives merchant/payment data.",
+      "Field Today.test.jsx verifies SVG output, no img request, merchant-only destination and no automatic payment confirmation."
+    ],
+    "remaining": []
+  },
+  {
+    "id": "WEB-12",
+    "status": "fixed",
+    "evidence": [
+      "Complete implementation suites passed883 Billing tests/118 files,19 AI tests/4 files and47 Admin tests/3 files; original probe expectations were updated into correct-behavior app regressions.",
+      "frontend-admin/.eslintrc.cjs restores no-unused-vars, exhaustive-deps and react-refresh checking, with only the two named context-hook exports allowed; actual diagnostics were corrected.",
+      "Landing locked dependencies installed and its production build passed; latest Field complete suite passes89 tests/22 files and builds successfully. See web-apps-results.json for dates and rerun limits."
+    ],
+    "remaining": []
+  },
+  {
+    "id": "WEB-13",
+    "status": "fixed",
+    "evidence": [
+      "bizassist-landing/src/useLatestRelease.js:51 marks architecture-only Mac releases as requiring a choice.",
+      "bizassist-landing/src/App.jsx:70 links the primary Mac action to the Intel/Apple-silicon chooser when no universal package exists; explicit architecture downloads remain visible.",
+      "Landing production build passed after locked dependencies were installed."
+    ],
+    "remaining": []
+  }
+]

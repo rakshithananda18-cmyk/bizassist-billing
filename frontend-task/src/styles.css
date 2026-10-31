@@ -1606,3 +1606,583 @@ table.table { width: 100%; border-collapse: collapse; font-size: var(--fs-base);
 .ba-rise-star { transform-box: fill-box; transform-origin: center; animation: ba-rise-star 2.6s ease-out infinite; animation-fill-mode: backwards; }
 @media (prefers-reduced-motion: reduce) { .ba-rise, .ba-rise-star { animation: none; transform: none; opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .business-name-track { animation: none !important; } }
+
+
+/* === NATIVE MOBILE UX & BOTTOM SHEET === */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes sheetSlideUp {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+@keyframes radarPulse {
+  0% { box-shadow: 0 0 0 0 rgba(31, 107, 58, 0.4); }
+  70% { box-shadow: 0 0 0 6px rgba(31, 107, 58, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(31, 107, 58, 0); }
+}
+
+.sheet-overlay {
+  position: fixed; inset: 0; z-index: 1000;
+  background: rgba(18, 16, 14, 0.55);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  display: flex; flex-direction: column; justify-content: flex-end;
+  animation: fadeIn 150ms ease-out;
+}
+
+.sheet-container {
+  background: var(--bg-2);
+  border-radius: 20px 20px 0 0;
+  max-height: 90vh;
+  width: 100%;
+  max-width: 600px;
+  margin: 0 auto;
+  display: flex; flex-direction: column;
+  box-shadow: 0 -8px 32px rgba(0,0,0,0.2);
+  animation: sheetSlideUp 220ms cubic-bezier(0.16, 1, 0.3, 1);
+  border: 1px solid var(--border);
+  border-bottom: none;
+  overflow: hidden;
+}
+
+.sheet-handle {
+  width: 36px; height: 4px;
+  border-radius: 99px;
+  background: var(--border-strong, #c8c5be);
+  margin: 10px auto 4px;
+  flex-shrink: 0;
+}
+
+.sheet-header {
+  padding: 12px 18px;
+  display: flex; align-items: center; justify-content: space-between;
+  border-bottom: 1px solid var(--border-hairline);
+  flex-shrink: 0;
+}
+
+.sheet-title {
+  font-size: var(--fs-md);
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.sheet-body {
+  padding: 16px 18px;
+  overflow-y: auto;
+  flex: 1;
+  display: flex; flex-direction: column; gap: 14px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.sheet-footer {
+  padding: 12px 18px calc(12px + env(safe-area-inset-bottom));
+  background: var(--bg-2);
+  border-top: 1px solid var(--border-hairline);
+  display: flex; gap: 10px; align-items: center; justify-content: flex-end;
+  flex-shrink: 0;
+}
+
+/* Tactile Native Touch Micro-Interactions */
+button, a, .card, .stop, .list-item, .quick-action-btn, .quick-chip {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+.btn:active, .quick-action-btn:active, .quick-chip:active {
+  transform: scale(0.96);
+  transition: transform 80ms ease;
+}
+
+.bottom-bar a:active {
+  transform: scale(0.92);
+  transition: transform 80ms ease;
+}
+
+/* Smart Stop Card Enhancements */
+.stop {
+  position: relative;
+  border-radius: 16px;
+  box-shadow: var(--shadow-sm);
+  transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
+}
+
+.stop.current {
+  border-color: var(--accent);
+  box-shadow: 0 4px 18px rgba(193, 95, 60, 0.12), 0 0 0 2px var(--accent);
+}
+
+.stop-seq {
+  width: 34px; height: 34px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+/* Quick Action Circle Buttons (Call, Directions, WhatsApp) */
+.quick-action-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 8px 14px;
+  border-radius: 20px;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  border: 1px solid var(--border);
+  background: var(--bg-1);
+  color: var(--text-primary);
+  text-decoration: none;
+  cursor: pointer;
+  transition: all var(--dur-fast) var(--ease);
+}
+
+.quick-action-btn:hover {
+  background: var(--bg-3);
+  border-color: var(--border-strong);
+}
+
+.quick-action-btn.primary {
+  background: var(--accent-solid);
+  color: #fff;
+  border-color: var(--accent-solid);
+}
+
+.quick-action-btn.whatsapp {
+  color: #25d366;
+  border-color: rgba(37, 211, 102, 0.35);
+  background: rgba(37, 211, 102, 0.08);
+}
+
+.quick-action-btn.whatsapp:hover {
+  background: rgba(37, 211, 102, 0.16);
+}
+
+/* Proximity Badge */
+.proximity-badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 11px; font-weight: 700;
+  padding: 3px 8px; border-radius: 12px;
+  background: var(--bg-3);
+  color: var(--text-secondary);
+}
+
+.proximity-badge.near {
+  background: var(--success-dim);
+  color: var(--success);
+  border: 1px solid rgba(31, 107, 58, 0.25);
+  animation: radarPulse 2s infinite;
+}
+
+/* Smart Collection Tools */
+.chip-group {
+  display: flex; flex-wrap: wrap; gap: 6px;
+  margin-top: 6px;
+}
+
+.quick-chip {
+  padding: 6px 12px;
+  font-size: 12px; font-weight: 600;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-1);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--dur-fast) var(--ease);
+}
+
+.quick-chip:hover {
+  background: var(--bg-3);
+  border-color: var(--border-strong);
+}
+
+.quick-chip.selected {
+  background: var(--accent-dim);
+  color: var(--accent);
+  border-color: var(--accent);
+  font-weight: 700;
+}
+
+/* Change Calculator Pill */
+.change-calc-box {
+  background: var(--success-dim);
+  border: 1px solid rgba(31, 107, 58, 0.2);
+  border-radius: 10px;
+  padding: 10px 14px;
+  display: flex; justify-content: space-between; align-items: center;
+}
+
+.change-calc-val {
+  font-size: 1.15rem; font-weight: 800; color: var(--success);
+}
+
+/* UPI QR Code Preview Box */
+.upi-qr-card {
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  padding: 14px;
+  background: var(--bg-1);
+  border-radius: 12px;
+  border: 1px dashed var(--border);
+  margin-top: 6px;
+}
+
+.upi-qr-card img, .upi-qr-card svg {
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: #fff;
+  padding: 6px;
+}
+
+/* Modern iOS/Android Toggle Switch */
+.native-switch {
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 24px;
+  flex-shrink: 0;
+}
+
+.native-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.native-slider {
+  position: absolute;
+  cursor: pointer;
+  inset: 0;
+  background-color: var(--bg-4, #ccc);
+  border-radius: 24px;
+  transition: 200ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.native-slider:before {
+  position: absolute;
+  content: "";
+  height: 18px;
+  width: 18px;
+  left: 3px;
+  bottom: 3px;
+  background-color: white;
+  border-radius: 50%;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+  transition: 200ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.native-switch input:checked + .native-slider {
+  background-color: var(--success);
+}
+
+.native-switch input:checked + .native-slider:before {
+  transform: translateX(20px);
+}
+
+.native-switch input:focus-visible + .native-slider {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+/* Status Capsule Header */
+.status-capsule {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--bg-3);
+  color: var(--text-secondary);
+}
+
+.status-capsule.active {
+  background: var(--success-dim);
+  color: var(--success);
+}
+
+.status-capsule.warning {
+  background: var(--warning-dim);
+  color: var(--warning);
+}
+
+
+/* === DELHIVERY-STYLE UNIFIED MAP & ROUTE COCKPIT === */
+.delhivery-map-shell {
+  position: relative;
+  border-radius: 18px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-md);
+  background: var(--bg-1);
+}
+
+.delhivery-map {
+  height: 290px;
+  width: 100%;
+  transition: height 240ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.delhivery-map.expanded {
+  height: 440px;
+}
+
+.map-floating-controls {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 400;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.map-control-btn {
+  background: var(--bg-2);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 6px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  transition: all var(--dur-fast) var(--ease);
+}
+
+.map-control-btn:hover {
+  background: var(--bg-3);
+  border-color: var(--border-strong);
+}
+
+.map-control-btn:active {
+  transform: scale(0.95);
+}
+
+/* The Delhivery Active Stop Cockpit Card */
+.delhivery-cockpit-card {
+  border-radius: 18px;
+  background: var(--bg-2);
+  border: 1.5px solid var(--accent);
+  box-shadow: 0 6px 24px rgba(193, 95, 60, 0.14), var(--shadow-sm);
+  padding: 16px;
+  position: relative;
+  overflow: hidden;
+  transition: all var(--dur-fast) var(--ease);
+}
+
+.delhivery-cockpit-card::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: var(--accent);
+}
+
+.cockpit-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.cockpit-seq-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+  padding: 2px 8px;
+  border-radius: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.cockpit-title {
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: var(--text-primary);
+  line-height: 1.25;
+}
+
+.cockpit-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 10px 0 14px;
+}
+
+.cockpit-metric-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  background: var(--bg-1);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-hairline);
+}
+
+.cockpit-metric-pill.highlight {
+  background: var(--accent-dim);
+  color: var(--accent);
+  border-color: rgba(193, 95, 60, 0.25);
+}
+
+.cockpit-metric-pill.success {
+  background: var(--success-dim);
+  color: var(--success);
+  border-color: rgba(31, 107, 58, 0.25);
+}
+
+.cockpit-actions {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.cockpit-actions .span-2 {
+  grid-column: span 2;
+}
+
+/* Stop Accordion & Day Plan in Unified Mode */
+.day-plan-drawer {
+  background: var(--bg-2);
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+}
+
+.day-plan-drawer-header {
+  padding: 14px 18px;
+  background: var(--bg-1);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border-hairline);
+}
+
+.day-plan-drawer-title {
+  font-weight: 800;
+  font-size: var(--fs-md);
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Route Telemetry HUD Bar */
+.route-telemetry-hud {
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 10px 14px;
+  box-shadow: var(--shadow-sm);
+  margin-top: 4px;
+}
+
+.hud-metric {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  flex: 1;
+}
+
+.hud-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+.hud-val {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--text-primary);
+  font-feature-settings: 'tnum';
+}
+
+.hud-val.highlight {
+  color: var(--accent);
+}
+
+.hud-val.success {
+  color: var(--success);
+}
+
+.hud-divider {
+  width: 1px;
+  height: 24px;
+  background: var(--border-hairline);
+  margin: 0 4px;
+}
+
+/* Distinct Task Type Badges */
+.task-type-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 800;
+  padding: 2px 7px;
+  border-radius: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.task-type-badge.delivery {
+  background: var(--accent-dim);
+  color: var(--accent);
+  border: 1px solid rgba(193, 95, 60, 0.2);
+}
+
+.task-type-badge.payment {
+  background: var(--success-dim);
+  color: var(--success);
+  border: 1px solid rgba(31, 107, 58, 0.2);
+}
+
+.task-type-badge.return {
+  background: var(--warning-dim);
+  color: var(--warning);
+  border: 1px solid rgba(138, 78, 0, 0.2);
+}
+
+.task-type-badge.order {
+  background: rgba(37, 99, 235, 0.12);
+  color: #2563eb;
+  border: 1px solid rgba(37, 99, 235, 0.2);
+}
+
+.task-type-badge.audit {
+  background: rgba(147, 51, 234, 0.12);
+  color: #9333ea;
+  border: 1px solid rgba(147, 51, 234, 0.2);
+}
+
+.task-type-badge.general {
+  background: var(--bg-1);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-hairline);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sheet-overlay, .sheet-container, .proximity-badge.near { animation: none; }
+  .native-slider, .native-slider:before, .delhivery-map { transition: none; }
+}

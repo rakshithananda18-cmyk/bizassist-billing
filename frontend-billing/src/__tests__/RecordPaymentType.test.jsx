@@ -11,7 +11,7 @@ const draw = type => render(<RecordPaymentModal
 it('does not offer an actionable supplier-payment choice', () => {
   draw('received')
   fireEvent.click(screen.getByRole('button', { name: 'Received (from customer)' }))
-  expect(screen.getByRole('option', { name: 'Supplier payments — unavailable' })).toBeDisabled()
+  expect(screen.getByRole('option', { name: 'Supplier payments — use separate settlement form' })).toBeDisabled()
   expect(screen.getByText(/This form records customer receipts/)).toBeInTheDocument()
 })
 

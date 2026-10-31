@@ -224,13 +224,16 @@ def test_sync_lifecycle():
     r_pull = client.get(
         "/api/sync/pull",
         headers=local_user["headers"],
-        params={"last_sync_at": (datetime.utcnow() - timedelta(minutes=5)).isoformat()}
+        params={"protocol": 2}
     )
     assert r_pull.status_code == 200, r_pull.text
     pull_data = r_pull.json()
     assert "customers" in pull_data["changes"]
-    assert len(pull_data["changes"]["customers"]) == 1
-    assert pull_data["changes"]["customers"][0]["phone"] == "1111111111"
+    # A revision feed may carry more than one committed event for the same
+    # customer. All snapshots still identify the one customer and current value.
+    customer_events = pull_data["changes"]["customers"]
+    assert len({row["uid"] for row in customer_events}) == 1
+    assert all(row["phone"] == "1111111111" for row in customer_events)
 
 
 def test_sync_push_rejects_append_only_delete():

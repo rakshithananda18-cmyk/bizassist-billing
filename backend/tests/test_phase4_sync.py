@@ -97,6 +97,8 @@ def _place_and_complete(seller, buyer, qty):
     assert place.status_code in (200, 201), place.text
     order_id = place.json()["id"]
     assert client.post(f"/orders/{order_id}/status", headers=seller["headers"], json={"status": "accepted"}).status_code == 200
+    assert client.post(f"/orders/{order_id}/status", headers=seller["headers"], json={"status": "packed"}).status_code == 200
+    assert client.post(f"/orders/{order_id}/status", headers=seller["headers"], json={"status": "dispatched"}).status_code == 200
     done = client.post(f"/orders/{order_id}/status", headers=seller["headers"], json={"status": "completed"})
     assert done.status_code == 200, done.text
     return pid, order_id, place.json()["order_number"]

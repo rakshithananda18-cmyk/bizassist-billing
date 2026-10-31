@@ -128,7 +128,7 @@ export function Modal({ title, onClose, children, footer, wide }) {
     previousFocus.current = document.activeElement
     const onKey = (e) => {
       if (e.key !== 'Escape') return
-      const open = document.querySelectorAll('.modal-overlay')
+      const open = document.querySelectorAll('.sheet-overlay, .modal-overlay')
       if (open[open.length - 1] === overlay.current) onCloseRef.current?.()
     }
     window.addEventListener('keydown', onKey)
@@ -241,4 +241,70 @@ export function StatusBadge({ status }) {
   }
   const [cls, label] = map[status] || ['badge-muted', status]
   return <span className={`badge ${cls}`}>{label}</span>
+}
+
+
+export function BottomSheet({ title, subtitle, onClose, children, footer, className = '' }) {
+  const overlay = useRef(null)
+  const sheet = useRef(null)
+  const previousFocus = useRef(null)
+  const onCloseRef = useRef(onClose)
+  const titleId = useId()
+  onCloseRef.current = onClose
+
+  useEffect(() => {
+    previousFocus.current = document.activeElement
+    const onKey = (e) => {
+      if (e.key !== 'Escape') return
+      const open = document.querySelectorAll('.sheet-overlay, .modal-overlay')
+      if (open[open.length - 1] === overlay.current) onCloseRef.current?.()
+    }
+    window.addEventListener('keydown', onKey)
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    const focusFirst = () => {
+      const focusables = sheet.current?.querySelectorAll(
+        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      )
+      ;(focusables?.[0] || sheet.current)?.focus()
+    }
+    const frame = window.requestAnimationFrame ? window.requestAnimationFrame(focusFirst) : window.setTimeout(focusFirst, 0)
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      document.body.style.overflow = previousOverflow
+      if (window.cancelAnimationFrame) window.cancelAnimationFrame(frame)
+      else window.clearTimeout(frame)
+      previousFocus.current?.focus?.()
+    }
+  }, [])
+
+  const trapFocus = (event) => {
+    if (event.key !== 'Tab') return
+    const focusables = [...(sheet.current?.querySelectorAll(
+      'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    ) || [])]
+    if (!focusables.length) { event.preventDefault(); sheet.current?.focus(); return }
+    const first = focusables[0]
+    const last = focusables[focusables.length - 1]
+    if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus() }
+    else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus() }
+  }
+
+  return createPortal(
+    <div ref={overlay} className="sheet-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose?.() }}>
+      <div ref={sheet} className={`sheet-container ${className}`.trim()} role="dialog" aria-modal="true" aria-labelledby={title ? titleId : undefined} aria-label={title ? undefined : 'Bottom sheet'} tabIndex="-1" onKeyDown={trapFocus}>
+        <div className="sheet-handle" />
+        <div className="sheet-header">
+          <div>
+            <div id={titleId} className="sheet-title">{title}</div>
+            {subtitle && <div className="xs muted" style={{ marginTop: 2 }}>{subtitle}</div>}
+          </div>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={onClose} aria-label="Close"><CloseIcon size={18} /></button>
+        </div>
+        <div className="sheet-body">{children}</div>
+        {footer && <div className="sheet-footer">{footer}</div>}
+      </div>
+    </div>,
+    document.body,
+  )
 }

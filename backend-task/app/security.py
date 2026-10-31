@@ -53,7 +53,7 @@ _TASK_KEY = hmac.new(config.JWT_SECRET.encode(), b"bizassist-task:v1", hashlib.s
 
 # Billing roles that are NOT business owners. `admin` is the platform
 # organiser's console account, not a business.
-NON_OWNER_ROLES = {"cashier", "supply adder", "admin"}
+NON_OWNER_ROLES = {"cashier", "supply adder", "admin", "deleted", "retired"}
 
 
 # ── Passwords (bcrypt — identical to billing's services/auth.py) ─────────────

@@ -166,6 +166,10 @@ def test_admin_businesses_has_fleet_fields():
 
 
 def test_admin_telemetry_viewer_roundtrip(tmp_path, monkeypatch):
+    import routes.telemetry as telemetry_routes
+    # Exercise local ingest explicitly even when the isolated runner disables
+    # telemetry globally. This does not enable any remote relay or cloud write.
+    monkeypatch.setattr(telemetry_routes, "TELEMETRY_ENABLED", True)
     monkeypatch.chdir(tmp_path)   # telemetry writes logs/ relative to CWD
     batch = {
         "source": "desktop-shell", "device_id": "test-device-123",

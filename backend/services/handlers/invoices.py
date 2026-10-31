@@ -17,6 +17,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import func
 from database.db import SessionLocal
 from database.models import Invoice, Inventory
+from core.billing.balances import invoice_net_amount
 from services.dates import biz_now, parse_date
 
 logger = logging.getLogger("bizassist.handlers.invoices")
@@ -210,36 +211,33 @@ def _customer_margins(user_id: int) -> str:
 
 
 def _invoice_count(user_id: int) -> str:
+    from core.billing.balances import business_revenue_summary, outstanding_rows
     db = SessionLocal()
     try:
-        total   = db.query(Invoice).filter(Invoice.business_id == user_id).count()
-        paid    = db.query(Invoice).filter(Invoice.business_id == user_id, Invoice.status == "Paid").count()
-        pending = db.query(Invoice).filter(Invoice.business_id == user_id, Invoice.status == "Pending").count()
-        overdue = db.query(Invoice).filter(Invoice.business_id == user_id, Invoice.status == "Overdue").count()
+        summary = business_revenue_summary(db, user_id)
+        overdue = len(outstanding_rows(db, user_id, overdue=True))
         return (
             f"**Invoice Summary**\n\n"
-            f"- Total invoices : **{total}**\n"
-            f"- Paid           : **{paid}**\n"
-            f"- Pending        : **{pending}**\n"
+            f"- Total invoices : **{summary['invoice_count']}**\n"
+            f"- Paid           : **{summary['paid_invoice_count']}**\n"
+            f"- Pending        : **{summary['pending_invoice_count'] - overdue}**\n"
             f"- Overdue        : **{overdue}**"
         )
     finally:
         db.close()
 
 def _total_revenue(user_id: int) -> str:
+    from core.billing.balances import business_revenue_summary
     db = SessionLocal()
     try:
-        total    = db.query(func.sum(Invoice.amount)).filter(Invoice.business_id == user_id).scalar() or 0
-        paid     = db.query(func.sum(Invoice.amount)).filter(Invoice.business_id == user_id, Invoice.status == "Paid").scalar()    or 0
-        pending  = db.query(func.sum(Invoice.amount)).filter(Invoice.business_id == user_id, Invoice.status == "Pending").scalar() or 0
-        overdue  = db.query(func.sum(Invoice.amount)).filter(Invoice.business_id == user_id, Invoice.status == "Overdue").scalar() or 0
+        summary = business_revenue_summary(db, user_id)
         return (
             f"**Revenue Breakdown**\n\n"
-            f"- Total revenue  : **₹{total:,.0f}**\n"
-            f"- Collected      : **₹{paid:,.0f}**\n"
-            f"- Pending        : **₹{pending:,.0f}**\n"
-            f"- Overdue        : **₹{overdue:,.0f}**\n\n"
-            f"Collection rate  : **{round((paid/total)*100) if total else 0}%**"
+            f"- Total revenue  : **₹{summary['net_revenue']:,.0f}**\n"
+            f"- Collected      : **₹{summary['collected_revenue']:,.0f}**\n"
+            f"- Pending        : **₹{summary['outstanding_revenue']:,.0f}**\n"
+            f"- Overdue        : **₹{summary['overdue_revenue']:,.0f}**\n\n"
+            f"Collection rate  : **{summary['collection_rate_pct']}%**"
         )
     finally:
         db.close()
@@ -277,7 +275,7 @@ def _overdue_range_detail(user_id: int, query: str) -> str:
         if not matched:
             return f"✅ No overdue invoices found in the {range_label} range."
 
-        total = sum(r.amount or 0 for r in matched)
+        total = sum(invoice_net_amount(r) for r in matched)
         lines = [
             f"There are **{len(matched)}** overdue invoices in the {range_label} range totaling **₹{total:,.0f}**:\n",
             "| Customer | Invoice ID | Amount | Due Date |",
@@ -364,7 +362,7 @@ def _revenue_month_detail(user_id: int, query: str, month: str = None) -> str:
                     or f"/{month_num}/{year_str}" in date_str or f"-{month_num}-{year_str}" in date_str:
                 matched.append(r)
 
-        total = sum(r.amount or 0 for r in matched)
+        total = sum(invoice_net_amount(r) for r in matched)
         return f"**Revenue in {label}**\n\nTotal revenue: **₹{total:,.0f}** across **{len(matched)} invoices**."
     finally:
         db.close()

@@ -12,13 +12,13 @@
 // Fresh server-login always clears the lock (see clearLock).
 // ============================================================
 import React, {
-  createContext, useContext, useState, useEffect,
+  useContext, useState, useEffect,
   useCallback, useRef,
 } from 'react'
 import { useAuth } from './AuthContext'
 import { logger } from '../utils/logger'
+import { lockContext as LockContext } from './contextIdentity'
 
-const LockContext = createContext(null)
 
 // ── Crypto helpers ────────────────────────────────────────────────────────────
 async function sha256hex(str) {
@@ -157,4 +157,8 @@ export function LockProvider({ children }) {
   )
 }
 
-export const useLock = () => useContext(LockContext)
+export const useLock = () => {
+  const value = useContext(LockContext)
+  if (value === null) throw new Error('useLock must be rendered inside LockProvider')
+  return value
+}

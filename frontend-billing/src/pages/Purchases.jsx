@@ -20,6 +20,7 @@ import { usePageLifecycle } from '../hooks/usePageLifecycle'
 import ContextMenu from '../components/common/ContextMenu'
 import UnsavedChangesModal from '../components/common/UnsavedChangesModal'
 import { logger } from '../utils/logger'
+import { readAllPages, readList } from '../utils/readPages'
 
 const fmt = (n) =>
   n != null ? `₹${Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '—'
@@ -47,6 +48,8 @@ export default function Purchases({ embedded = false, headerTabs = null, inlineP
   const [bills, setBills]           = useState([])
   const [debitNotes, setDebitNotes] = useState([])
   const [loading, setLoading]       = useState(true)
+  const [loadError, setLoadError]   = useState(false)
+  const loadGeneration = useRef(0)
   const [activeTab, setActiveTab]   = useState('Pending Review')
   const [isFullScreen, setIsFullScreen] = useState(false)
   // `?vendor=` seeds the search box so Contacts can drill through to a supplier's
@@ -101,14 +104,13 @@ export default function Purchases({ embedded = false, headerTabs = null, inlineP
   }
 
   useEffect(() => {
+    let active = true
     if (showModal && step === 'review') {
-      authFetch('/products?per_page=1000')
-        .then(r => r.ok ? r.json() : { items: [] })
-        .then(data => {
-          setCatalogProducts(data.items || [])
-        })
-        .catch(() => {})
+      readAllPages(authFetch, '/products')
+        .then(data => { if (active) setCatalogProducts(data) })
+        .catch(error => { if (active) setAlert({ type: 'danger', msg: `Product catalogue unavailable: ${error.message}` }) })
     }
+    return () => { active = false }
   }, [showModal, step, authFetch])
 
   const handleHeaderChange = (field, value) => {
@@ -172,7 +174,7 @@ export default function Purchases({ embedded = false, headerTabs = null, inlineP
       if (!prev) return null
       const newItems = [...prev.items]
       const item = { ...newItems[index] }
-      
+
       // Keep keys aligned to schema
       if (field === 'quantity') {
         item.quantity = value;
@@ -191,18 +193,26 @@ export default function Purchases({ embedded = false, headerTabs = null, inlineP
   // ── 3. DATA LOADERS & INITIAL EFFECTS ──
   // ============================================================================
   const load = useCallback(() => {
+    const generation = ++loadGeneration.current
     setLoading(true)
+    setLoadError(false)
     Promise.all([
-      authFetch('/purchases').then(r => r.ok ? r.json() : []),
-      authFetch('/purchases/debit-notes').then(r => r.ok ? r.json() : [])
+      readList(authFetch, '/purchases'),
+      readList(authFetch, '/purchases/debit-notes')
     ])
       .then(([purData, dnData]) => {
+        if (generation !== loadGeneration.current) return
         setBills(Array.isArray(purData) ? purData : [])
         setDebitNotes(Array.isArray(dnData) ? dnData : [])
       })
-      .catch(() => {})
-      .finally(() => setLoading(false))
+      .catch((err) => {
+        if (generation !== loadGeneration.current) return
+        logger.error('[PURCHASES] Failed to load purchase records:', err)
+        setLoadError(true)
+      })
+      .finally(() => { if (generation === loadGeneration.current) setLoading(false) })
   }, [authFetch])
+  useEffect(() => () => { loadGeneration.current++ }, [authFetch])
 
   useEffect(() => {
     load()
@@ -406,9 +416,9 @@ export default function Purchases({ embedded = false, headerTabs = null, inlineP
   const handleSelectBillNext = () => {
     const origBill = bills.find(b => String(b.id) === String(returnBillId))
     if (!origBill) return
-    
+
     const lines = prepareReturnLines(origBill.lines).map(line => ({ ...line, reason: 'Damaged' }))
-    
+
     setReturnLines(lines)
     setReturnStep('enter_items')
   }
@@ -419,7 +429,7 @@ export default function Purchases({ embedded = false, headerTabs = null, inlineP
       setAlert({ type: 'danger', msg: 'Please enter a return quantity greater than zero for at least one item.' })
       return
     }
-    
+
     const invalidLine = activeLines.find(l => l.quantity > l.max_quantity)
     if (invalidLine) {
       setAlert({ type: 'danger', msg: `Return quantity for ${invalidLine.product_name} cannot exceed original quantity (${invalidLine.max_quantity}).` })
@@ -769,6 +779,14 @@ export default function Purchases({ embedded = false, headerTabs = null, inlineP
             </table>
           )
           if (loading) return <div className="page-loader"><span className="spinner" /> Loading bills…</div>
+          if (loadError) return (
+            <div className="empty-state" role="alert" style={{ padding: '3rem 1rem', textAlign: 'center' }}>
+              <div className="empty-icon"><BillsIcon size={28} /></div>
+              <h3>Purchase records are unavailable</h3>
+              <p style={{ color: 'var(--text-muted)', marginBottom: '1rem' }}>Could not reach the server to load purchase bills. Please check your connection.</p>
+              <button onClick={load} className="btn btn-secondary">Retry</button>
+            </div>
+          )
           if (isFullScreen) return (
             <div className="table-fullscreen-overlay" onClick={e => { if (e.target === e.currentTarget) setIsFullScreen(false) }}>
               <div className="table-fullscreen-panel">

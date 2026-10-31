@@ -311,11 +311,36 @@ _COLUMN_MIGRATIONS = [
     {"table": "b2b_connections", "column": "buyer_bizid",  "ddl": "ALTER TABLE b2b_connections ADD COLUMN buyer_bizid TEXT"},
     {"table": "b2b_orders",      "column": "seller_bizid", "ddl": "ALTER TABLE b2b_orders ADD COLUMN seller_bizid TEXT"},
     {"table": "b2b_orders",      "column": "buyer_bizid",  "ddl": "ALTER TABLE b2b_orders ADD COLUMN buyer_bizid TEXT"},
+    {"table": "invoice_line_items", "column": "cost_price", "ddl": "ALTER TABLE invoice_line_items ADD COLUMN cost_price REAL"},
+    {"table": "invoice_line_items", "column": "cost_snapshot_known", "ddl": "ALTER TABLE invoice_line_items ADD COLUMN cost_snapshot_known BOOLEAN"},
+    {"table": "invoices", "column": "legacy_paid_baseline", "ddl": "ALTER TABLE invoices ADD COLUMN legacy_paid_baseline REAL"},
+    {"table": "invoices", "column": "legacy_paid_baseline_source", "ddl": "ALTER TABLE invoices ADD COLUMN legacy_paid_baseline_source VARCHAR"},
+    {"table": "invoices", "column": "legacy_paid_baseline_date", "ddl": "ALTER TABLE invoices ADD COLUMN legacy_paid_baseline_date VARCHAR"},
+    {"table": "b2b_orders", "column": "quoted_place_of_supply", "ddl": "ALTER TABLE b2b_orders ADD COLUMN quoted_place_of_supply VARCHAR"},
+    {"table": "b2b_orders", "column": "quoted_seller_state", "ddl": "ALTER TABLE b2b_orders ADD COLUMN quoted_seller_state VARCHAR"},
+    {"table": "b2b_orders", "column": "quoted_tax_inclusive", "ddl": "ALTER TABLE b2b_orders ADD COLUMN quoted_tax_inclusive BOOLEAN"},
+    {"table": "b2b_orders", "column": "quoted_round_off_enabled", "ddl": "ALTER TABLE b2b_orders ADD COLUMN quoted_round_off_enabled BOOLEAN"},
+    {"table": "b2b_connections", "column": "seller_snapshot", "ddl": "ALTER TABLE b2b_connections ADD COLUMN seller_snapshot TEXT"},
+    {"table": "b2b_connections", "column": "buyer_snapshot",  "ddl": "ALTER TABLE b2b_connections ADD COLUMN buyer_snapshot TEXT"},
+    {"table": "b2b_connections", "column": "seller_deleted",   "ddl": "ALTER TABLE b2b_connections ADD COLUMN seller_deleted BOOLEAN DEFAULT 0"},
+    {"table": "b2b_connections", "column": "buyer_deleted",    "ddl": "ALTER TABLE b2b_connections ADD COLUMN buyer_deleted BOOLEAN DEFAULT 0"},
+    {"table": "b2b_orders",      "column": "seller_snapshot", "ddl": "ALTER TABLE b2b_orders ADD COLUMN seller_snapshot TEXT"},
+    {"table": "b2b_orders",      "column": "buyer_snapshot",  "ddl": "ALTER TABLE b2b_orders ADD COLUMN buyer_snapshot TEXT"},
+    {"table": "b2b_orders",      "column": "seller_deleted",   "ddl": "ALTER TABLE b2b_orders ADD COLUMN seller_deleted BOOLEAN DEFAULT 0"},
+    {"table": "b2b_orders",      "column": "buyer_deleted",    "ddl": "ALTER TABLE b2b_orders ADD COLUMN buyer_deleted BOOLEAN DEFAULT 0"},
+    {"table": "b2b_orders",      "column": "seller_invoice_uid", "ddl": "ALTER TABLE b2b_orders ADD COLUMN seller_invoice_uid VARCHAR(36)"},
+    {"table": "b2b_orders",      "column": "seller_invoice_number", "ddl": "ALTER TABLE b2b_orders ADD COLUMN seller_invoice_number VARCHAR"},
+    {"table": "sync_control_outbox", "column": "business_public_id", "ddl": "ALTER TABLE sync_control_outbox ADD COLUMN business_public_id VARCHAR"},
+    {"table": "sync_control_outbox", "column": "source_id", "ddl": "ALTER TABLE sync_control_outbox ADD COLUMN source_id VARCHAR"},
+    {"table": "sync_control_outbox", "column": "source_revision", "ddl": "ALTER TABLE sync_control_outbox ADD COLUMN source_revision INTEGER"},
+    {"table": "sync_control_outbox", "column": "lease_id", "ddl": "ALTER TABLE sync_control_outbox ADD COLUMN lease_id VARCHAR"},
+    {"table": "sync_control_outbox", "column": "lease_until", "ddl": "ALTER TABLE sync_control_outbox ADD COLUMN lease_until TIMESTAMP"},
 ]
 
 
 # Tables that carry a durable `uid` (BusinessOwnedMixin and synced child/aux tables). Used by the uid backfill.
 _UID_TABLES = [
+    "supplier_payments", "customer_refunds", "customer_credit_allocations", "document_party_snapshots",
     "customers", "vendors", "products", "invoices", "inventory", "payments",
     "purchase_orders", "purchase_invoices", "expenses", "godowns", "stock_transfers",
     "journal_entries", "period_locks",
@@ -454,12 +479,22 @@ def _migrate_inventory_stock_precision(conn):
 
 
 def _backfill_null_business_ids(conn):
+    """Report legacy unowned rows without guessing a tenant from a local id.
+
+    Business 2 has no portable ownership meaning. Assigning these records to
+    it can expose another merchant's books; only a reviewed mapping backed by
+    source evidence can establish the correct owner.
+    """
     for table in ("invoices", "inventory", "payments", "uploaded_files"):
-        try:
-            conn.execute(text(f"UPDATE {table} SET business_id = 2 WHERE business_id IS NULL"))
-        except Exception as e:
-            logger.error(f"[Migration] Backfill business_id {table}: {e}")
-    conn.commit()
+        count = conn.execute(text(
+            f"SELECT COUNT(*) FROM {table} WHERE business_id IS NULL"
+        )).scalar_one()
+        if count:
+            logger.error(
+                "[Migration] %s has %s unowned rows; left unchanged. "
+                "Restore ownership only from an explicit, reviewed source mapping.",
+                table, count,
+            )
 
 
 def _backfill_staff_login_name(conn):
@@ -891,8 +926,9 @@ def _report_existing_overfill(conn, child, parent, fk, TARGET, TOL):
         logger.error(
             "[Migration] overfill: %s %s row(s) already hold MORE line value "
             "than was billed (ids: %s). The guard only constrains NEW writes; "
-            "these are existing corruption. Repair with: python "
-            "scripts/repair_line_items_by_invariant.py --apply",
+            "these are existing corruption. Start with the read-only report: python "
+            "scripts/repair_line_items_by_invariant.py. Verify original documents "
+            "and a restorable backup before approving a specific repair; no rows were changed.",
             len(bad), parent,
             "; ".join(f"{b[0]} +{round(float(b[1] or 0.0), 2)}" for b in bad[:25]),
         )
@@ -1616,6 +1652,16 @@ def _backfill_b2b_bizids(conn):
 
 
 def run_migrations_and_seed():
+    # Runtime and migration identities are deliberately separate on Postgres.
+    # A constrained HTTP role verifies readiness and never executes DDL/seeding.
+    if engine.dialect.name == "postgresql":
+        with engine.connect() as connection:
+            privileged = connection.execute(text("SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname=current_user")).scalar()
+            if not privileged:
+                for table in ("users", "sync_feed_events", "sync_control_receipts"):
+                    if connection.execute(text("SELECT to_regclass(:t)"), {"t": "public." + table}).scalar() is None:
+                        raise RuntimeError("Database migration required before starting the constrained runtime")
+                return
     """Called on app startup. Idempotent — safe to run on every boot."""
     logger.info("[Migration] Starting...")
 
@@ -1627,6 +1673,11 @@ def run_migrations_and_seed():
     with engine.connect() as conn:
         _run_column_migrations(conn)
         _check_schema_integrity(conn)
+        from core.accounting.settlement_schema import install_financial_schema
+        install_financial_schema(conn)
+        from core.party_archive_schema import install_party_archive_schema
+        install_party_archive_schema(conn)
+        conn.commit()
 
     # 3. Backfills & sequence resync
     #
@@ -1681,4 +1732,9 @@ def run_migrations_and_seed():
     finally:
         db.close()
 
+    from database.change_feed import install_change_feed
+    with engine.begin() as feed_connection:
+        install_change_feed(feed_connection)
+        from database.security import install_security
+        install_security(feed_connection)
     logger.info("[Migration] Done.")

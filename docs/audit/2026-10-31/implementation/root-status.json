@@ -1,0 +1,63 @@
+[
+  {
+    "id": "FT-01",
+    "status": "implemented",
+    "evidence": [
+      "backend-task/app/routers/tasks.py rejects reopening a completed/cancelled collection into a second chargeable completion.",
+      "backend-task/tests/test_task_audit_regressions.py and test_business_delete_lifecycle.py passed in the complete 165-test shared PostgreSQL contract, including native concurrent completion and invoice reservation.",
+      "The latest Field UI keeps linked collection limits, immutable account ownership and the merchant-only local QR workflow."
+    ],
+    "remaining": [
+      "Physical phone GPS/PWA and real receipt confirmation require release acceptance; no live payment was initiated."
+    ]
+  },
+  {
+    "id": "OPS-01",
+    "status": "implemented",
+    "evidence": [
+      "repair_line_items.py requires an explicit SQLite path and BizID/target UID/donor UID/evidence mapping; default execution is read-only.",
+      "Apply validates matching headers, line totals and tenant links, reserves the writer transaction, creates and verifies an AES-GCM/Scrypt backup, and commits the full selected repair atomically.",
+      "Five synthetic repair tests cover refusal, dry-run byte stability, verified restore to a new path and duplicate-replay rejection; importing diagnostics does not connect to databases."
+    ],
+    "remaining": [
+      "No real financial rows were repaired. Backup passwords and private recovery evidence must be retained outside source."
+    ]
+  },
+  {
+    "id": "OPS-02",
+    "status": "implemented",
+    "evidence": [
+      "All three voided_payment_*.json exports were removed from the Git index while local originals were preserved.",
+      "An ignored AES-GCM/DPAPI evidence vault was recovered locally and all three byte hashes matched the originals.",
+      "Any-depth ignore coverage, Docker context exclusions and scripts/check_source_hygiene.py prevent future inclusion of operational exports."
+    ],
+    "remaining": [
+      "Historical copies may remain in remote history/clones. The separate confirmed credential exposure requires rotation and published-copy review; see SECURITY-RESPONSE.md."
+    ]
+  },
+  {
+    "id": "CI-01",
+    "status": "implemented",
+    "evidence": [
+      "CI now builds Landing and all three billing-facing frontends, runs useful Admin lint, checks operational-source hygiene and scans introduced commits with pinned redacted Gitleaks.",
+      "Field triggers cover core, purge/cleanup, auth and migration contracts; the shared-schema job uses actual Alembic upgrade head twice.",
+      "The complete historical SQLite and PostgreSQL migration chains, retry and all 66 model-table column contracts passed on disposable databases.",
+      "Separate constrained HTTP/trade/admin role smoke and native PostgreSQL settlement tests are wired into CI."
+    ],
+    "remaining": [
+      "The final full-suite acceptance result is recorded separately; local checks do not prove hosted Actions ran or repository branch-protection settings were enabled."
+    ]
+  },
+  {
+    "id": "DOC-01",
+    "status": "implemented",
+    "evidence": [
+      "The lean master plan and older full/hosting/product boards point to the dated 31 October record.",
+      "The original October 30 audit and 18/20/2 verification are preserved as historical snapshots.",
+      "One consolidated ledger retains every original ID, distinguishes two contained workflows from implemented features, and tracks external security/release gates."
+    ],
+    "remaining": [
+      "Update the current ledger when external rotation, deployment configuration and release acceptance are completed."
+    ]
+  }
+]

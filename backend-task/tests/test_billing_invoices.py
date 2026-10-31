@@ -7,7 +7,7 @@ from datetime import date, timedelta
 
 import pytest
 
-from app.billing_models import BillingCustomer, BillingInvoice, BillingInvoiceLine
+from tests.billing_fixture_models import BillingCustomer, BillingInvoice, BillingInvoiceLine
 from app.db import SessionLocal
 from app.timeutil import biz_today
 from tests.conftest import check_in, geo

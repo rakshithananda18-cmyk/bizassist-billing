@@ -15,12 +15,28 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api/client'
 import { logger } from '../utils/logger'
+import { getApiBase } from '../config'
 
 const MODE_STORAGE_KEY = 'pos.counter_mode'
 const MODE_EVENT = 'bizassist:counter-mode'
 
-const _cache = new Map()          // cacheKey ('' = primary) → profile
-const _inflight = new Map()       // cacheKey → Promise
+const _cache = new Map()          // `${tenantScope}:${effective}` → profile
+const _inflight = new Map()       // `${tenantScope}:${effective}` → Promise
+let generation = 0
+const SESSION_EVENT = 'bizassist:session-changed'
+
+function getTenantScope() {
+  try {
+    const raw = localStorage.getItem('billing_user')
+    if (raw) {
+      const u = JSON.parse(raw)
+      return `${getApiBase?.() || ''}|${u.public_id || u.business_id || u.id || 'anon'}|${u.user_id || u.id || ''}`
+    }
+  } catch {
+    // ignore
+  }
+  return 'anon'
+}
 
 export function getCounterMode() {
   try { return localStorage.getItem(MODE_STORAGE_KEY) || null } catch { return null }
@@ -41,10 +57,18 @@ export function setCounterMode(modeKey) {
 }
 
 export function useBillingProfile(mode = null) {
+  const [session, setSession] = useState(generation)
   const [override, setOverride] = useState(getCounterMode)
   const effective = mode ?? override ?? ''    // '' = business primary
-  const [profile, setProfile] = useState(() => _cache.get(effective) ?? null)
-  const [loading, setLoading] = useState(!_cache.has(effective))
+  const cacheKey = `${getTenantScope()}:${effective}`
+  const [profile, setProfile] = useState(() => _cache.get(cacheKey) ?? null)
+  const [loading, setLoading] = useState(!_cache.has(cacheKey))
+  useEffect(() => {
+    const changed = () => setSession(generation)
+    window.addEventListener(SESSION_EVENT, changed)
+    window.addEventListener('storage', changed)
+    return () => { window.removeEventListener(SESSION_EVENT, changed); window.removeEventListener('storage', changed) }
+  }, [])
 
   // Follow device-level mode switches when no explicit mode was requested.
   useEffect(() => {
@@ -56,24 +80,27 @@ export function useBillingProfile(mode = null) {
 
   useEffect(() => {
     let alive = true
+    const requestGeneration = generation
+    const currentKey = `${getTenantScope()}:${effective}`
     async function load() {
-      if (_cache.has(effective)) {
-        setProfile(_cache.get(effective))
+      if (_cache.has(currentKey)) {
+        setProfile(_cache.get(currentKey))
         setLoading(false)
         return
       }
       setLoading(true)
       try {
-        if (!_inflight.has(effective)) {
-          _inflight.set(effective,
+        if (!_inflight.has(currentKey)) {
+          _inflight.set(currentKey,
             api.get('/business/billing-profile', effective ? { mode: effective } : undefined))
         }
-        const data = await _inflight.get(effective)
-        _cache.set(effective, data?.profile || null)
-        if (alive) setProfile(_cache.get(effective))
+        const data = await _inflight.get(currentKey)
+        if (generation !== requestGeneration || currentKey !== `${getTenantScope()}:${effective}`) return
+        _cache.set(currentKey, data?.profile || null)
+        if (alive) setProfile(_cache.get(currentKey))
       } catch (e) {
         logger.warn('billing-profile fetch failed — counter runs unrestricted', e)
-        _inflight.delete(effective)
+        _inflight.delete(currentKey)
         if (alive) setProfile(null)
       } finally {
         if (alive) setLoading(false)
@@ -81,13 +108,15 @@ export function useBillingProfile(mode = null) {
     }
     load()
     return () => { alive = false }
-  }, [effective])
+  }, [effective, cacheKey, session])
 
   return { profile, loading, mode: effective || null }
 }
 
 /** Reset the session cache (logout / business switch / tests). */
 export function clearBillingProfileCache() {
+  generation++
   _cache.clear()
   _inflight.clear()
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event(SESSION_EVENT))
 }

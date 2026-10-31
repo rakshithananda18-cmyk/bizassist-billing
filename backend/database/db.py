@@ -196,7 +196,7 @@ def _clear_postgres_tenant_guc(dbapi_connection, _connection_record, _connection
 def _set_postgres_tenant_guc(session, _transaction, connection):
     # The id is captured on the Session by get_db.  Scheduler/background
     # sessions intentionally have no tenant identity and remain fail-closed.
-    business_id = session.info.get("business_id")
+    business_id = session.info.get("business_id", current_business_id_var.get())
     value = "" if business_id is None else str(int(business_id))
     connection.execute(
         text("SELECT set_config('app.current_business_id', :bid, true)"),

@@ -98,7 +98,9 @@ def _line_out(li: InvoiceLineItem) -> dict:
 
 
 def _invoice_out(inv: Invoice) -> dict:
+    from core.party_archive import document_party_metadata
     return {
+        **document_party_metadata(inv, "sale"),
         "id": inv.id, "invoice_no": inv.invoice_id, "customer": inv.customer,
         "invoice_date": inv.invoice_date, "status": inv.status,
         "place_of_supply": inv.place_of_supply, "invoice_type": inv.invoice_type,
@@ -437,6 +439,7 @@ class FrontendInvoiceRequest(BaseModel):
 
 
 def _invoice_out_for_frontend(inv: Invoice, balance: Optional[dict] = None) -> dict:
+    from core.party_archive import document_party_metadata
     total = round(inv.total_amount or inv.amount or 0.0, 2)
     paid = round(inv.paid_amount or 0.0, 2)
     outstanding = round(max(total - paid, 0.0), 2)
@@ -447,6 +450,7 @@ def _invoice_out_for_frontend(inv: Invoice, balance: Optional[dict] = None) -> d
         outstanding = balance["outstanding"]
     from core.billing.balances import collection_status
     return {
+        **document_party_metadata(inv, "sale"),
         "id": inv.id,
         "invoice_number": inv.invoice_id,
         "invoice_no": inv.invoice_id,
@@ -522,6 +526,8 @@ def list_invoices(
     from_date: Optional[str] = None,   # "YYYY-MM-DD" in IST
     to_date:   Optional[str] = None,   # "YYYY-MM-DD" in IST (inclusive)
     per_page:  int = 0,                # 0 = unlimited (legacy default)
+    page:      int = 1,
+    search:    Optional[str] = None,
     sort:      str = "desc",
 ):
     """List invoices for the business with optional date-range filter.
@@ -542,11 +548,16 @@ def list_invoices(
     if to_date:
         q = q.filter(Invoice.invoice_date <= to_date)
 
+    if search and search.strip():
+        s = f"%{search.strip()}%"
+        q = q.filter((Invoice.invoice_id.ilike(s)) | (Invoice.customer.ilike(s)))
+
     order = Invoice.invoice_date.desc() if sort != "asc" else Invoice.invoice_date.asc()
     q = q.order_by(order, Invoice.id.desc())
 
     if per_page and per_page > 0:
-        q = q.limit(per_page)
+        offset = max(0, (page - 1) * per_page)
+        q = q.offset(offset).limit(per_page)
 
     invoices = q.all()
     from core.billing.balances import invoice_balances

@@ -14,7 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.orm import Session
-from database.db import get_db
+from database.admin_service import get_admin_db
 from services.auth import get_active_user
 from services.context_cache import invalidate, invalidate_user_cache, get_cache_stats
 import services.admin_service as svc
@@ -22,6 +22,10 @@ from services.dates import utc_now
 
 router = APIRouter()
 logger = logging.getLogger("bizassist.routes.admin")
+
+# Every route in this module is a platform-admin route. This local alias keeps
+# the route definitions uniform while using the separately authorized service.
+get_db = get_admin_db
 
 
 # ── Pydantic schemas ──────────────────────────────────────────────────────────

@@ -1,0 +1,67 @@
+[
+  {
+    "id": "BD-01", "status": "contained",
+    "evidence": ["backend/services/actions.py:231: preview is non-executable and execution refuses status-only payment changes", "Existing action regression tests exercise refusal without changing the invoice"],
+    "remaining": "AI payment entry remains unavailable until it invokes the guarded receipt command with operator, shift, period and idempotency context."
+  },
+  {
+    "id": "BD-02", "status": "implemented",
+    "evidence": ["backend/core/stock/ledger.py:56: exact warehouse/batch bucket predicates used by movement/cache/rebuild", "WP1 financial contracts cover unbatched and batched inventory parity"],
+    "remaining": "No merchant inventory caches were repaired or reconciled by this code change."
+  },
+  {
+    "id": "BD-03", "status": "implemented",
+    "evidence": ["backend/core/purchase/commands.py:284: purchase pack cost divided by conversion factor before base-unit product/cache valuation", "WP1 purchase carton fixture proves 12 base units at cost 10 for a 120 carton"],
+    "remaining": "Historical valuation is not inferred or rewritten."
+  },
+  {
+    "id": "BD-04", "status": "implemented",
+    "evidence": ["backend/core/billing/balances.py:76: shared net-sales, receipt-cash, returns, refunds and allocation projections", "backend/core/billing/commands.py:770: explicit legacy header baseline captured only before the first receipt; authored bills start baseline zero", "backend/core/billing/print_payload.py:332: fiscal total retained and adjusted payable, actual cash, refunds and credit shown separately", "backend/tests/test_financial_remediation_final.py:269: reader/reminder/chart parity and legacy/modern counterexamples", "backend/tests/test_invoice_account.py:265: exact delimited legacy return references cannot steal prefix-number returns"],
+    "remaining": "Header-only legacy balances remain labelled by their historical source; no missing receipt is fabricated or posted as new cash. Ambiguous duplicate legacy numbers are excluded from text-link fallback. Current-catalogue margin estimates are explicitly labelled estimates; P&L uses historical snapshots."
+  },
+  {
+    "id": "BD-05", "status": "implemented",
+    "evidence": ["backend/services/self_healing.py:40: mismatched journal hashes are diagnosed without resealing", "backend/core/accounting/repost.py:300: secondary master-repost healing path delegates to the same non-mutating diagnosis", "Financial remediation regression preserves the original hash and integrity alarm after tampering"],
+    "remaining": "Legitimate historical journal recovery requires separate evidence-based reconciliation; automatic resealing remains refused."
+  },
+  {
+    "id": "BD-06", "status": "implemented",
+    "evidence": ["backend/core/billing/commands.py:205: shared invoice_totals calculator and rounding policy", "backend/core/order/service.py:215: quote snapshots destination, seller state, inclusive-tax and rounding policy plus line tax rates", "backend/core/order/service.py:669: completion uses quoted destination and rejects changed seller tax/rounding policy or total mismatch", "Financial remediation tests exercise inclusive/exclusive and rounding combinations plus changed buyer destination"],
+    "remaining": "Orders whose seller tax state or rounding policy changed require cancellation and a new quote; existing historical quotes are not silently rewritten."
+  },
+  {
+    "id": "BD-07", "status": "implemented",
+    "evidence": ["backend/core/order/service.py:215: direct order creation applies accepted connection and permitted category", "WP3 authorization regression rejects hidden-category product IDs"],
+    "remaining": "None for the original direct-category bypass."
+  },
+  {
+    "id": "BD-08", "status": "implemented",
+    "evidence": ["backend/core/order/service.py:340: explicit order transition graph and terminal-state guards", "backend/tests/test_phase4_sync.py: fixture now traverses accepted, packed, dispatched, completed once", "WP3 graph tests and completed-order financial assertions retained"],
+    "remaining": "None for the original illegal transitions; restricted-role PostgreSQL B2B acceptance is recorded in the security agent's results."
+  },
+  {
+    "id": "BD-09", "status": "contained",
+    "evidence": ["backend/core/billing/commands.py:1029: standalone advances with no invoice dues are refused before changing customer credit", "Existing settlement regression verifies no unjournaled balance change"],
+    "remaining": "Standalone advance receipts still need a durable source document, allocation/refund commands and full sync/idempotency workflow. Mixed invoice-linked settlement advances retain their existing journalled workflow."
+  },
+  {
+    "id": "BD-10", "status": "implemented",
+    "evidence": ["backend/database/models.py: InvoiceLineItem cost is nullable with nullable cost_snapshot_known evidence marker", "backend/core/billing/commands.py:187: new sale cost snapshots; credit notes preserve exact original zero or unknown cost", "backend/core/api/reports.py:267: P&L reports missing historical costs as unavailable rather than substituting current catalogue prices", "backend/core/accounting/settlement_schema.py:7: additive upgrade adds snapshot fields and removes the old PostgreSQL default without guessing old zeros", "Financial tests distinguish genuine zero cost from unknown historical cost and simulate predecessor schema"],
+    "remaining": "Historical missing costs require sourced reconciliation before complete profit can be reported. No live merchant values were backfilled."
+  },
+  {
+    "id": "BD-11", "status": "implemented",
+    "evidence": ["backend/core/accounting/settlement_models.py: append-only supplier payments, linked customer refunds and credit allocations with stable UID and tenant/idempotency identity", "backend/core/accounting/settlements.py:81: locked balances, request binding, amount/period/shift guards, atomic journals and operator snapshots", "backend/core/api/settlements.py: owner/manager commands and paginated source/list endpoints", "backend/core/accounting/repost.py: new source entities registered for idempotent destination journal posting", "database/sync_map.py and data-transfer order include immutable settlement sources; derived journals remain local", "Financial remediation tests cover replay, overpayment, unpaid-return rejection, tenant/customer separation, shift outflow and ledger parity"],
+    "remaining": "No physical supplier transfer or cash refund was made. Posted settlement edits are refused; corrections require a separately linked financial reversing fact rather than overwriting history."
+  },
+  {
+    "id": "BD-12", "status": "implemented",
+    "evidence": ["backend/core/order/service.py:137: supplier catalogue aggregates all inventory buckets with SUM/GROUP BY", "Financial contracts exercise combined batch inventory rather than last-row overwrite"],
+    "remaining": "None for the catalogue bucket overwrite."
+  },
+  {
+    "id": "BD-13", "status": "implemented",
+    "evidence": ["backend/core/billing/sequence.py: durable debit-note sequence", "backend/core/purchase/commands.py: explicit duplicate manual debit-note number guard", "backend/core/accounting/settlement_schema.py:40: real existing-schema partial unique debit-note index, preceded by duplicate detection", "Upgrade regression verifies index installation on an existing purchase table"],
+    "remaining": "An existing database containing duplicate debit-note numbers fails visibly and needs evidence-based reconciliation; the migration intentionally does not renumber historical financial documents."
+  }
+]

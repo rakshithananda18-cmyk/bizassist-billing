@@ -35,14 +35,18 @@ def upgrade() -> None:
         """)
 
         # 2. Revoke all privileges (SELECT, INSERT, UPDATE, DELETE, etc.) from public API roles
-        op.execute("REVOKE ALL ON ALL TABLES IN SCHEMA public FROM public, anon, authenticated;")
-        op.execute("REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM public, anon, authenticated;")
-        op.execute("REVOKE ALL ON ALL FUNCTIONS IN SCHEMA public FROM public, anon, authenticated;")
-
-        # 3. Alter default privileges so future tables/sequences/functions don't automatically grant public API access
-        op.execute("ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL ON TABLES FROM public, anon, authenticated;")
-        op.execute("ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL ON SEQUENCES FROM public, anon, authenticated;")
-        op.execute("ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL ON FUNCTIONS FROM public, anon, authenticated;")
+        # Bare PostgreSQL does not define Supabase's anon/authenticated roles.
+        # Revoke PUBLIC unconditionally and any provider API roles that exist;
+        # never create extra login identities merely to replay the schema.
+        roles = ['PUBLIC']
+        for name in ('anon', 'authenticated'):
+            if bind.execute(sa.text('SELECT 1 FROM pg_roles WHERE rolname=:name'), {'name': name}).first():
+                roles.append(bind.dialect.identifier_preparer.quote(name))
+        grantees = ', '.join(roles)
+        for kind in ('TABLES', 'SEQUENCES', 'FUNCTIONS'):
+            op.execute(f'REVOKE ALL ON ALL {kind} IN SCHEMA public FROM {grantees}')
+            # 3. New objects retain the same closed provider API boundary.
+            op.execute(f'ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL ON {kind} FROM {grantees}')
 
 
 def downgrade() -> None:

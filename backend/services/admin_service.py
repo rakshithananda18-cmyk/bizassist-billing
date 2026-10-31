@@ -108,6 +108,12 @@ def require_admin(user_id: int, db: Session, action: str = None, details: dict =
         logger.warning(f"[AUTH] Admin API disabled — blocked user_id={user_id}")
         raise HTTPException(status_code=404, detail="Not found")
 
+    if db.bind.dialect.name == "postgresql" and not db.info.get("admin_authorized"):
+        from sqlalchemy import text
+        role = db.execute(text("SELECT rolsuper,rolbypassrls FROM pg_roles WHERE rolname=current_user")).first()
+        if role is None or not any(role):
+            raise HTTPException(status_code=503, detail="Use the configured platform administration service")
+
     u = db.query(User).filter(User.id == user_id).first()
     if not u or u.role != "admin":
         logger.warning(f"[AUTH] Admin access denied for user_id={user_id} (role={getattr(u, 'role', None)})")
@@ -935,7 +941,7 @@ def _prepare_product_purge(user_id: int, db: Session):
 
 
 def purge_business_data(user_id: int, db: Session, *, delete_owner: bool = False,
-                        delete_staff: bool = True) -> dict:
+                        delete_staff: bool = True, retire_account: bool = False) -> dict:
     """Thorough, dependency-ordered purge of ALL data owned by business `user_id`.
 
     Single source of truth for erasing a business's rows so callers can't drift:
@@ -950,8 +956,17 @@ def purge_business_data(user_id: int, db: Session, *, delete_owner: bool = False
     Returns a summary dict.
     """
     from services.field_business_cleanup import purge_field_business
-    field_deleted = purge_field_business(db, user_id)
+    # Refuse corrupt cross-tenant references before archiving or purging any
+    # other state. Optional references are detached only after this preflight.
     _prepare_product_purge(user_id, db)
+    from core.party_archive import archive_shared_history, DocumentPartySnapshot, retire_identity
+    shared_history = archive_shared_history(db, user_id, retiring=delete_owner or retire_account)
+    from services.control_outbox import purge_control_state
+    purge_control_state(db, user_id)
+    # Settlement helpers own their child ordering and compose in this same txn.
+    from core.accounting.settlements import purge_settlement_state
+    purge_settlement_state(db, user_id)
+    field_deleted = purge_field_business(db, user_id)
     from services.registration_policy import retain_trial_claim
     target_owner = db.get(User, user_id)
     if target_owner is not None:
@@ -976,13 +991,8 @@ def purge_business_data(user_id: int, db: Session, *, delete_owner: bool = False
         )
     ).delete(synchronize_session=False)
 
-    db.query(B2BOrderLineItem).filter(
-        B2BOrderLineItem.order_id.in_(
-            db.query(B2BOrder.id).filter(
-                (B2BOrder.seller_business_id == user_id) | (B2BOrder.buyer_business_id == user_id)
-            )
-        )
-    ).delete(synchronize_session=False)
+    # Shared orders and their snapshotted lines belong to BOTH counterparties.
+    # archive_shared_history detached optional source-product/invoice references.
 
     db.query(JournalLine).filter(
         JournalLine.entry_id.in_(
@@ -1007,9 +1017,6 @@ def purge_business_data(user_id: int, db: Session, *, delete_owner: bool = False
     db.query(Invoice).filter(Invoice.business_id == user_id).delete(synchronize_session=False)
     db.query(PurchaseInvoice).filter(PurchaseInvoice.business_id == user_id).delete(synchronize_session=False)
     db.query(PurchaseOrder).filter(PurchaseOrder.business_id == user_id).delete(synchronize_session=False)
-    db.query(B2BOrder).filter(
-        (B2BOrder.seller_business_id == user_id) | (B2BOrder.buyer_business_id == user_id)
-    ).delete(synchronize_session=False)
     db.query(JournalEntry).filter(JournalEntry.business_id == user_id).delete(synchronize_session=False)
     db.query(StockTransfer).filter(StockTransfer.business_id == user_id).delete(synchronize_session=False)
     db.query(StockLedger).filter(StockLedger.business_id == user_id).delete(synchronize_session=False)
@@ -1038,13 +1045,10 @@ def purge_business_data(user_id: int, db: Session, *, delete_owner: bool = False
     db.query(Vendor).filter(Vendor.business_id == user_id).delete(synchronize_session=False)
 
     # B2B network relationships (use correct key names)
-    db.query(B2BConnection).filter(
-        (B2BConnection.seller_business_id == user_id) | (B2BConnection.buyer_business_id == user_id)
-    ).delete(synchronize_session=False)
     db.query(B2BInviteCode).filter(B2BInviteCode.seller_business_id == user_id).delete(synchronize_session=False)
-    db.query(B2BLedger).filter(
-        (B2BLedger.seller_business_id == user_id) | (B2BLedger.buyer_business_id == user_id)
-    ).delete(synchronize_session=False)
+    # Retain shared ledger amounts/balances. Retiring an account is not payment,
+    # cancellation of the counterparty's receivable, or erasure of their history.
+    db.query(DocumentPartySnapshot).filter(DocumentPartySnapshot.business_id == user_id).delete(synchronize_session=False)
 
     # 3. Delete all other business-scoped data
     for model in (
@@ -1078,7 +1082,14 @@ def purge_business_data(user_id: int, db: Session, *, delete_owner: bool = False
     # 6. Optionally delete the owner row itself. Admin "wipe" frees the username
     #    for clean re-registration; reclaim keeps the row so it can be re-keyed.
     owner_deleted = False
-    if delete_owner:
+    identity_retained = bool(shared_history and (delete_owner or retire_account))
+    if identity_retained:
+        target = db.query(User).filter(User.id == user_id).first()
+        if target is not None:
+            retire_identity(target)
+        from services.auth import clear_token_version_cache
+        clear_token_version_cache(user_id)
+    elif delete_owner:
         target = db.query(User).filter(User.id == user_id).first()
         if target is not None:
             db.delete(target)
@@ -1093,6 +1104,8 @@ def purge_business_data(user_id: int, db: Session, *, delete_owner: bool = False
         "business_id": user_id,
         "staff_deleted": staff_deleted or 0,
         "owner_deleted": owner_deleted,
+        "identity_retained": identity_retained,
+        "shared_history_retained": bool(shared_history),
         "field_deleted": field_deleted,
     }
 
@@ -1103,13 +1116,14 @@ def wipe_user_data(user_id: int, db: Session) -> dict:
     target = require_target_user(user_id, db)
     uname = target.username
     _pub, _bn = target.public_id, target.business_name
-    purge_business_data(user_id, db, delete_owner=True, delete_staff=True)
+    result = purge_business_data(user_id, db, delete_owner=True, delete_staff=True)
     record_business_tombstone(db, public_id=_pub, username=uname,
                               business_name=_bn, reason="admin_wipe")
     db.commit()
     invalidate_user_cache(user_id)
-    logger.warning("[ADMIN] Wiped business %s ('%s') — data + owner + staff deleted; username freed.", user_id, uname)
-    return {"status": "success", "message": "All data for " + uname + " deleted."}
+    logger.warning("[ADMIN] Retired business %s; private data and logins removed; shared_history_retained=%s.",
+                   user_id, result["shared_history_retained"])
+    return {**result, "message": "Business account and private data deleted. Shared transaction history remains available to counterparties."}
 
 
 def token_usage(db: Session) -> list:

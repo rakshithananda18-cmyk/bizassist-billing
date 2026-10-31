@@ -1,0 +1,221 @@
+{
+  "date": "2026-10-31",
+  "timezone": "Asia/Calcutta",
+  "scope": "TS-01 through TS-09; current shared working tree, including unstaged/new implementation files",
+  "status_counts": {
+    "fixed": 9,
+    "partial": 0,
+    "open": 0,
+    "unverified": 0
+  },
+  "tests": [
+    {
+      "name": "Non-superuser migration operator ownership-transfer and auth proof",
+      "command": "python backend/tests/run_nonsuperuser_security_smoke.py",
+      "executed_by": "trust agent on 2026-10-31; disposable root loopback PostgreSQL 16 fixture only",
+      "passed_checks": 9,
+      "failed_checks": 0,
+      "seconds": 14.88,
+      "evidence": [
+        "docs/audit/2026-10-31/implementation/trust-nonsuperuser-security.json",
+        "docs/audit/2026-10-31/implementation/trust-nonsuperuser-security.txt"
+      ],
+      "coverage": [
+        "non-superuser BYPASSRLS CREATEROLE operator creates NOLOGIN BYPASSRLS role",
+        "fresh complete historical Alembic upgrade under non-superuser operator",
+        "retry complete Alembic upgrade is idempotent",
+        "explicit repeated CREATE OR REPLACE after bootstrap ownership transfer",
+        "operator SET/inherited owner rights and explicit EXECUTE persist; bootstrap CREATE revoked; PUBLIC EXECUTE absent",
+        "legacy non-superuser operator invokes fixed bootstrap helper after installation",
+        "constrained runtime has no privileged memberships/CREATE and authenticates only its tenant",
+        "constrained runtime staff login works via narrow bootstrap",
+        "public invoice token binds its constrained tenant without global SELECT"
+      ],
+      "fixture_limits": "Existing cluster-global bootstrap role was preserved; fixture administrator granted the synthetic operator ADMIN but no initial SET/inherited rights on it. The operator separately created a new NOLOGIN BYPASSRLS role. The fresh database, complete chain and repeated installer/auth calls all ran as NOSUPERUSER BYPASSRLS CREATEROLE, not the fixture superuser.",
+      "ci": "full-schema-chain runs the script with its existing disposable TS_SCHEMA_ADMIN_DATABASE_URL and optional TS_SECURITY_PROOF_OUTPUT in runner.temp",
+      "production_access": false
+    },
+    {
+      "name": "Final real constrained-role sync/auth/B2B/platform-admin smoke",
+      "command": "python backend/tests/run_sync_role_smoke.py (TS_SCHEMA_ADMIN_DATABASE_URL privately points to a fresh generated loopback-only PostgreSQL test database)",
+      "executed_by": "trust agent on 2026-10-31",
+      "passed": 12,
+      "failed": 0,
+      "skipped": 0,
+      "seconds": 13.6,
+      "evidence": "docs/audit/2026-10-31/implementation/trust-role-results.txt",
+      "coverage": [
+        "all 11 earlier protocol/auth/B2B cases",
+        "real separate admin service credential",
+        "actual admin fleet and campaign audience preview HTTP calls",
+        "normal owner and false admin role claim denied",
+        "missing admin service returns 503",
+        "post-commit live token-version revalidation",
+        "no HTTP membership in trade/admin roles",
+        "FORCE-RLS Field cleanup with SELECT/DELETE-only grants"
+      ],
+      "limits": "Synthetic PostgreSQL roles and data; metadata plus repeated additive installers including e70. The minimal synthetic Field table is not the full Field schema. Root separately owns the complete historical-chain check."
+    },
+    {
+      "name": "Existing SQLite admin/campaign integration and tenant gate",
+      "command": "python scripts/run_isolated_tests.py backend -q --tb=short -p no:randomly tests/test_sync_protocol_v2.py tests/test_admin_console_sso.py tests/test_review1_hardening.py tests/test_tenant_scope.py",
+      "executed_by": "trust agent on 2026-10-31",
+      "passed": 46,
+      "skipped": 5,
+      "failed": 1,
+      "seconds": 50.54,
+      "evidence": "docs/audit/2026-10-31/implementation/trust-admin-integration.txt",
+      "failure_resolution": "Only failure was a stale tenant-scope allowance for the former invitation wrapper read. Removed the now-unused allowance; final gate rerun below passes. No admin/campaign behavior test failed.",
+      "limits": "Five real-PostgreSQL-only cases intentionally skipped. This initial command is retained accurately rather than silently rewritten as green."
+    },
+    {
+      "name": "Final tenant-scope gate after obsolete allowance removal",
+      "command": "python scripts/run_isolated_tests.py backend -q --tb=short -p no:randomly tests/test_tenant_scope.py",
+      "executed_by": "trust agent on 2026-10-31",
+      "passed": 14,
+      "failed": 0,
+      "skipped": 0,
+      "seconds": 14.31,
+      "evidence": "docs/audit/2026-10-31/implementation/trust-tenant-scope.txt"
+    },
+    {
+      "name": "Control protocol compatibility and existing staff/order authorization",
+      "command": "python scripts/run_isolated_tests.py backend -q --tb=short -p no:randomly tests/test_sync_profile.py tests/test_wp2_sync_durable.py tests/test_wp3_authorization_lifecycle.py tests/test_p0_isolation_hardening.py tests/test_staff.py tests/test_sync.py",
+      "executed_by": "trust agent on 2026-10-31",
+      "passed": 37,
+      "failed": 1,
+      "skipped": 0,
+      "seconds": 52.86,
+      "evidence": "docs/audit/2026-10-31/implementation/trust-control-compatibility.txt",
+      "failure_resolution": "Only failure expected one deduplicated customer row from the previous snapshot protocol. Revision feed correctly returned four committed events for one UID. Updated that fixture to require one unique customer UID and expected phone on every event; final test_sync.py rerun recorded separately.",
+      "fixture_changes": [
+        "valid owner profile messages include event_id/source_id/source_revision/business_public_id",
+        "legacy profile and staff owner messages still return 426",
+        "immediate helper test drains a real committed durable event synchronously",
+        "WP2 consumes revision cursors and checks ties/backdated commits without assumptions about per-table pages",
+        "no security product behavior was relaxed"
+      ]
+    },
+    {
+      "name": "Final protocol-2 sync lifecycle fixture rerun",
+      "command": "python scripts/run_isolated_tests.py backend -q --tb=short -p no:randomly tests/test_sync.py",
+      "executed_by": "trust agent on 2026-10-31",
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "seconds": 21.5,
+      "evidence": "docs/audit/2026-10-31/implementation/trust-sync-lifecycle.txt",
+      "interpretation": "Closes the snapshot-versus-event fixture mismatch from the 37-pass compatibility run. Counts overlap and must not be added as unique tests."
+    },
+    {
+      "name": "Final broad-suite trust integration follow-up",
+      "command": "python scripts/run_isolated_tests.py backend -q --tb=short -p no:randomly tests/test_sync_shift_and_push_hardening.py tests/test_sync_volume_and_tenancy.py tests/test_local_only_stays_local.py",
+      "executed_by": "trust agent on 2026-10-31",
+      "passed": 47,
+      "failed": 1,
+      "skipped": 0,
+      "seconds": 47.09,
+      "evidence": "docs/audit/2026-10-31/implementation/trust-final-integration.txt",
+      "changes": [
+        "chunking tests provide a synthetic cloud-issued token and assert its exact Authorization header",
+        "known-account failed-login logging uses the existing narrow username_exists boolean; unknown typed input remains hidden",
+        "audit assertion now exercises actual stored INSERT/UPDATE/DELETE rows and stable owning BizID despite a different request actor"
+      ],
+      "failure_resolution": "The new in-memory native audit fixture initially created only three tables, but deleting Customer inspects its invoice relationship. Switched fixture to full current metadata; the single-case rerun below passed. No behavior/assertion was weakened."
+    },
+    {
+      "name": "Final native audit ownership/BizID proof",
+      "command": "python scripts/run_isolated_tests.py backend -q --tb=short -p no:randomly tests/test_sync_volume_and_tenancy.py::TestTheAuditLogRecordsTheBizID::test_the_insert_statement_writes_the_column",
+      "executed_by": "trust agent on 2026-10-31",
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "seconds": 9.13,
+      "evidence": "docs/audit/2026-10-31/implementation/trust-native-audit.txt",
+      "interpretation": "Uses real ORM audit listeners and raw audit insertion, asserting all three mutation actions carry the owning business id and BizID, not the request actor identity. Closes the sole fixture failure above; counts overlap."
+    },
+    {
+      "name": "Real constrained-role sync/auth/B2B smoke",
+      "command": "python backend/tests/run_sync_role_smoke.py (TS_SCHEMA_ADMIN_DATABASE_URL set privately to a generated disposable loopback test database)",
+      "executed_by": "root agent, independent final run reported on 2026-10-31",
+      "passed": 11,
+      "failed": 0,
+      "skipped": 0,
+      "seconds": 8.9,
+      "coverage": [
+        "same-time ties",
+        "backdated raw SQL writes",
+        "real concurrent commit visibility",
+        "legacy protocol upgrade hold",
+        "caller-owned rollback",
+        "control receipt atomicity and idempotency",
+        "FIFO backoff",
+        "identity quarantine",
+        "retirement revocation",
+        "HTTP role RLS/bootstrap/DDL denial",
+        "signup/login/staff/paid/public routes",
+        "separate trade service, B2B bilateral posting and audit privacy"
+      ],
+      "limits": "Synthetic PostgreSQL roles and data; Base.metadata.create_all plus three additive migration installers repeated twice. This command alone does not exercise the full historical Alembic chain."
+    },
+    {
+      "name": "Historical migration chain and model parity",
+      "command": "alembic upgrade head; alembic upgrade head; schema/model parity checks on fresh disposable SQLite and PostgreSQL databases",
+      "executed_by": "root agent, independent final verification reported on 2026-10-31",
+      "result": "PASS on both engines through d60a4c1f3b05; repeated upgrade PASS; all 66 model tables match checked schema contract",
+      "limits": "Root owns detailed full-chain evidence/CI integration. No production database or in-place production migration was exercised."
+    },
+    {
+      "name": "Preserved actual desktop readiness probe",
+      "command": "node docs/audit/2026-10-30/remediation-review/trust-desktop-readiness.cjs",
+      "executed_by": "trust agent during remediation review",
+      "passed_cases": 4,
+      "failed_cases": 0,
+      "evidence": "docs/audit/2026-10-30/remediation-review/trust-desktop-results.json",
+      "limits": "Actual JS probe body with mocked HTTP transport; not an installed Electron exercise."
+    },
+    {
+      "name": "Preserved focused user WP2 checks",
+      "command": "guarded isolated pytest backend/tests/test_wp2_sync_durable.py",
+      "executed_by": "trust agent during remediation review",
+      "passed": 6,
+      "failed": 0,
+      "seconds": 1.93,
+      "evidence": "docs/audit/2026-10-30/remediation-review/trust-wp2-results.txt",
+      "limits": "Earlier working-tree snapshot. Some tests mirror local predicates; use the new actual protocol/role tests for current sync guarantees."
+    },
+    {
+      "name": "Preserved baseline desired-invariant failures",
+      "command": "guarded isolated pytest docs/audit/2026-10-30/remediation-review/test_trust_behavior.py",
+      "executed_by": "trust agent during remediation review",
+      "passed": 7,
+      "failed": 8,
+      "seconds": 8.29,
+      "evidence": "docs/audit/2026-10-30/remediation-review/trust-behavior-results.txt",
+      "limits": "Historical pre-implementation diagnostic, deliberately preserved unchanged. Its failures describe earlier bugs and must not be reported as failures of the current implementation."
+    }
+  ],
+  "new_implementation_regressions": "backend/tests/test_sync_protocol_v2.py contains 12 production-function tests. Five PostgreSQL-only cases skip without explicit disposable role fixture DSNs.",
+  "migration_contract": {
+    "financial": "a30f1d7b9c02",
+    "durable_sync_and_bootstrap": "b40e2c8d1f03, down_revision a30f1d7b9c02",
+    "party_archival": "c50f3b9e2a04, down_revision b40e2c8d1f03",
+    "current_schema_bridge_head": "d60a4c1f3b05, down_revision c50f3b9e2a04",
+    "platform_admin_service_head": "e70b5d2a4c06, down_revision d60a4c1f3b05"
+  },
+  "deployment_requirements": [
+    "Run schema upgrades under dedicated migration credentials; HTTP startup must not perform privileged DDL.",
+    "PostgreSQL 16 non-superuser schema operator must have BYPASSRLS, CREATEROLE, schema/table ownership and ADMIN option on an existing bootstrap role. Installer grants that privileged operator SET/inherited ownership plus fixed-function EXECUTE, temporarily grants bootstrap schema CREATE for ALTER OWNER, then revokes CREATE in the same transaction. HTTP runtime receives no membership.",
+    "Provision HTTP NOSUPERUSER NOBYPASSRLS plus separate narrowly granted trade and admin NOSUPERUSER BYPASSRLS credentials, with no HTTP-role membership/SET ROLE privilege.",
+    "Set BIZASSIST_RUNTIME_DB_ROLE, BIZASSIST_TRADE_DB_ROLE and BIZASSIST_ADMIN_DB_ROLE during provisioning, plus server-only DATABASE_TRADE_SERVICE_URL and ADMIN_SERVICE_URL at runtime. Missing service configuration fails 503.",
+    "Upgrade cloud/server and devices for protocol 2; old incremental peers pause with 426 and retain their cursor/queue.",
+    "Apply through e70b5d2a4c06 under an authorized schema/operator credential and independently verify hosted-provider role-provisioning permissions and live grants. Admin sessions revalidate the live admin token at every transaction; campaign audience preview is service-scoped, while merchant announcements remain tenant-scoped.",
+    "Rotate the confirmed exposed Supabase database password externally, update deployed credentials and verify provider/session revocation; current-source cleanup does not rotate the credential or erase Git history."
+  ],
+  "verification_limits": [
+    "No production credentials/services, live business database, real Chroma namespace, remote deployment, installer signing, physical device, production restore, credential rotation, commit or push was used/performed.",
+    "No real multi-device offline restart/reconnect, load/soak or distributed revocation drill was performed.",
+    "The whole-backend suite and final integration ownership remain with root; this artifact does not assert its final outcome.",
+    "The earlier 11-test role and complete historical-chain results were independently executed and reported by root. The final 12-test role run and focused SQLite integration/tenant gate were executed directly by the trust agent. Root will verify the historical chain through new head e70."
+  ]
+}

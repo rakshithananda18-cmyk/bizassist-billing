@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useCallback, useState, useEffect, useRef } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
 import { logger } from '../../utils/logger'
 import { useDialog } from '../../contexts/DialogContext'
@@ -7,7 +7,7 @@ import { BuildingMark } from '../../components/Logo'
 import { Icon } from '../../components/icons'
 
 export default function AdminDashboard() {
-  const { authFetch, adminLogout } = useAuth()
+  const { authFetch } = useAuth()
   const { showAlert, showConfirm, showError } = useDialog()
   const [stats, setStats] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -17,13 +17,9 @@ export default function AdminDashboard() {
   const [routerMode, setRouterMode] = useState(null)      // 'legacy' | 'shadow' | 'new'
   const [routerBusy, setRouterBusy] = useState(false)
 
-  useEffect(() => {
-    loadDashboardStats()
-    loadRouterMode()
-    return () => { ++statsRequest.current }
-  }, [])
 
-  async function loadRouterMode() {
+
+  const loadRouterMode = useCallback(async () => {
     try {
       const res = await authFetch(`${API_BASE}/admin/router-mode`)
       if (res.ok) {
@@ -33,7 +29,7 @@ export default function AdminDashboard() {
     } catch (err) {
       logger.error('router-mode load failed', err)
     }
-  }
+  }, [authFetch])
 
   async function handleRouterMode(mode) {
     if (mode === routerMode || routerBusy) return
@@ -61,7 +57,7 @@ export default function AdminDashboard() {
     }
   }
 
-  async function loadDashboardStats() {
+  const loadDashboardStats = useCallback(async () => {
     const requestId = ++statsRequest.current
     setLoading(true)
     setLoadError(null)
@@ -74,7 +70,7 @@ export default function AdminDashboard() {
         throw new Error('Invalid merchant directory response')
       }
       if (requestId !== statsRequest.current) return
-      
+
       const count = data.length
       const combinedRevenue = data.reduce((sum, b) => sum + Number(b.total_revenue), 0)
       const combinedFiles = data.reduce((sum, b) => sum + Number(b.upload_count), 0)
@@ -91,7 +87,14 @@ export default function AdminDashboard() {
     } finally {
       if (requestId === statsRequest.current) setLoading(false)
     }
-  }
+  }, [authFetch])
+
+  useEffect(() => {
+    const requestCounter = statsRequest
+    loadDashboardStats()
+    loadRouterMode()
+    return () => { ++requestCounter.current }
+  }, [loadDashboardStats, loadRouterMode])
 
   async function handleFlushAll() {
     if (!(await showConfirm('Flush context and query response caches for all users?'))) return

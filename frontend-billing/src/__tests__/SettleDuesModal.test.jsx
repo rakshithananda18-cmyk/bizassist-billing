@@ -1,7 +1,8 @@
 // SettleDuesModal: owner FIFO lump-sum settle — customer picker, submit,
 // allocation result + advance.
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, cleanup, waitFor, fireEvent } from '@testing-library/react'
+import { screen, cleanup, waitFor, fireEvent } from '@testing-library/react'
+import { renderWithAuth as render } from './renderWithAuth'
 import React from 'react'
 
 import SettleDuesModal from '../components/payments/SettleDuesModal'
@@ -41,7 +42,7 @@ describe('SettleDuesModal', () => {
     const onDone = vi.fn()
     render(<SettleDuesModal authFetch={authFetch} onClose={() => {}} onDone={onDone} />)
 
-    await waitFor(() => expect(authFetch).toHaveBeenCalledWith('/customers?per_page=500'))
+    await waitFor(() => expect(authFetch).toHaveBeenCalledWith('/customers?page=1&per_page=500'))
     await pickCustomer()
     fireEvent.change(screen.getByPlaceholderText('0.00'), { target: { value: '1000' } })
     fireEvent.click(screen.getByText('Settle'))
@@ -56,7 +57,7 @@ describe('SettleDuesModal', () => {
   it('validates amount before submitting', async () => {
     const authFetch = authFetchFactory()
     render(<SettleDuesModal authFetch={authFetch} onClose={() => {}} onDone={() => {}} />)
-    await waitFor(() => expect(authFetch).toHaveBeenCalledWith('/customers?per_page=500'))
+    await waitFor(() => expect(authFetch).toHaveBeenCalledWith('/customers?page=1&per_page=500'))
     await pickCustomer()
     fireEvent.click(screen.getByText('Settle'))   // amount still empty
     await waitFor(() => expect(screen.getByText(/greater than 0/)).toBeInTheDocument())

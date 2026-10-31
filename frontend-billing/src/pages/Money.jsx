@@ -21,6 +21,7 @@ import PartyAccount from '../components/money/PartyAccount'
 import SettleDuesModal from '../components/payments/SettleDuesModal'
 import useInvoiceActions from '../hooks/useInvoiceActions'
 import { logger } from '../utils/logger'
+import { readAllPages } from '../utils/readPages'
 
 const fmt = (n) => `₹${Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`
 
@@ -53,9 +54,7 @@ export default function Money() {
     setPartiesLoading(true)
     setPartiesError(false)
     try {
-      const response = await authFetch('/customers?per_page=500')
-      if (!response.ok) throw new Error(`Customers unavailable: HTTP ${response.status}`)
-      const data = await response.json()
+      const data = await readAllPages(authFetch, '/customers')
       if (request === partiesRequestRef.current) setCustomers(Array.isArray(data) ? data : (data.customers || data.items || []))
     } catch (error) {
       if (request !== partiesRequestRef.current) return

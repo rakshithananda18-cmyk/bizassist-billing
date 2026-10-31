@@ -45,6 +45,8 @@ backend/cloud_audit*.txt
 backend/cloud_diagnosis*.txt
 backend/*_export_*.json
 backend/phantom_line_items_export_*.json
+voided_payment_*.json
+**/voided_payment_*.json
 
 # Test / tooling caches
 .pytest_cache/
@@ -101,14 +103,12 @@ logs/
 # Repair-script exports. These are reversibility snapshots of REAL rows —
 # customer names, invoice numbers, line items — written before a destructive
 # repair. Useful locally, must never be committed.
-backend/fk_orphans_export_*.json
-backend/voided_payment_*.json
-backend/voided_payment_*.json
-quarantined_payments_*.json
-backend/phantom_line_items_export_*.json
-fk_orphans_export_*.json
-quarantined_payments_*.json
-phantom_line_items_export_*.json
+**/voided_payment_*.json
+**/fk_orphans_export_*.json
+**/quarantined_payments_*.json
+**/phantom_line_items_export_*.json
+.private/
+**/line-repair-*.encrypted.json
 
 
 # Codex & virtualenv worktrees

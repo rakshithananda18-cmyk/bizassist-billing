@@ -92,6 +92,10 @@ _EXPORT_ORDER: list[str] = [
     # Tier 6 – financial auxiliaries
     "payments",
     "invoice_payments",
+    "supplier_payments",
+    "customer_refunds",
+    "customer_credit_allocations",
+    "document_party_snapshots",
     # Tier 7 – stock / inventory
     "inventory",            # legacy cached projection
     "stock_ledger",         # append-only truth
@@ -151,7 +155,7 @@ _resolve_owner_id_by_username = _resolve_owner_id
 
 def _existing_tables(db: Session) -> set[str]:
     """Return the set of table names that actually exist in the live DB."""
-    return set(inspect(db.bind).get_table_names())
+    return set(inspect(db.connection()).get_table_names())
 
 
 def _row_to_dict(row) -> dict:
@@ -197,7 +201,7 @@ def _fetch_table(db: Session, table_name: str, business_id: int) -> list[dict]:
       4. No usable filter → return empty list (system/global table).
     """
     try:
-        insp = inspect(db.bind)
+        insp = inspect(db.connection())
         cols = {c["name"] for c in insp.get_columns(table_name)}
 
         if table_name == "users":
@@ -233,8 +237,12 @@ def _fetch_table(db: Session, table_name: str, business_id: int) -> list[dict]:
         return []
 
     except Exception as exc:
-        logger.warning("migrate/export: could not read table %s — %s", table_name, exc)
-        return []
+        logger.error("migrate/export: could not read table %s — %s", table_name, exc)
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        raise RuntimeError(f"Database read failure on table '{table_name}': {exc}") from exc
 
 
 def _detect_source_owner_id(tables: dict) -> int | None:
@@ -267,7 +275,7 @@ def _upsert_users(db: Session, rows: list[dict], dest_owner_id: int, existing_ta
     count = 0
 
     try:
-        insp = inspect(db.bind)
+        insp = inspect(db.connection())
         col_info = insp.get_columns("users")
         bool_cols = {c["name"] for c in col_info if isinstance(c["type"], sa.Boolean)}
     except Exception as exc:
@@ -587,7 +595,7 @@ def _import_with_remap(db: Session, table_name: str, rows: list[dict],
         skipped_out.append({"table": table_name, "reason": "destination table unavailable"})
         return 0
     try:
-        insp = inspect(db.bind)
+        insp = inspect(db.connection())
         col_info = insp.get_columns(table_name)
         fks = insp.get_foreign_keys(table_name)
     except Exception as exc:
@@ -626,6 +634,8 @@ def _import_with_remap(db: Session, table_name: str, rows: list[dict],
             filtered["business_id"] = dest_owner_id
         if filtered.get("parent_business_id") is not None:
             filtered["parent_business_id"] = dest_owner_id
+        if table_name in {"supplier_payments", "customer_refunds", "customer_credit_allocations"}:
+            filtered["operator_id"] = dest_owner_id
         if filtered.get("user_id") is not None:
             # Cross-database staff ids are not portable. Attribution falls back
             # to the verified destination owner rather than linking to an
@@ -647,7 +657,7 @@ def _import_with_remap(db: Session, table_name: str, rows: list[dict],
                 if ref_table not in referenced_table_columns:
                     try:
                         referenced_table_columns[ref_table] = {
-                            c["name"] for c in inspect(db.bind).get_columns(ref_table)
+                            c["name"] for c in inspect(db.connection()).get_columns(ref_table)
                         }
                     except Exception:
                         # The database constraint remains the safe fallback if
@@ -874,24 +884,32 @@ def export_data(
     existing = _existing_tables(db)
 
     tables_data: dict[str, list[dict]] = {}
-    for table_name in _EXPORT_ORDER:
-        if table_name not in existing:
-            continue
-        if table_name in b2b_transfer.B2B_RELATIONSHIP_TABLES:
-            continue  # two-sided tables export below via BizID keys
-        rows = _fetch_table(db, table_name, business_id)
-        if rows:
-            tables_data[table_name] = rows
-
-    # B2B relationship tables (connections / orders / order lines): two-sided
-    # rows exported with portable BizID identity keys (bug fix — these were
-    # previously dropped by every migration, orphaning the B2B network).
     try:
+        for table_name in _EXPORT_ORDER:
+            if table_name not in existing:
+                continue
+            if table_name in b2b_transfer.B2B_RELATIONSHIP_TABLES:
+                continue  # two-sided tables export below via BizID keys
+            rows = _fetch_table(db, table_name, business_id)
+            if rows:
+                tables_data[table_name] = rows
+
+        # B2B relationship tables (connections / orders / order lines): two-sided
+        # rows exported with portable BizID identity keys (bug fix — these were
+        # previously dropped by every migration, orphaning the B2B network).
         for tname, rows in b2b_transfer.export_b2b_tables(db, business_id).items():
             if rows and tname in existing:
                 tables_data[tname] = rows
     except Exception as exc:
-        logger.warning("migrate/export: b2b relationship export failed — %s", exc)
+        logger.error("migrate/export: atomic export aborted on read error: %s", exc)
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        raise HTTPException(
+            status_code=500,
+            detail=f"Data export failed: {exc}. Incomplete backups are rejected to prevent data loss (TS-07)."
+        )
 
     logger.info(
         "migrate/export: business_id=%s tables=%s total_rows=%s",
@@ -1120,7 +1138,7 @@ def count_records(
     existing = _existing_tables(db)
 
     try:
-        insp = inspect(db.bind)
+        insp = inspect(db.connection())
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"DB inspect failed: {exc}")
 

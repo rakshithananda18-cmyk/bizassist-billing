@@ -21,9 +21,9 @@ export default function RecordPaymentModal({ form, setField, onSubmit, submittin
                 <label className="form-label">Payment Type</label>
                 <CustomSelect className="form-select" value={form.type} onChange={e => setField('type', e.target.value)}>
                   <option value="received">Received (from customer)</option>
-                  <option value="made" disabled>Supplier payments — unavailable</option>
+                  <option value="made" disabled>Supplier payments — use separate settlement form</option>
                 </CustomSelect>
-                <small style={{ color: 'var(--text-muted)' }}>This form records customer receipts. Supplier settlement is not supported here.</small>
+                <small style={{ color: 'var(--text-muted)' }}>This form records customer receipts. Use Supplier payments &amp; customer credits on Transactions for supplier settlement.</small>
               </div>
               <div className="form-group">
                 <label className="form-label">Date</label>

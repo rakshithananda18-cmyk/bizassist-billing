@@ -14,7 +14,7 @@
  */
 
 // Mirrors routes/sync.py::_HALT_ORDER — most actionable first.
-export const HALT_REASONS = ['secret_mismatch', 'auth_expired', 'plan_required', 'offline']
+export const HALT_REASONS = ['secret_mismatch', 'protocol_upgrade_required', 'auth_expired', 'plan_required', 'offline']
 
 /**
  * `auth_expired` is PULL-ONLY. `_PULL_AUTH_BLOCKED` is checked after the push
@@ -34,10 +34,16 @@ export const HALT_COPY = {
     holdsOutbox: true,
   },
   auth_expired: {
-    title: 'Cloud downloads paused',
-    detail: 'This device’s cloud sign-in expired. Your changes still upload, but edits from your other devices stop arriving until you sign in again.',
+    title: 'Cloud sign-in expired',
+    detail: 'Sign out and back in to reconnect. Uploads and downloads are paused; saved changes remain queued on this device.',
     severity: 'warning',
-    holdsOutbox: false,
+    holdsOutbox: true,
+  },
+  protocol_upgrade_required: {
+    title: 'Sync update required',
+    detail: 'Update BizAssist on your devices, or contact support to update the sync service. Saved changes remain queued; no reset is needed.',
+    severity: 'warning',
+    holdsOutbox: true,
   },
   secret_mismatch: {
     title: 'Sign-in expired',

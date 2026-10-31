@@ -20,6 +20,7 @@ import {
 import CustomSelect from '../../components/common/CustomSelect'
 import { qrImageUrl, buildWhatsAppShareUrl } from '../../utils/share'
 import { MessageIcon } from '../../components/Icons'
+import { isRetiredBusiness } from '../retired'
 
 const fmt = (n) =>
   n != null ? `₹${Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '—'
@@ -44,6 +45,7 @@ function RequestCard({ conn, mine, busy, onApprove, onReject, onCancel, onResend
       <div className="b2b-request-body">
         <div className="b2b-request-name">
           {conn.counterparty_name || 'Unknown business'}
+          {isRetiredBusiness(conn) && <span className="badge badge-warning">Business account deleted</span>}
           <span className="td-mono b2b-request-bizid">{conn.counterparty_bizid}</span>
         </div>
         <div className="b2b-request-role">
@@ -58,7 +60,7 @@ function RequestCard({ conn, mine, busy, onApprove, onReject, onCancel, onResend
         )}
       </div>
       <div className="b2b-request-actions">
-        {stuck ? (
+        {isRetiredBusiness(conn) ? <span>Archived connection · no new trade</span> : stuck ? (
           <button className="btn btn-primary btn-sm" disabled={busy || !conn.counterparty_bizid}
             title={conn.counterparty_bizid ? 'Send this request again in your name' : 'This business is not resolvable on this device'}
             onClick={() => onResend(conn)}>
@@ -247,7 +249,7 @@ export default function ConnectionsTab({ myBizId, connections, onCopyBizId, copi
 
   const submitRequest = async (e) => {
     e.preventDefault()
-    if (!bizid.trim()) return
+    if (!bizid.trim() || isRetiredBusiness(target)) return
     setSending(true)
     // Key must be `connectAs` — b2bClient maps it to the backend's required
     // `connect_as`. It was `role`, so every request POSTed without the field
@@ -365,7 +367,7 @@ export default function ConnectionsTab({ myBizId, connections, onCopyBizId, copi
                 value={message}
                 onChange={e => setMessage(e.target.value)}
               />
-              <button type="submit" className="btn btn-primary btn-sm" style={{ height: 34, flexShrink: 0, padding: '0 14px' }} disabled={sending || !bizid.trim()}>
+              <button type="submit" className="btn btn-primary btn-sm" style={{ height: 34, flexShrink: 0, padding: '0 14px' }} disabled={sending || !bizid.trim() || isRetiredBusiness(target)}>
                 {sending ? 'Sending…' : <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><ConnectionIcon size={14} /> Send request</span>}
               </button>
             </div>
@@ -511,6 +513,7 @@ export default function ConnectionsTab({ myBizId, connections, onCopyBizId, copi
                             <div style={{ fontWeight: 600, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 6 }}>
                               <span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: '50%', background: 'var(--success, #166534)', flexShrink: 0 }} title="Active Connection" />
                               {c.counterparty_name || c.seller_name}
+                              {isRetiredBusiness(c) && <span className="badge badge-warning">Business account deleted</span>}
                             </div>
                             <div style={{ fontSize: '0.73rem', color: 'var(--text-muted)', paddingLeft: 13 }}>Connected {since(c.responded_at || c.created_at)}</div>
                           </td>
@@ -524,7 +527,7 @@ export default function ConnectionsTab({ myBizId, connections, onCopyBizId, copi
                               : <span className="badge badge-success">Nil</span>}
                           </td>
                           <td>
-                            <button className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }} onClick={() => setRevokeFor(c)}>
+                            <button className="btn btn-ghost btn-sm" disabled={isRetiredBusiness(c)} style={{ color: 'var(--danger)' }} onClick={() => setRevokeFor(c)}>
                               Revoke
                             </button>
                           </td>
@@ -592,7 +595,7 @@ export default function ConnectionsTab({ myBizId, connections, onCopyBizId, copi
                       {customers.map(c => (
                         <tr key={c.id}>
                           <td>
-                            <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{c.counterparty_name || c.buyer_name}</div>
+                            <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{c.counterparty_name || c.buyer_name} {isRetiredBusiness(c) && <span className="badge badge-warning">Business account deleted</span>}</div>
                             <div style={{ fontSize: '0.73rem', color: 'var(--text-muted)' }}>Connected {since(c.responded_at || c.created_at)}</div>
                           </td>
                           <td className="td-mono">{c.counterparty_bizid || c.buyer_bizid}</td>
@@ -609,7 +612,7 @@ export default function ConnectionsTab({ myBizId, connections, onCopyBizId, copi
                           </td>
                           <td>
                             <div className="flex gap-1" style={{ justifyContent: 'center' }}>
-                              <button className="btn btn-secondary btn-sm" onClick={() => setPolicyFor(c)} title="Configure pricing and visibility">
+                              <button className="btn btn-secondary btn-sm" disabled={isRetiredBusiness(c)} onClick={() => setPolicyFor(c)} title="Configure pricing and visibility">
                                 <SettingsIcon size={12} /> Policy
                               </button>
                               <button className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }} onClick={() => setRevokeFor(c)}>

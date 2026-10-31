@@ -19,26 +19,25 @@ depends_on = None
 def upgrade() -> None:
     bind = op.get_bind()
     inspector = inspect(bind)
-    tables = inspector.get_table_names()
-
-    # Drop the empty new tables if they were auto-created by create_all
-    if 'b2b_invite_codes' in tables:
-        op.drop_table('b2b_invite_codes')
-    if 'b2b_ledgers' in tables:
-        op.drop_table('b2b_ledgers')
-    if 'action_logs' in tables:
-        op.drop_table('action_logs')
-    if 'ai_feedback' in tables:
-        op.drop_table('ai_feedback')
-    if 'ai_query_overrides' in tables:
-        op.drop_table('ai_query_overrides')
-
-    # Rename tables (both SQLite and Postgres)
-    op.rename_table('connection_codes', 'b2b_invite_codes')
-    op.rename_table('shared_ledgers', 'b2b_ledgers')
-    op.rename_table('action_log', 'action_logs')
-    op.rename_table('feedback', 'ai_feedback')
-    op.rename_table('query_override', 'ai_query_overrides')
+    tables = set(inspector.get_table_names())
+    for old, new in (('connection_codes', 'b2b_invite_codes'),
+                     ('shared_ledgers', 'b2b_ledgers'), ('action_log', 'action_logs'),
+                     ('feedback', 'ai_feedback'), ('query_override', 'ai_query_overrides')):
+        if old in tables:
+            if new in tables:
+                # Startup may have created an empty destination, but its
+                # emptiness must be proved before dropping financial evidence.
+                if bind.execute(sa.text(f'SELECT 1 FROM "{new}" LIMIT 1')).first():
+                    raise RuntimeError(f'Both {old} and populated {new} exist; reconcile explicitly before renaming')
+                op.drop_table(new)
+            op.rename_table(old, new)
+        elif new not in tables:
+            # These AI tables were formerly created only by application startup.
+            # A fresh Alembic-only install has no old table to rename.
+            if new not in {'ai_feedback', 'ai_query_overrides'}:
+                raise RuntimeError(f'Missing both {old} and {new}; schema reconciliation required')
+            from database.models import AIFeedback, AIQueryOverride
+            {'ai_feedback': AIFeedback, 'ai_query_overrides': AIQueryOverride}[new].__table__.create(bind, checkfirst=True)
 
     # Postgres specific renames (indexes, constraints, policies)
     is_postgres = bind.dialect.name == 'postgresql'

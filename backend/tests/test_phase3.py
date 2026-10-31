@@ -10,11 +10,12 @@ if backend_path not in sys.path:
 
 import pytest
 from database.db import SessionLocal
-from database.models import (Base, Product, Customer, Inventory, Invoice, InvoiceLineItem,
+from database.models import (Base, User, Product, Customer, Inventory, Invoice, InvoiceLineItem,
                              PurchaseInvoice, PurchaseInvoiceLineItem)
 from core.models import (Godown, StockTransfer, StockTransferLineItem, StockLedger,
                          InvoicePayment, ProductBarcode)
 from core.stock import ledger as SL
+from core.party_archive import DocumentPartySnapshot
 from core.billing import commands as billing_commands
 from core.purchase import commands as purchase_commands
 
@@ -64,6 +65,8 @@ def _clear():
         db.query(Product).filter(Product.business_id == BID).delete()
         db.query(Customer).filter(Customer.business_id == BID).delete()
         db.query(Godown).filter(Godown.business_id == BID).delete()
+        db.query(DocumentPartySnapshot).filter(DocumentPartySnapshot.business_id == BID).delete()
+        db.query(User).filter(User.id == BID).delete()
         db.commit()
     finally:
         db.close()
@@ -72,6 +75,10 @@ def _clear():
 def _setup():
     _ensure_schema()
     _clear()
+    with SessionLocal() as db:
+        db.add(User(id=BID, username="phase3_owner", password="not-a-login-hash",
+                    business_name="Phase 3 fixture", role="enterprise"))
+        db.commit()
     yield
     _clear()
 

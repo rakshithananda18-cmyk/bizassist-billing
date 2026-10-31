@@ -72,6 +72,9 @@ DEFAULT_SERIES = "INV"
 # Credit notes get their own series so a return never consumes a sale number.
 CREDIT_NOTE_SERIES = "CN"
 
+# Debit notes get their own series so a purchase return is monotonically sequenced (BD-13).
+DEBIT_NOTE_SERIES = "DN"
+
 # Sentinel ``business_id`` for counters that are NOT owned by one business.
 #
 # Almost every number here is per-tenant: two shops may both hold INV-0001 and

@@ -10,6 +10,7 @@ Run:  pytest tests/test_handlers.py -v
 """
 import os
 import sys
+from datetime import date, timedelta
 
 os.environ.setdefault("DATABASE_URL", "sqlite:///./test_handlers.db")
 os.environ["GROQ_API_KEY"] = "mock_key"
@@ -62,10 +63,10 @@ def setup_db():
             # Pending
             Invoice(business_id=99, invoice_id="INV-003", customer="Alpha Corp",
                     product="Widget C", amount=5000, status="Pending",
-                    invoice_date="2026-05-10", due_date="2026-06-20"),
+                    invoice_date="2026-05-10", due_date=(date.today() + timedelta(days=20)).isoformat()),
             Invoice(business_id=99, invoice_id="INV-004", customer="Gamma Inc",
                     product="Widget D", amount=3000, status="Pending",
-                    invoice_date="2026-05-12", due_date="2026-06-25"),
+                    invoice_date="2026-05-12", due_date=(date.today() + timedelta(days=25)).isoformat()),
             # Overdue — Alpha Corp owes 12000, Gamma Inc 7000, Beta Ltd 2000
             Invoice(business_id=99, invoice_id="INV-005", customer="Alpha Corp",
                     product="Widget E", amount=12000, status="Overdue",

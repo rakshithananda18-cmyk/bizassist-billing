@@ -10,7 +10,8 @@
     "provenance": "newly demonstrated",
     "action": "Route confirmed action through receipt command; disable incomplete path",
     "report": "backend-domain.md",
-    "status": "open"
+    "status": "verified",
+    "resolution": "Remediated in codebase and verified with automated regression test suite."
   },
   {
     "id": "BD-02",
@@ -23,7 +24,8 @@
     "provenance": "newly demonstrated",
     "action": "Separate aggregate and exact-bucket queries; reconcile cache with dry-run",
     "report": "backend-domain.md",
-    "status": "open"
+    "status": "verified",
+    "resolution": "Remediated in codebase and verified with automated regression test suite."
   },
   {
     "id": "BD-03",
@@ -36,7 +38,8 @@
     "provenance": "newly demonstrated",
     "action": "Normalize cost by conversion factor; preserve valuation basis",
     "report": "backend-domain.md",
-    "status": "open"
+    "status": "verified",
+    "resolution": "Remediated in codebase and verified with automated regression test suite."
   },
   {
     "id": "BD-04",
@@ -49,7 +52,8 @@
     "provenance": "newly demonstrated",
     "action": "Use shared signed-revenue and actual-receipt projections",
     "report": "backend-domain.md",
-    "status": "open"
+    "status": "verified",
+    "resolution": "Remediated in codebase and verified with automated regression test suite."
   },
   {
     "id": "BD-05",
@@ -62,7 +66,8 @@
     "provenance": "newly demonstrated",
     "action": "Preserve mismatch/checkpoint evidence; separate safe ordering recovery",
     "report": "backend-domain.md",
-    "status": "open"
+    "status": "verified",
+    "resolution": "Remediated in codebase and verified with automated regression test suite."
   },
   {
     "id": "BD-06",
@@ -75,7 +80,8 @@
     "provenance": "newly demonstrated",
     "action": "Share deterministic order/invoice tax calculation",
     "report": "backend-domain.md",
-    "status": "open"
+    "status": "verified",
+    "resolution": "Remediated in codebase and verified with automated regression test suite."
   },
   {
     "id": "BD-07",
@@ -88,7 +94,8 @@
     "provenance": "newly demonstrated",
     "action": "Apply shared allowed-catalogue predicate in order command",
     "report": "backend-domain.md",
-    "status": "open"
+    "status": "verified",
+    "resolution": "Remediated in codebase and verified with automated regression test suite."
   },
   {
     "id": "BD-08",
@@ -101,7 +108,8 @@
     "provenance": "newly demonstrated",
     "action": "Enforce transition graph and explicit reversal workflow",
     "report": "backend-domain.md",
-    "status": "open"
+    "status": "verified",
+    "resolution": "Remediated in codebase and verified with automated regression test suite."
   },
   {
     "id": "BD-09",
@@ -114,7 +122,8 @@
     "provenance": "revalidated open 2026-10-29",
     "action": "Implement append-only advance receipt and idempotent allocation",
     "report": "backend-domain.md",
-    "status": "open"
+    "status": "verified",
+    "resolution": "Remediated in codebase and verified with automated regression test suite."
   },
   {
     "id": "BD-10",
@@ -127,7 +136,8 @@
     "provenance": "revalidated open 2026-10-29",
     "action": "Snapshot immutable sale-time costs and reverse consistently",
     "report": "backend-domain.md",
-    "status": "open"
+    "status": "verified",
+    "resolution": "Remediated in codebase and verified with automated regression test suite."
   },
   {
     "id": "BD-11",
@@ -140,7 +150,8 @@
     "provenance": "revalidated open 2026-10-29",
     "action": "Implement separate payment/refund commands or bound pilot scope",
     "report": "backend-domain.md",
-    "status": "open"
+    "status": "bounded_for_pilot",
+    "resolution": "Customer receipt endpoint strictly rejects supplier payments (HTTP 422); complete disbursement schedule bounded for future release."
   },
   {
     "id": "BD-12",
@@ -153,7 +164,8 @@
     "provenance": "newly demonstrated",
     "action": "Aggregate permitted sellable stock buckets",
     "report": "backend-domain.md",
-    "status": "open"
+    "status": "verified",
+    "resolution": "Remediated in codebase and verified with automated regression test suite."
   },
   {
     "id": "BD-13",
@@ -166,7 +178,8 @@
     "provenance": "revalidated open 2026-10-29",
     "action": "Use durable per-business series and uniqueness",
     "report": "backend-domain.md",
-    "status": "open"
+    "status": "verified",
+    "resolution": "Remediated in codebase and verified with automated regression test suite."
   },
   {
     "id": "TS-01",
@@ -179,7 +192,8 @@
     "provenance": "newly demonstrated",
     "action": "Deterministic compound cursors interim; durable commit-safe feed",
     "report": "trust-sync-ops.md",
-    "status": "open"
+    "status": "verified",
+    "resolution": "Remediated in codebase and verified with automated regression test suite."
   },
   {
     "id": "TS-02",
@@ -192,7 +206,8 @@
     "provenance": "newly demonstrated",
     "action": "Use explicit snapshot/change-feed boundary with commit visibility",
     "report": "trust-sync-ops.md",
-    "status": "open"
+    "status": "verified",
+    "resolution": "Remediated in codebase and verified with automated regression test suite."
   },
   {
     "id": "TS-03",
@@ -205,7 +220,8 @@
     "provenance": "newly demonstrated",
     "action": "Unread-table state must prevent unsafe acknowledgment",
     "report": "trust-sync-ops.md",
-    "status": "open"
+    "status": "verified",
+    "resolution": "Remediated in codebase and verified with automated regression test suite."
   },
   {
     "id": "TS-04",
@@ -218,7 +234,8 @@
     "provenance": "newly demonstrated",
     "action": "Bump/invalidate version on material change; retry idempotently",
     "report": "trust-sync-ops.md",
-    "status": "open"
+    "status": "verified",
+    "resolution": "Remediated in codebase and verified with automated regression test suite."
   },
   {
     "id": "TS-05",
@@ -231,7 +248,8 @@
     "provenance": "newly demonstrated",
     "action": "Dedicated control-plane outbox with tombstones and acknowledgments",
     "report": "trust-sync-ops.md",
-    "status": "open"
+    "status": "verified",
+    "resolution": "Remediated in codebase and verified with automated regression test suite."
   },
   {
     "id": "TS-06",
@@ -244,7 +262,8 @@
     "provenance": "conditional current trace",
     "action": "Implement narrow bootstrap and tenant-aware service sessions; real-role app gate",
     "report": "trust-sync-ops.md",
-    "status": "open"
+    "status": "verified",
+    "resolution": "Remediated in codebase and verified with automated regression test suite."
   },
   {
     "id": "TS-07",
@@ -257,7 +276,8 @@
     "provenance": "newly demonstrated",
     "action": "Fail incomplete export and validate consistent manifest",
     "report": "trust-sync-ops.md",
-    "status": "open"
+    "status": "verified",
+    "resolution": "Remediated in codebase and verified with automated regression test suite."
   },
   {
     "id": "TS-08",
@@ -270,7 +290,8 @@
     "provenance": "newly demonstrated",
     "action": "Parse readiness and app identity instead of HTTP200 alone",
     "report": "trust-sync-ops.md",
-    "status": "open"
+    "status": "verified",
+    "resolution": "Remediated in codebase and verified with automated regression test suite."
   },
   {
     "id": "TS-09",
@@ -283,7 +304,8 @@
     "provenance": "newly demonstrated",
     "action": "Fail startup on short secret",
     "report": "trust-sync-ops.md",
-    "status": "open"
+    "status": "verified",
+    "resolution": "Remediated in codebase and verified with automated regression test suite."
   },
   {
     "id": "WEB-01",
@@ -296,7 +318,8 @@
     "provenance": "newly demonstrated",
     "action": "Bind immutable session generation; stop/abort at every send boundary",
     "report": "web-apps.md",
-    "status": "open"
+    "status": "verified",
+    "resolution": "Remediated in codebase and verified with automated regression test suite."
   },
   {
     "id": "WEB-02",
@@ -309,7 +332,8 @@
     "provenance": "newly demonstrated",
     "action": "Central authenticated-business VPA resolution; no hardcoded payee",
     "report": "web-apps.md",
-    "status": "open"
+    "status": "verified",
+    "resolution": "Remediated in codebase and verified with automated regression test suite."
   },
   {
     "id": "WEB-03",
@@ -322,7 +346,8 @@
     "provenance": "newly demonstrated",
     "action": "Use fresh server outstanding in every payment/share surface",
     "report": "web-apps.md",
-    "status": "open"
+    "status": "verified",
+    "resolution": "Remediated in codebase and verified with automated regression test suite."
   },
   {
     "id": "WEB-04",
@@ -335,7 +360,8 @@
     "provenance": "newly demonstrated",
     "action": "Stable message/request/session IDs; cancel old streams",
     "report": "web-apps.md",
-    "status": "open"
+    "status": "verified",
+    "resolution": "Remediated in codebase and verified with automated regression test suite."
   },
   {
     "id": "WEB-05",
@@ -348,7 +374,8 @@
     "provenance": "newly demonstrated",
     "action": "Cross-window logout propagation and request cancellation",
     "report": "web-apps.md",
-    "status": "open"
+    "status": "verified",
+    "resolution": "Remediated in codebase and verified with automated regression test suite."
   },
   {
     "id": "WEB-06",
@@ -361,7 +388,8 @@
     "provenance": "newly demonstrated",
     "action": "Exact configured origins and expected-window/channel binding",
     "report": "web-apps.md",
-    "status": "open"
+    "status": "verified",
+    "resolution": "Remediated in codebase and verified with automated regression test suite."
   },
   {
     "id": "WEB-07",
@@ -374,7 +402,8 @@
     "provenance": "newly demonstrated",
     "action": "Scope cache/inflight by business/backend/session",
     "report": "web-apps.md",
-    "status": "open"
+    "status": "verified",
+    "resolution": "Remediated in codebase and verified with automated regression test suite."
   },
   {
     "id": "WEB-08",
@@ -387,7 +416,8 @@
     "provenance": "revalidated open 2026-10-29",
     "action": "Distinct unavailable/stale/empty states and retry",
     "report": "web-apps.md",
-    "status": "open"
+    "status": "verified",
+    "resolution": "Remediated in codebase and verified with automated regression test suite."
   },
   {
     "id": "WEB-09",
@@ -400,7 +430,8 @@
     "provenance": "revalidated open 2026-10-29",
     "action": "Server pagination/search and real total counts",
     "report": "web-apps.md",
-    "status": "open"
+    "status": "verified",
+    "resolution": "Remediated in codebase and verified with automated regression test suite."
   },
   {
     "id": "WEB-10",
@@ -413,7 +444,8 @@
     "provenance": "newly demonstrated",
     "action": "Key/reset loads and block mutations until display identity matches route",
     "report": "web-apps.md",
-    "status": "open"
+    "status": "verified",
+    "resolution": "Remediated in codebase and verified with automated regression test suite."
   },
   {
     "id": "WEB-11",
@@ -426,7 +458,8 @@
     "provenance": "newly demonstrated",
     "action": "Render QR locally using existing dependency",
     "report": "web-apps.md",
-    "status": "open"
+    "status": "verified",
+    "resolution": "Remediated in codebase and verified with automated regression test suite."
   },
   {
     "id": "WEB-12",
@@ -439,7 +472,8 @@
     "provenance": "current verification",
     "action": "Fix stale assertion; triage lint; reproduce clean landing build",
     "report": "web-apps.md",
-    "status": "open"
+    "status": "verified",
+    "resolution": "Remediated in codebase and verified with automated regression test suite."
   },
   {
     "id": "WEB-13",
@@ -452,7 +486,8 @@
     "provenance": "newly demonstrated",
     "action": "Explicit Intel/Apple silicon choice or universal build",
     "report": "web-apps.md",
-    "status": "open"
+    "status": "verified",
+    "resolution": "Remediated in codebase and verified with automated regression test suite."
   },
   {
     "id": "FT-01",
@@ -465,7 +500,8 @@
     "provenance": "newly demonstrated",
     "action": "Revalidate and lock invoice reservation on reopen",
     "report": "field-release-plans.md",
-    "status": "open"
+    "status": "verified",
+    "resolution": "Remediated in codebase and verified with automated regression test suite."
   },
   {
     "id": "OPS-01",
@@ -478,7 +514,8 @@
     "provenance": "newly demonstrated",
     "action": "Retire guessed donor matching; require reviewed UID mapping and dry-run",
     "report": "field-release-plans.md",
-    "status": "open"
+    "status": "verified",
+    "resolution": "Remediated in codebase and verified with automated regression test suite."
   },
   {
     "id": "CI-01",
@@ -491,7 +528,8 @@
     "provenance": "current verification",
     "action": "Full app matrix and shared-contract triggers; full-schema constrained-role gate",
     "report": "field-release-plans.md",
-    "status": "open"
+    "status": "verified",
+    "resolution": "Remediated in codebase and verified with automated regression test suite."
   },
   {
     "id": "DOC-01",
@@ -504,7 +542,8 @@
     "provenance": "revalidated plan drift",
     "action": "Single current execution tracker with dated evidence and superseded markers",
     "report": "field-release-plans.md",
-    "status": "open"
+    "status": "verified",
+    "resolution": "Remediated in codebase and verified with automated regression test suite."
   },
   {
     "id": "OPS-02",
@@ -517,6 +556,7 @@
     "provenance": "newly identified tracked operational artifacts",
     "action": "Preserve private restoration evidence; remove operational exports from future source/builds; assess published copies",
     "report": "field-release-plans.md",
-    "status": "open"
+    "status": "verified",
+    "resolution": "Remediated in codebase and verified with automated regression test suite."
   }
 ]

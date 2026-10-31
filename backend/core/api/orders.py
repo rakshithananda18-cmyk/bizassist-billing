@@ -63,8 +63,9 @@ def _business_map(db: Session, orders) -> dict:
     ids.discard(None)
     if not ids:
         return {}
-    rows = db.query(User.id, User.business_name, User.public_id).filter(User.id.in_(ids)).all()
-    return {r.id: r for r in rows}
+    from database.trade_service import business_profile
+    rows = [business_profile(db, id=identity) for identity in ids]
+    return {row.id: row for row in rows if row is not None}
 
 
 def _purchase_bill_map(db: Session, orders) -> dict:
@@ -121,16 +122,24 @@ def _order_out(order: B2BOrder, db: Session, businesses: dict = None,
         businesses = _business_map(db, [order])
     buyer = businesses.get(order.buyer_business_id)
     seller = businesses.get(order.seller_business_id)
+    from core.party_archive import decode_party, is_deleted_user
+    buyer_party, seller_party = decode_party(order.buyer_snapshot), decode_party(order.seller_snapshot)
+    buyer_deleted = bool(order.buyer_deleted or is_deleted_user(buyer))
+    seller_deleted = bool(order.seller_deleted or is_deleted_user(seller))
 
     out = {
         "id": order.id,
         "order_number": order.order_number,
         "buyer_business_id": order.buyer_business_id,
-        "buyer_name": buyer.business_name if buyer else "Unknown Buyer",
-        "buyer_bizid": buyer.public_id if buyer else "",
+        "buyer_name": buyer_party.get("name") or (buyer.business_name if buyer else "Unknown Buyer"),
+        "buyer_bizid": buyer_party.get("biz_id") or order.buyer_bizid or (buyer.public_id if buyer else ""),
+        "buyer_deleted": buyer_deleted,
         "seller_business_id": order.seller_business_id,
-        "seller_name": seller.business_name if seller else "Unknown Supplier",
-        "seller_bizid": seller.public_id if seller else "",
+        "seller_name": seller_party.get("name") or (seller.business_name if seller else "Unknown Supplier"),
+        "seller_bizid": seller_party.get("biz_id") or order.seller_bizid or (seller.public_id if seller else ""),
+        "seller_deleted": seller_deleted,
+        "counterparty_deleted": buyer_deleted if viewer_business_id == order.seller_business_id else seller_deleted,
+        "parties": {"seller": seller_party, "buyer": buyer_party},
         "order_date": order.order_date,
         "status": order.status,
         "subtotal": order.subtotal,
@@ -146,7 +155,8 @@ def _order_out(order: B2BOrder, db: Session, businesses: dict = None,
             order.seller_invoice_id
             if viewer_business_id == order.seller_business_id else None
         ),
-        "seller_invoice_posted": bool(order.seller_invoice_id),
+        "seller_invoice_posted": bool(order.seller_invoice_id or order.seller_invoice_uid),
+        "seller_invoice_number": order.seller_invoice_number,
         "items": [_line_out(li) for li in order.line_items],
         "created_at": order.created_at.isoformat() if order.created_at else None,
         "updated_at": order.updated_at.isoformat() if order.updated_at else None,
@@ -176,7 +186,8 @@ def _order_out(order: B2BOrder, db: Session, businesses: dict = None,
 @router.post("/orders")
 async def place_order(req: OrderRequest, current_user: dict = Depends(restrict_cashier), db: Session = Depends(get_db)):
     """Place a B2B order (Buyer flow). Triggers real-time alert to Seller."""
-    seller = db.query(User).filter(User.public_id == req.seller_bizid).first()
+    from database.trade_service import business_profile
+    seller = business_profile(db, bizid=req.seller_bizid)
     if not seller:
         raise HTTPException(status_code=404, detail="Supplier BizID not found")
         

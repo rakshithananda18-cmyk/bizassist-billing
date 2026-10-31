@@ -21,6 +21,7 @@ import ColumnResizer from '../../components/common/ColumnResizer'
 import { useResizableColumns } from '../../hooks/useResizableColumns'
 import { STATUS_FLOW } from '../orderStatus'
 import { counterpartyOf } from '../useB2BOrders'
+import { isRetiredBusiness } from '../retired'
 
 const fmt = (n) =>
   n != null ? `₹${Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '—'
@@ -43,6 +44,7 @@ const COLUMNS = [
  *   · buyer may only cancel while the order hasn't been packed
  */
 export function actionsFor(order, direction) {
+  if (isRetiredBusiness(order)) return []
   const flow = STATUS_FLOW[order.status] || {}
   const out = []
   if (direction === 'incoming') {
@@ -176,6 +178,7 @@ export default function OrdersTab({
             <td>{new Date(order.created_at || order.order_date).toLocaleDateString('en-IN')}</td>
             <td>
               <div style={{ fontWeight: 600 }}>{cp.name}</div>
+              {isRetiredBusiness(order) && <span className="badge badge-warning">Business account deleted</span>}
               <div className="td-mono" style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{cp.bizid}</div>
             </td>
             <td>{fmt(order.subtotal)}</td>

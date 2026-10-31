@@ -22,6 +22,7 @@ from database.db import SessionLocal
 from database.models import Invoice, Inventory, AlertConfig, User
 from services.notifier import notify
 from services.dates import biz_now
+from database.security import service_owner_ids, bind_tenant
 
 logger = logging.getLogger("bizassist.alerts")
 
@@ -32,7 +33,10 @@ def _load_active_configs() -> list:
     """Returns a list of dicts for all active alert configs."""
     db = SessionLocal()
     try:
-        configs = db.query(AlertConfig).filter(AlertConfig.active == True).all()
+        configs = []
+        for owner_id in service_owner_ids(db):
+            bind_tenant(db, owner_id)
+            configs.extend(db.query(AlertConfig).filter(AlertConfig.business_id == owner_id, AlertConfig.active == True).all())
         return [
             {
                 "business_id":          c.business_id,
@@ -60,8 +64,7 @@ def _load_all_business_ids() -> list:
     """
     db = SessionLocal()
     try:
-        users = db.query(User.id).all()
-        return [u.id for u in users]
+        return service_owner_ids(db)
     except Exception as e:
         logger.warning(f"[MEMORY] _load_all_business_ids failed: {e}")
         return []
@@ -88,6 +91,7 @@ def run_books_integrity_audit():
     failures = 0
     for bid in business_ids:
         db = SessionLocal()
+        bind_tenant(db, bid)
         try:
             report = run_integrity_check(db, bid)
             if not report["ok"]:
@@ -123,6 +127,7 @@ def run_overdue_alerts():
     try:
         for cfg in configs:
             bid = cfg["business_id"]
+            bind_tenant(db, bid)
 
             overdue = (
                 db.query(Invoice)
@@ -192,6 +197,7 @@ def run_low_stock_alerts():
     try:
         for cfg in configs:
             bid = cfg["business_id"]
+            bind_tenant(db, bid)
             low = low_stock_products(db, bid)
 
             if not low:
@@ -250,6 +256,7 @@ def run_expiry_alerts():
     try:
         for cfg in configs:
             bid  = cfg["business_id"]
+            bind_tenant(db, bid)
             days = cfg["expiry_days_threshold"]
             expired, expiring = expiring_batches(db, bid, days)
 
@@ -317,6 +324,7 @@ def run_daily_summary():
     try:
         for cfg in configs:
             bid = cfg["business_id"]
+            bind_tenant(db, bid)
 
             # Revenue stats
             total_rev   = db.query(func.sum(Invoice.amount)).filter(Invoice.business_id == bid).scalar() or 0

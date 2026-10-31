@@ -88,7 +88,7 @@ export default function AdminMetrics() {
     }
   }, [authFetch])
 
-  useEffect(() => { load(); return () => { ++metricsRequest.current } }, [load])
+  useEffect(() => { const requestCounter = metricsRequest; load(); return () => { ++requestCounter.current } }, [load])
 
   return (
     <div className="admin-main" style={{ margin: 0, padding: 0 }}>

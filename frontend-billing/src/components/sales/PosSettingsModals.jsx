@@ -1,23 +1,24 @@
 import CustomSelect from '../../components/common/CustomSelect';
 import React, { useState, useEffect, useRef } from 'react'
-import { 
-  CartIcon, 
-  CashIcon, 
-  ChevronRightIcon, 
-  CloseIcon, 
-  SettingsIcon, 
-  KeyboardIcon 
+import {
+  CartIcon,
+  CashIcon,
+  ChevronRightIcon,
+  CloseIcon,
+  SettingsIcon,
+  KeyboardIcon
 } from '../../components/Icons'
 
 export function PosCounterSettingsModal({
   onClose,
-  upiVpa, setUpiVpa,
+  upiVpa,
   merchantState, setMerchantState,
   settings,
   onToggleColumn,
   columnOrder, colVisible, colLabels, onMoveColumn,
   funcKeys, setFuncKeys,
   onAdvancedSettings,
+  onPaymentSettings,
   defaultFuncKeys = {},
   initialTab = 'general',
 }) {
@@ -141,7 +142,7 @@ export function PosCounterSettingsModal({
 
           {/* Tab Content Container */}
           <div style={{ paddingRight: 4, display: 'flex', flexDirection: 'column', gap: 14 }}>
-            
+
             {/* GENERAL SETTINGS TAB */}
             {activeTab === 'general' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -153,11 +154,9 @@ export function PosCounterSettingsModal({
                     style={{ height: 35, fontSize: '0.85rem', padding: '4px 8px', border: '1px solid var(--border)', borderRadius: '4px', background: 'var(--bg-3)', color: 'var(--text-primary)' }}
                     placeholder="e.g. name@upi"
                     value={upiVpa}
-                    onChange={e => {
-                      setUpiVpa(e.target.value)
-                      localStorage.setItem('pos_upi_vpa', e.target.value)
-                    }}
+                    readOnly
                   />
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={onPaymentSettings || onAdvancedSettings}>Edit business UPI ID in Profile</button>
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                   <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-secondary)' }}>Merchant GST State Code</label>

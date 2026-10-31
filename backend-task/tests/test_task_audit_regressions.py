@@ -161,3 +161,24 @@ def test_two_planners_cannot_assign_the_same_bill_twice(client, biz, linked):
     finally:
         event.remove(engine, 'before_cursor_execute', align_requests)
     assert sorted(response.status_code for response in responses) == [201, 409]
+
+
+def test_reopen_cancelled_task_blocked_when_active_task_holds_bill(client, biz, linked):
+    """FT-01: Reopening a cancelled task must re-verify invoice exclusivity."""
+    shop, _customer, bills = linked
+    staff = biz.staff()
+    t1 = client.post('/api/tasks', headers=biz.h, json={
+        'title': 'Collect bill', 'staff_id': staff['id'], 'shop_id': shop['id'],
+        'task_type': 'payment_collect', 'invoice_ids': [bills['boxes']],
+    }).json()
+    res_cancel = client.patch(f"/api/tasks/{t1['id']}", headers=biz.h, json={'status': 'cancelled'})
+    assert res_cancel.status_code == 200
+
+    t2 = client.post('/api/tasks', headers=biz.h, json={
+        'title': 'Replacement collect', 'staff_id': staff['id'], 'shop_id': shop['id'],
+        'task_type': 'payment_collect', 'invoice_ids': [bills['boxes']],
+    }).json()
+
+    reopen_res = client.patch(f"/api/tasks/{t1['id']}", headers=biz.h, json={'status': 'pending'})
+    assert reopen_res.status_code == 409
+    assert 'already on' in reopen_res.json()['detail']

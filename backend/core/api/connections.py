@@ -57,8 +57,9 @@ def _business_map(db: Session, conns) -> dict:
     ids.discard(None)
     if not ids:
         return {}
-    rows = db.query(User.id, User.business_name, User.public_id).filter(User.id.in_(ids)).all()
-    return {r.id: r for r in rows}
+    from database.trade_service import business_profile
+    rows = [business_profile(db, id=bid) for bid in sorted(ids)]
+    return {r.id: r for r in rows if r is not None}
 
 
 def _conn_out(conn: B2BConnection, db: Session, *, viewer_id: int = None,
@@ -75,16 +76,22 @@ def _conn_out(conn: B2BConnection, db: Session, *, viewer_id: int = None,
 
     seller = businesses.get(conn.seller_business_id)
     buyer = businesses.get(conn.buyer_business_id)
+    from core.party_archive import decode_party, is_deleted_user
+    seller_party, buyer_party = decode_party(conn.seller_snapshot), decode_party(conn.buyer_snapshot)
+    seller_deleted = bool(conn.seller_deleted or is_deleted_user(seller))
+    buyer_deleted = bool(conn.buyer_deleted or is_deleted_user(buyer))
     requested_by = businesses.get(getattr(conn, "requested_by_business_id", None))
 
     out = {
         "id": conn.id,
         "seller_business_id": conn.seller_business_id,
         "buyer_business_id": conn.buyer_business_id,
-        "seller_name": seller.business_name if seller else "Unknown Seller",
-        "seller_bizid": seller.public_id if seller else "",
-        "buyer_name": buyer.business_name if buyer else "Unknown Buyer",
-        "buyer_bizid": buyer.public_id if buyer else "",
+        "seller_name": seller_party.get("name") or (seller.business_name if seller else "Unknown Seller"),
+        "seller_bizid": seller_party.get("biz_id") or conn.seller_bizid or (seller.public_id if seller else ""),
+        "buyer_name": buyer_party.get("name") or (buyer.business_name if buyer else "Unknown Buyer"),
+        "buyer_bizid": buyer_party.get("biz_id") or conn.buyer_bizid or (buyer.public_id if buyer else ""),
+        "seller_deleted": seller_deleted,
+        "buyer_deleted": buyer_deleted,
         "price_tier": conn.price_tier,
         "discount_pct": conn.discount_pct,
         "credit_limit": conn.credit_limit,
@@ -123,24 +130,17 @@ def _conn_out(conn: B2BConnection, db: Session, *, viewer_id: int = None,
         cp_id = conn_service.counterparty_id(conn, viewer_id)
         cp = businesses.get(cp_id)
         out["counterparty_id"] = cp_id
-        out["counterparty_name"] = cp.business_name if cp else None
-        out["counterparty_bizid"] = cp.public_id if cp else None
+        party = buyer_party if viewer_id == conn.seller_business_id else seller_party
+        out["counterparty_name"] = party.get("name") or (cp.business_name if cp else None)
+        out["counterparty_bizid"] = party.get("biz_id") or (cp.public_id if cp else None)
+        out["counterparty_deleted"] = buyer_deleted if viewer_id == conn.seller_business_id else seller_deleted
 
     return out
 
 def _is_reachable(business_id: int, db: Session) -> bool:
-    """True when this business talks to the cloud at all (hybrid or cloud mode).
-
-    A pure-local install never polls the cloud, so nothing addressed to it there
-    is ever delivered. Mirrors core/api/biz_id.py::lookup_bizid so the pre-send
-    check and the post-send warning can never disagree."""
-    try:
-        row = db.query(User.settings).filter(User.id == business_id).first()
-        blob = json.loads(row.settings) if (row and row.settings) else {}
-        return (blob.get("general") or {}).get("hosting_mode") in ("hybrid", "cloud")
-    except Exception:
-        # Unknown -> assume reachable. A false warning is worse than none.
-        return True
+    from database.trade_service import business_profile
+    profile = business_profile(db, id=business_id)
+    return bool(profile and profile.role not in {"deleted", "retired"} and profile.hosting_mode in {"cloud", "hybrid"})
 
 
 def _notify_counterparty(conn: B2BConnection, actor_id: int, db: Session,
@@ -391,7 +391,8 @@ def revoke_partnership(id: int, current_user: dict = Depends(restrict_cashier), 
 @router.get("/catalog/{seller_bizid}")
 def get_catalog(seller_bizid: str, current_user: dict = Depends(restrict_cashier), db: Session = Depends(get_db)):
     """Buyer browses connected supplier's catalog (scoped by connection policies)."""
-    seller = db.query(User).filter(User.public_id == seller_bizid).first()
+    from database.trade_service import business_profile
+    seller = business_profile(db, bizid=seller_bizid)
     if not seller:
         raise HTTPException(status_code=404, detail="Supplier BizID not found")
         

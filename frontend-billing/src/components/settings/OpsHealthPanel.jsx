@@ -126,6 +126,7 @@ function Stat({ label, value, tone }) {
 
 export default function OpsHealthPanel({ authFetch }) {
   const [health, setHealth] = useState(null)
+  const [accountUpdates, setAccountUpdates] = useState(null)
   const [conflicts, setConflicts] = useState([])
   const [outboxItems, setOutboxItems] = useState([])
   const [outboxError, setOutboxError] = useState(false)
@@ -178,14 +179,19 @@ export default function OpsHealthPanel({ authFetch }) {
     else setLoading(true)
     setError(false)
     try {
-      const [hRes, cRes] = await Promise.all([
+      const [hRes, cRes, queueRes] = await Promise.all([
         authFetch('/reports/ops-health'),
         authFetch('/api/sync/conflicts'),
+        authFetch('/api/sync/queue-depth').catch(() => null),
       ])
       // `isCurrent()` on every write: a response from a superseded request must
       // not overwrite a newer one's data.
       if (hRes.ok && isCurrent()) setHealth(await hRes.json())
       if (cRes.ok && isCurrent()) setConflicts((await cRes.json()).conflicts || [])
+      try {
+        const queue = queueRes?.ok ? await queueRes.json() : null
+        if (isCurrent()) setAccountUpdates(queue?.control_outbox || null)
+      } catch { if (isCurrent()) setAccountUpdates(null) }
 
       // Outbox details go through authFetch like every other call here.
       // This previously used a raw fetch() with getApiBase()/getToken(), which
@@ -413,7 +419,7 @@ export default function OpsHealthPanel({ authFetch }) {
   // — it predates the inbox and knows nothing about it. Reporting "All systems
   // healthy" while rows the cloud sent sit un-applied would be the banner
   // telling the owner the exact thing that was untrue for months.
-  const ok = health.ok && inboxStuck === 0
+  const ok = health.ok && inboxStuck === 0 && !(accountUpdates?.failed > 0) && !(accountUpdates?.pending > 0)
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -462,6 +468,8 @@ export default function OpsHealthPanel({ authFetch }) {
         <Stat label="Pending sync" value={sync.pending ?? 0}
               tone={(sync.failed ?? 0) > 0 ? 'bad' : (sync.pending ?? 0) > 0 ? 'warn' : 'ok'} />
         <Stat label="Sync errors" value={sync.failed ?? 0} tone={(sync.failed ?? 0) > 0 ? 'bad' : 'ok'} />
+        <Stat label="Account updates waiting" value={accountUpdates ? accountUpdates.pending : 'Unavailable'} tone={accountUpdates?.pending > 0 ? 'warn' : 'ok'} />
+        <Stat label="Account update errors" value={accountUpdates ? accountUpdates.failed : 'Unavailable'} tone={accountUpdates?.failed > 0 ? 'bad' : 'ok'} />
         <Stat label="Books integrity"
               value={integrity.ok === false ? 'Broken' : integrity.ok === true ? 'OK' : '—'}
               tone={integrity.ok === false ? 'bad' : 'ok'} />

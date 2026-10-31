@@ -34,6 +34,11 @@ export function getAiDashboardUrl() {
 // Keep a reference to the opened tab so we can re-use it and postMessage
 // tickets to an already-mounted React app (which won't re-run useEffect on URL change).
 let _aiWindow = null
+export function notifyAiLogout() {
+  if (_aiWindow && !_aiWindow.closed) {
+    try { _aiWindow.postMessage({ type: 'AUTH_LOGOUT' }, new URL(getAiDashboardUrl()).origin) } catch { /* iframe fallback */ }
+  }
+}
 
 /** Open the dashboard (desktop shell turns this into a native window). */
 export async function openAiDashboard() {
@@ -57,7 +62,8 @@ export async function openAiDashboard() {
     // without needing a page reload (the mount useEffect won't re-fire).
     _aiWindow.focus()
     if (ticket) {
-      _aiWindow.postMessage({ type: 'SSO_TICKET', ticket }, url)
+      // Re-navigation also works for native desktop windows without an opener.
+      _aiWindow.location.href = `${url}/?sso=${encodeURIComponent(ticket)}`
     }
   } else {
     // Open a new (or named) tab with the ticket in the URL for fresh mount.

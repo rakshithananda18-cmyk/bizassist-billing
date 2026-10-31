@@ -49,7 +49,10 @@ class StaffRecord(BaseModel):
     deleted: bool = False            # True → remove this staff from cloud
 
 
-class StaffPushRequest(BaseModel):
+from services.control_outbox import ControlEnvelope
+
+
+class StaffPushRequest(ControlEnvelope):
     staff: List[StaffRecord]
 
 
@@ -74,6 +77,9 @@ def sync_staff_push(
 
     # Resolve owner_id with strict public_id enforcement (fail-closed if missing/mismatched)
     owner_id = resolve_business_id_in_db(current_user, db, require_public_id=True)
+    from services.control_outbox import receive_control_event
+    if not receive_control_event(db, owner_id, req):
+        return {"status": "ok", "replayed": True, "upserted": 0, "deleted": 0}
 
     # Sanity: owner must exist on cloud and match public_id
     owner = db.query(User).filter(

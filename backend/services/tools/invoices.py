@@ -11,23 +11,24 @@ logger = logging.getLogger("bizassist.tools.invoices")
 
 
 def get_invoice_summary(user_id: int) -> str:
-    """Returns counts and total amounts of invoices grouped by status."""
+    from core.billing.balances import invoice_balances, collection_status
+    from collections import defaultdict
     db = SessionLocal()
     try:
-        results = db.query(
-            Invoice.status,
-            func.count(Invoice.id).label("count"),
-            func.sum(Invoice.amount).label("total"),
-        ).filter(Invoice.business_id == user_id).group_by(Invoice.status).all()
-
-        summary = {
-            row.status: {"count": row.count, "total_amount": float(row.total or 0)}
-            for row in results
-        }
+        invoices = db.query(Invoice).filter(Invoice.business_id == user_id,
+            func.coalesce(Invoice.invoice_type, "") != "credit_note").all()
+        balances = invoice_balances(db, invoices)
+        summary = defaultdict(lambda: {"count": 0, "total_amount": 0.0})
+        for invoice in invoices:
+            balance = balances[invoice.id]
+            status = collection_status(balance, invoice.status)
+            from services.dates import biz_today_str
+            if balance["outstanding"] > 0 and (invoice.status == "Overdue" or
+                    bool(invoice.due_date and invoice.due_date < biz_today_str())):
+                status = "Overdue"
+            summary[status]["count"] += 1
+            summary[status]["total_amount"] += balance["effective_total"]
         return json.dumps(summary)
-    except Exception as e:
-        logger.error("get_invoice_summary failed: %s", e)
-        return json.dumps({"error": f"Failed to fetch invoice summary: {e}"})
     finally:
         db.close()
 
@@ -37,8 +38,6 @@ def get_invoice_list(user_id: int, status: str = None, customer: str = None, lim
     db = SessionLocal()
     try:
         query = db.query(Invoice).filter(Invoice.business_id == user_id)
-        if status:
-            query = query.filter(Invoice.status.ilike(status))
         if customer:
             query = query.filter(Invoice.customer.ilike(f"%{customer}%"))
             # A single customer's full ledger is small — don't truncate it to the
@@ -47,18 +46,31 @@ def get_invoice_list(user_id: int, status: str = None, customer: str = None, lim
             if limit == 15:
                 limit = 200
 
-        invoices = query.order_by(Invoice.amount.desc()).limit(limit).all()
-        result = [
-            {
+        from core.billing.balances import invoice_balances, collection_status
+        from services.dates import biz_today_str
+        invoices = query.order_by(Invoice.amount.desc()).all()
+        balances = invoice_balances(db, invoices)
+        result = []
+        for inv in invoices:
+            balance = balances[inv.id]
+            note = inv.invoice_type == "credit_note"
+            derived_status = "Credit Note" if note else collection_status(balance, inv.status)
+            if not note and balance["outstanding"] > 0 and (inv.status == "Overdue" or
+                    bool(inv.due_date and inv.due_date < biz_today_str())):
+                derived_status = "Overdue"
+            if status and derived_status.lower() != status.lower():
+                continue
+            result.append({
                 "invoice_id": inv.invoice_id,
                 "customer":   inv.customer,
-                "amount":     float(inv.amount or 0),
-                "status":     inv.status,
+                "amount":     -balance["total"] if note else balance["effective_total"],
+                "outstanding": balance["outstanding"],
+                "paid_amount": balance["paid"],
+                "status":     derived_status,
                 "invoice_date": inv.invoice_date,
                 "due_date":   inv.due_date,
-            }
-            for inv in invoices
-        ]
+            })
+        result = result[:max(0, min(int(limit), 500))]
         return json.dumps(result)
     except Exception as e:
         logger.error("get_invoice_list failed: %s", e)
@@ -82,10 +94,8 @@ def get_overdue_aging_summary(user_id: int) -> str:
         "180_plus":    {"label": "180+ days (bad debt risk)",         "count": 0, "total": 0.0, "customers": []},
     }
     try:
-        overdue = db.query(Invoice).filter(
-            Invoice.business_id == user_id,
-            Invoice.status.ilike("Overdue"),
-        ).all()
+        from core.billing.balances import outstanding_rows
+        overdue = outstanding_rows(db, user_id, overdue=True)
 
         for inv in overdue:
             due = parse_date_only(inv.due_date)
@@ -123,59 +133,20 @@ def get_overdue_aging_summary(user_id: int) -> str:
 
 
 def get_top_customers(user_id: int, limit: int = 5) -> str:
-    """Returns top N customers sorted by revenue."""
+    from core.billing.balances import customer_revenue_rows
     db = SessionLocal()
     try:
-        rows = (
-            db.query(
-                Invoice.customer,
-                func.sum(Invoice.amount).label("total_revenue"),
-                func.count(Invoice.id).label("invoice_count"),
-            )
-            .filter(Invoice.business_id == user_id)
-            
-            .group_by(Invoice.customer)
-            .order_by(func.sum(Invoice.amount).desc())
-            .limit(limit)
-            .all()
-        )
-        result = [
-            {"customer": r.customer, "total_revenue": float(r.total_revenue or 0), "invoice_count": r.invoice_count}
-            for r in rows
-        ]
-        return json.dumps(result)
-    except Exception as e:
-        logger.error("get_top_customers failed: %s", e)
-        return json.dumps({"error": f"Failed to fetch top customers: {e}"})
+        return json.dumps([{"customer": row.customer, "total_revenue": row.total_amount, "invoice_count": row.invoice_count}
+                           for row in customer_revenue_rows(db, user_id)[:limit]])
     finally:
         db.close()
 
 
 def get_revenue_trend(user_id: int, months: int = 12) -> str:
-    """Monthly billed vs collected revenue (last N months) from invoice_date —
-    for sales-trend / growth questions. Dates are ISO (YYYY-MM-DD) at ingest."""
-    from collections import defaultdict
+    from core.billing.balances import monthly_revenue_rows
     db = SessionLocal()
     try:
-        agg = defaultdict(lambda: {"billed": 0.0, "collected": 0.0, "invoices": 0})
-        for r in (db.query(Invoice.invoice_date, Invoice.amount, Invoice.status)
-                  .filter(Invoice.business_id == user_id).all()):
-            m = (r.invoice_date or "")[:7]          # YYYY-MM
-            if len(m) != 7:
-                continue
-            amt = float(r.amount or 0)
-            agg[m]["billed"] += amt
-            agg[m]["invoices"] += 1
-            if r.status == "Paid":
-                agg[m]["collected"] += amt
-        keys = sorted(agg.keys())[-months:]
-        trend = [{"month": m, "billed": round(agg[m]["billed"]),
-                  "collected": round(agg[m]["collected"]), "invoices": agg[m]["invoices"]}
-                 for m in keys]
-        return json.dumps(trend)
-    except Exception as e:
-        logger.error("get_revenue_trend failed: %s", e)
-        return json.dumps({"error": str(e)})
+        return json.dumps(monthly_revenue_rows(db, user_id, months=months))
     finally:
         db.close()
 
@@ -187,17 +158,27 @@ def get_product_performance(user_id: int, limit: int = 10) -> str:
     db = SessionLocal()
     try:
         agg = defaultdict(lambda: {"billed": 0.0, "overdue": 0.0, "invoices": 0})
-        for r in (db.query(Invoice.product, Invoice.amount, Invoice.status)
-                  .filter(Invoice.business_id == user_id).all()):
-            p = r.product or "Unknown"
-            amt = float(r.amount or 0)
-            agg[p]["billed"] += amt
-            agg[p]["invoices"] += 1
-            if r.status == "Overdue":
-                agg[p]["overdue"] += amt
+        from core.billing.balances import invoice_balances
+        from services.dates import biz_today_str
+        invoices = db.query(Invoice).filter(Invoice.business_id == user_id).all()
+        balances = invoice_balances(db, invoices)
+        for r in invoices:
+            note = r.invoice_type == "credit_note"
+            parts = ([(line.product_name or "Unknown", float(line.line_total or 0)) for line in r.line_items]
+                     if r.line_items else [(r.product or "Unknown", float(r.total_amount or r.amount or 0))])
+            line_total = sum(amount for _, amount in parts)
+            overdue = not note and (r.status == "Overdue" or bool(r.due_date and r.due_date < biz_today_str()))
+            seen = set()
+            for p, amount in parts:
+                agg[p]["billed"] += -abs(amount) if note else amount
+                if not note and p not in seen:
+                    agg[p]["invoices"] += 1
+                seen.add(p)
+                if overdue and line_total > 0:
+                    agg[p]["overdue"] += balances[r.id]["outstanding"] * amount / line_total
         sold = set(agg.keys())
-        stock = {i.product_name: i.stock
-                 for i in db.query(Inventory).filter(Inventory.business_id == user_id).all()}
+        stock = dict(db.query(Inventory.product_name, func.sum(Inventory.stock)).filter(
+            Inventory.business_id == user_id).group_by(Inventory.product_name).all())
         top = sorted(agg.items(), key=lambda x: -x[1]["billed"])[:limit]
         top_list = [{"product": p, "billed": round(v["billed"]), "invoices": v["invoices"],
                      "overdue": round(v["overdue"]), "stock": stock.get(p)}
@@ -227,7 +208,8 @@ def get_product_margins(user_id: int, limit: int = 10) -> str:
             return json.dumps({"error": "No selling/cost prices on file — upload inventory with "
                                         "cost_price and selling_price to analyse margins."})
         billed = defaultdict(float)
-        for r in (db.query(Invoice.product, Invoice.amount)
+        from core.billing.balances import signed_invoice_amount
+        for r in (db.query(Invoice.product, signed_invoice_amount().label("amount"))
                   .filter(Invoice.business_id == user_id).all()):
             billed[r.product or "Unknown"] += float(r.amount or 0)
 
@@ -255,8 +237,9 @@ def get_product_margins(user_id: int, limit: int = 10) -> str:
             "top_by_profit": products[:limit],
             "below_cost": below_cost,
             "thin_margin_under_10pct": thin,
-            "note": "Gross profit is ESTIMATED as billed revenue × product margin% "
-                    "(invoices have no per-unit quantity).",
+            "basis": "current_catalog_estimate",
+            "note": "Gross profit is ESTIMATED as net billed revenue × current catalogue margin%. "
+                    "Use the P&L report for historical snapshot costs and missing-cost disclosure.",
         })
     except Exception as e:
         logger.error("get_product_margins failed: %s", e)
@@ -272,7 +255,8 @@ def get_sales_growth(user_id: int) -> str:
     try:
         now = datetime.now()
         by_year, by_month = defaultdict(float), defaultdict(float)
-        for r in (db.query(Invoice.invoice_date, Invoice.amount)
+        from core.billing.balances import signed_invoice_amount
+        for r in (db.query(Invoice.invoice_date, signed_invoice_amount().label("amount"))
                   .filter(Invoice.business_id == user_id).all()):
             d = r.invoice_date or ""
             if len(d) < 7:
@@ -306,18 +290,14 @@ def get_dso(user_id: int) -> str:
     db = SessionLocal()
     try:
         now = date.today()
-        total = outstanding = 0.0
+        from core.billing.balances import business_revenue_summary, outstanding_rows
+        summary = business_revenue_summary(db, user_id)
+        total, outstanding = summary["net_revenue"], summary["outstanding_revenue"]
         overdue_days = []
-        for r in (db.query(Invoice.amount, Invoice.status, Invoice.due_date)
-                  .filter(Invoice.business_id == user_id).all()):
-            a = float(r.amount or 0)
-            total += a
-            if r.status in ("Overdue", "Pending"):
-                outstanding += a
-            if r.status == "Overdue":
-                due = parse_date_only(r.due_date)
-                if due:
-                    overdue_days.append((now - due).days)
+        for r in outstanding_rows(db, user_id, overdue=True):
+            due = parse_date_only(r.due_date)
+            if due:
+                overdue_days.append(max((now - due).days, 0))
         if total <= 0:
             return json.dumps({"error": "No invoice data."})
         dso = round(outstanding / total * 365)
@@ -342,12 +322,14 @@ def get_dormant_customers(user_id: int, days: int = 90, limit: int = 10) -> str:
         now = date.today()
         cutoff = now - timedelta(days=days)
         last_buy, total = {}, defaultdict(float)
-        for r in (db.query(Invoice.customer, Invoice.invoice_date, Invoice.amount)
+        from core.billing.balances import signed_invoice_amount
+        for r in (db.query(Invoice.customer, Invoice.invoice_date, Invoice.invoice_type,
+                          signed_invoice_amount().label("amount"))
                   .filter(Invoice.business_id == user_id).all()):
             c = r.customer or "Unknown"
             total[c] += float(r.amount or 0)
             d = parse_date_only(r.invoice_date)
-            if d and (c not in last_buy or d > last_buy[c]):
+            if r.invoice_type != "credit_note" and d and (c not in last_buy or d > last_buy[c]):
                 last_buy[c] = d
         dormant = [{"customer": c, "last_purchase": last.strftime("%Y-%m-%d"),
                     "days_since": (now - last).days, "lifetime_revenue": round(total[c])}
@@ -376,7 +358,8 @@ def get_customer_margins(user_id: int, limit: int = 10) -> str:
         if not margin:
             return json.dumps({"error": "No product prices on file to estimate customer margins."})
         billed, profit = defaultdict(float), defaultdict(float)
-        for r in (db.query(Invoice.customer, Invoice.product, Invoice.amount)
+        from core.billing.balances import signed_invoice_amount
+        for r in (db.query(Invoice.customer, Invoice.product, signed_invoice_amount().label("amount"))
                   .filter(Invoice.business_id == user_id).all()):
             cust = r.customer or "Unknown"
             a = float(r.amount or 0)
@@ -388,8 +371,9 @@ def get_customer_margins(user_id: int, limit: int = 10) -> str:
                  "margin_pct": round(profit[c] / billed[c] * 100, 1) if billed[c] else None}
                 for c in billed]
         rows.sort(key=lambda x: -x["est_gross_profit"])
-        return json.dumps({"top_by_profit": rows[:limit],
-                           "note": "Estimated: invoice amount × the product's margin% (no per-unit qty)."})
+        return json.dumps({"top_by_profit": rows[:limit], "basis": "current_catalog_estimate",
+                           "note": "Estimated: net invoice amount × current catalogue product margin%. "
+                                   "Use P&L for historical snapshot costs and missing-cost disclosure."})
     except Exception as e:
         logger.error("get_customer_margins failed: %s", e)
         return json.dumps({"error": str(e)})
@@ -398,30 +382,11 @@ def get_customer_margins(user_id: int, limit: int = 10) -> str:
 
 
 def get_top_debtors(user_id: int, limit: int = 5) -> str:
-    """Top N customers by TOTAL OVERDUE amount — i.e. who owes the most (their
-    aggregated outstanding debt), NOT individual invoices and NOT revenue."""
+    from core.billing.balances import debtor_rows
     db = SessionLocal()
     try:
-        rows = (
-            db.query(
-                Invoice.customer,
-                func.sum(Invoice.amount).label("overdue_total"),
-                func.count(Invoice.id).label("overdue_count"),
-            )
-            .filter(Invoice.business_id == user_id, Invoice.status == "Overdue")
-            .group_by(Invoice.customer)
-            .order_by(func.sum(Invoice.amount).desc())
-            .limit(limit)
-            .all()
-        )
-        return json.dumps([
-            {"customer": r.customer, "overdue_total": float(r.overdue_total or 0),
-             "overdue_count": r.overdue_count}
-            for r in rows
-        ])
-    except Exception as e:
-        logger.error("get_top_debtors failed: %s", e)
-        return json.dumps({"error": f"Failed to fetch top debtors: {e}"})
+        return json.dumps([{"customer": row.customer, "overdue_total": row.overdue_total, "overdue_count": row.overdue_count}
+                           for row in debtor_rows(db, user_id)[:limit]])
     finally:
         db.close()
 

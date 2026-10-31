@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useCallback, useState, useEffect } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { API_BASE } from '../config'
 import { logger } from '../utils/logger'
@@ -7,32 +7,7 @@ import { Icon } from './icons'
 import { useDialog } from '../contexts/DialogContext'
 
 // Donut Arc Helper
-function DonutChart({ paid, pending, overdue, healthPct }) {
-  const total = paid + pending + overdue || 1
-  const r = 36, cx = 44, cy = 44, stroke = 10
-  const circ = 2 * Math.PI * r
 
-  const paidPct = paid / total
-  const pendPct = pending / total
-
-  const paidDash = paidPct * circ
-  const pendDash = pendPct * circ
-  const overDash = Math.max(0, 1 - paidPct - pendPct) * circ
-  const pendOffset = -(paidPct * circ)
-  const overOffset = -((paidPct + pendPct) * circ)
-
-  return (
-    <svg width="68" height="68" viewBox="0 0 88 88" style={{ transform: 'rotate(-90deg)', flexShrink: 0 }}>
-      <circle cx="44" cy="44" r={r} fill="none" stroke="var(--border-color)" strokeWidth="10" />
-      <circle cx="44" cy="44" r={r} fill="none" stroke="#3a9a5c" strokeWidth="10"
-        strokeDasharray={`${paidDash} ${circ}`} strokeDashoffset="0" />
-      <circle cx="44" cy="44" r={r} fill="none" stroke="#c97c22" strokeWidth="10"
-        strokeDasharray={`${pendDash} ${circ}`} strokeDashoffset={pendOffset} />
-      <circle cx="44" cy="44" r={r} fill="none" stroke="#c94242" strokeWidth="10"
-        strokeDasharray={`${overDash} ${circ}`} strokeDashoffset={overOffset} />
-    </svg>
-  )
-}
 
 // InsightsPanel — renders its own header (with collapse/close from props) + content
 export default function InsightsPanel({ onCollapse, onCloseMobile }) {
@@ -52,6 +27,38 @@ export default function InsightsPanel({ onCollapse, onCloseMobile }) {
   const [menuPos, setMenuPos] = useState({ top: 0, left: 0 })  // fixed-position coords for the menu
   const [renamingId, setRenamingId] = useState(null)   // session id being renamed inline
   const [renameValue, setRenameValue] = useState('')
+
+
+
+  // Close the kebab menu when clicking outside
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (menuOpenId && !e.target.closest('.rp-chat-kebab-wrap')) {
+        setMenuOpenId(null)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [menuOpenId])
+
+  const loadInsightsData = useCallback(async () => {
+    try {
+      const [sessionsData, summaryRes, customersRes, insightsRes] = await Promise.all([
+        fetchSessions(authFetch),   // shared/de-duped request
+        authFetch(`${API_BASE}/dashboard-summary`),
+        authFetch(`${API_BASE}/top-customers`),
+        authFetch(`${API_BASE}/smart-insights/summary`),   // free, deterministic
+      ])
+      if (sessionsData) setSessions(sessionsData)
+      if (summaryRes.ok) setSummary(await summaryRes.json())
+      if (customersRes.ok) setCustomers(await customersRes.json())
+      if (insightsRes.ok) setPanelInsights(await insightsRes.json())
+    } catch (err) {
+      logger.error('Failed to load insights data:', err)
+    }
+  }, [authFetch])
 
   useEffect(() => {
     loadInsightsData()
@@ -74,37 +81,7 @@ export default function InsightsPanel({ onCollapse, onCloseMobile }) {
       window.removeEventListener('ai-active-changed', handleActiveChanged)
       window.removeEventListener('ai-sessions-updated', loadInsightsData)
     }
-  }, [])
-
-  // Close the kebab menu when clicking outside
-  useEffect(() => {
-    function handleClickOutside(e) {
-      if (menuOpenId && !e.target.closest('.rp-chat-kebab-wrap')) {
-        setMenuOpenId(null)
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside)
-    }
-  }, [menuOpenId])
-
-  async function loadInsightsData() {
-    try {
-      const [sessionsData, summaryRes, customersRes, insightsRes] = await Promise.all([
-        fetchSessions(authFetch),   // shared/de-duped request
-        authFetch(`${API_BASE}/dashboard-summary`),
-        authFetch(`${API_BASE}/top-customers`),
-        authFetch(`${API_BASE}/smart-insights/summary`),   // free, deterministic
-      ])
-      if (sessionsData) setSessions(sessionsData)
-      if (summaryRes.ok) setSummary(await summaryRes.json())
-      if (customersRes.ok) setCustomers(await customersRes.json())
-      if (insightsRes.ok) setPanelInsights(await insightsRes.json())
-    } catch (err) {
-      logger.error('Failed to load insights data:', err)
-    }
-  }
+  }, [loadInsightsData])
 
   function toggleSection(name) {
     setCollapsedSections(prev => {
@@ -180,18 +157,9 @@ export default function InsightsPanel({ onCollapse, onCloseMobile }) {
     window.dispatchEvent(new CustomEvent('ai-shortcut', { detail: { query, intent, label: query } }))
   }
 
-  const total = summary?.invoice_count || 0
-  const pending = summary?.pending_invoices || 0
-  const revenue = summary?.total_revenue || 0
   const overdueAmt = summary?.overdue_amount || 0
 
-  const overdueCount = overdueAmt > 0 && revenue > 0 ? Math.round((overdueAmt / revenue) * total) : 0
-  const paidCount = Math.max(0, total - pending - overdueCount)
 
-  const collectedAmt = revenue - overdueAmt
-  const healthPct = revenue > 0 ? Math.round((collectedAmt / revenue) * 100) : 0
-  const overPctBar = Math.min(100, (overdueAmt / Math.max(revenue, 1)) * 100)
-  const maxCust = customers[0]?.total || 1
 
   return (
     <>

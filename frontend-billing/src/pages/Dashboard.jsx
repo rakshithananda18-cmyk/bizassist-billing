@@ -268,7 +268,7 @@ export default function Dashboard() {
                     {kpiCard('Low Stock Items', s.low_stock_count ?? 0, 'need restocking — open', '#c97c22', '/stock')}
                     {kpiCard('Purchases (30d)', fmt(s.purchases_30d), 'total purchase value — open', 'var(--accent)', '/stock/purchase', {}, true)}
                     {kpiCard('Active Customers', s.active_customers ?? 0, 'in last 30 days — open', '#3a9a5c', '/parties')}
-                    {kpiCard('Gross Margin', s.gross_margin ? `${s.gross_margin}%` : '—', 'estimated margin — reports', 'var(--accent)', '/reports', {}, true)}
+                    {kpiCard('Gross Margin', s.gross_margin == null ? 'Unavailable' : `${s.gross_margin}%`, s.gross_margin == null ? 'Historical cost needs reconciliation' : 'estimated margin — reports', 'var(--accent)', '/reports', {}, true)}
                   </div>
                 </>
               )

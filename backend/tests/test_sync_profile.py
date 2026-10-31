@@ -29,9 +29,15 @@ def _signup(business_name):
     return {
         "headers": {"Authorization": f"Bearer {b['token']}"},
         "bid": b["id"],
+        "public_id": b["public_id"],
         "username": uname,
         "token": b["token"]
     }
+
+
+def _envelope(user):
+    return {"event_id": uuid.uuid4().hex, "source_id": "profile-test-" + uuid.uuid4().hex,
+            "source_revision": 1, "business_public_id": user["public_id"]}
 
 
 def test_sync_profile_push_success():
@@ -39,6 +45,7 @@ def test_sync_profile_push_success():
     user = _signup("Original Shop Name")
 
     payload = {
+        **_envelope(user),
         "business_name": "Updated Shop Name",
         "gstin": "29AAAAA1111A1Z1",
         "phone": "9876543210",
@@ -79,6 +86,7 @@ def test_sync_profile_push_patch_semantics():
     user = _signup("Original Shop Name")
 
     payload = {
+        **_envelope(user),
         "gstin": "29BBBBB2222B2Z2",
         "address": "456 Side Street"
     }
@@ -125,22 +133,40 @@ def test_sync_profile_push_unknown_user_is_not_signed_in():
     assert resp.status_code == 401
 
 
+@pytest.mark.parametrize("endpoint,payload", [
+    ("profile-push", {"business_name": "Legacy must not apply"}),
+    ("staff-push", {"staff": []}),
+])
+def test_legacy_owner_control_peer_requires_upgrade(endpoint, payload):
+    user = _signup("Legacy control peer")
+    response = client.post("/api/sync/" + endpoint, json=payload, headers=user["headers"])
+    assert response.status_code == 426
+    with SessionLocal() as db:
+        assert db.get(User, user["bid"]).business_name == "Legacy control peer"
+
+
 @patch("httpx.post")
 @patch("services.sync_worker._get_cloud_token")
 def test_immediate_sync_helper_push(mock_get_token, mock_post):
+    user = _signup("Durable profile helper")
     mock_get_token.return_value = "mocked-token-123"
     mock_post.return_value = MagicMock(status_code=200, json=lambda: {"status": "ok", "updated_fields": ["business_name"]})
 
     with patch("services.immediate_sync._IS_LOCAL", True), \
-         patch("services.immediate_sync.syncs_to_cloud", return_value=True):   # Local + Cloud
+         patch("services.immediate_sync.syncs_to_cloud", return_value=True), \
+         patch("services.control_outbox.trigger_control_flush"):
         from services.immediate_sync import push_profile_to_cloud
-        import time
-
-        push_profile_to_cloud(10, {"business_name": "Test Push Shop"})
-        time.sleep(0.1)
-        
+        push_profile_to_cloud(user["bid"], {"business_name": "Test Push Shop"})
+    # Drive the durable worker synchronously: no timing-sensitive daemon sleep.
+    with patch("services.control_outbox._IS_LOCAL", True), \
+         patch("services.control_outbox.is_hybrid_cloud", return_value=True), SessionLocal() as db:
+        from services.control_outbox import flush_control_outbox
+        assert flush_control_outbox(db, user["bid"])["completed"] == 1
         mock_post.assert_called_once()
         args, kwargs = mock_post.call_args
         assert "/api/sync/profile-push" in args[0]
-        assert kwargs["json"] == {"business_name": "Test Push Shop"}
+        sent = kwargs["json"]
+        assert sent["business_name"] == "Test Push Shop"
+        assert sent["business_public_id"] == user["public_id"]
+        assert sent["event_id"] and sent["source_id"] and sent["source_revision"] == 1
         assert kwargs["headers"]["Authorization"] == "Bearer mocked-token-123"

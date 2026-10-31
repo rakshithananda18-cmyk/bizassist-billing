@@ -1,0 +1,99 @@
+.......................F........................                         [100%]
+================================== FAILURES ===================================
+_ TestTheAuditLogRecordsTheBizID.test_the_insert_statement_writes_the_column __
+..\scratch\core-workflow-venv\Lib\site-packages\sqlalchemy\engine\base.py:1976: in _exec_single_context
+    self.dialect.do_execute(
+..\scratch\core-workflow-venv\Lib\site-packages\sqlalchemy\engine\default.py:964: in do_execute
+    cursor.execute(statement, parameters)
+E   sqlite3.OperationalError: no such table: invoices
+
+The above exception was the direct cause of the following exception:
+tests\test_sync_volume_and_tenancy.py:318: in test_the_insert_statement_writes_the_column
+    db.commit()
+..\scratch\core-workflow-venv\Lib\site-packages\sqlalchemy\orm\session.py:2035: in commit
+    trans.commit(_to_root=True)
+<string>:2: in commit
+    ???
+..\scratch\core-workflow-venv\Lib\site-packages\sqlalchemy\orm\state_changes.py:137: in _go
+    ret_value = fn(self, *arg, **kw)
+                ^^^^^^^^^^^^^^^^^^^^
+..\scratch\core-workflow-venv\Lib\site-packages\sqlalchemy\orm\session.py:1316: in commit
+    self._prepare_impl()
+<string>:2: in _prepare_impl
+    ???
+..\scratch\core-workflow-venv\Lib\site-packages\sqlalchemy\orm\state_changes.py:137: in _go
+    ret_value = fn(self, *arg, **kw)
+                ^^^^^^^^^^^^^^^^^^^^
+..\scratch\core-workflow-venv\Lib\site-packages\sqlalchemy\orm\session.py:1290: in _prepare_impl
+    self.session.flush()
+..\scratch\core-workflow-venv\Lib\site-packages\sqlalchemy\orm\session.py:4353: in flush
+    self._flush(objects)
+..\scratch\core-workflow-venv\Lib\site-packages\sqlalchemy\orm\session.py:4488: in _flush
+    with util.safe_reraise():
+         ^^^^^^^^^^^^^^^^^^^
+..\scratch\core-workflow-venv\Lib\site-packages\sqlalchemy\util\langhelpers.py:122: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+..\scratch\core-workflow-venv\Lib\site-packages\sqlalchemy\orm\session.py:4449: in _flush
+    flush_context.execute()
+..\scratch\core-workflow-venv\Lib\site-packages\sqlalchemy\orm\unitofwork.py:441: in execute
+    postsort_actions = self._generate_actions()
+                       ^^^^^^^^^^^^^^^^^^^^^^^^
+..\scratch\core-workflow-venv\Lib\site-packages\sqlalchemy\orm\unitofwork.py:399: in _generate_actions
+    if action.execute(self):
+       ^^^^^^^^^^^^^^^^^^^^
+..\scratch\core-workflow-venv\Lib\site-packages\sqlalchemy\orm\unitofwork.py:531: in execute
+    self.dependency_processor.presort_deletes(uow, delete_states)
+..\scratch\core-workflow-venv\Lib\site-packages\sqlalchemy\orm\dependency.py:448: in presort_deletes
+    history = uowcommit.get_attribute_history(
+..\scratch\core-workflow-venv\Lib\site-packages\sqlalchemy\orm\unitofwork.py:282: in get_attribute_history
+    history = impl.get_history(
+..\scratch\core-workflow-venv\Lib\site-packages\sqlalchemy\orm\writeonly.py:376: in get_history
+    c = self._get_collection_history(state, passive)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\scratch\core-workflow-venv\Lib\site-packages\sqlalchemy\orm\writeonly.py:400: in _get_collection_history
+    return self.collection_history_cls(
+C:\Users\raksh\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\typing.py:1184: in __call__
+    result = self.__origin__(*args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\scratch\core-workflow-venv\Lib\site-packages\sqlalchemy\orm\dynamic.py:71: in __init__
+    self.unchanged_items = util.OrderedIdentitySet(coll)
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\scratch\core-workflow-venv\Lib\site-packages\sqlalchemy\util\_collections.py:324: in __init__
+    for o in iterable:
+             ^^^^^^^^
+..\scratch\core-workflow-venv\Lib\site-packages\sqlalchemy\orm\query.py:2850: in __iter__
+    result = self._iter()
+             ^^^^^^^^^^^^
+..\scratch\core-workflow-venv\Lib\site-packages\sqlalchemy\orm\query.py:2864: in _iter
+    result: Union[ScalarResult[_T], Result[_T]] = self.session.execute(
+..\scratch\core-workflow-venv\Lib\site-packages\sqlalchemy\orm\session.py:2373: in execute
+    return self._execute_internal(
+..\scratch\core-workflow-venv\Lib\site-packages\sqlalchemy\orm\session.py:2271: in _execute_internal
+    result: Result[Any] = compile_state_cls.orm_execute_statement(
+..\scratch\core-workflow-venv\Lib\site-packages\sqlalchemy\orm\context.py:306: in orm_execute_statement
+    result = conn.execute(
+..\scratch\core-workflow-venv\Lib\site-packages\sqlalchemy\engine\base.py:1428: in execute
+    return meth(
+..\scratch\core-workflow-venv\Lib\site-packages\sqlalchemy\sql\elements.py:526: in _execute_on_connection
+    return connection._execute_clauseelement(
+..\scratch\core-workflow-venv\Lib\site-packages\sqlalchemy\engine\base.py:1650: in _execute_clauseelement
+    ret = self._execute_context(
+..\scratch\core-workflow-venv\Lib\site-packages\sqlalchemy\engine\base.py:1855: in _execute_context
+    return self._exec_single_context(
+..\scratch\core-workflow-venv\Lib\site-packages\sqlalchemy\engine\base.py:1995: in _exec_single_context
+    self._handle_dbapi_exception(
+..\scratch\core-workflow-venv\Lib\site-packages\sqlalchemy\engine\base.py:2372: in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+..\scratch\core-workflow-venv\Lib\site-packages\sqlalchemy\engine\base.py:1976: in _exec_single_context
+    self.dialect.do_execute(
+..\scratch\core-workflow-venv\Lib\site-packages\sqlalchemy\engine\default.py:964: in do_execute
+    cursor.execute(statement, parameters)
+E   sqlalchemy.exc.OperationalError: (sqlite3.OperationalError) no such table: invoices
+E   [SQL: SELECT invoices.invoice_id AS invoices_invoice_id, invoices.customer AS invoices_customer, invoices.product AS invoices_product, invoices.amount AS invoices_amount, invoices.status AS invoices_status, invoices.invoice_date AS invoices_invoice_date, invoices.due_date AS invoices_due_date, invoices.file_id AS invoices_file_id, invoices.customer_id AS invoices_customer_id, invoices.godown_id AS invoices_godown_id, invoices.parent_invoice_id AS invoices_parent_invoice_id, invoices.paid_amount AS invoices_paid_amount, invoices.legacy_paid_baseline AS invoices_legacy_paid_baseline, invoices.legacy_paid_baseline_source AS invoices_legacy_paid_baseline_source, invoices.legacy_paid_baseline_date AS invoices_legacy_paid_baseline_date, invoices.payment_date AS invoices_payment_date, invoices.payment_mode AS invoices_payment_mode, invoices.notes AS invoices_notes, invoices.cash_discount AS invoices_cash_discount, invoices.invoice_title AS invoices_invoice_title, invoices.shift_id AS invoices_shift_id, invoices.uid_token AS invoices_uid_token, invoices.print_template AS invoices_print_template, invoices.id AS invoices_id, invoices.business_id AS invoices_business_id, invoices.uid AS invoices_uid, invoices.created_at AS invoices_created_at, invoices.updated_at AS invoices_updated_at, invoices.gstin_buyer AS invoices_gstin_buyer, invoices.place_of_supply AS invoices_place_of_supply, invoices.invoice_type AS invoices_invoice_type, invoices.subtotal AS invoices_subtotal, invoices.cgst_total AS invoices_cgst_total, invoices.sgst_total AS invoices_sgst_total, invoices.igst_total AS invoices_igst_total, invoices.cess_total AS invoices_cess_total, invoices.total_amount AS invoices_total_amount, invoices.reverse_charge AS invoices_reverse_charge, invoices.is_tax_inclusive AS invoices_is_tax_inclusive, invoices.discount_total AS invoices_discount_total, invoices.round_off AS invoices_round_off, invoices.irn AS invoices_irn, invoices.ack_no AS invoices_ack_no, invoices.ack_date AS invoices_ack_date, invoices.qr_code AS invoices_qr_code
+E   FROM invoices
+E   WHERE ? = invoices.customer_id]
+E   [parameters: (1,)]
+E   (Background on this error at: https://sqlalche.me/e/20/e3q8)
+=========================== short test summary info ===========================
+FAILED tests/test_sync_volume_and_tenancy.py::TestTheAuditLogRecordsTheBizID::test_the_insert_statement_writes_the_column
+1 failed, 47 passed in 47.09s

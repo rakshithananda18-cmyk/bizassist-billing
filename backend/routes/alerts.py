@@ -329,7 +329,10 @@ def list_notifications(
     # ── Field Team Activities (when present) ────────────────────
     try:
         from sqlalchemy import inspect as sa_insp, text as sa_text
-        t_names = set(sa_insp(db.bind).get_table_names())
+        # Reuse the request transaction. Inspecting the Engine checks out a
+        # second connection while this session holds the first, which can
+        # deadlock concurrent polls against a small cloud connection pool.
+        t_names = set(sa_insp(db.connection()).get_table_names())
         if "ft_item_requests" in t_names:
             field_req_cnt = db.execute(
                 sa_text("SELECT COUNT(*) FROM ft_item_requests WHERE business_id = :bid AND status IN ('new', 'pending')"),

@@ -16,12 +16,12 @@ if not _raw_secret:
         "JWT_SECRET environment variable is not set. "
         "Generate one with: python -c \"import secrets; print(secrets.token_urlsafe(48))\""
     )
-# HS256 requires >= 32 bytes. Pad short secrets rather than crash — but log a warning.
+# HS256 requires >= 32 bytes (TS-09). Reject short keys to prevent silent key permutation.
 if len(_raw_secret.encode()) < 32:
-    logger.warning(
-        "[AUTH] JWT_SECRET is shorter than 32 bytes — pad it or use a longer key in production."
+    raise ValueError(
+        "[AUTH] JWT_SECRET must be at least 32 bytes long for secure HS256 signing. "
+        "Generate one with: python -c \"import secrets; print(secrets.token_urlsafe(48))\""
     )
-    _raw_secret = _raw_secret + _secrets.token_hex(16)   # pad to safe length
 JWT_SECRET = _raw_secret
 JWT_ALGORITHM = "HS256"
 # Env-tunable (REVIEW_1 GAP-1). Default stays 24h for backward compatibility;
@@ -116,9 +116,8 @@ def _current_token_version(user_id: int) -> int:
     an authorization bypass; callers receive a retryable 503 instead.
     """
     now = _time.time()
-    hit = _tv_cache.get(user_id)
-    if hit and hit[1] > now:
-        return hit[0]
+    # A warm version cache must never keep a retired/deleted identity alive.
+    # Read the narrow live-subject boundary on every authentication.
     try:
         from database.db import SessionLocal
         from database.models import User as _User
@@ -129,15 +128,8 @@ def _current_token_version(user_id: int) -> int:
             # session to the signed JWT subject before reading its row. Without
             # this, Postgres hides the row and a fail-closed check would reject
             # every valid cloud token.
-            if db.bind and db.bind.dialect.name == "postgresql":
-                from sqlalchemy import text
-                db.execute(
-                    # Transaction-local: pooled connections must not retain a
-                    # prior subject's tenant GUC after this lookup closes.
-                    text("SELECT set_config('app.current_business_id', :bid, true)"),
-                    {"bid": str(user_id)},
-                )
-            row = db.query(_User.token_version).filter(_User.id == user_id).first()
+            from database.security import subject_version
+            row = subject_version(db, user_id)
         finally:
             db.close()
         if row is None:
@@ -373,6 +365,7 @@ def get_active_user_or_ticket(
         if user is None:
             logger.warning("[AUTH] Ticket invalid, expired, or already used")
             raise HTTPException(status_code=401, detail="Invalid or expired ticket")
+        _validate_token_version(user)
         logger.info("[AUTH] Ticket verified successfully for user %s", user.get("username"))
         return user
 
@@ -417,6 +410,10 @@ def require_plan(min_plan: str = "pro", force_enforcement: bool = False):
             from services.admin_service import effective_plan
             db = SessionLocal()
             try:
+                # Bind tenant identity to session info so PostgreSQL RLS policies can evaluate (TS-06)
+                tenant_id = current_user.get("business_id") or current_user.get("parent_business_id") or current_user.get("id")
+                if tenant_id:
+                    db.info["business_id"] = int(tenant_id)
                 row = db.query(_User).filter(_User.username == uname).first()
                 holder = row
                 if row and row.parent_business_id:

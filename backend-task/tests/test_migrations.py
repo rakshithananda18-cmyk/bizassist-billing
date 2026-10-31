@@ -72,10 +72,10 @@ def test_old_local_mirror_gets_new_columns(tmp_path):
                               "phone VARCHAR, token_version INTEGER NOT NULL DEFAULT 0, last_login DATETIME, "
                               "created_at DATETIME, updated_at DATETIME)"))
             conn.execute(text("INSERT INTO users (id, username, token_version) VALUES (1, 'old_owner', 0)"))
-        assert add_missing_mirror_columns(bind=eng) == ["users.settings"]
-        assert "settings" in {c["name"] for c in inspect(eng).get_columns("users")}
+        assert set(add_missing_mirror_columns(bind=eng)) == {"users.settings", "users.upi_vpa"}
+        assert {"settings", "upi_vpa"} <= {c["name"] for c in inspect(eng).get_columns("users")}
         with eng.connect() as conn:  # existing rows kept, new column empty
-            assert conn.execute(text("SELECT username, settings FROM users")).one() == ("old_owner", None)
+            assert conn.execute(text("SELECT username, settings, upi_vpa FROM users")).one() == ("old_owner", None, None)
         assert add_missing_mirror_columns(bind=eng) == []  # second start: nothing to do
     finally:
         eng.dispose()

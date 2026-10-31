@@ -95,6 +95,22 @@ describe('syncManager.pull', () => {
 })
 
 describe('syncManager tenant scope', () => {
+  it('quarantines an ambiguous original-account intent after the login changes', async () => {
+    const store = createMemoryStore()
+    let reject
+    const sm = createSyncManager({ store, isOnline: () => true, transport: {
+      request: () => new Promise((_resolve, fail) => { reject = fail }), get: vi.fn(),
+    } })
+    sm.setScope('biz:A|user:1')
+    const intent = sm.captureIntent()
+    const saving = sm.mutate({ method: 'POST', path: '/invoices', body: { invoice_no: 'A-1' } })
+    sm.clearScope(); sm.setScope('biz:B|user:2')
+    reject(err(0)); await saving
+    await sm.queue({ method: 'POST', path: '/invoices', body: { invoice_no: 'A-2' }, ownership: intent })
+    expect(await sm.pendingCount()).toBe(0)
+    sm.setScope('biz:A|user:1')
+    expect((await sm.pending()).map(row => row.body.invoice_no)).toEqual(['A-1', 'A-2'])
+  })
   it('never replays one business/user queue under another login', async () => {
     const store = createMemoryStore()
     const ownerA = createSyncManager({

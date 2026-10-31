@@ -3,7 +3,9 @@ import { AlertIcon, CashIcon, CloseIcon, EditIcon, PhoneIcon, PlusIcon, PrinterI
 import InvoiceBreakdownCard from './InvoiceBreakdownCard'
 import TenderChips from './TenderChips'
 import { changeDue, paymentBalance } from '../../utils/invoiceMath'
-import { buildUpiUri, qrImageUrl } from '../../utils/share'
+import { buildUpiUri } from '../../utils/share'
+import { readAllPages } from '../../utils/readPages'
+import { QRCodeSVG } from 'qrcode.react'
 import { logger } from '../../utils/logger'
 import CustomSelect from '../../components/common/CustomSelect'
 import { useBillingProfile } from '../../hooks/useBillingProfile'
@@ -396,7 +398,7 @@ export default function CheckoutModal({
   const handlePaymentModeButtonKeyDown = (e, currentMode) => {
     const modes = ['cash', 'upi', 'card', 'credit']
     const idx = modes.indexOf(currentMode)
-    
+
     if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
       e.preventDefault()
       const nextIdx = (idx - 1 + modes.length) % modes.length
@@ -562,9 +564,9 @@ export default function CheckoutModal({
         const savedCust = await res.json()
         setAlert({ type: 'success', msg: `Customer ${isEdit ? 'updated' : 'created'} successfully!` })
         setShowCustDrawer(false)
-        const updatedCustRes = await authFetch('/billing/customers?per_page=500')
-        if (updatedCustRes.ok) {
-          const custData = await updatedCustRes.json()
+        let custData = null
+        try { custData = await readAllPages(authFetch, '/billing/customers') } catch (error) { logger.warn('Saved customer list refresh failed', error) }
+        if (custData) {
           let custItems = Array.isArray(custData) ? custData : (custData && Array.isArray(custData.items) ? custData.items : [])
           // The refetched list can lag a just-committed write (local cache); make
           // sure the customer we just saved is present so the Edit button's lookup
@@ -658,7 +660,7 @@ export default function CheckoutModal({
 
           {/* Two Column Layout */}
           <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap' }}>
-            
+
             {/* Left Column - Billing & Breakdown */}
             <div style={{ flex: 1, minWidth: '350px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <div style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--accent)', borderBottom: '1px dashed var(--border)', paddingBottom: '4px' }}>
@@ -1290,7 +1292,8 @@ export default function CheckoutModal({
               </div>
 
               {/* Dynamic UPI QR Code */}
-              {form.payment_mode === 'upi' && grandTotal > 0 && (
+              {form.payment_mode === 'upi' && grandTotal > 0 && !upiVpa && <p role="alert">Set your business UPI ID in Settings → Profile before collecting by QR.</p>}
+              {form.payment_mode === 'upi' && grandTotal > 0 && upiVpa && (
                 <div style={{
                   background: 'var(--bg-3)',
                   borderRadius: 'var(--radius-md)',
@@ -1301,17 +1304,17 @@ export default function CheckoutModal({
                   gap: '8px',
                   border: '1px solid var(--border)'
                 }}>
-                  <img
-                    src={qrImageUrl(buildUpiUri({
+                  <QRCodeSVG
+                    value={buildUpiUri({
                       vpa: upiVpa,
                       payeeName: localStorage.getItem('billing_user')
                         ? JSON.parse(localStorage.getItem('billing_user')).business_name || 'BizAssist Merchant'
                         : 'BizAssist Merchant',
                       amount: pay,
                       note: 'POS-Invoicing',
-                    }))}
-                    alt="UPI QR Code"
-                    style={{ width: 120, height: 120 }}
+                    })}
+                    size={120}
+                    title="UPI QR Code"
                   />
                   <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
                     VPA: <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{upiVpa}</span>
@@ -1363,7 +1366,7 @@ export default function CheckoutModal({
                   <PrinterIcon size={18} aria-hidden="true" />
                   {submitting ? 'Saving Invoice...' : (isCredit || balance < 0 ? 'Save & Print · Enter' : 'Paid & Print · Enter')}
                 </button>
-                
+
                 <button
                   type="button"
                   disabled={submitting}

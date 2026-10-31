@@ -3,17 +3,67 @@ name: CI Pipeline
 on:
   push:
     branches: [ main ]
-    # backend-task/ + frontend-task/ (Field Team) have their own workflow
-    # (field-team.yml); a push that touches only them does not need billing's
-    # suites. Pull requests stay unfiltered for the reason in sonar.yml: a
-    # skipped required check never reports.
-    paths-ignore:
-      - 'backend-task/**'
-      - 'frontend-task/**'
   pull_request:
     branches: [ main ]
 
 jobs:
+  source-hygiene:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Reject operational exports in source
+        run: python scripts/check_source_hygiene.py
+      - name: Scan secrets with redacted findings
+        env:
+          SCAN_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          SCAN_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          # Scan every introduced commit. Legacy history is tracked separately
+          # in the dated audit; do not suppress old credential findings as fake.
+          range="$SCAN_HEAD"
+          if [[ -n "$SCAN_BASE" && ! "$SCAN_BASE" =~ ^0+$ ]]; then
+            range="$SCAN_BASE..$SCAN_HEAD"
+          fi
+          docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:v8.18.4 \
+            detect --source=/repo --config=/repo/.gitleaks.toml --redact \
+            --log-opts="$range --no-textconv"
+
+  full-schema-chain:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: isolated-fixture-only
+          POSTGRES_DB: schema_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      - run: pip install -r requirements.txt
+      - name: Full SQLite history, retry and model parity
+        run: python scripts/verify_schema_chain.py --dialect sqlite
+      - name: Full PostgreSQL history, retry and model parity
+        env:
+          TS_SCHEMA_ADMIN_DATABASE_URL: postgresql://postgres:isolated-fixture-only@127.0.0.1:5432/schema_test
+        run: python scripts/verify_schema_chain.py --dialect postgres
+      - name: Non-superuser schema operator, bootstrap ownership and tenant authentication
+        env:
+          TS_SCHEMA_ADMIN_DATABASE_URL: postgresql://postgres:isolated-fixture-only@127.0.0.1:5432/schema_test
+          TS_SECURITY_PROOF_OUTPUT: ${{ runner.temp }}/nonsuperuser-security.json
+        run: python backend/tests/run_nonsuperuser_security_smoke.py
+
   backend-tests:
     runs-on: ubuntu-latest
     services:
@@ -86,6 +136,7 @@ jobs:
             tests/test_period_lock.py \
             tests/test_party_ledger.py \
             tests/test_sync_financial_conflicts.py \
+            tests/test_settlements_postgres.py \
             tests/test_ops_health.py
 
       - name: Run Sync & Tenant Suites on Postgres (finding-17 class guard)
@@ -187,6 +238,8 @@ jobs:
           cache-dependency-path: |
             frontend-billing/package-lock.json
             frontend-ai/package-lock.json
+            frontend-admin/package-lock.json
+            bizassist-landing/package-lock.json
 
       - name: Test frontend-billing
         run: |
@@ -194,11 +247,31 @@ jobs:
           npm ci
           npm test
 
-      - name: Test frontend-ai
+      - name: Build frontend-billing
+        run: |
+          cd frontend-billing
+          npm run build
+
+      - name: Test and build frontend-ai
         run: |
           cd frontend-ai
           npm ci
           npm test
+          npm run build
+
+      - name: Test and build frontend-admin
+        run: |
+          cd frontend-admin
+          npm ci
+          npm test
+          npm run lint
+          npm run build
+
+      - name: Build landing page
+        working-directory: bizassist-landing
+        run: |
+          npm ci
+          npm run build
 
   e2e-tests:
     runs-on: ubuntu-latest
@@ -255,3 +328,26 @@ jobs:
         run: |
           cd frontend-billing
           npm run e2e
+
+  sync-constrained-runtime:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: isolated-fixture-only
+          POSTGRES_DB: sync_runtime_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r requirements.txt
+      - name: Additive migrations, constrained runtime and concurrent commit visibility
+        env:
+          TS_SCHEMA_ADMIN_DATABASE_URL: postgresql://postgres:isolated-fixture-only@127.0.0.1:5432/sync_runtime_test
+        run: python backend/tests/run_sync_role_smoke.py

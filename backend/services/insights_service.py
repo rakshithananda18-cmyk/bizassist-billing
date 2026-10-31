@@ -8,6 +8,7 @@ import logging
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 from database.models import Invoice, Inventory, LegacyPayment, UploadedFile, DocumentEmbedding, ChatMessage
+from core.billing.balances import invoice_net_amount
 from services.dates import biz_today_str, biz_now
 
 logger = logging.getLogger("bizassist.insights_service")
@@ -131,12 +132,13 @@ def expiring_batches(db: Session, business_id: int, days: int = None):
 
 def business_insights(user_id: int, db: Session) -> dict:
     insights = []
-    overdue = db.query(Invoice).filter(Invoice.business_id == user_id, Invoice.status == "Overdue").all()
+    from core.billing.balances import outstanding_rows, business_revenue_summary
+    overdue = outstanding_rows(db, user_id, overdue=True)
     total_overdue = sum(i.amount or 0 for i in overdue)
     if total_overdue > 0:
         insights.append({"type": "overdue", "message": f"₹{total_overdue} is currently overdue across {len(overdue)} invoices."})
 
-    pending = db.query(Invoice).filter(Invoice.business_id == user_id, Invoice.status == "Pending").all()
+    pending = outstanding_rows(db, user_id, overdue=False)
     if pending:
         insights.append({"type": "pending", "message": str(len(pending)) + " invoices are pending payment."})
 
@@ -145,7 +147,7 @@ def business_insights(user_id: int, db: Session) -> dict:
         insights.append({"type": "expiry", "message": str(len(expiring)) + " products have expiry tracking enabled."})
 
     invoices = db.query(Invoice).filter(Invoice.business_id == user_id).all()
-    total_rev = sum(i.amount or 0 for i in invoices)
+    total_rev = business_revenue_summary(db, user_id)["net_revenue"]
     insights.append({"type": "revenue", "message": f"Total tracked revenue is ₹{total_rev}"})
 
     return {"total_insights": len(insights), "insights": insights}
@@ -166,10 +168,10 @@ def dashboard_summary(user_id: int, db: Session) -> dict:
     invoices = db.query(Invoice).filter(Invoice.business_id == user_id).all()
     products = db.query(Product).filter(Product.business_id == user_id).all()
     
-    valid_invoices = [i for i in invoices if i.status not in ("Draft", "Cancelled")]
-    total_revenue = sum(i.total_amount or 0 for i in valid_invoices)
-    invoice_count = len(valid_invoices)
-    
+    from core.billing.balances import business_revenue_summary, outstanding_rows
+    metrics = business_revenue_summary(db, user_id)
+    valid_invoices = [invoice for invoice in invoices if invoice.status not in ("Draft", "Cancelled")]
+    total_revenue, invoice_count = metrics["net_revenue"], metrics["invoice_count"]
     # Use biz_today_str() / biz_now() so IST-local dates match what the counter
     # stamps on invoices and payments. datetime.now() is server-local (UTC on
     # the HF instance) and would miscount bills from 00:00–05:30 IST as
@@ -177,11 +179,11 @@ def dashboard_summary(user_id: int, db: Session) -> dict:
     today_str = biz_today_str()
     thirty_days_ago = (biz_now() - timedelta(days=30)).strftime("%Y-%m-%d")
     
-    rev_30d = sum(i.total_amount or 0 for i in valid_invoices if i.invoice_date and i.invoice_date >= thirty_days_ago)
+    rev_30d = sum(invoice_net_amount(i) for i in valid_invoices if i.invoice_date and i.invoice_date >= thirty_days_ago)
     
-    pending_invoices = [i for i in valid_invoices if i.status == "Pending"]
+    pending_invoices = outstanding_rows(db, user_id, overdue=False)
     pending_count = len(pending_invoices)
-    pending_amount = sum((i.total_amount or 0) - (i.paid_amount or 0) for i in pending_invoices)
+    pending_amount = sum(i.amount for i in pending_invoices)
     
     payments_today = db.query(InvoicePayment).filter(
         InvoicePayment.business_id == user_id,
@@ -189,9 +191,9 @@ def dashboard_summary(user_id: int, db: Session) -> dict:
     ).all()
     paid_today = sum(p.amount_paid or 0.0 for p in payments_today)
     
-    overdue_invoices = [i for i in valid_invoices if i.status == "Overdue"]
+    overdue_invoices = outstanding_rows(db, user_id, overdue=True)
     overdue_count = len(overdue_invoices)
-    overdue_amount = sum((i.total_amount or 0) - (i.paid_amount or 0) for i in overdue_invoices)
+    overdue_amount = sum(i.amount for i in overdue_invoices)
     
     purchases = db.query(PurchaseInvoice).filter(
         PurchaseInvoice.business_id == user_id,
@@ -367,6 +369,8 @@ def dashboard_charts(user_id: int, db: Session) -> dict:
 
     invoices = [inv for inv in db.query(Invoice).filter(Invoice.business_id == user_id).all()
                 if (inv.status or "").lower() not in {"cancelled", "canceled", "void", "draft"}]
+    from core.billing.balances import invoice_balances
+    balances = invoice_balances(db, [inv for inv in invoices if inv.invoice_type != "credit_note"])
     ids = [inv.id for inv in invoices]
     lines_by_invoice = {}
     if ids:
@@ -376,7 +380,7 @@ def dashboard_charts(user_id: int, db: Session) -> dict:
     aging = {"0-30 days": 0.0, "31-60 days": 0.0, "61-90 days": 0.0, "90+ days": 0.0}
     today = biz_now().date()
     for inv in invoices:
-        total = float(inv.total_amount if inv.total_amount is not None else (inv.amount or 0))
+        total = abs(float(inv.total_amount or inv.amount or 0)) if inv.invoice_type == "credit_note" else float(inv.total_amount or inv.amount or 0)
         sign = -1 if inv.invoice_type == "credit_note" else 1
         date = parse_date(inv.invoice_date)
         if date:
@@ -384,9 +388,7 @@ def dashboard_charts(user_id: int, db: Session) -> dict:
             period = monthly.setdefault(key, {"month": date.strftime("%b %y"), "revenue": 0.0})
             period["revenue"] += sign * total
         due_date = parse_date(inv.due_date)
-        paid = float(inv.paid_amount or 0)
-        legacy_paid = inv.paid_amount is None and (inv.status or "").lower() == "paid"
-        due = 0.0 if sign < 0 or legacy_paid else max(total - paid, 0.0)
+        due = balances[inv.id]["outstanding"] if sign > 0 else 0.0
         if due_date and due > 0:
             days = (today - due_date.date()).days
             if days > 0:

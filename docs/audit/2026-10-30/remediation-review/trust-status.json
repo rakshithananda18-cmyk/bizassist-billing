@@ -1,0 +1,266 @@
+{
+  "date": "2026-10-30",
+  "timezone": "Asia/Kolkata",
+  "baseline": "f5d715c",
+  "reviewed_head": "6c527927cc2571cfb6a87de900bfbcd8919421d0",
+  "includes_unstaged_and_new_files": true,
+  "counts": {
+    "fixed": 5,
+    "partial": 4,
+    "open": 0,
+    "unverified": 0
+  },
+  "issues": [
+    {
+      "id": "TS-01",
+      "status": "partial",
+      "evidence": [
+        "backend/routes/sync.py:835",
+        "backend/routes/sync.py:960",
+        "backend/routes/sync.py:996",
+        "backend/services/sync_worker.py:3277"
+      ],
+      "verified": [
+        "Actual compound-cursor endpoint drains 7 same-timestamp rows with limit 2"
+      ],
+      "remaining_conditions": [
+        "Legacy timestamp worker against new server delivers [1,2] and omits tied row 3; supported mixed versions need capability negotiation/minimum version/recovery.",
+        "New worker keeps timestamp fallback for old-server responses; no safe mixed-version rollout established."
+      ],
+      "new_regressions": []
+    },
+    {
+      "id": "TS-02",
+      "status": "partial",
+      "evidence": [
+        "backend/routes/sync.py:906",
+        "backend/routes/sync.py:957",
+        "backend/routes/sync.py:1106",
+        "backend/routes/sync.py:464"
+      ],
+      "verified": [
+        "Actual endpoint delivers ordinary after-SELECT write on next pull using request-start cutoff"
+      ],
+      "remaining_conditions": [
+        "Actual endpoint skips row committed after pull with updated_at 2 seconds before acknowledged boundary.",
+        "Long transactions, client-clock lag and offline source timestamps require committed-change visibility guarantees, not only wall-clock cutoffs."
+      ],
+      "new_regressions": []
+    },
+    {
+      "id": "TS-03",
+      "status": "fixed",
+      "evidence": [
+        "backend/services/sync_worker.py:3586",
+        "backend/services/sync_worker.py:3595"
+      ],
+      "verified": [
+        "Actual AST-extracted cursor branch tested for 9 combinations of rejected-row/unread-table counts; any unread table prevents advance"
+      ],
+      "remaining_conditions": [],
+      "new_regressions": []
+    },
+    {
+      "id": "TS-04",
+      "status": "fixed",
+      "evidence": [
+        "backend/routes/sync_staff.py:102",
+        "backend/routes/sync_staff.py:111",
+        "backend/routes/sync_staff.py:116"
+      ],
+      "verified": [
+        "Actual receiver changes token_version 0 to 1, clears warmed cache, repeats same payload without another bump, clears cache/deletes valid tombstone"
+      ],
+      "remaining_conditions": [
+        "This receiver fix does not repair invalid local tombstone delivery; see TS-05.",
+        "No distributed multi-worker revocation/deployment claim."
+      ],
+      "new_regressions": []
+    },
+    {
+      "id": "TS-05",
+      "status": "partial",
+      "evidence": [
+        "backend/services/control_outbox.py:59",
+        "backend/services/control_outbox.py:81",
+        "backend/services/control_outbox.py:128",
+        "backend/core/api/staff.py:226",
+        "backend/core/api/staff.py:260",
+        "backend/core/api/staff.py:288",
+        "backend/core/api/staff.py:295",
+        "backend/routes/sync_staff.py:47",
+        "backend/services/sync_worker.py:910",
+        "backend/database/models.py:1011",
+        "backend/services/admin_service.py:1050"
+      ],
+      "verified": [
+        "Existing WP2 one-event failure/retry test passes",
+        "Actual local deletion payload fails actual cloud schema",
+        "Injected enqueue failure leaves committed staff without event",
+        "Actual retry loop replays old profile after newer success and final cloud value becomes old",
+        "Actual enqueue commits caller-owned pending changes",
+        "Actual scheduler ignores control-only backlog with periodic pull disabled",
+        "Actual relational purge+rekey then actual flush sends old payload using fake new identity token; Field/Chroma cleanup hooks mocked"
+      ],
+      "remaining_conditions": [
+        "Commit mutation and replication intent atomically; avoid helper commit ownership.",
+        "Use valid deletion schema and persist/ack tombstones.",
+        "Retry control backlog independently of normal data queue or pull setting.",
+        "Enforce event identity/revision/order/idempotency at receiver and serialize concurrent delivery.",
+        "Bind events to original BizID/identity generation; purge or quarantine on reset/rekey.",
+        "Expose pending/error status and establish schema/migration parity."
+      ],
+      "new_regressions": [
+        "New durable replay can revert newer profile/reset or resurrect staff after deletion.",
+        "New table survives purge/rekey and sends old tenant data under new token.",
+        "New helper commits unrelated caller transaction."
+      ]
+    },
+    {
+      "id": "TS-06",
+      "status": "partial",
+      "evidence": [
+        "backend/services/auth.py:418",
+        "backend/services/auth.py:421",
+        "backend/routes/auth.py:249",
+        "backend/routes/auth.py:497",
+        "backend/database/db.py:199",
+        "backend/routes/public.py:42"
+      ],
+      "verified": [
+        "Actual plan dependency test confirms tenant info bound before plan lookup"
+      ],
+      "remaining_conditions": [
+        "Anonymous login/signup/public-share/background service paths unchanged; no explicit narrow bootstrap/service privilege design.",
+        "No real full-schema NOSUPERUSER NOBYPASSRLS application verification; current deployed role not inspected."
+      ],
+      "new_regressions": []
+    },
+    {
+      "id": "TS-07",
+      "status": "fixed",
+      "evidence": [
+        "backend/routes/data_transfer.py:235",
+        "backend/routes/data_transfer.py:241",
+        "backend/routes/data_transfer.py:897",
+        "backend/routes/data_transfer.py:905"
+      ],
+      "verified": [
+        "Actual _fetch_table injected read failure raises RuntimeError; user WP2 outer exportfailure test returns HTTP500"
+      ],
+      "remaining_conditions": [
+        "Consistent snapshot/restore validation remains a separate operational gate."
+      ],
+      "new_regressions": []
+    },
+    {
+      "id": "TS-08",
+      "status": "fixed",
+      "evidence": [
+        "desktop/src/backend.js:35",
+        "desktop/src/backend.js:39",
+        "desktop/src/backend.js:41"
+      ],
+      "verified": [
+        "Actual JSprobe body passes4 mocked transport cases:200 error rejected,200 healthy accepted,malformed JSON rejected,503 rejected"
+      ],
+      "remaining_conditions": [
+        "No installed Electron/live process readiness exercise."
+      ],
+      "new_regressions": []
+    },
+    {
+      "id": "TS-09",
+      "status": "fixed",
+      "evidence": [
+        "backend/services/auth.py:20",
+        "backend/services/auth.py:22"
+      ],
+      "verified": [
+        "Actual subprocess authimport rejects short configured key; two valid imports retain configured key"
+      ],
+      "remaining_conditions": [],
+      "new_regressions": []
+    }
+  ],
+  "tests": {
+    "wp2_existing": {
+      "passed": 6,
+      "failed": 0,
+      "seconds": 1.93
+    },
+    "independent_desired_invariants": {
+      "passed": 7,
+      "failed": 8,
+      "seconds": 8.29
+    },
+    "desktop_actual_probe": {
+      "passed_cases": 4
+    },
+    "real_postgres_or_live_services": false
+  },
+  "verification_limits": [
+    "No production database, external service, secret, real Chroma namespace, installer, staging or deployment access.",
+    "All relational behavior proofs fresh in-memory SQLite; fake network responses.",
+    "AST extraction only for actual worker cursor branch; other endpoint/outbox proofs use actual imported production functions.",
+    "Short-secret verification uses review-only configured key in actual subprocess import."
+  ],
+  "file_sha256": [
+    {
+      "path": "backend/routes/sync.py",
+      "sha256": "19a4bb5ef51a8a9615216ad70f6d1cb24917e68aafb2e8deffd37543c7a5288d"
+    },
+    {
+      "path": "backend/services/sync_worker.py",
+      "sha256": "57463260adae8172a6f95277ee64fe7b39e21e816ef24a13c8d2ca9b38b1a28d"
+    },
+    {
+      "path": "backend/services/control_outbox.py",
+      "sha256": "34c0913bb4675019446e9cb8297940ff00e0c34fa219a6013845216740059f46"
+    },
+    {
+      "path": "backend/routes/sync_staff.py",
+      "sha256": "18c0b4c07fb569323dc4993a1c6311dc6af8da7888af56c38c1408406e097e12"
+    },
+    {
+      "path": "backend/core/api/staff.py",
+      "sha256": "e3b43cae9f54eb3e38e421e3ab8823316c0e5610fc5af6fda63daf976032ed0d"
+    },
+    {
+      "path": "backend/services/immediate_sync.py",
+      "sha256": "fc99707c9643fb260928d221ed81bbf9d728cc9970cf8e2569b4c5190f11be31"
+    },
+    {
+      "path": "backend/services/auth.py",
+      "sha256": "7786a98cba2b43db8d4be7d32bae22ff250b9212d03954ad8981cc201a2749d1"
+    },
+    {
+      "path": "backend/database/db.py",
+      "sha256": "1ea30fd7922b21e0fa17ebb612e3d02bb8e1832906ae40d49982462a44071941"
+    },
+    {
+      "path": "backend/database/models.py",
+      "sha256": "136a7524d68b387045e259998b23d89c27973db82e11b9a76bc6604b409fdb7a"
+    },
+    {
+      "path": "backend/routes/auth.py",
+      "sha256": "1010de5e3580266e1998a6063add313fc005d79122c4a4c718c3e8d5cc981f8e"
+    },
+    {
+      "path": "backend/routes/data_transfer.py",
+      "sha256": "e05259140b6f4b8d35cd94c41cda0b5e376289551d3294115659563620c5c521"
+    },
+    {
+      "path": "backend/services/admin_service.py",
+      "sha256": "fab1a09549c34dc5ec3aefd59e7a783097d2976ceb51f8b374bc8e31709e29d1"
+    },
+    {
+      "path": "desktop/src/backend.js",
+      "sha256": "1659d3795e5ec7f6c8322e5ff06f2d913fd9cd6de1151b820bb7961689c3f7e5"
+    },
+    {
+      "path": "backend/tests/test_wp2_sync_durable.py",
+      "sha256": "dcff5d1eed7cea0f391680c72fdb94d57f4a4647d98e788851a4be403f9a4aa2"
+    }
+  ]
+}

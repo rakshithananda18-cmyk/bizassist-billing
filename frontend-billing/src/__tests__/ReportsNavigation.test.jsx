@@ -28,7 +28,7 @@ describe('Reports navigation and request ownership', () => {
     expect(screen.getByRole('heading', { level: 2, name: /GST Report/ })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Open party deep link' }))
     expect(await screen.findByRole('heading', { level: 2, name: /Party Ledger/ })).toBeInTheDocument()
-    expect(authFetch).toHaveBeenCalledWith('/billing/customers', expect.objectContaining({ signal: expect.any(AbortSignal) }))
+    expect(authFetch).toHaveBeenCalledWith('/billing/customers?page=1&per_page=500', expect.objectContaining({ signal: expect.any(AbortSignal) }))
   })
 
   it('ignores an older report response after another report is selected', async () => {

@@ -1,0 +1,114 @@
+{
+  "date": "2026-10-31",
+  "timezone": "Asia/Calcutta",
+  "scope": "Root integration, deleted B2B counterparties, pasted runtime errors, safe operations, shared Field contract and final acceptance",
+  "working_tree_included": true,
+  "subsequent_approved_operations": "../DEPLOYMENT.md records the later live schema upgrade, encrypted application-schema backup and secure Space configuration. This JSON preserves the preceding acceptance commands and counts.",
+  "acceptance_status": "Local implementation and automated integration acceptance passed; external security, data reconciliation and release gates remain open",
+  "tests": [
+    {
+      "name": "Fresh complete Billing frontend acceptance",
+      "cwd": "frontend-billing",
+      "command": "npm test -- --maxWorkers=2 --minWorkers=1 --reporter=dot",
+      "passed": 883, "failed": 0, "test_files_passed": 118, "seconds": 280.83,
+      "log": "scratch/billing-acceptance-2026-10-31.log",
+      "limits": "Synthetic component/unit integration; no real browser device, printer or payment. Replaces the previously interrupted Oct31 rerun with a complete fresh result."
+    },
+    {
+      "name": "Complete Field suite on Billing's full migrated PostgreSQL schema",
+      "command": "scratch/core-workflow-venv/Scripts/python.exe scripts/verify_field_contract.py -q -ra --maxfail=1 --tb=short --junitxml=../scratch/field-postgres-contract-accepted.xml",
+      "environment": "TS_SCHEMA_ADMIN_DATABASE_URL privately supplies our disposable loopback cluster; the driver creates a fresh UTF8 database, upgrades Billing head twice, migrates Field and drops the generated database in finally",
+      "passed": 165, "failed": 0, "errors": 0, "skipped": 0, "seconds": 150.034,
+      "log": "scratch/field-postgres-contract-accepted.log", "xml": "scratch/field-postgres-contract-accepted.xml",
+      "coverage": ["Live Billing identity and merchant VPA", "Billing-minted SSO tickets", "Credit-adjusted collections without Field posting money", "Concurrent task completion awards points once", "Concurrent invoice reservation excludes a second planner", "Cancelled task reopen refuses an already-held invoice", "Complete tenant-scoped Field deletion lifecycle", "Native PostgreSQL tenant context"],
+      "limits": "Synthetic data under a disposable schema/operator fixture; constrained HTTP/trade/admin authority is tested separately. No phone, payment or production deployment was exercised. All ten standalone skip cases execute here."
+    },
+    {
+      "name": "Complete Billing backend acceptance",
+      "command": "scratch/core-workflow-venv/Scripts/python.exe scripts/run_isolated_tests.py backend -p xdist.plugin -n 2 --dist loadscope --maxfail=15 --ignore=tests/test_rls_postgres.py --junitxml=../scratch/backend-verified-final-2026-10-31.xml -q -ra",
+      "passed": 2526, "failed": 0, "errors": 0, "skipped": 23, "seconds": 645.92,
+      "log": "scratch/backend-verified-final-2026-10-31.log",
+      "xml": "scratch/backend-verified-final-2026-10-31.xml",
+      "limits": "Synthetic SQLite tests with external network blocked. The Docker-dependent RLS module is excluded; actual PostgreSQL role and settlement proofs are recorded separately. Skips include native PostgreSQL cases, legacy SQLite-only script checks, one unavailable document-reference comparison and one optional sentence-transformers integration. A green suite does not erase those coverage limits."
+    },
+    {
+      "name": "Complete Field backend standalone SQLite acceptance",
+      "command": "scratch/core-workflow-venv/Scripts/python.exe scripts/run_isolated_tests.py field -q -ra --junitxml=../scratch/field-backend-final.xml",
+      "passed": 155, "failed": 0, "errors": 0, "skipped": 10, "seconds": 169.135,
+      "log": "scratch/field-backend-final.log", "xml": "scratch/field-backend-final.xml",
+      "limits": "Standalone development mirror. Four Billing import contracts, two real Billing deletion tests and four PostgreSQL-only checks skip here; the full migrated PostgreSQL contract is separate. Later test-only fixture writes use complete Billing models on an external schema, preserving the standalone mirror path."
+    },
+    {
+      "name": "Focused log, identity, financial, retirement and migration regression acceptance",
+      "command": "scratch/core-workflow-venv/Scripts/python.exe scripts/run_isolated_tests.py backend -q tests/test_cloud_pool_regression.py tests/test_notifications.py tests/test_cross_database_identity.py tests/test_phase3.py tests/test_no_unresolved_local_ids.py tests/test_signup_phone.py tests/test_b2b_retirement.py tests/test_financial_remediation_final.py tests/test_migration_ddl_is_portable.py --junitxml=../scratch/log-and-final-fixes.xml",
+      "passed": 87, "failed": 0, "errors": 0, "skipped": 0, "seconds": 134.70,
+      "log": "scratch/log-and-final-fixes.log", "xml": "scratch/log-and-final-fixes.xml",
+      "limits": "This focused run precedes the two final HTTP error-response cases. The complete backend run above includes all seven cloud-pool regression cases. Counts overlap."
+    },
+    {
+      "name": "Full historical Alembic chain, retry and metadata parity",
+      "commands": [
+        "scratch/core-workflow-venv/Scripts/python.exe scripts/verify_schema_chain.py --dialect sqlite",
+        "scratch/core-workflow-venv/Scripts/python.exe scripts/verify_schema_chain.py --dialect postgres"
+      ],
+      "status": "passed", "head": "e70b5d2a4c06", "model_tables": 66,
+      "logs": ["scratch/full-chain-sqlite-final.log", "scratch/full-chain-postgres-final.log", "scratch/full-chain-postgres-utf8-final.log"],
+      "limits": "Fresh disposable databases; every current model table/column exists after the actual history and a repeated upgrade. This is column-presence parity, not a claim that every historical populated dataset can be upgraded without case-specific reconciliation. Populated retained-party upgrade tests are also covered in the backend suite."
+    },
+    {
+      "name": "Independent final PostgreSQL HTTP/trade/admin role acceptance",
+      "command": "scratch/core-workflow-venv/Scripts/python.exe backend/tests/run_sync_role_smoke.py with TS_SCHEMA_ADMIN_DATABASE_URL privately set to an explicitly disposable loopback test database",
+      "passed": 12, "failed": 0, "errors": 0, "skipped": 0, "seconds": 15.61,
+      "log": "scratch/root-admin-runtime-final.log",
+      "limits": "Real synthetic PostgreSQL roles and transactions; proves bootstrap, tenant denies, commit ordering, B2B and platform admin behavior. The Field cleanup table in this proof is minimal. Full Field schema behavior is a separate contract run. Production grants and provider role support remain unverified."
+    },
+    {
+      "name": "Earlier root repair/archive/retirement acceptance",
+      "passed": 15, "failed": 0, "errors": 0, "skipped": 0, "seconds": 40.40,
+      "log": "scratch/root-final-regressions.log",
+      "coverage": ["Encrypted repair backup and restore refusal/replay", "Legacy diagnostic imports do not connect", "Populated retained-party upgrade", "Both B2B retirement directions preserve private counterparty history", "Foreign product reference purge preflight"],
+      "limits": "Overlaps complete backend acceptance. The later credit-note-after-retirement assertion is included in the 87-test and complete backend runs."
+    },
+    {
+      "name": "Source and working-tree hygiene",
+      "commands": ["scratch/core-workflow-venv/Scripts/python.exe scripts/check_source_hygiene.py", "git -c core.fsmonitor=false diff --check"],
+      "status": "passed",
+      "limits": "Source guard examines Git index paths. It does not prove removal from historical clones or archives; the exposed password still needs provider rotation. Git emitted line-ending conversion warnings without whitespace errors."
+    },
+    {
+      "name": "Final static source/report validation and credential containment",
+      "status": "passed",
+      "python_sources_ast_parsed": 578,
+      "python_parse_errors": 0,
+      "audit_json_files_parsed": 10,
+      "missing_relative_markdown_links": 0,
+      "confirmed_distinct_historical_credential_values_checked": 1,
+      "current_git_eligible_files_containing_that_value": 0,
+      "limits": "Historical credential read only into scanner memory; output contained counts and paths only, with no secret. Ignored private evidence and Git history are excluded from the current-source check. This does not rotate or revoke the credential."
+    }
+  ],
+  "additional_verified_behavior": [
+    "Deleted counterparties remain on historical B2B invoices with immutable party identity and a deleted-business marker; private books are removed, other businesses' documents and shared evidence retained, and new trade/authentication refused.",
+    "Auth/Lock contexts retain their identity across hot reload; provider misuse still fails explicitly.",
+    "Notifications and migration/export inspection reuse the request connection. A pool of one can produce a real Field notification and scoped export reads without a second checkout.",
+    "Temporary pool exhaustion returns sanitized HTTP503 and Retry-After; unexpected errors do not expose raw exception text.",
+    "NULL-owned financial/import rows are reported without assigning them to arbitrary business 2.",
+    "Settlement serialization preserves the original operator-name snapshot and removes the origin database's local operator id; the existing receiving-side owner binding remains authoritative.",
+    "All three removed repair exports were recovered from an ignored encrypted local evidence vault and matched their original bytes. No real financial repair was applied."
+  ],
+  "failure_history": [
+    "Earlier incomplete/interrupted runs are not counted as passes. The immediately preceding complete Billing run had 2513 passed, 23 skipped and six failures; final acceptance above resolves all six.",
+    "Those six exposed a real unportable settlement operator id, a source-contract assertion predating durable control delivery, Phase3 fixtures without an owner, and obsolete signup phone expectations. The sync payload was corrected and fixtures updated to valid current contracts.",
+    "The first complete Field standalone run had two outdated assertions for the newly exposed merchant VPA and local mirror columns; corrected assertions retain identity and migration checks.",
+    "The first Field PostgreSQL driver stopped at collection because Billing Alembic prepended its legacy app.py path; the driver now restores Field package precedence.",
+    "The next Field PostgreSQL run had 116 passed, 38 failed and 11 fixture errors: the Windows cluster's inherited WIN1252 encoding rejected the route arrow, and read-only mirror fixtures omitted required Billing UIDs. Generated test databases now explicitly use UTF8, and external-schema fixture writes use Billing's complete models. A foreign-receipt fixture now refers to a valid foreign-owned invoice while retaining the cross-business exclusion assertion."
+  ],
+  "fixture_cleanup": "Both audit-owned PostgreSQL clusters were stopped after their resolved scratch paths and fixture ports were checked. Private test fixture files remain ignored for inspection; no user database was stopped.",
+  "remaining_external_gates": [
+    "Rotate the confirmed exposed Supabase password, update every dependent secret and verify old-credential revocation through the authorized provider process.",
+    "Reconcile the existing over-receipt invoice, multiple open shifts and 18 overfilled invoices in the supplied old deployment log from original documents and cash counts.",
+    "Live migration head e70b5d2a4c06 was subsequently applied and retried successfully; dedicated constrained HTTP/trade/admin configuration and protocol2 installed-client rollout remain separate deployment work.",
+    "Demonstrate a live restore drill, phone/PWA/GPS and physical printer acceptance, offline reconnect and the planned paid merchant pilot.",
+    "Publication and later approved external operations are recorded separately in DEPLOYMENT.md. No historical financial-data repair, live payment or message to another person was performed."
+  ]
+}

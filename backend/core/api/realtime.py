@@ -6,7 +6,8 @@ FastAPI routes for Server-Sent Events (SSE) and POS Real-time synchronization.
 import json
 import asyncio
 import logging
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Request, HTTPException
+from starlette.concurrency import run_in_threadpool
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from database.db import get_db
@@ -40,6 +41,13 @@ async def sse_realtime_feed(request: Request, current_user: dict = Depends(get_a
             # Yield initial retry hint to EventSource
             yield "retry: 5000\n\n"
             while True:
+                # Revocation/retirement closes an already-open connection too;
+                # a bearer ticket is not indefinite permission to keep books.
+                from services.auth import _validate_token_version
+                try:
+                    await run_in_threadpool(_validate_token_version, current_user)
+                except HTTPException:
+                    break
                 if await request.is_disconnected():
                     logger.info(f"[REALTIME] Client disconnected for Business {bid}")
                     break

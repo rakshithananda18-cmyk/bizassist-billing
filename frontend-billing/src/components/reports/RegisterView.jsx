@@ -6,10 +6,10 @@ export default function RegisterView({ reportData, colKeys }) {
   const [sortConfig, setSortConfig] = useState({ key: '', direction: '' })
 
   const formatValue = (val, key) => {
-    if (val == null) return '—'
+    if (val == null) return key === 'amount' ? 'Unavailable — historical cost needs reconciliation' : '—'
     const k = key.toLowerCase()
     const isDateCol = ['date', 'created_at', 'updated_at', 'synced_at'].some(sub => k.includes(sub))
-    
+
     if (isDateCol && typeof val === 'string') {
       // Full ISO timestamp or datetime string (e.g. 2026-07-07T18:21:43Z or 2026-07-07 18:21)
       if (val.includes('T') || (val.includes('-') && val.includes(':'))) {
@@ -71,6 +71,7 @@ export default function RegisterView({ reportData, colKeys }) {
   return (
     <div className="data-table-wrap">
       <table className="data-table">
+        {reportData.some(row => row.complete === false) && <caption role="status">Unavailable — historical cost needs reconciliation. Profit cannot be confirmed for this period.</caption>}
         <thead>
           <tr>
             {colKeys.map(k => {

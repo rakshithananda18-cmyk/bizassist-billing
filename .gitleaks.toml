@@ -1,6 +1,6 @@
 # gitleaks config — secret scanning for BizAssist (REVIEW_1 GAP-8).
 # Run locally:  gitleaks protect --staged   (or via pre-commit, see .pre-commit-config.yaml)
-# CI: add a gitleaks step to .github/workflows/ci.yml when ready.
+# CI runs the same scanner as a required workflow job.
 
 [extend]
 # Start from gitleaks' built-in rules (AWS, GCP, Slack, generic API keys, JWTs…)
@@ -19,9 +19,11 @@ regex = '''postgres(?:ql)?://[^\s:]+:[^\s@]+@[^\s/]+'''
 keywords = ["postgresql://", "postgres://"]
 
 [allowlist]
-description = "Files that legitimately contain placeholder examples"
-paths = [
-    '''.env.example''',
-    '''docs/.*''',
-    '''.*\.md''',
+description = "Explicit synthetic examples only; documentation is scanned too"
+regexes = [
+    '''postgres(?:ql)?://postgres:(?:pass|isolated-fixture-only)@(?:localhost|127\.0\.0\.1)(?::[0-9]+)?''',
+    '''(?:dev-test-secret-please-change|test-only-secret-please-change)-0123456789abcdef''',
+    '''ci-secret-0123456789abcdef0123456789abcdef''',
+    '''cron-secret-0123456789abcdef''',
+    '''rakshithananda18-cmyk_bizassist-billing''',
 ]

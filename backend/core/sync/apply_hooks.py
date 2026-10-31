@@ -75,6 +75,7 @@ PAID_STATE_ENTITIES = frozenset({"invoices", "invoice_payments"})
 # the push path was hardened against — it was simply invisible in the other
 # direction, for the same structural reason M-7 had.
 FINANCIAL_ENTITIES = frozenset({
+    "supplier_payments", "customer_refunds", "customer_credit_allocations",
     "invoices",
     "invoice_line_items",
     "payments",
@@ -303,10 +304,11 @@ def reconcile_invoice_paid_state(db, inv) -> bool:
                 InvoicePayment.invoice_id == inv.id)
         .one()
     )
-    if not n:
+    baseline = getattr(inv, "legacy_paid_baseline", None)
+    if not n and baseline is None:
         return False
 
-    total_paid = round(total_paid or 0.0, 2)
+    total_paid = round(float(total_paid or 0.0) + float(baseline or 0.0), 2)
     grand = round((inv.total_amount or getattr(inv, "amount", 0.0) or 0.0), 2)
     new_status = derive_paid_state(total_paid, grand)
 

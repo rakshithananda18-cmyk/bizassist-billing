@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import logging
+from datetime import datetime, timezone
 from typing import Optional
 
 from sqlalchemy.orm import Session
@@ -184,6 +185,18 @@ def route_out(r: FieldRoute) -> dict:
     }
 
 
+
+def _is_overdue(status: str, due_at: datetime | None) -> bool:
+    if status != "pending" or due_at is None:
+        return False
+    now = utc_now()
+    if getattr(due_at, "tzinfo", None) is not None:
+        if getattr(now, "tzinfo", None) is None:
+            now = now.replace(tzinfo=timezone.utc)
+    elif getattr(now, "tzinfo", None) is not None:
+        due_at = due_at.replace(tzinfo=timezone.utc)
+    return now > due_at
+
 def task_out(t: FieldTask, *, confirmed: Optional[dict] = None) -> dict:
     """`confirmed` (task uid → amount, app/collections.confirmed_in_billing) adds
     how much of a collection the owner has confirmed in billing."""
@@ -225,7 +238,7 @@ def task_out(t: FieldTask, *, confirmed: Optional[dict] = None) -> dict:
         "completion_distance_m": t.completion_distance_m,
         "on_time": t.on_time,
         "points_awarded": t.points_awarded,
-        "overdue": bool(t.status == "pending" and t.due_at is not None and utc_now() > t.due_at),
+        "overdue": _is_overdue(t.status, t.due_at),
     }
 
 

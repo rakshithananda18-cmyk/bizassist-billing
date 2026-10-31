@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
-import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react'
+import { screen, fireEvent, cleanup, waitFor } from '@testing-library/react'
+import { renderWithAuth as render } from './renderWithAuth'
 import React from 'react'
 import ReadinessPanel from '../components/hosting/ReadinessPanel'
 import PreflightModal from '../components/hosting/PreflightModal'
@@ -54,7 +55,7 @@ describe('PreflightModal', () => {
   it('renders required probes for target mode and handles cancel/proceed', () => {
     const onClose = vi.fn()
     const onProceed = vi.fn()
-    
+
     // Test for Hybrid target mode (which needs local, cloud, internet)
     render(
       <PreflightModal
@@ -228,7 +229,7 @@ describe('MigrationModal', () => {
       }
       return { ok: false, status: 404 }
     })
-    
+
     vi.stubGlobal('fetch', mockFetch)
 
     const onComplete = vi.fn()

@@ -1,0 +1,9 @@
+{
+  "file": "frontend-billing/src/components/payments/InvoicesListView.jsx",
+  "error": "logger is not defined",
+  "loadError": false,
+  "rows": [
+    "prior"
+  ],
+  "expectedErrorStateReached": false
+}

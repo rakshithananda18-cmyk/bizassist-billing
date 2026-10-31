@@ -1,0 +1,10 @@
+.......sssss..............................F.........                     [100%]
+================================== FAILURES ===================================
+____________________ test_allow_list_has_no_stale_entries _____________________
+tests\test_tenant_scope.py:97: in test_allow_list_has_no_stale_entries
+    assert not stale, (
+E   AssertionError: core/sync/tenant_scope.ALLOWED has entries that match no read any more � remove them: ['core/connection/service.py::redeem_connection_code::B2BInviteCode']
+E   assert not {'core/connection/service.py::redeem_connection_code::B2BInviteCode'}
+=========================== short test summary info ===========================
+FAILED tests/test_tenant_scope.py::test_allow_list_has_no_stale_entries - Ass...
+1 failed, 46 passed, 5 skipped in 50.54s

@@ -11,33 +11,22 @@ logger = logging.getLogger("bizassist.handlers.payments")
 
 
 def _overdue_list(user_id: int, limit: int = LIST_CAP) -> str:
+    from core.billing.balances import outstanding_rows
     db = SessionLocal()
     try:
-        total_count  = db.query(Invoice).filter(Invoice.business_id == user_id, Invoice.status == "Overdue").count()
-        total_amount = db.query(func.sum(Invoice.amount)).filter(Invoice.business_id == user_id, Invoice.status == "Overdue").scalar() or 0
-
-        q = (
-            db.query(Invoice)
-            .filter(Invoice.business_id == user_id, Invoice.status == "Overdue")
-            .order_by(Invoice.amount.desc())
-        )
-        rows = q.all() if limit == 0 else q.limit(limit).all()
+        all_rows = outstanding_rows(db, user_id, overdue=True)
+        total_count, total_amount = len(all_rows), sum(row.amount for row in all_rows)
+        rows = all_rows if limit == 0 else all_rows[:limit]
         if not rows:
             return "No overdue invoices. All payments are on track."
-
-        effective = limit if limit > 0 else total_count
-        is_capped = 0 < effective < total_count
-        header = (
-            f"**Showing top {effective} of {total_count} overdue invoices** (₹{total_amount:,.0f} total outstanding)"
-            if is_capped else
-            f"**All {total_count} overdue invoices** (₹{total_amount:,.0f} outstanding)"
-        )
-        lines = [header + ":\n",
-                 "| Customer | Invoice ID | Amount | Due Date |",
-                 "|:---|:---|:---|:---|"]
-        for r in rows:
-            lines.append(f"| **{r.customer}** | {r.invoice_id or '-'} | ₹{r.amount:,.0f} | {r.due_date or '-'} |")
-        if is_capped:
+        effective = len(rows)
+        capped = effective < total_count
+        header = (f"**Showing top {effective} of {total_count} overdue invoices** (₹{total_amount:,.0f} total outstanding)"
+                  if capped else f"**All {total_count} overdue invoices** (₹{total_amount:,.0f} outstanding)")
+        lines = [header + ":\n", "| Customer | Invoice ID | Amount | Due Date |", "|:---|:---|:---|:---|"]
+        for row in rows:
+            lines.append(f"| **{row.customer}** | {row.invoice_id or '-'} | ₹{row.amount:,.0f} | {row.due_date or '-'} |")
+        if capped:
             lines.append("\n" + large_data_note(effective, total_count, "overdue invoices"))
         return "\n".join(lines)
     finally:
@@ -45,46 +34,33 @@ def _overdue_list(user_id: int, limit: int = LIST_CAP) -> str:
 
 
 def _overdue_amount(user_id: int) -> str:
+    from core.billing.balances import outstanding_rows
     db = SessionLocal()
     try:
-        amount = db.query(func.sum(Invoice.amount)).filter(Invoice.business_id == user_id, Invoice.status == "Overdue").scalar() or 0
-        count  = db.query(Invoice).filter(Invoice.business_id == user_id, Invoice.status == "Overdue").count()
-        return (
-            f"**Total Overdue Amount**\n\n"
-            f"₹{amount:,.0f} across **{count} invoice{'s' if count != 1 else ''}**."
-        )
+        rows = outstanding_rows(db, user_id, overdue=True)
+        amount, count = sum(row.amount for row in rows), len(rows)
+        return f"**Total Overdue Amount**\n\n₹{amount:,.0f} across **{count} invoice{'s' if count != 1 else ''}**."
     finally:
         db.close()
 
 
 def _pending_list(user_id: int, limit: int = LIST_CAP) -> str:
+    from core.billing.balances import outstanding_rows
     db = SessionLocal()
     try:
-        total_count  = db.query(Invoice).filter(Invoice.business_id == user_id, Invoice.status == "Pending").count()
-        total_amount = db.query(func.sum(Invoice.amount)).filter(Invoice.business_id == user_id, Invoice.status == "Pending").scalar() or 0
-
-        q = (
-            db.query(Invoice)
-            .filter(Invoice.business_id == user_id, Invoice.status == "Pending")
-            .order_by(Invoice.amount.desc())
-        )
-        rows = q.all() if limit == 0 else q.limit(limit).all()
+        all_rows = outstanding_rows(db, user_id, overdue=False)
+        total_count, total_amount = len(all_rows), sum(row.amount for row in all_rows)
+        rows = all_rows if limit == 0 else all_rows[:limit]
         if not rows:
             return "No pending invoices found."
-
-        effective = limit if limit > 0 else total_count
-        is_capped = 0 < effective < total_count
-        header = (
-            f"**Showing top {effective} of {total_count} pending invoices** (₹{total_amount:,.0f} total)"
-            if is_capped else
-            f"**All {total_count} pending invoices** (₹{total_amount:,.0f})"
-        )
-        lines = [header + ":\n",
-                 "| Customer | Invoice ID | Amount | Due Date |",
-                 "|:---|:---|:---|:---|"]
-        for r in rows:
-            lines.append(f"| **{r.customer}** | {r.invoice_id or '-'} | ₹{r.amount:,.0f} | {r.due_date or '-'} |")
-        if is_capped:
+        effective = len(rows)
+        capped = effective < total_count
+        header = (f"**Showing top {effective} of {total_count} pending invoices** (₹{total_amount:,.0f} total outstanding)"
+                  if capped else f"**All {total_count} pending invoices** (₹{total_amount:,.0f} outstanding)")
+        lines = [header + ":\n", "| Customer | Invoice ID | Amount | Due Date |", "|:---|:---|:---|:---|"]
+        for row in rows:
+            lines.append(f"| **{row.customer}** | {row.invoice_id or '-'} | ₹{row.amount:,.0f} | {row.due_date or '-'} |")
+        if capped:
             lines.append("\n" + large_data_note(effective, total_count, "pending invoices"))
         return "\n".join(lines)
     finally:
@@ -95,18 +71,8 @@ def _top_debtors(user_id: int) -> str:
     """Rank customers by total outstanding (overdue) amount."""
     db = SessionLocal()
     try:
-        rows = (
-            db.query(
-                Invoice.customer,
-                func.sum(Invoice.amount).label("overdue_total"),
-                func.count(Invoice.id).label("invoices")
-            )
-            .filter(Invoice.business_id == user_id, Invoice.status == "Overdue")
-            .group_by(Invoice.customer)
-            .order_by(func.sum(Invoice.amount).desc())
-            .limit(10)
-            .all()
-        )
+        from core.billing.balances import debtor_rows
+        rows = debtor_rows(db, user_id)[:10]
         if not rows:
             return "No overdue customers right now. All accounts are clear."
 

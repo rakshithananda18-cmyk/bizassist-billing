@@ -12,26 +12,20 @@ def get_business_overview(user_id: int) -> str:
     """Returns a high-level summary overview of business metrics."""
     db = SessionLocal()
     try:
-        total_rev   = db.query(func.sum(Invoice.amount)).filter(Invoice.business_id == user_id).scalar() or 0
-        paid_amt    = db.query(func.sum(Invoice.amount)).filter(Invoice.business_id == user_id, Invoice.status == "Paid").scalar() or 0
-        overdue_amt = db.query(func.sum(Invoice.amount)).filter(Invoice.business_id == user_id, Invoice.status == "Overdue").scalar() or 0
-        pending_ct  = db.query(Invoice).filter(Invoice.business_id == user_id, Invoice.status == "Pending").count()
-        inv_items   = db.query(Inventory).filter(Inventory.business_id == user_id).count()
+        from core.billing.balances import business_revenue_summary
+        metrics = business_revenue_summary(db, user_id)
+        inv_items = db.query(Inventory).filter(Inventory.business_id == user_id).count()
 
-        top = (
-            db.query(Invoice.customer, func.sum(Invoice.amount).label("total_amount"))
-            .filter(Invoice.business_id == user_id)
-            .group_by(Invoice.customer)
-            .order_by(func.sum(Invoice.amount).desc())
-            .first()
-        )
+        from core.billing.balances import customer_revenue_rows
+        ranked = customer_revenue_rows(db, user_id)
+        top = ranked[0] if ranked else None
 
         return json.dumps({
-            "total_revenue":               float(total_rev),
-            "collected_revenue":           float(paid_amt),
-            "overdue_revenue":             float(overdue_amt),
-            "collection_rate_pct":         round((paid_amt / total_rev) * 100) if total_rev else 0,
-            "pending_invoice_count":       pending_ct,
+            "total_revenue":               metrics["net_revenue"],
+            "collected_revenue":           metrics["collected_revenue"],
+            "overdue_revenue":             metrics["overdue_revenue"],
+            "collection_rate_pct":         metrics["collection_rate_pct"],
+            "pending_invoice_count":       metrics["pending_invoice_count"],
             "inventory_products_tracked":  inv_items,
             "top_customer":                top.customer if top else None,
             "top_customer_revenue":        float(top.total_amount or 0) if top else 0,

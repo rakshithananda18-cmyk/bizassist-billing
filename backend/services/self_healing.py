@@ -170,7 +170,7 @@ def heal_stock_ledger_drift(db: Session, business_id: int, auto_fix_import_drift
                 ).first()
 
                 correct_stock = SL.current_stock(
-                    db, business_id, product_id=pid, godown_id=godown_id, batch_no=batch_no
+                    db, business_id, product_id=pid, godown_id=godown_id, batch_no=batch_no, exact_bucket=True
                 )
 
                 if not inv_row:

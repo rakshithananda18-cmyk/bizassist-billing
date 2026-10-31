@@ -1,108 +1,209 @@
+"""Evidence-based SQLite line repair. Importing this module never opens a DB.
+
+Dry run: python repair_line_items.py --database PATH --mapping mapping.json
+Apply requires --apply --backup-dir PRIVATE_DIR and a 16+ character password.
+Mapping: {"repairs": [{"business_bizid": "...", "target_invoice_uid": "...",
+"donor_invoice_uid": "...", "reason": "independently verified provenance"}]}.
+Invoice numbers and equal amounts never select donors automatically.
 """
-repair_line_items.py — One-time repair for orphaned LCL-* invoices.
+from __future__ import annotations
+import argparse
+import base64
+from decimal import Decimal
+import getpass
+import hashlib
+import json
+import os
+from pathlib import Path
+import sqlite3
+import sys
+import uuid
 
-The cloud→local sync (before the remap_ids fix) imported invoices with new local
-PKs (803–816) but the line items still carried the cloud's FK values (e.g. 1, 2, 3...)
-which never matched the new local PKs. This script:
 
-  1. Finds all invoices that have 0 line items but a non-zero total (orphaned).
-  2. Looks for the matching OLD-style invoice (same invoice_id without the LCL- prefix,
-     or by invoice_id from the cloud via the subtotal match) — if found, copies the
-     line items over to the new invoice PK.
-  3. Reports what was done.
+class RepairRefused(ValueError):
+    pass
 
-Run from the project root:
-    python repair_line_items.py
-"""
-import sqlite3, sys, re
 
-DB = "backend/bizassist.db"
+def money(value):
+    number = Decimal(str(value or 0))
+    if not number.is_finite():
+        raise RepairRefused("Non-finite document amount")
+    return number.quantize(Decimal("0.01"))
 
-conn = sqlite3.connect(DB)
-conn.row_factory = sqlite3.Row
-cur = conn.cursor()
 
-# ── 1. Find orphaned LCL invoices ───────────────────────────────────────────
-cur.execute("""
-SELECT i.id, i.invoice_id, i.total_amount, i.subtotal, i.business_id
-FROM   invoices i
-LEFT JOIN invoice_line_items li ON li.invoice_id = i.id
-WHERE  i.invoice_id LIKE 'LCL-%'
-GROUP  BY i.id
-HAVING COUNT(li.id) = 0
-ORDER  BY i.id
-""")
-orphans = cur.fetchall()
-print(f"Found {len(orphans)} orphaned LCL-* invoices (0 line items)")
+def _invoice(conn, uid, bid):
+    rows = conn.execute("SELECT * FROM invoices WHERE uid=? AND business_id=?", (uid, bid)).fetchall()
+    if len(rows) != 1:
+        raise RepairRefused("Mapped invoice UID is absent or ambiguous for this business")
+    return dict(rows[0])
 
-repaired = 0
-skipped  = 0
 
-for inv in orphans:
-    lcl_id       = inv["id"]
-    lcl_inv_no   = inv["invoice_id"]          # e.g. LCL-C1-0004
-    total        = inv["total_amount"]
-    business_id  = inv["business_id"]
+def plan_repairs(conn, mappings):
+    if not isinstance(mappings, list) or not mappings:
+        raise RepairRefused("An explicit non-empty repairs mapping is required")
+    plans, targets = [], set()
+    for item in mappings:
+        for key in ("business_bizid", "target_invoice_uid", "donor_invoice_uid", "reason"):
+            if not isinstance(item.get(key), str) or not item[key].strip():
+                raise RepairRefused("Mapping requires BizID, target/donor UIDs and an evidence reason")
+        businesses = conn.execute("SELECT id FROM users WHERE public_id=? AND parent_business_id IS NULL", (item["business_bizid"],)).fetchall()
+        if len(businesses) != 1:
+            raise RepairRefused("Mapped business BizID is absent or ambiguous")
+        bid = businesses[0][0]
+        target = _invoice(conn, item["target_invoice_uid"], bid)
+        donor = _invoice(conn, item["donor_invoice_uid"], bid)
+        if target["id"] == donor["id"] or target["id"] in targets:
+            raise RepairRefused("Target must be distinct from donor and appear only once")
+        targets.add(target["id"])
+        if conn.execute("SELECT 1 FROM invoice_line_items WHERE invoice_id=?", (target["id"],)).fetchone():
+            raise RepairRefused("Target already has lines; refusing to append or replace financial facts")
+        lines = [dict(r) for r in conn.execute("SELECT * FROM invoice_line_items WHERE invoice_id=? ORDER BY id", (donor["id"],))]
+        if not lines:
+            raise RepairRefused("Explicit donor has no line evidence")
+        for key in ("subtotal", "total_amount", "cgst_total", "sgst_total", "igst_total", "cess_total", "discount_total", "round_off", "cash_discount"):
+            if key in target and money(target[key]) != money(donor[key]):
+                raise RepairRefused("Mapped document headers disagree: " + key)
+        for key in ("invoice_type", "customer_id", "gstin_buyer", "place_of_supply", "is_tax_inclusive"):
+            if key in target and target[key] != donor[key]:
+                raise RepairRefused("Mapped document identities/tax policy disagree: " + key)
+        for line in lines:
+            if line.get("business_id") not in (None, bid):
+                raise RepairRefused("Donor line belongs to another business")
+            if line.get("product_id") is not None:
+                product = conn.execute("SELECT business_id FROM products WHERE id=?", (line["product_id"],)).fetchone()
+                if product is None or product[0] != bid:
+                    raise RepairRefused("Donor line has an unverified product identity")
+        for header, detail in (("subtotal", "taxable_value"), ("cgst_total", "cgst_amount"),
+                               ("sgst_total", "sgst_amount"), ("igst_total", "igst_amount"), ("cess_total", "cess_amount")):
+            if header in target and detail in lines[0] and abs(sum(money(l.get(detail)) for l in lines) - money(target[header])) > Decimal("0.01"):
+                raise RepairRefused("Donor line/header invariant failed: " + header)
+        total = sum(money(l["line_total"]) for l in lines)
+        expected = money(target.get("total_amount", target.get("amount"))) - money(target.get("round_off")) + money(target.get("cash_discount"))
+        if abs(total - expected) > Decimal("0.01"):
+            raise RepairRefused("Donor lines do not reproduce the target total")
+        plans.append({"business_id": bid, "target": target, "lines": lines, "mapping": item})
+    return plans
 
-    # Strip the LCL- prefix to get the bare invoice number (e.g. C1-0004)
-    bare_no = re.sub(r'^LCL-', '', lcl_inv_no)   # C1-0004
 
-    # Look for an old invoice with the same bare number and same business
-    cur.execute(
-        "SELECT id, invoice_id FROM invoices WHERE invoice_id = ? AND business_id = ? AND id != ?",
-        (bare_no, business_id, lcl_id)
-    )
-    donor = cur.fetchone()
+def _encrypted_backup(database, output_dir, password, mappings):
+    if len(password or "") < 16:
+        raise RepairRefused("Backup password must contain at least 16 characters")
+    from cryptography.hazmat.primitives.kdf.scrypt import Scrypt
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+    # Another read connection sees the exact committed state while our repair
+    # transaction holds its write reservation; no financial mutation yet.
+    with sqlite3.connect(database.as_uri() + "?mode=ro", uri=True) as source:
+        memory = sqlite3.connect(":memory:")
+        try:
+            source.backup(memory)
+            dump = "\n".join(memory.iterdump()).encode("utf-8")
+        finally:
+            memory.close()
+    salt, nonce = os.urandom(16), os.urandom(12)
+    key = Scrypt(salt=salt, length=32, n=32768, r=8, p=1).derive(password.encode("utf-8"))
+    plaintext = json.dumps({"sql": dump.decode(), "mapping": mappings}).encode()
+    cipher = AESGCM(key).encrypt(nonce, plaintext, b"bizassist-repair-backup-v1")
+    b64 = lambda data: base64.b64encode(data).decode("ascii")
+    envelope = {"format": "bizassist-repair-backup-v1", "kdf": "scrypt-n32768-r8-p1",
+                "salt": b64(salt), "nonce": b64(nonce), "ciphertext": b64(cipher),
+                "sql_sha256": hashlib.sha256(dump).hexdigest()}
+    output_dir.mkdir(parents=True, exist_ok=True)
+    path = output_dir / ("line-repair-" + uuid.uuid4().hex + ".encrypted.json")
+    with path.open("x", encoding="utf-8") as f:
+        json.dump(envelope, f)
+    restored = AESGCM(key).decrypt(nonce, base64.b64decode(envelope["ciphertext"]), b"bizassist-repair-backup-v1")
+    if json.loads(restored)["sql"].encode() != dump:
+        raise RepairRefused("Encrypted backup verification failed")
+    return path
 
-    if not donor:
-        # OPS-01: Disallow guessing donors by matching total amount alone.
-        # Matching purely by amount fabricates unrelated invoice lines.
-        donor = None
 
-    if not donor:
-        print(f"  SKIP  {lcl_inv_no}: no donor invoice found")
-        skipped += 1
-        continue
+def restore_backup(archive, password, destination):
+    """Restore only into a NEW path, never overwrite a developer/production DB."""
+    from cryptography.hazmat.primitives.kdf.scrypt import Scrypt
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+    envelope = json.loads(Path(archive).read_text(encoding="utf-8"))
+    if envelope.get("format") != "bizassist-repair-backup-v1" or envelope.get("kdf") != "scrypt-n32768-r8-p1":
+        raise RepairRefused("Unrecognized encrypted backup format")
+    dec = base64.b64decode
+    key = Scrypt(salt=dec(envelope["salt"]), length=32, n=32768, r=8, p=1).derive(password.encode())
+    payload = json.loads(AESGCM(key).decrypt(dec(envelope["nonce"]), dec(envelope["ciphertext"]), b"bizassist-repair-backup-v1"))
+    if hashlib.sha256(payload["sql"].encode()).hexdigest() != envelope["sql_sha256"]:
+        raise RepairRefused("Backup digest mismatch")
+    destination = Path(destination)
+    # Exclusive create reserves the output; an existing database is never used.
+    with destination.open("xb"):
+        pass
+    try:
+        with sqlite3.connect(destination) as conn:
+            conn.executescript(payload["sql"])
+            if conn.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
+                raise RepairRefused("Restored database failed integrity check")
+    except BaseException:
+        destination.unlink(missing_ok=True)
+        raise
+    return destination
 
-    donor_id     = donor["id"]
-    donor_inv_no = donor["invoice_id"]
 
-    # Count existing lines on the donor
-    cur.execute("SELECT COUNT(*) FROM invoice_line_items WHERE invoice_id = ?", (donor_id,))
-    n_lines = cur.fetchone()[0]
-    if n_lines == 0:
-        print(f"  SKIP  {lcl_inv_no}: donor {donor_inv_no} also has 0 line items")
-        skipped += 1
-        continue
+def repair(database, mappings, *, apply=False, backup_dir=None, password=None):
+    database = Path(database).resolve(strict=True)
+    if not database.is_file():
+        raise RepairRefused("Explicit database path must be a regular file")
+    uri = database.as_uri() + ("?mode=rw" if apply else "?mode=ro")
+    conn = sqlite3.connect(uri, uri=True, timeout=30)
+    conn.row_factory = sqlite3.Row
+    try:
+        conn.execute("PRAGMA foreign_keys=ON")
+        conn.execute("BEGIN IMMEDIATE" if apply else "BEGIN")
+        plans = plan_repairs(conn, mappings)
+        backup = None
+        if apply:
+            if not backup_dir:
+                raise RepairRefused("Apply requires an explicit private backup directory")
+            backup = _encrypted_backup(database, Path(backup_dir), password, mappings)
+            for plan in plans:
+                for original in plan["lines"]:
+                    line = dict(original)
+                    line.pop("id", None)
+                    line["invoice_id"] = plan["target"]["id"]
+                    if "uid" in line:
+                        line["uid"] = str(uuid.uuid4())
+                    if "business_id" in line:
+                        line["business_id"] = plan["business_id"]
+                    # Column names originate only from SQLite table metadata.
+                    columns = ",".join('"' + key + '"' for key in line)
+                    placeholders = ",".join("?" for _ in line)
+                    conn.execute(f"INSERT INTO invoice_line_items ({columns}) VALUES ({placeholders})", tuple(line.values()))
+            conn.commit()
+        else:
+            conn.rollback()
+        return {"mode": "applied" if apply else "dry_run", "documents": len(plans),
+                "lines": sum(len(p["lines"]) for p in plans), "backup": str(backup) if backup else None}
+    except BaseException:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
-    # Copy line items from donor → orphan (with new auto-increment ids)
-    cur.execute("""
-        SELECT product_name, description, hsn_sac, batch_no, serial_no,
-               quantity, unit, unit_price, discount, taxable_value,
-               cgst_rate, cgst_amount, sgst_rate, sgst_amount,
-               igst_rate, igst_amount, cess_amount, line_total,
-               created_at, updated_at, business_id
-        FROM   invoice_line_items
-        WHERE  invoice_id = ?
-    """, (donor_id,))
-    lines = cur.fetchall()
 
-    inserted = 0
-    for line in lines:
-        cur.execute("""
-            INSERT INTO invoice_line_items
-              (invoice_id, product_name, description, hsn_sac, batch_no, serial_no,
-               quantity, unit, unit_price, discount, taxable_value,
-               cgst_rate, cgst_amount, sgst_rate, sgst_amount,
-               igst_rate, igst_amount, cess_amount, line_total,
-               created_at, updated_at, business_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (lcl_id,) + tuple(line))
-        inserted += 1
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--database", required=True)
+    parser.add_argument("--mapping", required=True)
+    parser.add_argument("--apply", action="store_true")
+    parser.add_argument("--backup-dir")
+    parser.add_argument("--password-env", help="Environment variable containing the backup password")
+    args = parser.parse_args(argv)
+    try:
+        mappings = json.loads(Path(args.mapping).read_text(encoding="utf-8"))["repairs"]
+        password = None
+        if args.apply:
+            password = os.environ.get(args.password_env) if args.password_env else getpass.getpass("Private backup password (16+ characters): ")
+        print(json.dumps(repair(args.database, mappings, apply=args.apply, backup_dir=args.backup_dir, password=password)))
+        return 0
+    except (ValueError, KeyError, OSError, sqlite3.Error) as error:
+        print("Repair refused: " + str(error), file=sys.stderr)
+        return 2
 
-    print(f"  OK    {lcl_inv_no} ← {donor_inv_no}: copied {inserted} line items")
-    repaired += 1
 
-conn.commit()
-conn.close()
-print(f"\nDone. Repaired={repaired}  Skipped={skipped}")
+if __name__ == "__main__":
+    raise SystemExit(main())

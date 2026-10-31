@@ -145,6 +145,11 @@
       <span>Grand Total:</span>
       <span>₹{{ totals.grand_total }}</span>
     </div>
+    {% if totals.credited_amount %}<div>Credit Notes: ₹{{ totals.credited_amount }} · Adjusted Payable: ₹{{ totals.adjusted_total }}</div>{% endif %}
+    <div>Payments / Credit Applied: ₹{{ totals.amount_paid }}</div>
+    {% if totals.amount_refunded %}<div>Refund Paid: ₹{{ totals.amount_refunded }}</div>{% endif %}
+    {% if totals.return_credit %}<div>Credit Owed to Customer: ₹{{ totals.return_credit }}</div>{% endif %}
+    {% if totals.balance_due %}<div>Balance Due: ₹{{ totals.balance_due }}</div>{% endif %}
   </div>
 
   <!-- Savings / Summary -->

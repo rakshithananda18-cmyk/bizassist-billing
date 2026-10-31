@@ -26,7 +26,7 @@ def make_app():
     """Import the FastAPI app freshly (SQLite in-memory env)."""
     import os
     os.environ.setdefault("DATABASE_URL", "sqlite:///./test_discovery_tmp.db")
-    os.environ.setdefault("JWT_SECRET", "test-secret-key-discovery")
+    os.environ.setdefault("JWT_SECRET", "test-secret-key-discovery-0123456789abcdef")
     from main_groq import app
     return app
 

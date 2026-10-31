@@ -284,23 +284,42 @@ def compute_tally(db, shift: RegisterShift) -> dict:
     plus the shift's counted cash movements. No side effects.
     """
     rows = (
-        db.query(InvoicePayment.payment_mode,
+        db.query(InvoicePayment.payment_mode, InvoicePayment.idempotency_key, InvoicePayment.note,
                  func.coalesce(func.sum(InvoicePayment.amount_paid), 0.0))
         .filter(
             InvoicePayment.business_id == shift.business_id,
             InvoicePayment.shift_id == shift.id,
         )
-        .group_by(InvoicePayment.payment_mode)
+        .group_by(InvoicePayment.payment_mode, InvoicePayment.idempotency_key, InvoicePayment.note)
         .all()
     )
     by_mode = {"cash": 0.0, "upi": 0.0, "card": 0.0, "other": 0.0}
-    for mode, total in rows:
+    from core.accounting.repost import _is_advance_application
+    from types import SimpleNamespace
+    for mode, key, note, total in rows:
+        if _is_advance_application(SimpleNamespace(idempotency_key=key, note=note)):
+            continue
         by_mode[_norm_mode(mode)] += float(total or 0.0)
+    from core.accounting.settlement_models import SupplierPayment, CustomerRefund
+    settlements_out = {"cash": 0.0, "upi": 0.0, "card": 0.0, "other": 0.0}
+    for model in (SupplierPayment, CustomerRefund):
+        for mode, total in db.query(model.payment_mode, func.sum(model.amount)).filter(
+            model.business_id == shift.business_id, model.shift_id == shift.id).group_by(model.payment_mode):
+            settlements_out[_norm_mode(mode)] += float(total or 0)
+    from core.models import JournalEntry, JournalLine
+    from core.accounting.posting import ACC_CASH
+    for mode, total in db.query(InvoicePayment.payment_mode, func.sum(JournalLine.debit)).join(
+        JournalEntry, (JournalEntry.source_id == InvoicePayment.id) & (JournalEntry.source_type == "advance_receipt")
+    ).join(JournalLine, JournalLine.entry_id == JournalEntry.id).filter(
+        InvoicePayment.business_id == shift.business_id, InvoicePayment.shift_id == shift.id,
+        JournalEntry.business_id == shift.business_id, JournalLine.account == ACC_CASH
+    ).group_by(InvoicePayment.payment_mode):
+        by_mode[_norm_mode(mode)] += float(total or 0)
 
     moves = _movement_sums(db, shift)
     expected_cash = _round2(shift.opening_cash + by_mode["cash"]
-                            + moves["paid_in"] - moves["paid_out"])
-    expected_upi = _round2(by_mode["upi"])
+                            + moves["paid_in"] - moves["paid_out"] - settlements_out["cash"])
+    expected_upi = _round2(by_mode["upi"] - settlements_out["upi"])
     return {
         "shift_id": shift.id,
         "opening_cash": _round2(shift.opening_cash),
@@ -310,6 +329,7 @@ def compute_tally(db, shift: RegisterShift) -> dict:
         "sales_other": _round2(by_mode["other"]),
         "paid_in": _round2(moves["paid_in"]),
         "paid_out": _round2(moves["paid_out"]),
+        "supplier_and_refund_out": {mode: _round2(value) for mode, value in settlements_out.items()},
         "expected_cash": expected_cash,
         "expected_upi": expected_upi,
     }

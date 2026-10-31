@@ -67,7 +67,7 @@ function DownloadButtons({ large = false }) {
 
   const primary =
     os === 'mac'
-      ? { label: 'Download for macOS', href: rel.mac, icon: Icon.apple }
+      ? { label: rel.macRequiresChoice ? 'Choose your Mac processor' : 'Download for macOS', href: rel.mac || '#mac-download-options', icon: Icon.apple }
       : { label: 'Download for Windows', href: rel.windows, icon: Icon.windows }
   const secondary =
     os === 'mac'
@@ -75,32 +75,46 @@ function DownloadButtons({ large = false }) {
       : { label: 'macOS', href: rel.mac, icon: Icon.apple }
 
   return (
-    <div className={`flex flex-wrap items-center gap-4 ${large ? 'justify-center' : ''}`}>
-      <a
-        href={primary.href || rel.fallback}
-        className={`btn-sheen group inline-flex items-center gap-3 rounded-2xl bg-gradient-to-r from-electric-500 to-indigo-600 font-semibold text-white shadow-xl shadow-electric-600/30 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-2xl hover:shadow-electric-500/40 ${
-          large ? 'px-8 py-4 text-lg' : 'px-6 py-3.5'
-        }`}
-      >
-        {primary.icon}
-        {primary.label}
-        {rel.version && (
-          <span className="rounded-full bg-white/20 px-2 py-0.5 text-xs font-bold">v{rel.version}</span>
-        )}
-      </a>
-      <a
-        href={secondary.href || rel.fallback}
-        className="glass inline-flex items-center gap-2 rounded-2xl px-5 py-3.5 font-medium text-slate-200 transition-all duration-300 hover:-translate-y-0.5 hover:border-white/25 hover:bg-white/10"
-      >
+    <div className={`flex flex-col gap-2 ${large ? 'items-center' : 'items-start'}`}>
+      <div className={`flex flex-wrap items-center gap-4 ${large ? 'justify-center' : ''}`}>
+        <a
+          href={primary.href || rel.fallback}
+          className={`btn-sheen group inline-flex items-center gap-3 rounded-2xl bg-gradient-to-r from-electric-500 to-indigo-600 font-semibold text-white shadow-xl shadow-electric-600/30 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-2xl hover:shadow-electric-500/40 ${
+            large ? 'px-8 py-4 text-lg' : 'px-6 py-3.5'
+          }`}
+        >
+          {primary.icon}
+          {primary.label}
+          {rel.version && (
+            <span className="rounded-full bg-white/20 px-2 py-0.5 text-xs font-bold">v{rel.version}</span>
+          )}
+        </a>
+        <a
+          href={secondary.href || rel.fallback}
+          className="glass inline-flex items-center gap-2 rounded-2xl px-5 py-3.5 font-medium text-slate-200 transition-all duration-300 hover:-translate-y-0.5 hover:border-white/25 hover:bg-white/10"
+        >
         {secondary.icon}
-        {secondary.label}
-      </a>
-      <a
-        href={RELEASES_PAGE}
-        className="text-sm text-slate-400 underline-offset-4 transition hover:text-slate-200 hover:underline"
-      >
-        All downloads →
-      </a>
+          {secondary.label}
+        </a>
+        <a
+          href={RELEASES_PAGE}
+          className="text-sm text-slate-400 underline-offset-4 transition hover:text-slate-200 hover:underline"
+        >
+          All downloads →
+        </a>
+      </div>
+      {rel.macRequiresChoice && (
+        <div id="mac-download-options" className="flex items-center gap-3 text-sm text-slate-300" tabIndex={-1}>
+          <span>Choose architecture:</span>
+          {rel.macArm64 && (
+            <a href={rel.macArm64} className="underline hover:text-white">Apple Silicon (M1/M2/M3)</a>
+          )}
+          <span>•</span>
+          {rel.macIntel && (
+            <a href={rel.macIntel} className="underline hover:text-white">Intel Mac</a>
+          )}
+        </div>
+      )}
     </div>
   )
 }

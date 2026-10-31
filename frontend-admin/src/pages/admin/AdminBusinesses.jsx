@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useCallback, useState, useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { logger } from '../../utils/logger'
@@ -8,7 +8,7 @@ import { Section } from '../../components/ui'
 import { Icon } from '../../components/icons'
 
 export default function AdminBusinesses() {
-  const { authFetch, adminUser } = useAuth()
+  const { authFetch } = useAuth()
   const { showAlert, showConfirm, showError } = useDialog()
   const [businesses, setBusinesses] = useState([])
   const [loading, setLoading] = useState(true)
@@ -60,12 +60,9 @@ export default function AdminBusinesses() {
     } catch (error) { await showError(error) }
   }
 
-  useEffect(() => {
-    loadBusinesses()
-    return () => { ++listRequest.current }
-  }, [])
 
-  async function loadBusinesses() {
+
+  const loadBusinesses = useCallback(async () => {
     const requestId = ++listRequest.current
     setLoading(true)
     setLoadError(null)
@@ -86,7 +83,13 @@ export default function AdminBusinesses() {
     } finally {
       if (requestId === listRequest.current) setLoading(false)
     }
-  }
+  }, [authFetch])
+
+  useEffect(() => {
+    const requestCounter = listRequest
+    loadBusinesses()
+    return () => { ++requestCounter.current }
+  }, [loadBusinesses])
 
   // --- WIPE USER DATA (type-the-name confirmation) ---
   function handleWipeUser(id, name) {

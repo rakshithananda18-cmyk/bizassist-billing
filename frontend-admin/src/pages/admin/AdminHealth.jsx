@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useCallback, useState, useEffect } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
 import { logger } from '../../utils/logger'
 import { useDialog } from '../../contexts/DialogContext'
@@ -9,20 +9,18 @@ import TwoFactorCard from '../../components/TwoFactorCard'
 export default function AdminHealth() {
   const { authFetch } = useAuth()
   const { showError } = useDialog()
-  
+
   const [health, setHealth] = useState(null)
   const [feedbacks, setFeedbacks] = useState([])
   const [alterations, setAlterations] = useState([])
   const [loading, setLoading] = useState(true)
-  
+
   const [expandedAlteration, setExpandedAlteration] = useState(null)
   const [downloadingId, setDownloadingId] = useState(null)
 
-  useEffect(() => {
-    loadAllData()
-  }, [])
 
-  async function loadAllData() {
+
+  const loadAllData = useCallback(async () => {
     setLoading(true)
     try {
       // 1. Fetch Health check stats
@@ -51,7 +49,11 @@ export default function AdminHealth() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [authFetch, showError])
+
+  useEffect(() => {
+    loadAllData()
+  }, [loadAllData])
 
   async function handleDownloadLogs(feedbackId, originalFilename) {
     if (downloadingId) return
@@ -240,7 +242,7 @@ export default function AdminHealth() {
                                   gap: 4
                                 }}
                               >
-                                <Icon name="upload" size={11} style={{ transform: 'rotate(180deg)' }} /> 
+                                <Icon name="upload" size={11} style={{ transform: 'rotate(180deg)' }} />
                                 {downloadingId === fb.id ? 'Downloading...' : 'Download Logs'}
                               </button>
                             ) : (

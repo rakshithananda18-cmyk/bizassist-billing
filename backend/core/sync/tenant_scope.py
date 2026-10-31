@@ -111,13 +111,6 @@ ALLOWED: Dict[str, str] = {
     # distinction is easy to get wrong: "queried without a business filter" and
     # "cross-tenant" are the same thing only for tables that HAVE an owner.
 
-    # ── Redemption by secret. The caller presents an unguessable single-use code;
-    # the code IS the authorisation, so the lookup cannot be pre-scoped to the
-    # redeemer (the seller is unknown until the row is found).
-    "core/connection/service.py::redeem_connection_code::B2BInviteCode":
-        "Lookup by single-use secret code — the secret is the authorisation. "
-        "Seller identity is a RESULT of this query, so it cannot scope it.",
-
     # ── Public, deliberately unauthenticated surfaces.
     "routes/public.py::get_public_invoice::Invoice":
         "Public invoice view addressed by an unguessable token/uid, not by "

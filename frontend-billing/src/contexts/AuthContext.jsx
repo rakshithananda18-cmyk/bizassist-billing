@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react'
+import React, { useContext, useState, useEffect, useCallback, useRef } from 'react'
+import { authContext as AuthContext } from './contextIdentity'
 import { API_BASE, updateApiBase, IS_LOCAL_APP, CLOUD_URL, LOCAL_URL } from '../config'
 import { resolveHostingMode, shouldPersistMode } from '../utils/resolveHostingMode'
 import { logger, setBizId } from '../utils/logger'
@@ -8,8 +9,9 @@ import { discoverLocalBackend, getNetworkMode, clearDiscoveryCache } from '../ut
 import { reconcileDeviceModeOnLogin } from '../utils/deviceMode'
 import { syncManager } from '../sync/syncManager'
 import { tokenStorage } from '../utils/tokenStorage'
+import { clearBillingProfileCache } from '../hooks/useBillingProfile'
+import { notifyAiLogout } from '../config/aiDashboard'
 
-const AuthContext = createContext(null)
 const AUTH_REQUEST_TIMEOUT_MS = 8000
 
 // Authentication is a security boundary, but it must also have a bounded wait.
@@ -53,6 +55,7 @@ function syncScopeFor(user) {
 }
 
 export function AuthProvider({ children }) {
+  const authGeneration = useRef(0)
   const [user, setUser]   = useState(null)
   const [token, setToken] = useState(() => tokenStorage.getItem('billing_token') || null)
   const [loading, setLoading] = useState(true)
@@ -98,9 +101,14 @@ export function AuthProvider({ children }) {
   }, [])
 
   const _saveSession = useCallback((data) => {
+    authGeneration.current++
+    const savedGeneration = authGeneration.current
+    setProfile(null)
+    syncManager.clearScope()
+    clearBillingProfileCache()
     const tok = data.token || data.access_token
     tokenStorage.setItem('billing_token', tok)
-    
+
     // Auto-resolve user_id / public_id from token payload if not sent in the
     // data response (the JWT carries both).
     let resolvedUserId = data.user_id
@@ -167,6 +175,7 @@ export function AuthProvider({ children }) {
     // This doesn't block login — it runs in the background after session is saved.
     const bizId = userObj.public_id || String(userObj.id)
     discoverLocalBackend(bizId).then(localUrl => {
+      if (savedGeneration !== authGeneration.current) return
       if (localUrl) {
         // Same LAN — switch to local backend for all subsequent requests
         try {
@@ -196,7 +205,10 @@ export function AuthProvider({ children }) {
   const _provisionCloudSyncToken = useCallback(async (username, password, localToken, cloudToken = null) => {
     if (!IS_LOCAL_APP || !localToken) return null
     if (typeof navigator !== 'undefined' && navigator.onLine === false) return null
+    const generation = authGeneration.current
+    const current = () => generation === authGeneration.current && tokenStorage.getItem('billing_token') === localToken
     try {
+      if (!current()) return null
       let token = cloudToken
       if (!token) {
         const res = await fetch(`${CLOUD_URL}/login`, {
@@ -208,12 +220,14 @@ export function AuthProvider({ children }) {
         token = (await res.json())?.token
       }
       if (!token) return null
+      if (!current()) return null
       localStorage.setItem('bizassist_cloud_token', token)
       await fetch(`${LOCAL_URL}/api/sync/cloud-token`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localToken}` },
         body: JSON.stringify({ token }),
       })
+      if (!current()) return null
       logger.info('[SYNC] Cloud sync token provisioned (24h, business-scoped)')
       // Keep the CLOUD record's hosting_mode in step with this device when it's
       // on Local + Cloud, so the Admin Console shows "Local + Cloud" (the sync
@@ -579,15 +593,35 @@ export function AuthProvider({ children }) {
       trialUnavailable: Object.prototype.hasOwnProperty.call(data, 'trial') && !data.trial }
   }, [_saveSession, _applyTemplate, _doSignup, _provisionCloudSyncToken])
 
-  const logout = useCallback(() => {
+  const logout = useCallback((announce = true) => {
+    authGeneration.current++
+    notifyAiLogout()
     logger.info('Logging out user, clearing local session token.')
-    
+
+    // Clear billing profile cache so next user does not inherit prior business profile (WEB-07)
+    try {
+      clearBillingProfileCache()
+    } catch (e) {
+      // Ignore
+    }
+
+    // Broadcast logout to all tabs/windows (e.g. open AI tab, WEB-05)
+    if (announce === true && typeof BroadcastChannel !== 'undefined') {
+      try {
+        const bc = new BroadcastChannel('bizassist_auth_channel')
+        bc.postMessage({ type: 'LOGOUT' })
+        bc.close()
+      } catch (e) {
+        // Ignore
+      }
+    }
+
     // Hidden cross-origin iframe to trigger AI dashboard logout synchronously
     try {
       const { hostname, port } = window.location
-      const aiUrl = import.meta.env.VITE_AI_DASHBOARD_URL || 
+      const aiUrl = import.meta.env.VITE_AI_DASHBOARD_URL ||
         (port === '8450' ? `http://${hostname}:8451` : `http://${hostname}:5173`)
-        
+
       const iframe = document.createElement('iframe')
       iframe.style.display = 'none'
       iframe.src = `${aiUrl}/?logout=true`
@@ -608,6 +642,21 @@ export function AuthProvider({ children }) {
     setAppReady(false)
     setBizId(null)   // stop tagging logs with the signed-out business
   }, [])
+
+  useEffect(() => {
+    const changed = event => {
+      if (token && (event.key === 'billing_token' || event.key === 'billing_user') && !event.newValue) logout(false)
+    }
+    window.addEventListener('storage', changed)
+    let channel
+    try {
+      if (typeof BroadcastChannel !== 'undefined') {
+        channel = new BroadcastChannel('bizassist_auth_channel')
+        channel.onmessage = event => { if (event.data?.type === 'LOGOUT') logout(false) }
+      }
+    } catch { /* storage events remain available */ }
+    return () => { window.removeEventListener('storage', changed); channel?.close() }
+  }, [token, logout])
 
   /**
    * switchMode — change hosting mode and force re-login.
@@ -649,6 +698,7 @@ export function AuthProvider({ children }) {
       logger.warn('[MODE SWITCH] Could not save mode to backend (continuing anyway):', err)
     }
     // 2. Update localStorage so the new API_BASE is effective immediately
+    logout()
     updateApiBase(newMode)
     // 3. Force logout — clears stale JWT; user will log in against new backend
     localStorage.removeItem('billing_token')
@@ -661,7 +711,7 @@ export function AuthProvider({ children }) {
       detail: { type: 'info', msg: `Switched to ${modeLabel}. Please log in again.` }
     }))
     logger.info(`[MODE SWITCH] Done. API_BASE is now: ${API_BASE}`)
-  }, [token])
+  }, [token, logout])
 
   /**
    * setHostingMode — flip between Local and Local+Cloud (hybrid) WITHOUT a logout.
@@ -714,12 +764,16 @@ export function AuthProvider({ children }) {
 
   const fetchProfile = useCallback(async () => {
     if (!token) return
+    const backend = API_BASE, generation = authGeneration.current
+    const current = () => generation === authGeneration.current && tokenStorage.getItem('billing_token') === token && API_BASE === backend
     try {
-      const res = await fetch(`${API_BASE}/profile`, {
+      if (!current()) return
+      const res = await fetch(`${backend}/profile`, {
         headers: {
           Authorization: `Bearer ${token}`
         }
       })
+      if (!current()) return
       if (res.status === 404) {
         logger.warn('[AUTH] Restored session user not found on active backend. Auto-logging out.')
         logout()
@@ -727,6 +781,7 @@ export function AuthProvider({ children }) {
       }
       if (res.ok) {
         const data = await res.json()
+        if (!current()) return
         setProfile(data)
       }
     } catch (err) {
@@ -738,13 +793,17 @@ export function AuthProvider({ children }) {
 
   const fetchSettings = useCallback(async (force = false) => {
     if (!token) return
+    const backend = API_BASE, generation = authGeneration.current
+    const current = () => generation === authGeneration.current && tokenStorage.getItem('billing_token') === token && API_BASE === backend
     try {
-      const url = force ? `${API_BASE}/settings?force=true` : `${API_BASE}/settings`
+      if (!current()) return
+      const url = force ? `${backend}/settings?force=true` : `${backend}/settings`
       const res = await fetch(url, {
         headers: {
           Authorization: `Bearer ${token}`
         }
       })
+      if (!current()) return
       if (res.status === 404) {
         logger.warn('[AUTH] Restored session settings user not found on active backend. Auto-logging out.')
         logout()
@@ -752,6 +811,7 @@ export function AuthProvider({ children }) {
       }
       if (res.ok) {
         const data = await res.json()
+        if (!current()) return
         // (§9.3a/b) Reconcile the account's saved `general.hosting_mode` to the
         // REAL mode so it can't drift. A stale value (e.g. 'local' persisted on
         // the account from an earlier desktop switch) otherwise mis-tags cloud
@@ -816,7 +876,8 @@ export function AuthProvider({ children }) {
           // Persisting is what makes it stick server-side; the derivation is
           // deterministic from session facts, so this settles on the first load
           // rather than oscillating the way the old reconcile did.
-          fetch(`${API_BASE}/settings`, {
+          if (!current()) return
+          fetch(`${backend}/settings`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
             body: JSON.stringify({ general: { hosting_mode: realMode } }),
@@ -848,12 +909,16 @@ export function AuthProvider({ children }) {
 
   const fetchBusinessConfig = useCallback(async () => {
     if (!token) return
+    const backend = API_BASE, generation = authGeneration.current
+    const current = () => generation === authGeneration.current && tokenStorage.getItem('billing_token') === token && API_BASE === backend
     try {
-      const res = await fetch(`${API_BASE}/business/config`, {
+      if (!current()) return
+      const res = await fetch(`${backend}/business/config`, {
         headers: {
           Authorization: `Bearer ${token}`
         }
       })
+      if (!current()) return
       if (res.status === 404) {
         logger.warn('[AUTH] Restored session business config user not found on active backend. Auto-logging out.')
         logout()
@@ -861,6 +926,7 @@ export function AuthProvider({ children }) {
       }
       if (res.ok) {
         const data = await res.json()
+        if (!current()) return
         setBusinessConfig(data.config)
         setAttributesSchema(data.attributes_schema || [])
         logger.info('Loaded business config successfully')
@@ -957,6 +1023,9 @@ export function AuthProvider({ children }) {
 
   // Authenticated fetch helper
   const authFetch = useCallback(async (path, opts = {}) => {
+    const backend = API_BASE, generation = authGeneration.current
+    const current = () => generation === authGeneration.current && tokenStorage.getItem('billing_token') === token && API_BASE === backend
+    if (!current()) throw new Error('Session changed')
     // DELIBERATELY NO ABSOLUTE-URL PASSTHROUGH.
     // A revision that allowed callers to pass a fully-qualified URL here caused
     // a cross-tenant bug: the session token is issued by, and only valid on, the
@@ -974,7 +1043,7 @@ export function AuthProvider({ children }) {
     }
 
     logger.debug(`authFetch request started for path: ${path} (mapped to ${apiPath}), method: ${opts.method || 'GET'}`)
-    
+
     const headers = {
       ...(opts.headers || {}),
       Authorization: `Bearer ${token}`
@@ -985,7 +1054,7 @@ export function AuthProvider({ children }) {
 
     let res
     try {
-      res = await fetch(`${API_BASE}${apiPath}`, {
+      res = await fetch(`${backend}${apiPath}`, {
         ...opts,
         headers
       })
@@ -996,6 +1065,8 @@ export function AuthProvider({ children }) {
       }))
       throw err
     }
+
+    if (!current()) throw new Error('Session changed')
 
     if (res.status === 401) {
       logger.warn(`authFetch encountered 401 (Unauthorized) for path: ${path}. Auto-logging out.`)
@@ -1032,11 +1103,15 @@ export function AuthProvider({ children }) {
   )
 }
 
-export const useAuth = () => useContext(AuthContext)
+export const useAuth = () => {
+  const value = useContext(AuthContext)
+  if (value === null) throw new Error('useAuth must be rendered inside AuthProvider')
+  return value
+}
 
 export const useBusinessConfig = () => {
   const { businessConfig, attributesSchema, fetchBusinessConfig } = useAuth()
-  
+
   const t = useCallback((key, fallback) => {
     if (!businessConfig || !businessConfig.terminology) {
       return fallback || key

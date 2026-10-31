@@ -164,7 +164,7 @@ export default function Profile({ embedded = false }) {
             {field('gstin', 'GSTIN', { maxLength: 15, placeholder: '15-digit GSTIN' })}
             {field('pan', 'PAN', { maxLength: 10, placeholder: '10-digit PAN' })}
             {field('state_code', 'GST state code', { maxLength: 2, inputMode: 'numeric', placeholder: 'e.g. 29 for Karnataka' })}
-            {field('upi_vpa', 'UPI ID (VPA)', { placeholder: 'yourname@okhdfcbank', hint: 'Used for payment QR codes and invoices. Leave blank to use your phone number.' })}
+            {field('upi_vpa', 'UPI ID (VPA)', { placeholder: 'yourname@okhdfcbank', hint: 'Use the UPI ID from your bank app. Set this before requesting payment by QR or link.' })}
           </div>
         </fieldset>
 

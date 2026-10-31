@@ -276,7 +276,8 @@ def me(p: Principal = Depends(current_principal), db: Session = Depends(get_db))
         "business_name": owner.business_name if owner else None,
         "settings": settings_out(settings),
         "billing_business": ({"business_id": owner.id, "public_id": owner.public_id,
-                              "business_name": owner.business_name, "phone": owner.phone} if owner else None),
+                              "business_name": owner.business_name, "phone": owner.phone,
+                              "upi_vpa": owner.upi_vpa} if owner else None),
         "data_source": {"mode": "local" if config.IS_SQLITE else "cloud", "shared_database_required": True,
                         "cloud_only": True, "development_mirror": config.IS_SQLITE},
     }

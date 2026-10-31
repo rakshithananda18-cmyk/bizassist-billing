@@ -10,6 +10,7 @@ import AppLayout from '../layouts/AppLayout'
 import HeaderSearchSlot from '../components/common/HeaderSearchSlot'
 import PageTabs from '../components/common/PageTabs'
 import { useAuth } from '../contexts/AuthContext'
+import { readAllPages } from '../utils/readPages'
 import {
   AlertIcon,
   BillsIcon,
@@ -256,7 +257,7 @@ function downloadCSV(data, filename) {
 }
 
 const fmt = (val) => {
-  if (val === undefined || val === null || isNaN(Number(val))) return '₹0.00'
+  if (val === undefined || val === null || !Number.isFinite(Number(val))) return 'Unavailable'
   return `₹${Number(val).toFixed(2)}`
 }
 
@@ -416,12 +417,11 @@ export default function Reports() {
     setPartyId('')
     setParties([])
     try {
-      const res = await authFetch(`/billing/${type === 'vendor' ? 'vendors' : 'customers'}`, { signal: controller.signal })
-      const data = res.ok ? await res.json() : []
+      const data = await readAllPages(authFetch, `/billing/${type === 'vendor' ? 'vendors' : 'customers'}`, { signal: controller.signal })
       if (request !== partyRequestRef.current) return
       setParties(Array.isArray(data) ? data : (data.items || []))
-    } catch {
-      if (request === partyRequestRef.current) setParties([])
+    } catch (error) {
+      if (request === partyRequestRef.current) { setParties([]); if (error.name !== 'AbortError') setAlert({ type: 'danger', msg: 'Party list is unavailable. Retry selecting the report.' }) }
     } finally {
       if (request === partyRequestRef.current) setPartiesLoading(false)
     }

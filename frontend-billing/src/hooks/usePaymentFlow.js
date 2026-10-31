@@ -8,6 +8,8 @@ import { useConfirm } from '../contexts/ConfirmContext'
 import { playSuccessChime } from '../utils/posAudio'
 import { printInvoicePdf } from '../utils/printInvoicePdf'
 import { requestReceiptPrint } from '../utils/receiptPrintEvents'
+import { syncManager } from '../sync/syncManager'
+import { readAllPages } from '../utils/readPages'
 
 // Module-level save lock — shared across ALL instances of this hook.
 // Prevents duplicate POSTs when React StrictMode mounts two instances
@@ -159,6 +161,7 @@ export default function usePaymentFlow({
   }
 
   const handleSaveInvoice = useCallback(async (printAfterSave = false, skipConfirm = false) => {
+    const ownership = syncManager.captureIntent()
     if (form.items.length === 0 || form.items.some(it => !it.product
       || !Number.isFinite(parseFloat(it.price)) || parseFloat(it.price) < 0
       || !Number.isFinite(parseFloat(it.qty)) || parseFloat(it.qty) <= 0)) {
@@ -174,7 +177,7 @@ export default function usePaymentFlow({
       return false
     }
     _saveLock.set(lockKey, 'saving')
-    
+
     const pay = (payable ?? grandTotal)
     const creditMode = form.payment_mode === 'credit'
     const tendered = form.amount_received !== '' && form.amount_received != null
@@ -299,11 +302,15 @@ export default function usePaymentFlow({
     // once. Thermal receipts print from local state (offline-capable); PDF print
     // needs the server, so it's skipped with a notice.
     const doQueueOffline = async () => {
+      if (!mountedRef.current && !ownership) return false
       if (!enqueueOffline) {
         setAlert({ type: 'danger', msg: 'Offline save is unavailable. Please check your connection.' })
         return false
       }
-      await enqueueOffline({ method: 'POST', path: '/invoices', body: payload, clientRequestId })
+      await enqueueOffline({ method: 'POST', path: '/invoices', body: payload, clientRequestId, ownership })
+      // The original business owns this durable intent even after logout.
+      // Never reset or paint success into another account's counter.
+      if (!mountedRef.current || (ownership && !syncManager.isIntentCurrent(ownership))) return true
       _saveLock.set(lockKey, 'saved')
       reqIdRef.current.delete(reqKey) // safely persisted in the outbox now
       logger.info('[SALES] invoice queued offline', activeTab.name)
@@ -342,7 +349,7 @@ export default function usePaymentFlow({
         logger.info('[SALES] invoice saved', serverInvoiceNo, printAfterSave ? '(print)' : '')
         try { playSuccessChime() } catch (error) { logger.warn('[SALES] success sound unavailable', error) }
         setAlert({ type: 'success', msg: printAfterSave ? 'Invoice saved. Preparing print…' : 'Invoice created successfully!' })
-        
+
         const finishReset = (keepPrintLock = false) => {
           // Retire the committed cart immediately. A slow cloud list refresh must
           // not leave it editable after Done releases the saved-receipt lock.
@@ -351,8 +358,7 @@ export default function usePaymentFlow({
             // Refresh list/numbering in the background without closing another
             // tab later, when the cashier may already be working on a new sale.
             const fromDate = getFromDateStr(7)
-            authFetch(`/billing/invoices?from_date=${fromDate}&per_page=500&sort=desc`)
-              .then(r => r.ok ? r.json() : [])
+            readAllPages(authFetch, `/billing/invoices?from_date=${fromDate}&sort=desc`)
               .then(invs => {
                 setDbInvoices(invs)
                 setTabs(prev => syncTabNames(prev, invs))

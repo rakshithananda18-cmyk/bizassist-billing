@@ -77,8 +77,17 @@ def test_profile_and_staff_sync_use_bizid_not_foreign_numeric_id():
             "username": owner_a["username"], "public_id": owner_a["public_id"],
             "role": "owner",
         }
+        # Legacy peers must hold rather than mutate without a durable event.
+        with pytest.raises(HTTPException) as held:
+            sync_profile_push(ProfilePushRequest(business_name="Legacy must not apply"),
+                              current_user=cross_db_owner_token, db=db)
+        assert held.value.status_code == 426
+        assert db.get(User, owner_a["id"]).business_name != "Legacy must not apply"
+        source_id = "fixture-device-" + uuid.uuid4().hex
         sync_profile_push(
-            ProfilePushRequest(business_name="Alpha profile through BizID"),
+            ProfilePushRequest(business_name="Alpha profile through BizID",
+                event_id=uuid.uuid4().hex, source_id=source_id, source_revision=1,
+                business_public_id=owner_a["public_id"]),
             current_user=cross_db_owner_token, db=db,
         )
         result = sync_staff_push(
@@ -86,7 +95,8 @@ def test_profile_and_staff_sync_use_bizid_not_foreign_numeric_id():
                 staff_login_name=f"counter_{uuid.uuid4().hex[:6]}",
                 internal_username=f"sync_{uuid.uuid4().hex[:8]}",
                 hashed_password="$2b$12$not-a-real-hash-but-never-verified-here",
-            )]),
+            )], event_id=uuid.uuid4().hex, source_id=source_id, source_revision=2,
+                business_public_id=owner_a["public_id"]),
             current_user=cross_db_owner_token, db=db,
         )
         assert result["upserted"] == 1

@@ -104,9 +104,8 @@ def _reminders_preview(user_id: int, params: dict) -> dict:
         if not selected:
             target = params.get("customer")
             inv_id = params.get("invoice_id")
-            overdue_names = [r[0] for r in db.query(Invoice.customer)
-                             .filter(Invoice.business_id == user_id,
-                                     Invoice.status == "Overdue").distinct().all()]
+            from core.billing.balances import grouped_overdue_rows
+            overdue_names = [row.customer for row in grouped_overdue_rows(db, user_id)]
             if not target and inv_id:
                 row = (db.query(Invoice.customer)
                        .filter(Invoice.business_id == user_id,
@@ -120,18 +119,9 @@ def _reminders_preview(user_id: int, params: dict) -> dict:
                     (target if target in overdue_names else None)
                 if resolved:
                     selected = [resolved]
-        q = (
-            db.query(
-                Invoice.customer,
-                func.sum(Invoice.amount).label("total"),
-                func.max(Invoice.due_date).label("due"),
-                func.count(Invoice.id).label("invoices"),
-            )
-            .filter(Invoice.business_id == user_id, Invoice.status == "Overdue")
-        )
-        if selected:
-            q = q.filter(Invoice.customer.in_(selected))
-        rows = q.group_by(Invoice.customer).order_by(func.sum(Invoice.amount).desc()).all()
+        from core.billing.balances import grouped_overdue_rows
+        rows = grouped_overdue_rows(db, user_id, selected=selected)
+
 
         smtp_ok = email_configured()
         items = []
@@ -286,10 +276,8 @@ def _mark_paid_execute(user_id: int, params: dict) -> dict:
 
 # ── email_reminder_digest (owner digest — works without customer emails) ───
 def _digest_rows(db, user_id: int):
-    return (db.query(Invoice.customer, func.sum(Invoice.amount).label("total"),
-                     func.max(Invoice.due_date).label("due"), func.count(Invoice.id).label("n"))
-            .filter(Invoice.business_id == user_id, Invoice.status == "Overdue")
-            .group_by(Invoice.customer).order_by(func.sum(Invoice.amount).desc()).all())
+    from core.billing.balances import grouped_overdue_rows
+    return grouped_overdue_rows(db, user_id)
 
 
 def _digest_preview(user_id: int, params: dict) -> dict:
@@ -374,7 +362,8 @@ def _escalate_preview(user_id: int, params: dict) -> dict:
     try:
         business = _business_name(db, user_id)
         now = utc_now()
-        rows = db.query(Invoice).filter(Invoice.business_id == user_id, Invoice.status == "Overdue").all()
+        from core.billing.balances import outstanding_rows
+        rows = outstanding_rows(db, user_id, overdue=True)
         agg = {}
         for r in rows:
             due = parse_date(r.due_date)

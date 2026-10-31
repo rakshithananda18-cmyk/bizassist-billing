@@ -23,6 +23,8 @@ from database.models import (
     TableAlteration, RegisterShift, ShiftCashMovement,
 )
 from core.models import B2BConnection, B2BOrder, B2BOrderLineItem, PeriodLock
+from core.accounting.settlement_models import SupplierPayment, CustomerRefund, CustomerCreditAllocation
+from core.party_archive import DocumentPartySnapshot
 
 # table name -> SQLAlchemy ORM model
 MODEL_MAP: Dict[str, Any] = {
@@ -32,6 +34,10 @@ MODEL_MAP: Dict[str, Any] = {
     # (e.g. local id=122 and cloud id=7 share the unified BizID → UNIQUE failed).
     # Only business *data* syncs; the account/identity does not.
     "customers": Customer,
+    "supplier_payments": SupplierPayment,
+    "customer_refunds": CustomerRefund,
+    "customer_credit_allocations": CustomerCreditAllocation,
+    "document_party_snapshots": DocumentPartySnapshot,
     "vendors": Vendor,
     "products": Product,
     # register_shifts MUST appear before invoices: an invoice carries a shift_id
@@ -197,6 +203,7 @@ PULL_ONLY_TABLES: frozenset = frozenset({
 # entity today, so no outbox has been poisoned — but the only thing that had
 # been preventing it was that the enqueue path happened never to be reached.
 APPEND_ONLY_DELETE_BLOCKLIST: frozenset = frozenset({
+    "supplier_payments", "customer_refunds", "customer_credit_allocations", "document_party_snapshots",
     # Money/audit documents and their lines.
     "invoices",
     "invoice_line_items",
@@ -236,7 +243,10 @@ APPEND_ONLY_DELETE_BLOCKLIST: frozenset = frozenset({
 # shared, the fix is to make `uploaded_files` a synced entity with a uid and
 # declare a real ForeignKey — then the existing resolve_parent_fk_uids machinery
 # handles it correctly and this entry goes away.
-LOCAL_ONLY_COLUMNS: frozenset = frozenset({"file_id"})
+# Settlement operator ids also name a user only in the originating database.
+# Keep the immutable operator_name as evidence; both apply paths bind the id
+# to the resolved receiving owner rather than exporting a foreign user id.
+LOCAL_ONLY_COLUMNS: frozenset = frozenset({"file_id", "operator_id"})
 
 
 # B2B tables are scoped by TWO owner columns instead of the usual single
@@ -524,6 +534,10 @@ def resolve_parent_fk_uids(
 
 # table name -> SSE channel name used to nudge the browser to refetch
 ENTITY_BROADCAST_MAP: Dict[str, str] = {
+    "supplier_payments": "purchase",
+    "customer_refunds": "payment",
+    "customer_credit_allocations": "payment",
+    "document_party_snapshots": "invoice",
     "customers": "party",
     "vendors": "party",
     "products": "product",

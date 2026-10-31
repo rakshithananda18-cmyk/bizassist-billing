@@ -32,14 +32,13 @@ def test_signup_phone_lands_on_profile():
 
     prof = client.get("/profile", headers=headers)
     assert prof.status_code == 200, prof.text
-    assert prof.json().get("phone") == "9494747419"
+    assert prof.json().get("phone") == "+919494747419"
 
 
-def test_signup_without_phone_is_fine():
+def test_fresh_signup_without_phone_is_rejected():
     uname = f"own_{uuid.uuid4().hex[:8]}"
-    r = client.post("/signup", json=signup_payload({
+    r = client.post("/signup", json={
         "username": uname, "password": "TestPass123!", "business_name": "No Phone Co",
-    }))
-    assert r.status_code == 200, r.text
-    headers = {"Authorization": f"Bearer {r.json()['token']}"}
-    assert client.get("/profile", headers=headers).json().get("phone") in (None, "")
+    })
+    assert r.status_code == 422, r.text
+    assert "phone" in r.json()["detail"].lower()

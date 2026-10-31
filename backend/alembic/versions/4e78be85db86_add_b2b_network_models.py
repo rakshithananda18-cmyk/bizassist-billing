@@ -185,14 +185,24 @@ def upgrade() -> None:
                type_=sa.String(),
                existing_nullable=True)
         if op.get_context().dialect.name == 'sqlite':
-            batch_op.create_index(batch_op.f('ix_inventory_barcode'), ['barcode'], unique=False)
-            batch_op.create_index('ix_inventory_business_stock', ['business_id', 'stock'], unique=False)
-            batch_op.create_index(batch_op.f('ix_inventory_product_id'), ['product_id'], unique=False)
-            batch_op.create_index(batch_op.f('ix_inventory_product_name'), ['product_name'], unique=False)
-            batch_op.create_index(batch_op.f('ix_inventory_vendor_id'), ['vendor_id'], unique=False)
-        if op.get_context().dialect.name == 'sqlite':
-            batch_op.create_foreign_key(batch_op.f('fk_inventory_vendor_id_vendors'), 'vendors', ['vendor_id'], ['id'])
-            batch_op.create_foreign_key(batch_op.f('fk_inventory_product_id_products'), 'products', ['product_id'], ['id'])
+            # Predecessor revisions already install several of these indexes.
+            # Batch reflection preserves them during the type-only rebuild;
+            # adding a second definition makes a fresh upgrade fail at CREATE INDEX.
+            inspector = sa.inspect(op.get_bind())
+            existing = {index['name'] for index in inspector.get_indexes('inventory')}
+            for name, columns in (
+                ('ix_inventory_barcode', ['barcode']),
+                ('ix_inventory_business_stock', ['business_id', 'stock']),
+                ('ix_inventory_product_id', ['product_id']),
+                ('ix_inventory_product_name', ['product_name']),
+                ('ix_inventory_vendor_id', ['vendor_id']),
+            ):
+                if name not in existing:
+                    batch_op.create_index(name, columns, unique=False)
+            existing_fks = {tuple(fk['constrained_columns']) for fk in inspector.get_foreign_keys('inventory')}
+            for column, parent in (('vendor_id', 'vendors'), ('product_id', 'products')):
+                if (column,) not in existing_fks:
+                    batch_op.create_foreign_key(f'fk_inventory_{column}_{parent}', parent, [column], ['id'])
 
     with op.batch_alter_table('invoices', schema=None) as batch_op:
         batch_op.alter_column('paid_amount',
@@ -263,12 +273,17 @@ def upgrade() -> None:
                type_=sa.String(),
                existing_nullable=True)
         if op.get_context().dialect.name == 'sqlite':
-            batch_op.create_index('ix_invoice_business_date', ['business_id', 'invoice_date'], unique=False)
-            batch_op.create_index('ix_invoice_business_status', ['business_id', 'status'], unique=False)
-            batch_op.create_index(batch_op.f('ix_invoices_customer'), ['customer'], unique=False)
-            batch_op.create_index(batch_op.f('ix_invoices_customer_id'), ['customer_id'], unique=False)
-            batch_op.create_index(batch_op.f('ix_invoices_invoice_id'), ['invoice_id'], unique=False)
-            batch_op.create_index(batch_op.f('ix_invoices_status'), ['status'], unique=False)
+            existing = {index['name'] for index in sa.inspect(op.get_bind()).get_indexes('invoices')}
+            for name, columns in (
+                ('ix_invoice_business_date', ['business_id', 'invoice_date']),
+                ('ix_invoice_business_status', ['business_id', 'status']),
+                ('ix_invoices_customer', ['customer']),
+                ('ix_invoices_customer_id', ['customer_id']),
+                ('ix_invoices_invoice_id', ['invoice_id']),
+                ('ix_invoices_status', ['status']),
+            ):
+                if name not in existing:
+                    batch_op.create_index(name, columns, unique=False)
         if op.get_context().dialect.name == 'sqlite':
             batch_op.create_foreign_key(batch_op.f('fk_invoices_customer_id_customers'), 'customers', ['customer_id'], ['id'])
 
@@ -278,7 +293,8 @@ def upgrade() -> None:
                type_=sa.String(),
                existing_nullable=True)
         if op.get_context().dialect.name == 'sqlite':
-            batch_op.create_index(batch_op.f('ix_payments_invoice_id'), ['invoice_id'], unique=False)
+            if 'ix_payments_invoice_id' not in {index['name'] for index in sa.inspect(op.get_bind()).get_indexes('payments')}:
+                batch_op.create_index(batch_op.f('ix_payments_invoice_id'), ['invoice_id'], unique=False)
         if op.get_context().dialect.name == 'sqlite':
             batch_op.create_foreign_key(batch_op.f('fk_payments_invoice_id_invoices'), 'invoices', ['invoice_id'], ['id'])
 

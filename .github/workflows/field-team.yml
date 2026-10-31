@@ -15,7 +15,13 @@ on:
       - 'backend/database/models.py'
       - 'backend/database/db.py'
       - 'backend/services/auth.py'
-      - 'backend/alembic/env.py'
+      - 'backend/core/**'
+      - 'backend/services/admin_service.py'
+      - 'backend/services/field_business_cleanup.py'
+      - 'backend/routes/auth.py'
+      - 'backend/database/security.py'
+      - 'backend/database/migration.py'
+      - 'backend/alembic/**'
       - '.github/workflows/field-team.yml'
   pull_request:
     branches: [ main ]
@@ -25,7 +31,13 @@ on:
       - 'backend/database/models.py'
       - 'backend/database/db.py'
       - 'backend/services/auth.py'
-      - 'backend/alembic/env.py'
+      - 'backend/core/**'
+      - 'backend/services/admin_service.py'
+      - 'backend/services/field_business_cleanup.py'
+      - 'backend/routes/auth.py'
+      - 'backend/database/security.py'
+      - 'backend/database/migration.py'
+      - 'backend/alembic/**'
       - '.github/workflows/field-team.yml'
 
 env:
@@ -122,13 +134,14 @@ jobs:
       # Field Team's own requirements are enough to import billing's models
       # and services.auth — no torch / AI stack needed for this job.
       - run: pip install -r backend-task/requirements-dev.txt
-      - name: Billing creates its schema with its own models
+      - name: Billing migrates its full schema from empty and verifies retry
         working-directory: backend
         env:
           DATABASE_URL: ${{ env.CONTRACT_DB }}
           GROQ_API_KEY: mock_groq_api_key
         run: |
-          python -c "from database.db import Base, engine; import database.models, core.models; Base.metadata.create_all(bind=engine); print(len(Base.metadata.tables), 'billing tables')"
+          python -m alembic upgrade head
+          python -m alembic upgrade head
       - name: Field Team suite on that schema, plus billing-minted tickets
         working-directory: backend-task
         env:

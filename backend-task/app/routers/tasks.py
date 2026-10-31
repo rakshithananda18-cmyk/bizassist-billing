@@ -24,7 +24,7 @@ from app.db import get_db, utc_now
 from app.billing_context import billing_context
 from app.collections import PAYMENT_MODES, confirmed_in_billing
 from app.geo import GeoFix, distance_to, validate_fix
-from app.invoices import MAX_PER_TASK, attach_invoices, ensure_not_planned, resolve_invoices
+from app.invoices import MAX_PER_TASK, attach_invoices, ensure_not_planned, resolve_invoices, invoice_balances, balance_due
 from app.models import FieldRun, FieldRunStop, FieldShop, FieldTask
 from app.routers.attendance import require_checked_in
 from app.routers.runs import _check_task_type, maybe_complete_run, maybe_complete_stop
@@ -170,6 +170,27 @@ def update_task(task_id: int, req: TaskPatch, p: Principal = Depends(require_own
         if not day and clock:
             raise HTTPException(status_code=422, detail="Choose a due date before setting a due time")
         task.due_at = _due(day, clock)
+    if "status" in data:
+        new_status = data["status"]
+        if task.status == "cancelled" and new_status == "pending":
+            if task.run_id:
+                run = db.query(FieldRun).filter(FieldRun.id == task.run_id, FieldRun.business_id == p.business_id).first()
+                if run and run.status in ("completed", "cancelled"):
+                    raise HTTPException(status_code=409, detail=f"Cannot reopen task on a {run.status} run")
+            if task.run_stop_id:
+                stop = db.query(FieldRunStop).filter(FieldRunStop.id == task.run_stop_id).first()
+                if stop and stop.status in ("done", "skipped"):
+                    raise HTTPException(status_code=409, detail=f"Cannot reopen task on a {stop.status} stop")
+            ti_ids = [ti.invoice_id for ti in task.invoices]
+            if ti_ids:
+                shop = get_scoped(db, FieldShop, p.business_id, task.shop_id, "Shop") if task.shop_id is not None else None
+                invoices = resolve_invoices(db, p.business_id, shop, ti_ids)
+                ensure_not_planned(db, p.business_id, task.task_type, invoices)
+                if task.task_type == "payment_collect":
+                    balances = invoice_balances(db, invoices)
+                    due = round(sum(balance_due(i, balances) for i in invoices), 2)
+                    if task.amount_expected is None or task.amount_expected > due + 0.005:
+                        task.amount_expected = due
     for k, v in data.items():
         setattr(task, k, v.strip() if isinstance(v, str) and k == "title" else v)
     log_activity(db, p, "task.update", entity="task", entity_id=task.id, summary=", ".join(sorted(req.model_dump(exclude_unset=True))))

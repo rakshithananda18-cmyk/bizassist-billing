@@ -6,6 +6,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 from database.models import PurchaseInvoice, PurchaseInvoiceLineItem, Product, Vendor, Inventory
 from core.stock import ledger as SL
+from core.billing import sequence as SEQ
 
 logger = logging.getLogger("bizassist.purchase")
 
@@ -276,6 +277,18 @@ def accept_supplier_invoice(db: Session, business_id: int, invoice_data: dict) -
                 Product.business_id == business_id
             ).first()
             
+        conv_factor = float(item.get("conversion_factor") or 1.0)
+        if conv_factor <= 0:
+            conv_factor = 1.0
+        unit_price = float(item.get("unit_price") or 0.0)
+        base_unit_cost = (
+            float(item.get("cost_price"))
+            if item.get("cost_price") is not None
+            else (unit_price / conv_factor if conv_factor > 0 else unit_price)
+        )
+        if not math.isfinite(base_unit_cost) or base_unit_cost < 0:
+            raise ValueError("Base-unit cost must be finite and non-negative")
+
         if not product:
             # Create new Product
             product = Product(
@@ -284,9 +297,9 @@ def accept_supplier_invoice(db: Session, business_id: int, invoice_data: dict) -
                 hsn_sac=item.get("hsn_sac"),
                 unit=item.get("unit") or "Nos",
                 purchase_unit=item.get("purchase_unit"),
-                conversion_factor=float(item.get("conversion_factor") or 1.0),
-                cost_price=float(item.get("unit_price") or 0.0),
-                selling_price=float(item.get("unit_price") or 0.0) * 1.2, # default markup
+                conversion_factor=conv_factor,
+                cost_price=base_unit_cost,
+                selling_price=base_unit_cost * 1.2, # default markup on base stock unit
                 cgst_rate=float(item.get("cgst_rate") or 0.0),
                 sgst_rate=float(item.get("sgst_rate") or 0.0),
                 igst_rate=float(item.get("igst_rate") or 0.0),
@@ -297,11 +310,11 @@ def accept_supplier_invoice(db: Session, business_id: int, invoice_data: dict) -
             db.flush() # Populate product.id
         else:
             # Update existing Product's cost price
-            product.cost_price = float(item.get("unit_price") or 0.0)
+            product.cost_price = base_unit_cost
             if item.get("purchase_unit"):
                 product.purchase_unit = item.get("purchase_unit")
             if item.get("conversion_factor") is not None:
-                product.conversion_factor = float(item.get("conversion_factor") or 1.0)
+                product.conversion_factor = conv_factor
             if item.get("hsn_sac"):
                 product.hsn_sac = item.get("hsn_sac")
             db.flush()
@@ -332,7 +345,7 @@ def accept_supplier_invoice(db: Session, business_id: int, invoice_data: dict) -
                 stock=0,
                 unit=product.unit,
                 hsn_sac=product.hsn_sac,
-                cost_price=item.get("cost_price") or product.cost_price,
+                cost_price=base_unit_cost,
                 selling_price=item.get("selling_price") or product.selling_price,
                 mrp=item.get("mrp") or product.mrp,
                 supplier=vendor.name,
@@ -345,7 +358,7 @@ def accept_supplier_invoice(db: Session, business_id: int, invoice_data: dict) -
             db.flush()
         else:
             # Keep vendor and prices in sync
-            inv.cost_price = item.get("cost_price") or product.cost_price
+            inv.cost_price = base_unit_cost
             inv.selling_price = item.get("selling_price") or product.selling_price
             inv.mrp = item.get("mrp") or product.mrp
             inv.supplier = vendor.name
@@ -401,6 +414,10 @@ def accept_supplier_invoice(db: Session, business_id: int, invoice_data: dict) -
     # Post the balanced double-entry journal (audit trail) within this same txn.
     from core.accounting import posting
     posting.post_purchase(db, purchase_invoice)
+    from core.party_archive import capture_document_parties
+    from database.models import User
+    capture_document_parties(db, purchase_invoice, kind="purchase", seller=vendor,
+                            buyer=db.query(User).filter(User.id == business_id).first())
 
     db.commit()
     return purchase_invoice
@@ -428,14 +445,36 @@ def create_debit_note(
     if orig.invoice_type == "debit_note":
         raise ValueError("A return must refer to an original purchase, not another debit note.")
 
-    # 2. Auto-generate debit note number
+    # 2. Auto-generate debit note number (monotonic series, BD-13)
     dn_number = (debit_note_no or "").strip()
+    if dn_number and db.query(PurchaseInvoice.id).filter(PurchaseInvoice.business_id == business_id,
+        PurchaseInvoice.invoice_type == "debit_note", PurchaseInvoice.invoice_number == dn_number).first():
+        raise ValueError("This debit-note number already exists for this business")
     if not dn_number:
-        n = db.query(func.count(PurchaseInvoice.id)).filter(
-            PurchaseInvoice.business_id == business_id,
-            PurchaseInvoice.invoice_type == "debit_note"
-        ).scalar() or 0
-        dn_number = f"DN-{n + 1:04d}"
+        def _dn_series_max():
+            rows = (
+                db.query(PurchaseInvoice.invoice_number)
+                .filter(PurchaseInvoice.business_id == business_id,
+                        PurchaseInvoice.invoice_type == "debit_note",
+                        PurchaseInvoice.invoice_number.like(SEQ.like_prefix(SEQ.DEBIT_NOTE_SERIES), escape="\\"))
+                .all()
+            )
+            return SEQ.max_suffix((r[0] for r in rows), SEQ.DEBIT_NOTE_SERIES)
+
+        def _dn_number_taken(num: str) -> bool:
+            return (
+                db.query(PurchaseInvoice.id)
+                .filter(PurchaseInvoice.business_id == business_id,
+                        PurchaseInvoice.invoice_number == num)
+                .first()
+                is not None
+            )
+
+        dn_number = SEQ.next_number(
+            db, business_id, SEQ.DEBIT_NOTE_SERIES,
+            scan_max=_dn_series_max,
+            is_taken=_dn_number_taken,
+        )
 
     # 3. Process line items
     dn_lines = []

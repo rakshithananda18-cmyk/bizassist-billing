@@ -2,6 +2,7 @@ import os
 import sys
 import pytest
 import asyncio
+import uuid
 from datetime import datetime, timedelta
 from fastapi import HTTPException
 from unittest.mock import patch, MagicMock
@@ -23,14 +24,22 @@ from services.auth import (
 from services.realtime import realtime_manager
 
 def test_ticket_creation_and_expiration():
-    user = {"id": 10, "username": "test_user", "role": "owner"}
+    from database.db import SessionLocal
+    from database.models import User
+    with SessionLocal() as db:
+        subject = User(username="ticket_" + uuid.uuid4().hex, password="unusable",
+                       role="owner", token_version=0)
+        db.add(subject)
+        db.commit()
+        user = {"id": subject.id, "user_id": subject.id, "username": subject.username,
+                "role": "owner", "tv": 0}
     ticket = create_sse_ticket(user, expires_in_seconds=2)
     # Stateless HMAC ticket: "<exp>.<payload_b64>.<sig>" — no server-side store.
     assert ticket.count(".") == 2
 
     # Retrieve user using ticket
     resolved_user = get_active_user_or_ticket(ticket=ticket)
-    assert resolved_user["id"] == 10
+    assert resolved_user["id"] == user["id"]
 
     # Single-use check: ticket is now in the used-set and refused on replay
     assert ticket in _used_tickets

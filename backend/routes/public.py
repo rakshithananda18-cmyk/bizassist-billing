@@ -39,6 +39,9 @@ def get_public_invoice(
     Requires NO authentication.
     Returns JSON payload or renders HTML/PDF based on query param or accept headers.
     """
+    from database.security import public_invoice_tenant
+    if public_invoice_tenant(db, uid_token) is None:
+        raise HTTPException(status_code=404, detail="Invoice not found or link expired.")
     inv = db.query(Invoice).filter(Invoice.uid_token == uid_token).first()
     if not inv:
         raise HTTPException(status_code=404, detail="Invoice not found or link expired.")

@@ -1,0 +1,177 @@
+{
+  "scope": "HEAD 6c52792 plus current unstaged/new files; in-memory SQLite only",
+  "checks": [
+    {
+      "check": "BD-01-disabled-mark-paid",
+      "expected": {
+        "ok": false,
+        "status": "Pending",
+        "paid": 0
+      },
+      "observed": {
+        "ok": false,
+        "status": "Pending",
+        "paid": 0.0
+      },
+      "passed": true
+    },
+    {
+      "check": "BD-05-preserve-integrity-alarm",
+      "expected": {
+        "hash_unchanged": true,
+        "verify_ok": false
+      },
+      "observed": {
+        "hash_unchanged": true,
+        "verify_ok": false
+      },
+      "passed": true
+    },
+    {
+      "check": "BD-02-exact-null-bucket-and-rebuild",
+      "expected": 11,
+      "observed": 11.0,
+      "passed": true
+    },
+    {
+      "check": "BD-12-catalogue-total",
+      "expected": 11,
+      "observed": 11.0,
+      "passed": true
+    },
+    {
+      "check": "BD-03-conversion-valuation",
+      "expected": {
+        "cost": 10,
+        "valuation": 120
+      },
+      "observed": {
+        "cost": 10.0,
+        "valuation": 120.0
+      },
+      "passed": true
+    },
+    {
+      "check": "BD-09-standalone-advance-contained",
+      "expected": {
+        "rejected": true,
+        "credit_balance": 0
+      },
+      "observed": {
+        "rejected": true,
+        "credit_balance": 0.0
+      },
+      "passed": true
+    },
+    {
+      "check": "BD-04-overview-full-return",
+      "expected": {
+        "revenue": 0,
+        "collected": 0
+      },
+      "observed": {
+        "revenue": 0.0,
+        "collected": 0.0
+      },
+      "passed": true
+    },
+    {
+      "check": "BD-04-deterministic-return-parity",
+      "expected": true,
+      "observed": false,
+      "passed": false,
+      "detail": "**Revenue Breakdown**\n\n- Total revenue  : **₹200**\n- Collected      : **₹100**\n- Pending        : **₹100**\n- Overdue        : **₹0**\n\nCollection rate  : **50%**"
+    },
+    {
+      "check": "BD-04-prompt-snapshot-return-parity",
+      "expected": true,
+      "observed": false,
+      "passed": false,
+      "detail": "[Live Business Data] Revenue: Rs.200 | Collected: 50% | Overdue: Rs.0 (0 invoices) | Pending: 1 invoices"
+    },
+    {
+      "check": "BD-04-mixed-legacy-and-new-receipts",
+      "expected": 110,
+      "observed": 10.0,
+      "passed": false
+    },
+    {
+      "check": "BD-04-partial-receipt-return-overdue",
+      "expected": 30.0,
+      "observed": 100.0,
+      "passed": false
+    },
+    {
+      "check": "BD-06-default-rounding-parity",
+      "expected": 119.0,
+      "observed": 118.59,
+      "passed": false
+    },
+    {
+      "check": "BD-06-destination-change-preserves-tax-or-requotes",
+      "expected": 18,
+      "observed": 0.0,
+      "passed": false,
+      "detail": {
+        "quoted_total": 118.0,
+        "final_total": 100.0,
+        "final_cgst": 0.0,
+        "final_sgst": 0.0
+      }
+    },
+    {
+      "check": "BD-07-hidden-product-denied",
+      "expected": true,
+      "observed": true,
+      "passed": true
+    },
+    {
+      "check": "BD-08-terminal-order-protected",
+      "expected": true,
+      "observed": true,
+      "passed": true
+    },
+    {
+      "check": "BD-10-new-positive-cost-immutable",
+      "expected": 80,
+      "observed": 80.0,
+      "passed": true
+    },
+    {
+      "check": "BD-10-zero-cost-return-preserves-original",
+      "expected": {
+        "return_cost": 0,
+        "net_cogs": 0
+      },
+      "observed": {
+        "return_cost": 40.0,
+        "net_cogs": -40.0
+      },
+      "passed": false
+    },
+    {
+      "check": "BD-10-migration-does-not-invent-zero-history",
+      "expected": null,
+      "observed": 0.0,
+      "passed": false,
+      "detail": {
+        "pre_upgrade_product_cost": 80,
+        "post_migration_reported_cogs": 0.0
+      }
+    },
+    {
+      "check": "BD-13-existing-table-gets-uniqueness",
+      "expected": true,
+      "observed": false,
+      "passed": false
+    },
+    {
+      "check": "BD-13-existing-db-rejects-duplicate-manual-number",
+      "expected": 1,
+      "observed": 2,
+      "passed": false
+    }
+  ],
+  "passed": 10,
+  "failed": 10
+}

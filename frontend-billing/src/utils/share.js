@@ -17,15 +17,16 @@
  */
 export function resolvePaymentVpa({ profile, user } = {}) {
   const profileVpa = profile?.upi_vpa?.trim()
-  if (profileVpa) return profileVpa
+  const valid = value => /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+$/.test(value || '')
+  if (valid(profileVpa)) return profileVpa
 
   const userVpa = user?.upi_vpa?.trim()
-  if (userVpa) return userVpa
+  if (valid(userVpa)) return userVpa
 
-  const bizId = user?.id || user?.business_id
+  const bizId = user?.public_id
   if (bizId && typeof localStorage !== 'undefined') {
     const scopedOverride = localStorage.getItem(`pos_upi_vpa_${bizId}`)?.trim()
-    if (scopedOverride) return scopedOverride
+    if (valid(scopedOverride)) return scopedOverride
   }
 
   return ''

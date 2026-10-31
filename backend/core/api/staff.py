@@ -58,46 +58,29 @@ def _norm_prefix(p: Optional[str]) -> Optional[str]:
     return token or None
 
 
-def _push_staff_to_cloud(business_id: int, staff_records: list) -> None:
+def _push_staff_to_cloud(business_id: int, staff_records: list, db: Optional[Session] = None) -> None:
     """
-    Fire-and-forget: push staff records to cloud immediately after a CRUD op.
-    Runs in a background thread so the local API response is never blocked.
-    Only active on the local (SQLite) backend.
+    Durable push: persist staff mutation to SyncControlOutbox and trigger delivery (TS-05).
+    Active on local (SQLite) backend for hybrid cloud businesses.
     """
-    # Only run on local backends (SQLite DB). Cloud instances push to themselves.
     _db_url = os.environ.get("DATABASE_URL", "sqlite")
     if not _db_url.startswith("sqlite"):
         return
-    # "Local only" keeps staff (and their password hashes) on this device.
     from services.immediate_sync import syncs_to_cloud
     if not syncs_to_cloud(business_id):
         logger.info("[STAFF-SYNC] business %s is not on Local + Cloud - staff stay on this device", business_id)
         return
 
-    def _run():
-        try:
-            import httpx
-            from services.sync_worker import _get_cloud_token, CLOUD_URL
-            token = _get_cloud_token(business_id)
-            if not token:
-                logger.warning("[STAFF-SYNC] No cloud token available for business %s — staff push skipped", business_id)
-                return
-            resp = httpx.post(
-                f"{CLOUD_URL}/api/sync/staff-push",
-                json={"staff": staff_records},
-                headers={"Authorization": f"Bearer {token}"},
-                timeout=8.0,
-            )
-            if resp.status_code == 200:
-                data = resp.json()
-                logger.info("[STAFF-SYNC] Pushed %d staff record(s) to cloud (upserted=%s deleted=%s)",
-                            len(staff_records), data.get("upserted"), data.get("deleted"))
-            else:
-                logger.warning("[STAFF-SYNC] Cloud returned %s: %s", resp.status_code, resp.text[:200])
-        except Exception as e:
-            logger.warning("[STAFF-SYNC] Push failed (non-critical): %s", e)
+    from services.control_outbox import enqueue_control_event, trigger_control_flush
 
-    threading.Thread(target=_run, daemon=True).start()
+    if db is not None:
+        enqueue_control_event(db, business_id, "staff_mutation", {"staff": staff_records})
+        return  # command commits mutation and event, then triggers delivery
+    from database.db import SessionLocal
+    with SessionLocal() as session:
+        enqueue_control_event(session, business_id, "staff_mutation", {"staff": staff_records})
+        session.commit()
+    trigger_control_flush(business_id)
 
 
 def _staff_out(u: User) -> dict:
@@ -231,8 +214,7 @@ def create_staff(req: CreateStaff, current_user: dict = Depends(restrict_cashier
         counter_prefix=_norm_prefix(req.counter_prefix),
     )
     db.add(staff)
-    db.commit()
-    db.refresh(staff)
+    db.flush()
     logger.info("[STAFF] created '%s' (internal=%s, role=%s) under business %s (BizID=%s)",
                 bare_name, staff.username, role, bid, owner.public_id)
     # Immediately sync to cloud so the cashier can log in from any device
@@ -243,7 +225,10 @@ def create_staff(req: CreateStaff, current_user: dict = Depends(restrict_cashier
         "role": staff.role,
         "counter_prefix": staff.counter_prefix,
         "deleted": False,
-    }])
+    }], db=db)
+    db.commit()
+    from services.control_outbox import trigger_control_flush
+    trigger_control_flush(bid)
     return _staff_out(staff)
 
 
@@ -265,8 +250,7 @@ def update_staff(staff_id: int, req: UpdateStaff,
         staff.password = hash_password(req.password)
     if req.counter_prefix is not None:
         staff.counter_prefix = _norm_prefix(req.counter_prefix)
-    db.commit()
-    db.refresh(staff)
+    db.flush()
     logger.info("[STAFF] updated %s under business %s (BizID=%s)", staff_id, bid, owner.public_id)
     # Re-sync to cloud so password/role/counter changes are immediately available
     _push_staff_to_cloud(bid, [{
@@ -276,7 +260,10 @@ def update_staff(staff_id: int, req: UpdateStaff,
         "role": staff.role,
         "counter_prefix": staff.counter_prefix,
         "deleted": False,
-    }])
+    }], db=db)
+    db.commit()
+    from services.control_outbox import trigger_control_flush
+    trigger_control_flush(bid)
     return _staff_out(staff)
 
 
@@ -293,15 +280,17 @@ def delete_staff(staff_id: int, current_user: dict = Depends(restrict_cashier), 
     # to its TTL. Once the row is gone, auth.py fails closed with a 401.
     clear_token_version_cache(staff.id)
     db.delete(staff)
-    db.commit()
     logger.info("[STAFF] deleted %s under business %s (BizID=%s)", staff_id, bid, owner.public_id)
     # Immediately remove from cloud so deleted cashiers can no longer log in
     _push_staff_to_cloud(bid, [{
         "staff_login_name": bare,
         "internal_username": "",
         "hashed_password": "",
-        "role": "",
+        "role": "cashier",
         "counter_prefix": None,
         "deleted": True,
-    }])
+    }], db=db)
+    db.commit()
+    from services.control_outbox import trigger_control_flush
+    trigger_control_flush(bid)
     return {"deleted": staff_id}

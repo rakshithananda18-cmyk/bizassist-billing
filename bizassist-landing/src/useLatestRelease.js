@@ -37,18 +37,21 @@ export function useLatestRelease() {
     const assets = release?.assets ?? []
     const find = (re) => assets.find((a) => re.test(a.name))?.browser_download_url
 
-    const isAppleSilicon =
-      typeof navigator !== 'undefined' && /Mac/.test(navigator.userAgent)
-        ? undefined // can't reliably detect arch in browser — prefer arm64 dmg first
-        : false
+    const arm64Dmg = find(/arm64\.dmg$/i)
+    const x64Dmg = find(/x64\.dmg$/i)
+    const universalDmg = find(/universal\.dmg$/i)
+    const genericDmg = find(/\.dmg$/i)
 
     return {
       version: release?.tag_name?.replace(/^v/, '') ?? null,
       windows: find(/\.exe$/i),
-      mac:
-        (isAppleSilicon !== false && find(/arm64\.dmg$/i)) ||
-        find(/x64\.dmg$/i) ||
-        find(/\.dmg$/i),
+      // A generic button must not guess the architecture. The page renders a
+      // chooser when only architecture-specific installers are available.
+      mac: universalDmg || (!arm64Dmg && !x64Dmg ? genericDmg : null),
+      macRequiresChoice: !universalDmg && Boolean(arm64Dmg || x64Dmg),
+      macArm64: arm64Dmg,
+      macIntel: x64Dmg,
+      hasMultipleMacAssets: Boolean(arm64Dmg && x64Dmg),
       linux: find(/\.AppImage$/i),
       fallback: RELEASES_PAGE,
     }

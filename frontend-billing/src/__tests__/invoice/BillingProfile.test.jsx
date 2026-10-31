@@ -4,7 +4,8 @@
 //   • CheckoutModal customer-first gating: blocks save without a customer when
 //     the profile requires one; saves normally otherwise (and when profile is null)
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, waitFor, fireEvent } from '@testing-library/react'
+import { screen, cleanup, waitFor, fireEvent } from '@testing-library/react'
+import { renderWithAuth as render } from '../renderWithAuth'
 import ThermalCompact from '../../invoice/templates/ThermalCompact'
 import { gstPayload, plainPayload } from './fixtures'
 

@@ -21,22 +21,19 @@ logger = logging.getLogger("bizassist.handlers.dashboard")
 def _business_summary(user_id: int) -> str:
     db = SessionLocal()
     try:
-        total_rev  = db.query(func.sum(Invoice.amount)).filter(Invoice.business_id == user_id).scalar() or 0
-        inv_count  = db.query(Invoice).filter(Invoice.business_id == user_id).count()
-        paid_amt   = db.query(func.sum(Invoice.amount)).filter(Invoice.business_id == user_id, Invoice.status == "Paid").scalar()    or 0
-        overdue_amt= db.query(func.sum(Invoice.amount)).filter(Invoice.business_id == user_id, Invoice.status == "Overdue").scalar() or 0
-        pending_ct = db.query(Invoice).filter(Invoice.business_id == user_id, Invoice.status == "Pending").count()
-        inv_items  = db.query(Inventory).filter(Inventory.business_id == user_id).count()
+        from core.billing.balances import business_revenue_summary
+        metrics = business_revenue_summary(db, user_id)
+        total_rev = metrics["net_revenue"]
+        paid_amt = metrics["collected_revenue"]
+        overdue_amt = metrics["overdue_revenue"]
+        pending_ct = metrics["pending_invoice_count"]
+        collection_rate = metrics["collection_rate_pct"]
+        inv_count = db.query(Invoice).filter(Invoice.business_id == user_id, func.coalesce(Invoice.invoice_type, "") != "credit_note").count()
+        inv_items = db.query(Inventory).filter(Inventory.business_id == user_id).count()
 
-        top = (
-            db.query(Invoice.customer, func.sum(Invoice.amount).label("total_amount"))
-            .filter(Invoice.business_id == user_id)
-            .group_by(Invoice.customer)
-            .order_by(func.sum(Invoice.amount).desc())
-            .first()
-        )
-
-        collection_rate = round((paid_amt / total_rev) * 100) if total_rev else 0
+        from core.billing.balances import customer_revenue_rows
+        ranked = customer_revenue_rows(db, user_id)
+        top = ranked[0] if ranked else None
 
         return (
             f"**Business Snapshot**\n\n"

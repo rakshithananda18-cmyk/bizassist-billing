@@ -5,6 +5,7 @@
 import React from 'react'
 import { BillsIcon, CheckIcon, CloseIcon, PackageIcon } from '../../components/Icons'
 import { STATUS_FLOW } from '../orderStatus'
+import { isRetiredBusiness } from '../retired'
 
 const fmt = (n) =>
   n != null ? `₹${Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '—'
@@ -23,6 +24,7 @@ export default function OrderDetailModal({ selectedOrder, setSelectedOrder, acti
                 <button className="btn btn-ghost btn-icon" onClick={() => setSelectedOrder(null)} aria-label="Close"><CloseIcon size={16} /></button>
               </div>
               <div className="modal-body">
+                {isRetiredBusiness(selectedOrder) && <p role="status" className="badge badge-warning">Business account deleted — this order remains available in your records. New trade is disabled.</p>}
                 {/* Meta details */}
                 <div className="grid grid-2 gap-4 mb-4" style={{
                   background: 'var(--bg-3)',
@@ -167,7 +169,7 @@ export default function OrderDetailModal({ selectedOrder, setSelectedOrder, acti
                 </div>
               </div>
               <div className="modal-footer">
-                {activeTab === 'incoming' && STATUS_FLOW[selectedOrder.status]?.next && (
+                {!isRetiredBusiness(selectedOrder) && activeTab === 'incoming' && STATUS_FLOW[selectedOrder.status]?.next && (
                   <button
                     className="btn btn-primary"
                     onClick={() => handleStatusChange(selectedOrder.id, STATUS_FLOW[selectedOrder.status].next)}
@@ -175,7 +177,7 @@ export default function OrderDetailModal({ selectedOrder, setSelectedOrder, acti
                     <CheckIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> {STATUS_FLOW[selectedOrder.status].nextLabel} Order
                   </button>
                 )}
-                {activeTab === 'outgoing' && ['pending', 'accepted'].includes(selectedOrder.status) && (
+                {!isRetiredBusiness(selectedOrder) && activeTab === 'outgoing' && ['pending', 'accepted'].includes(selectedOrder.status) && (
                   <button
                     className="btn btn-primary"
                     style={{ backgroundColor: 'var(--danger)', borderColor: 'var(--danger)' }}

@@ -380,6 +380,10 @@ class B2BConnection(Base, TimestampMixin):
     buyer_business_id   = Column(Integer, ForeignKey("users.id"), nullable=False)
     seller_bizid        = Column(String, nullable=True, index=True)
     buyer_bizid         = Column(String, nullable=True, index=True)
+    seller_snapshot     = Column(Text, nullable=True)
+    buyer_snapshot      = Column(Text, nullable=True)
+    seller_deleted      = Column(Boolean, nullable=False, default=False, server_default="0")
+    buyer_deleted       = Column(Boolean, nullable=False, default=False, server_default="0")
 
     price_tier          = Column(String, nullable=False, default="standard")  # standard|wholesale|distributor
     discount_pct        = Column(Float, nullable=False, default=0.0)          # direct percentage discount (e.g. 5.0)
@@ -437,6 +441,16 @@ class B2BOrder(Base, TimestampMixin):
     seller_business_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     seller_bizid       = Column(String, nullable=True, index=True)
     buyer_bizid        = Column(String, nullable=True, index=True)
+    seller_snapshot   = Column(Text, nullable=True)
+    buyer_snapshot    = Column(Text, nullable=True)
+    seller_deleted    = Column(Boolean, nullable=False, default=False, server_default="0")
+    buyer_deleted     = Column(Boolean, nullable=False, default=False, server_default="0")
+    quoted_place_of_supply = Column(String, nullable=True)
+    quoted_seller_state = Column(String, nullable=True)
+    quoted_tax_inclusive = Column(Boolean, nullable=True)
+    quoted_round_off_enabled = Column(Boolean, nullable=True)
+    seller_invoice_uid = Column(String(36), nullable=True)
+    seller_invoice_number = Column(String, nullable=True)
     
     order_number       = Column(String, unique=True, index=True, nullable=False)
     order_date         = Column(String, nullable=False)  # YYYY-MM-DD
@@ -488,7 +502,7 @@ class B2BOrderLineItem(Base, TimestampMixin):
     id            = Column(Integer, primary_key=True, index=True)
     uid           = Column(String(36), nullable=True, default=lambda: str(uuid.uuid4()))
     order_id      = Column(Integer, ForeignKey("b2b_orders.id"), nullable=False)
-    product_id    = Column(Integer, ForeignKey("products.id"), nullable=False)
+    product_id    = Column(Integer, ForeignKey("products.id", ondelete="SET NULL"), nullable=True)
     
     product_name  = Column(String, nullable=False)
     hsn_sac       = Column(String, nullable=True)
@@ -719,3 +733,7 @@ class TelemetryEvent(Base):
         Index("ix_telemetry_bizid_received", "bizid", "received_at"),
         Index("ix_telemetry_received", "received_at"),
     )
+
+# Register the separate document-party archive on the same metadata. Its
+# business-layer functions use lazy imports to keep model registration acyclic.
+from core.party_archive import DocumentPartySnapshot  # noqa: E402,F401

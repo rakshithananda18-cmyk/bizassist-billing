@@ -1,4 +1,7 @@
 # BizAssist Hosting Mode Master Plan
+> **Current execution (31 October 2026):** see the [remediation record](../audit/2026-10-31/README.md).
+> Historical checkmarks below require the dated evidence there, including role,
+> compatible-sync rollout and restore checks; they are not a current release stamp.
 > **Version**: 1.0 | **Status**: Planning | **Scope**: Full Product Lifecycle
 
 > **29 October 2026 registration decision:** signup presents **Local only** and

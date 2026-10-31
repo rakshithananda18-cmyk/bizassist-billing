@@ -10,6 +10,7 @@ import WorkspaceTopBar, { WsDivider } from '../components/common/WorkspaceTopBar
 import { useAuth, useBusinessConfig } from '../contexts/AuthContext'
 import { AlertIcon, CheckIcon, PrinterIcon, CopyIcon, CloseIcon, DownloadIcon, EditIcon, InventoryIcon, PlusIcon, SearchIcon, SyncIcon, UploadIcon, ZapIcon, ExpandIcon, SidebarIcon } from '../components/Icons'
 import { logger } from '../utils/logger'
+import { readAllPages, readList } from '../utils/readPages'
 import { formatApiError } from '../utils/apiError'
 import { getTodayDateStr } from '../utils/format'
 import CustomSelect from '../components/common/CustomSelect'
@@ -140,6 +141,8 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
   const [godowns, setGodowns]               = useState([])
   const [transfers, setTransfers]           = useState([])
   const [loading, setLoading]               = useState(true)
+  const [loadError, setLoadError]           = useState(false)
+  const loadGeneration = useRef(0)
   // Seeded from ?q= so universal search can land on a filtered list. Products
   // have no record route, so the palette hands the term to this box — same
   // pattern Purchases.jsx uses for ?vendor=.
@@ -206,26 +209,34 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
   const [showTransferModal, setShowTransferModal] = useState(false)
   const [adjustForm, setAdjustForm]         = useState(defaultAdjust)
   const [transferForm, setTransferForm]     = useState(defaultTransfer)
-  
+
   const [newGodownName, setNewGodownName]   = useState('')
   const [newGodownAddress, setNewGodownAddress] = useState('')
-  
+
   const [submitting, setSubmitting]         = useState(false)
   const [alert, setAlert]                   = useState(null)
 
   const load = useCallback(() => {
+    const generation = ++loadGeneration.current
     setLoading(true)
+    setLoadError(false)
     Promise.all([
-      authFetch('/billing/products').then(r => r.ok ? r.json() : []).catch(() => []),
-      authFetch('/billing/godowns').then(r => r.ok ? r.json() : []).catch(() => []),
-      authFetch('/billing/stock-transfers').then(r => r.ok ? r.json() : []).catch(() => []),
+      readAllPages(authFetch, '/billing/products'),
+      readList(authFetch, '/billing/godowns'),
+      readList(authFetch, '/billing/stock-transfers'),
     ]).then(([prodData, godData, transData]) => {
+      if (generation !== loadGeneration.current) return
       const items = Array.isArray(prodData) ? prodData : (prodData && Array.isArray(prodData.items) ? prodData.items : [])
       setProducts(items)
       setGodowns(godData)
       setTransfers(transData)
-    }).finally(() => setLoading(false))
+    }).catch(err => {
+      if (generation !== loadGeneration.current) return
+      logger.error('[STOCK] Failed to load inventory data:', err)
+      setLoadError(true)
+    }).finally(() => { if (generation === loadGeneration.current) setLoading(false) })
   }, [authFetch])
+  useEffect(() => () => { loadGeneration.current++ }, [authFetch])
 
   useEffect(() => {
     load()
@@ -316,7 +327,7 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
   const getFilteredProducts = () => {
     let items = products.filter(p => {
       if (catFilter && p.category !== catFilter) return false
-      
+
       // `is_active` may be undefined on older payloads — treat missing as active
       // so a stale cache never hides a live product.
       const isActive = p.is_active !== false
@@ -655,7 +666,7 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
     })
     const slabList = Object.values(slabMap).sort((a, b) => a.rate - b.rate)
     const taxTotal = slabList.reduce((s, x) => s + x.tax, 0)
-    
+
     const itemDisc = parseFloat(intakeAdjustments?.item_disc) || 0
     const cess = parseFloat(intakeAdjustments?.cess) || 0
     const cashDisc = parseFloat(intakeAdjustments?.cash_disc) || 0
@@ -736,7 +747,7 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
         })
         const data = await res.json().catch(() => ({}))
         if (!res.ok) throw new Error(data.detail || 'Could not add barcode.')
-        
+
         setIntakeRows(prev => prev.map(r => r._key === editingRowKey ? {
           ...r,
           barcodes: [...(r.barcodes || []), data.barcode ? data : { barcode: code }],
@@ -1237,6 +1248,13 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
                   `}</style>
                   {loading ? (
                     <div className="page-loader"><span className="spinner" /> Loading…</div>
+                  ) : loadError ? (
+                    <div className="empty-state" role="alert" style={{ padding: '3rem 1rem', textAlign: 'center' }}>
+                      <div className="empty-icon"><InventoryIcon size={28} /></div>
+                      <h3>Stock data is unavailable</h3>
+                      <p style={{ color: 'var(--text-muted)', marginBottom: '1rem' }}>Could not reach the server to load inventory records. Please check your connection.</p>
+                      <button onClick={load} className="btn btn-secondary">Retry</button>
+                    </div>
                   ) : (
                     <table ref={invCols.tableRef} className={`data-table inv-dense ${invCols.tableClassName}`.trim()}>
                       <thead><tr>
@@ -1643,6 +1661,8 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
                   </div>
                   {loading ? (
                     <div style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>Loading…</div>
+                  ) : loadError ? (
+                    <div style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>Alerts unavailable</div>
                   ) : lowStockItems.length === 0 ? (
                     <div style={{ color: '#22c55e', fontSize: '0.78rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
                       <CheckIcon size={14} /> All products have stock

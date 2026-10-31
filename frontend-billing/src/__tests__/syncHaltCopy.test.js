@@ -15,6 +15,7 @@ import { HALT_COPY as SOURCE_COPY, resolveHaltReason } from '../utils/syncHalt'
 // Mirrors backend/routes/sync.py::_HALT_ORDER — reason, and how it is fixed.
 const BACKEND_REASONS = {
   secret_mismatch: 'relogin',
+  protocol_upgrade_required: 'update',
   auth_expired: 'relogin',
   plan_required: 'upgrade',
   offline: 'wait',
@@ -27,7 +28,7 @@ const BACKEND_REASONS = {
 // a false alarm about data loss that is not happening.
 const ACTIONS = {
   plan_required: 'check_plan', auth_expired: 'logout',
-  secret_mismatch: 'logout', offline: 'retry',
+  secret_mismatch: 'logout', offline: 'retry', protocol_upgrade_required: 'update',
 }
 const HALT_COPY = Object.fromEntries(Object.entries(SOURCE_COPY).map(
   ([k, v]) => [k, { ...v, action: ACTIONS[k] }]))
@@ -57,7 +58,7 @@ describe('sync halt vocabulary', () => {
     // but the worker re-probes on its own interval and the panel polls every
     // 30s, so after reconnecting the owner would face a disabled control for up
     // to a minute while everything else visibly worked.
-    const expected = { relogin: 'logout', upgrade: 'check_plan', wait: 'retry' }
+    const expected = { relogin: 'logout', upgrade: 'check_plan', wait: 'retry', update: 'update' }
     for (const [reason, fix] of Object.entries(BACKEND_REASONS)) {
       expect(HALT_COPY[reason].action).toBe(expected[fix])
     }
@@ -72,7 +73,7 @@ describe('sync halt vocabulary', () => {
   it('says the outbox is held only when it actually is', () => {
     // auth_expired stops downloads, not uploads. The panel must not imply the
     // owner's own sales are stuck.
-    expect(HALT_COPY.auth_expired.holdsOutbox).toBe(false)
+    expect(HALT_COPY.auth_expired.holdsOutbox).toBe(true)
     expect(HALT_COPY.auth_expired.title).not.toMatch(/sync (paused|stopped)/i)
     for (const r of ['plan_required', 'secret_mismatch', 'offline']) {
       expect(HALT_COPY[r].holdsOutbox).toBe(true)

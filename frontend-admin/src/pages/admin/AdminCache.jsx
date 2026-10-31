@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useCallback, useState, useEffect } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
 import { logger } from '../../utils/logger'
 import { useDialog } from '../../contexts/DialogContext'
@@ -11,11 +11,9 @@ export default function AdminCache() {
   const [cacheStats, setCacheStats] = useState({ context_cache: [], query_cache: [] })
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    loadCache()
-  }, [])
 
-  async function loadCache() {
+
+  const loadCache = useCallback(async () => {
     setLoading(true)
     try {
       const res = await authFetch(`${API_BASE}/admin/cache-stats`)
@@ -27,7 +25,11 @@ export default function AdminCache() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [authFetch])
+
+  useEffect(() => {
+    loadCache()
+  }, [loadCache])
 
   async function handleFlushAll() {
     if (!(await showConfirm('Flush context and query response caches for all users?'))) return
@@ -82,7 +84,7 @@ export default function AdminCache() {
       {/* Monitor Widget */}
       <div className="admin-table-widget" style={{ marginTop: 20 }}>
         <div className="admin-table-title" style={{ marginBottom: 16 }}>System Cache Telemetry</div>
-        
+
         {loading ? (
           <div className="vskel"></div>
         ) : (

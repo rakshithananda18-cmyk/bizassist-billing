@@ -71,7 +71,7 @@ DATABASE_URL=sqlite:///./bizassist.db
 | Feature Module | Description & Capabilities |
 | :--- | :--- |
 | 🛒 **POS Billing Counter** | Barcode-first scanning, multi-tab carts, keyboard shortcuts, split payments (Cash, UPI QR, Card, Credit). |
-| 🛠️ **Master Self-Healing Engine** | 1-click **Auto-Repair Console** (`backend/services/self_healing.py`) for automated hash chain re-sealing, stock ledger alignment, sync outbox recovery, and staff session invalidation. |
+| 🛠️ **Recovery Checks** | The recovery console (`backend/services/self_healing.py`) diagnoses journal integrity mismatches without re-sealing altered entries, and supports guarded stock, sync outbox and staff-session recovery. |
 | 🏷️ **Dynamic Labels (`useDocLabels`)** | Customize document names (*Sales Invoice*, *Credit Note*, *Debit Note*, *Voucher*). All UI & PDF headers update instantly. |
 | 🔒 **Privacy & Security** | 1-click KPI blur mode for public counters, passcode lock, and immediate JWT session invalidation on staff role/password update (`token_version`). |
 | 📜 **Audit Hash Chains** | Append-only double-entry ledger (`JournalEntry`) linked by SHA-256 cryptographic hash chains to detect database tampering. |

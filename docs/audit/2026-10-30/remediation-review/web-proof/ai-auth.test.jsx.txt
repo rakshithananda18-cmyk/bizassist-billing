@@ -1,0 +1,29 @@
+import React from 'react'
+import { describe,it,expect,vi,afterEach } from 'vitest'
+import { render,screen,act,cleanup } from '@testing-library/react'
+import {AuthProvider,useAuth} from '../../frontend-ai/src/contexts/AuthContext'
+let current
+function Probe(){current=useAuth();return <div>{current.user?.username||'signed out'}</div>}
+afterEach(()=>{cleanup();localStorage.clear();vi.restoreAllMocks()})
+describe('WEB-05 and WEB-06 expected corrected behavior',()=>{
+  it('rejects localhost-prefix public attacker origin',async()=>{
+    const f=vi.spyOn(globalThis,'fetch').mockResolvedValue({ok:true,json:async()=>({username:'B',token:'B'})})
+    render(<AuthProvider><Probe/></AuthProvider>)
+    await act(async()=>window.dispatchEvent(new MessageEvent('message',{origin:'http://localhost.attacker.invalid',data:{type:'SSO_TICKET',ticket:'synthetic'}})))
+    expect(f).not.toHaveBeenCalled()
+    expect(screen.getByText('signed out')).toBeInTheDocument()
+  })
+  it('removes current user after cross-window storage logout',async()=>{
+    localStorage.setItem('user',JSON.stringify({username:'A',token:'A'}))
+    render(<AuthProvider><Probe/></AuthProvider>)
+    await screen.findByText('A')
+    await act(async()=>{localStorage.removeItem('user');window.dispatchEvent(new StorageEvent('storage',{key:'user',oldValue:'old',newValue:null,storageArea:localStorage}))})
+    expect(screen.getByText('signed out')).toBeInTheDocument()
+  })
+  it('rejects a handoff without a bound opener/source even from a known origin',async()=>{
+    const f=vi.spyOn(globalThis,'fetch').mockResolvedValue({ok:true,json:async()=>({username:'B',token:'B'})})
+    render(<AuthProvider><Probe/></AuthProvider>)
+    await act(async()=>window.dispatchEvent(new MessageEvent('message',{origin:window.location.origin,source:null,data:{type:'SSO_TICKET',ticket:'synthetic'}})))
+    expect(f).not.toHaveBeenCalled()
+  })
+})

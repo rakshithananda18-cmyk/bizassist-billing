@@ -2,6 +2,8 @@
 
 *The rulebook for building BizAssist cleanly. Read this before adding any feature. It keeps the base strong as we stack billing → purchase → connections → sync → AI on top. Decisions trace to `../docs/plans/BIZASSIST_ECOSYSTEM_MASTER_PLAN.md` (§D-numbers) and `../docs/ARCHITECTURE.md`.*
 
+> **Status Marker (2026-10-30):** The table below reflects the historical phasing roadmap. All modules (`purchase`, `connection`, `order`, `subscription`) are now implemented in `core/`. Active audit status and verified invariant tests trace to [docs/audit/2026-10-30/PLAN.md](../docs/audit/2026-10-30/PLAN.md).
+
 ---
 
 ## 1. The shape: one modular monolith

@@ -4,7 +4,7 @@
 // sync health (sync doctor verdict + reasons), latest telemetry scoped by
 // BizID, server-log tail filtered to this business, plan & limits at a
 // glance, and the session kill-switch (force logout).
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { useDialog } from '../../contexts/DialogContext'
@@ -36,6 +36,8 @@ export default function AdminBusinessDetail() {
   const [serverLog, setServerLog] = useState('')
   const [limits, setLimits] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(null)
+  const requestRef = useRef(0)
   const [copiedId, setCopiedId] = useState(false)
 
   async function copyBusinessId(bizid) {
@@ -48,7 +50,9 @@ export default function AdminBusinessDetail() {
   }
 
   const load = useCallback(async () => {
+    const request = ++requestRef.current
     setLoading(true)
+    setLoadError(null)
     try {
       const [bizRes, doctorRes, limitsRes, opsRes] = await Promise.all([
         authFetch(`${API_BASE}/admin/businesses`),
@@ -56,18 +60,16 @@ export default function AdminBusinessDetail() {
         authFetch(`${API_BASE}/admin/rate-limits/${id}`),
         authFetch(`${API_BASE}/admin/business/${id}/ops-health`),
       ])
-      if (opsRes.ok) setOpsHealth(await opsRes.json())
-      let biz = null
-      if (bizRes.ok) {
-        const all = await bizRes.json()
-        biz = all.find(b => String(b.id) === String(id)) || null
-        setBusiness(biz)
-      }
-      if (doctorRes.ok) {
-        const rows = await doctorRes.json()
-        setSyncHealth(rows.find(r => String(r.business_id) === String(id)) || null)
-      }
-      if (limitsRes.ok) setLimits(await limitsRes.json())
+      if (request !== requestRef.current) return
+      if (![bizRes, doctorRes, limitsRes, opsRes].every(response => response.ok)) throw new Error('Business diagnostics are unavailable. Retry when the service is reachable.')
+      const [ops, all, rows, configuredLimits] = await Promise.all([opsRes.json(), bizRes.json(), doctorRes.json(), limitsRes.json()])
+      if (request !== requestRef.current) return
+      if (!Array.isArray(all) || !Array.isArray(rows)) throw new Error('Invalid business diagnostics response')
+      const biz = all.find(row => String(row.id) === String(id)) || null
+      setBusiness(biz)
+      setOpsHealth(ops)
+      setSyncHealth(rows.find(row => String(row.business_id) === String(id)) || null)
+      setLimits(configuredLimits)
 
       // Telemetry + logs are scoped by BizID / username, which we only know
       // after the fleet fetch resolves.
@@ -78,28 +80,46 @@ export default function AdminBusinessDetail() {
             : Promise.resolve(null),
           authFetch(`${API_BASE}/admin/server-log?lines=300&q=${encodeURIComponent(biz.bizid || biz.username)}`),
         ])
+        if (request !== requestRef.current) return
         if (telRes && telRes.ok) {
           const t = await telRes.json()
+          if (request !== requestRef.current) return
           setTelemetry(Array.isArray(t) ? t : (t.events || []))
         }
         if (logRes.ok) {
           const l = await logRes.json()
+          if (request !== requestRef.current) return
           setServerLog(typeof l === 'string' ? l : (l.lines || []).join('\n') || l.log || '')
         }
       }
     } catch (err) {
+      if (request !== requestRef.current) return
       logger.error(err)
+      setLoadError(err.message)
     } finally {
-      setLoading(false)
+      if (request === requestRef.current) setLoading(false)
     }
-  }, [id])
+  }, [id, authFetch])
 
-  useEffect(() => { load() }, [load])
+  // WEB-10: Reset state immediately on route ID switch so previous merchant info does not linger
+  useEffect(() => { const requestCounter = requestRef;
+    setBusiness(null)
+    setSyncHealth(null)
+    setOpsHealth(null)
+    setTelemetry([])
+    setServerLog('')
+    setLimits(null)
+    load()
+    return () => { requestCounter.current++ }
+  }, [id, load])
 
   async function handleForceLogout() {
+    const request = requestRef.current
+    if (!business || String(business.id) !== String(id)) return
     if (!(await showConfirm(
       `Revoke ALL active sessions for "${business?.business_name}"? Every logged-in device (owner + staff) will need to sign in again within ~30 seconds.`
     ))) return
+    if (request !== requestRef.current) return
     try {
       const res = await authFetch(`${API_BASE}/admin/force-logout/${id}`, { method: 'POST' })
       const data = await res.json()
@@ -111,6 +131,7 @@ export default function AdminBusinessDetail() {
   }
 
   async function handleFlushCache() {
+    if (!business || String(business.id) !== String(id)) return
     try {
       const res = await authFetch(`${API_BASE}/admin/flush-cache/${id}`, { method: 'POST' })
       const data = await res.json()
@@ -205,7 +226,8 @@ export default function AdminBusinessDetail() {
 
       {loading && <div className="vskel" style={{ padding: 20, marginTop: 24 }}></div>}
 
-      {!loading && !business && (
+      {loadError && <div role="alert">{loadError} <button onClick={load}>Retry diagnostics</button></div>}
+      {!loading && !loadError && !business && (
         <div style={{ padding: 40, textAlign: 'center', color: 'var(--secondary-text)' }}>
           Business #{id} not found.
         </div>

@@ -1,6 +1,7 @@
-import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react'
+import { Fragment, createContext, useContext, useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { API_BASE } from '../config'
 import { logger, setBizId } from '../utils/logger'
+import { trustedHandoff } from '../utils/handoff'
 
 const AuthContext = createContext(null)
 
@@ -8,6 +9,14 @@ export function AuthProvider({ children }) {
   const [user,       setUser]       = useState(null)   // enterprise user
   const [adminUser,  setAdminUser]  = useState(null)   // admin user
   const [loading,    setLoading]    = useState(true)
+  const generation = useRef(0)
+  const clearSession = useCallback(() => {
+    generation.current++
+    localStorage.removeItem('user')
+    localStorage.removeItem('active_session_id')
+    localStorage.removeItem('biz_name')
+    setUser(null)
+  }, [])
 
   // Keep the [BizId=…] logging context in sync with the signed-in business.
   useEffect(() => { setBizId(user?.public_id || null) }, [user])
@@ -15,27 +24,25 @@ export function AuthProvider({ children }) {
   // Restore sessions from localStorage or SSO on mount
   useEffect(() => {
     const initAuth = async () => {
+      const requestGeneration = generation.current
       const params = new URLSearchParams(window.location.search)
       const ssoTicket = params.get('sso')
       const isLogout = params.get('logout') === 'true'
       let ssoSuccess = false
-      
+
       if (isLogout) {
         // Intercept silent logout ping from billing app
-        localStorage.removeItem('user')
-        localStorage.removeItem('active_session_id')
-        localStorage.removeItem('biz_name')
-        setUser(null)
-        
+        clearSession()
+
         const url = new URL(window.location)
         url.searchParams.delete('logout')
         window.history.replaceState({}, document.title, url)
         setLoading(false)
         return
       }
-      
+
       if (ssoTicket) {
-        // Clean up the URL immediately (synchronously) so React StrictMode's 
+        // Clean up the URL immediately (synchronously) so React StrictMode's
         // second mount doesn't try to double-redeem the single-use ticket.
         const url = new URL(window.location)
         url.searchParams.delete('sso')
@@ -49,6 +56,7 @@ export function AuthProvider({ children }) {
           })
           if (res.ok) {
             const data = await res.json()
+            if (requestGeneration !== generation.current) return
             localStorage.setItem('user', JSON.stringify(data))
             if (data.business_name) localStorage.setItem('biz_name', data.business_name)
             setUser(data)
@@ -60,9 +68,10 @@ export function AuthProvider({ children }) {
           logger.warn('[SSO] Ticket redemption failed:', err)
         }
       }
-      
+
       // If no SSO was handled or it failed, fall back to localStorage
       if (!ssoSuccess) {
+        if (requestGeneration !== generation.current) return
         try {
           const u = localStorage.getItem('user')
           const a = localStorage.getItem('admin_user')
@@ -72,30 +81,55 @@ export function AuthProvider({ children }) {
       }
       setLoading(false)
     }
-    
+
     initAuth()
-  }, [])
+  }, [clearSession])
 
   // Listen for SSO tickets sent via postMessage from the billing app.
+  // WEB-05: Listen for cross-window logout via storage event and BroadcastChannel
+  useEffect(() => {
+    function handleStorage(e) {
+      if (e.key === 'user') {
+        generation.current++
+        localStorage.removeItem('active_session_id')
+        if (!e.newValue) { localStorage.removeItem('biz_name'); setUser(null) }
+        else { try { setUser(JSON.parse(e.newValue)) } catch { clearSession() } }
+      }
+    }
+    window.addEventListener('storage', handleStorage)
+
+    let channel = null
+    if (typeof BroadcastChannel !== 'undefined') {
+      try {
+        channel = new BroadcastChannel('bizassist_auth_channel')
+        channel.onmessage = (event) => {
+          if (event.data?.type === 'LOGOUT') {
+            clearSession()
+          }
+        }
+      } catch (err) {
+        // ignore
+      }
+    }
+
+    return () => {
+      window.removeEventListener('storage', handleStorage)
+      if (channel) channel.close()
+    }
+  }, [clearSession])
+
   // This fires when the tab is already open (React is mounted) and the user
   // clicks "Open AI Dashboard" again after having logged out — the mount
   // useEffect won't re-run, so the billing app uses postMessage instead.
   useEffect(() => {
     async function handleMessage(event) {
-      // Only accept messages from our known AI dashboard origins
-      const knownOrigins = [
-        window.location.origin,
-        // Allow the billing app's origin dynamically — we trust same-host ports
-        `http://${window.location.hostname}:5174`,
-        `http://${window.location.hostname}:8450`,
-      ]
-      if (!knownOrigins.includes(event.origin) && !event.origin.startsWith('http://localhost')) {
-        return
-      }
+      if (!trustedHandoff(event, { billingUrl: import.meta.env.VITE_BILLING_URL })) return
+      if (event.data?.type === 'AUTH_LOGOUT') { clearSession(); return }
       if (!event.data || event.data.type !== 'SSO_TICKET') return
 
       const ticket = event.data.ticket
       if (!ticket) return
+      const requestGeneration = ++generation.current
 
       try {
         const res = await fetch(`${API_BASE}/redeem-ticket`, {
@@ -105,6 +139,8 @@ export function AuthProvider({ children }) {
         })
         if (res.ok) {
           const data = await res.json()
+          if (generation.current !== requestGeneration) return
+          localStorage.removeItem('active_session_id')
           localStorage.setItem('user', JSON.stringify(data))
           if (data.business_name) localStorage.setItem('biz_name', data.business_name)
           setUser(data)
@@ -118,11 +154,12 @@ export function AuthProvider({ children }) {
 
     window.addEventListener('message', handleMessage)
     return () => window.removeEventListener('message', handleMessage)
-  }, [])
+  }, [clearSession])
 
 
   // ── Enterprise login ──────────────────────────────────────────
   const login = useCallback(async (username, password) => {
+    const requestGeneration = ++generation.current
     const res = await fetch(`${API_BASE}/login`, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -133,6 +170,7 @@ export function AuthProvider({ children }) {
       throw new Error(data.detail || 'Login failed')
     }
     const data = await res.json()
+    if (requestGeneration !== generation.current) throw new Error('Sign-in cancelled')
     localStorage.setItem('user', JSON.stringify(data))
     setUser(data)
     return data
@@ -140,6 +178,7 @@ export function AuthProvider({ children }) {
 
   // ── Enterprise signup ─────────────────────────────────────────
   const signup = useCallback(async (username, password, businessName) => {
+    const requestGeneration = ++generation.current
     const res = await fetch(`${API_BASE}/signup`, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -150,18 +189,14 @@ export function AuthProvider({ children }) {
       throw new Error(data.detail || 'Registration failed')
     }
     const data = await res.json()
+    if (requestGeneration !== generation.current) throw new Error('Registration cancelled')
     localStorage.setItem('user', JSON.stringify(data))
     if (data.business_name) localStorage.setItem('biz_name', data.business_name)
     setUser(data)
     return data
   }, [])
 
-  const logout = useCallback(() => {
-    localStorage.removeItem('user')
-    localStorage.removeItem('active_session_id')
-    localStorage.removeItem('biz_name')
-    setUser(null)
-  }, [])
+  const logout = clearSession
 
   // ── Admin login ───────────────────────────────────────────────
   const adminLogin = useCallback(async (username, password) => {
@@ -198,6 +233,7 @@ export function AuthProvider({ children }) {
     const token = isAdminRequest
       ? (adminUser?.token || user?.token)
       : (user?.token || adminUser?.token)
+    const requestGeneration = generation.current
 
     const res = await fetch(url, {
       ...options,
@@ -206,7 +242,7 @@ export function AuthProvider({ children }) {
         ...(token ? { Authorization: `Bearer ${token}` } : {})
       }
     })
-    if (res.status === 401) {
+    if (res.status === 401 && generation.current === requestGeneration) {
       if (isAdminRequest) {
         adminLogout()
       } else {
@@ -225,7 +261,7 @@ export function AuthProvider({ children }) {
 
   return (
     <AuthContext.Provider value={value}>
-      {children}
+      <Fragment key={user?.token || adminUser?.token || 'signed-out'}>{children}</Fragment>
     </AuthContext.Provider>
   )
 }

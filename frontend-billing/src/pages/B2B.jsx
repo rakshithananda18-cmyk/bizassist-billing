@@ -107,7 +107,7 @@ export default function B2B() {
   const [catalogLoading, setCatalogLoading] = useState(false)
   const [placing, setPlacing] = useState(false)
 
-  const suppliers = connections.as_buyer
+  const suppliers = connections.as_buyer.filter(s => !(s.counterparty_deleted || s.buyer_deleted || s.seller_deleted))
 
   // Auto-select the first supplier so the desk is never a dead end on arrival.
   useEffect(() => {
@@ -118,7 +118,7 @@ export default function B2B() {
   }, [suppliers, selectedSupplier])
 
   const loadCatalog = useCallback(async (supplier) => {
-    if (!supplier) { setCatalog([]); return }
+    if (!supplier || supplier.counterparty_deleted || supplier.buyer_deleted || supplier.seller_deleted) { setCatalog([]); return }
     setCatalogLoading(true)
     try {
       setCatalog(await b2b.fetchSupplierCatalog(authFetch, supplier.counterparty_bizid || supplier.seller_bizid))
@@ -149,7 +149,7 @@ export default function B2B() {
   }, [loadCatalog, selectedSupplier, connections])
 
   const handlePlaceOrder = useCallback(async ({ lines, totals, notes }) => {
-    if (!selectedSupplier || lines.length === 0) return false
+    if (!selectedSupplier || selectedSupplier.counterparty_deleted || selectedSupplier.buyer_deleted || selectedSupplier.seller_deleted || lines.length === 0) return false
 
     const ok = await confirm({
       mode: 'create',

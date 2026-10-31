@@ -3,7 +3,8 @@ the historical planning snapshots or writing payments from Field Team."""
 import pytest
 from sqlalchemy import event
 
-from app.billing_models import BillingCustomer, BillingInvoice, BillingInvoicePayment, BillingUser
+from app.billing_models import BillingUser
+from tests.billing_fixture_models import BillingCustomer, BillingInvoice, BillingInvoicePayment
 from app import config
 from app.db import SessionLocal, engine
 from app.models import FieldShop, FieldTask
@@ -39,7 +40,7 @@ def test_business_identity_follows_billing_profile_edits(client, biz):
     body = client.get("/api/auth/me", headers=biz.h).json()
     assert body["business_name"] == "Updated Billing Business"
     assert body["billing_business"] == {"business_id": biz.business_id, "public_id": biz.public_id,
-                                        "business_name": "Updated Billing Business", "phone": "9876543210"}
+                                        "business_name": "Updated Billing Business", "phone": "9876543210", "upi_vpa": None}
     assert body["data_source"] == {"mode": "local" if config.IS_SQLITE else "cloud", "shared_database_required": True,
                                     "cloud_only": True, "development_mirror": config.IS_SQLITE}
     assert "DATABASE_URL" not in str(body) and "JWT_SECRET" not in str(body)

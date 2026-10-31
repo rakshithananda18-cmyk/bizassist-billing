@@ -15,6 +15,7 @@ psycopg2-binary>=2.9.0          # PostgreSQL driver (local + Supabase)
 # ── Auth ───────────────────────────────────────────────────────
 bcrypt>=4.0.0
 pyjwt>=2.6.0
+cryptography>=42.0.0           # AES-GCM encrypted repair backups (repair_line_items.py)
 
 # ── Data / file parsing ────────────────────────────────────────
 pandas>=2.0.0

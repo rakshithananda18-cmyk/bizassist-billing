@@ -4,7 +4,8 @@
 //   • Print button triggers window.print and fires the print_opened beacon
 //   • Download PDF fetches a real authenticated PDF independently of printing
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { act, render, screen, cleanup, waitFor } from '@testing-library/react'
+import { act, screen, cleanup, waitFor } from '@testing-library/react'
+import { renderWithAuth as render } from '../renderWithAuth'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import { gstPayload } from './fixtures'

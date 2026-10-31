@@ -1,5 +1,8 @@
 # BizAssist — Product, Architecture & Security Review
 
+> Historical June assessment. Current status and remaining work are in the
+> [31 October 2026 remediation record](../audit/2026-10-31/README.md).
+
 *Review date: 2026-06-26 · Reviewer: AI engineering review pass · Scope: `bizassist-billing/` (backend ~43k LOC Python, 2 React frontends, 70 test files / 541 test fns, 24 Alembic migrations).*
 
 **Linked docs:** [Lean core plan → `MASTER_PLAN_CORE.md`](MASTER_PLAN_CORE.md) · [Full plan → `BIZASSIST_ECOSYSTEM_MASTER_PLAN.md`](BIZASSIST_ECOSYSTEM_MASTER_PLAN.md) · [Hosting modes → `HOSTING_MODE_MASTER_PLAN.md`](HOSTING_MODE_MASTER_PLAN.md) · [DoD gate → `PHASE_COMPLETION_CHECKLIST.md`](PHASE_COMPLETION_CHECKLIST.md)

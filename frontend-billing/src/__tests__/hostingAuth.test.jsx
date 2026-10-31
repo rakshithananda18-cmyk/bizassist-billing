@@ -167,6 +167,9 @@ const globalMockFetch = vi.fn(async (url) => {
   if (u.includes('/business/setup')) {
     return jsonResponse({ status: 'ok' })
   }
+  if (u.includes('/business/config')) {
+    return jsonResponse({ config: {}, attributes_schema: [] })
+  }
 
   return { ok: false, status: 404, json: async () => ({}), clone() { return this } }
 })

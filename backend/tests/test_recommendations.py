@@ -14,6 +14,8 @@ Run:  pytest tests/test_recommendations.py -v
 """
 import os
 import sys
+import uuid
+from datetime import date, timedelta
 
 os.environ.setdefault("DATABASE_URL", "sqlite:///./test_recs.db")
 os.environ["GROQ_API_KEY"] = "mock_key"
@@ -34,16 +36,20 @@ from database.models import Base, Invoice, Inventory, User
 from services.auth import hash_password
 from services.recommendations import signals, recommend
 
-USER_ID = 77
+USER_ID = None
 
 @pytest.fixture(scope="module", autouse=True)
 def setup_db():
+    global USER_ID
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
     try:
-        db.add(User(id=USER_ID, username="rec_test_user",
+        owner = User(username="rec_test_" + uuid.uuid4().hex,
                     password=hash_password("Test123"),
-                    business_name="Rec Test Co", role="enterprise"))
+                    business_name="Rec Test Co", role="enterprise")
+        db.add(owner)
+        db.flush()
+        USER_ID = owner.id
         # Low collection rate: paid=10000, total=30000 → 33%
         db.add(Invoice(business_id=USER_ID, invoice_id="R-001",
                        customer="Alpha", product="P1", amount=10000,
@@ -53,7 +59,7 @@ def setup_db():
                        status="Overdue", invoice_date="2026-04-01", due_date="2026-05-01"))
         db.add(Invoice(business_id=USER_ID, invoice_id="R-003",
                        customer="Beta", product="P3", amount=8000,
-                       status="Pending", invoice_date="2026-05-10", due_date="2026-06-30"))
+                       status="Pending", invoice_date="2026-05-10", due_date=(date.today() + timedelta(days=30)).isoformat()))
         # Low stock items
         db.add(Inventory(business_id=USER_ID, product_name="LowItem",
                          stock=3, expiry_date="2027-01-01", supplier="S1"))

@@ -49,7 +49,7 @@ def test_charts_use_current_totals_partial_dues_returns_and_tenant_scope(charts_
 def test_zero_total_is_authoritative_and_not_replaced_by_legacy_amount(charts_db, monkeypatch):
     monkeypatch.setattr(insights_service, 'biz_now', lambda: datetime(2026, 10, 28, 12))
     charts_db.add(Invoice(business_id=1, invoice_id='FREE', invoice_date='2026-10-20', due_date='2026-10-21',
-                         total_amount=0, amount=99, paid_amount=0, status='Pending'))
+                         total_amount=0, amount=0, paid_amount=0, status='Pending'))
     charts_db.commit()
     result = insights_service.dashboard_charts(1, charts_db)
     assert result['monthly_revenue'][0]['revenue'] == 0

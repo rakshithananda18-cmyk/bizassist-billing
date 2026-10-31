@@ -94,6 +94,7 @@ _PULL_TIMEOUT = 60.0
 # pulls these again on the NEXT tick instead of waiting out cloud_pull_interval,
 # so a backlog drains in seconds rather than one page every two minutes.
 _PULL_MORE_PENDING: set = set()
+_PROTOCOL_BLOCKED: dict = {}
 
 # Sentinel for "this business has been looked up and has no stored cursor", so a
 # genuine absence is not re-queried on every cycle. `None` cannot express it —
@@ -907,6 +908,10 @@ def run_hybrid_sync():
                     )
                 )
 
+                # Control revocations/profile intents have an independent
+                # retry lifecycle, including when normal pull is opted out.
+                from services.control_outbox import flush_control_outbox
+                flush_control_outbox(db, business_id)
                 if pending is None and not due_for_pull:
                     _LAST_RUN[business_id] = now
                     continue
@@ -2001,7 +2006,7 @@ def _cloud_parity_check(db: Session, business_id: int) -> dict:
         cloud_inv_id  = inv.get("id")
         inv_uid       = inv.get("uid")
         stored_paid   = float(inv.get("paid_amount") or 0)
-        actual_paid   = round(cloud_pay_sum.get(cloud_inv_id, 0.0), 2)
+        actual_paid   = round(cloud_pay_sum.get(cloud_inv_id, 0.0) + float(inv.get("legacy_paid_baseline") or 0.0), 2)
         total_amount  = float(inv.get("total_amount") or 0)
 
         # ── OVER-PAYMENT on the cloud ─────────────────────────────────────────
@@ -2213,6 +2218,23 @@ def _apply_pulled_row(db, business_id: int, table_name: str, model_cls, record: 
     _conflict_local_ts = None
     rec_uid = record.get("uid")
     rec_id = record.get("id")
+    if record.get("_sync_deleted"):
+        from database.sync_map import APPEND_ONLY_DELETE_BLOCKLIST
+        if table_name in APPEND_ONLY_DELETE_BLOCKLIST:
+            # Retain financial history; a reset/archive cannot erase books on a
+            # different device. The source archive flag travels as an UPDATE.
+            return _Applied("skipped", reason="retained-history")
+        if not rec_uid or not hasattr(model_cls, "uid"):
+            raise ValueError("A deletion requires a durable UID")
+        existing = db.query(model_cls).filter(model_cls.uid == rec_uid).first()
+        if existing is not None:
+            from database.models import _get_business_id
+            if _get_business_id(existing, db.connection()) != business_id:
+                raise ValueError("Cross-business deletion denied")
+            with db.begin_nested():
+                db.delete(existing)
+                db.flush()
+        return _Applied("applied")
     if not rec_id and not rec_uid:
         return _Applied("skipped", reason="no-identity")
 
@@ -2473,6 +2495,8 @@ def _apply_pulled_row(db, business_id: int, table_name: str, model_cls, record: 
         # the source DB's integer id won't exist here.
         if table_name in _USER_FK_REPOINT_ENTITIES and "user_id" in data:
             data["user_id"] = business_id
+        if table_name in {"supplier_payments", "customer_refunds", "customer_credit_allocations"}:
+            data["operator_id"] = business_id
 
         # Resolve foreign keys via the parent's durable uid
         # (shared helper — same logic as push_changes). If a
@@ -2539,6 +2563,8 @@ def _apply_pulled_row(db, business_id: int, table_name: str, model_cls, record: 
             ):
                 _conflicts += 1
 
+        from core.sync.protected_fields import protect_history
+        protect_history(table_name, data, existing)
         target_obj = existing if existing else model_cls()
 
         # If UID is present, we never overwrite or force the integer PK ID
@@ -2714,21 +2740,22 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
         logger.warning("[SYNC_WORKER] Business %s has no public_id (BizID) — pausing cloud sync until device is linked", business_id)
         return
 
-    # Prefer the CLOUD-issued token provisioned at login (standard device flow).
-    # Self-signed fallback works only when local & cloud share JWT_SECRET.
+    # A local signing key never confers authority on a different server.
+    # Only the cloud-issued, business-bound credential can upload or download.
     _cloud_token = _get_cloud_token(business_id)
-    used_self_signed = _cloud_token is None
-    if used_self_signed and _SELF_SIGNED_REJECTED.get(business_id):
+    used_self_signed = False
+    if not _cloud_token:
+        _PULL_AUTH_BLOCKED[business_id] = True
         return
-    token = _cloud_token or create_access_token({
-        "id": business_id,
-        "user_id": user.id,
-        "username": user.username,
-        "public_id": user.public_id,
-        "business_name": user.business_name or "Local POS",
-        "role": user.role or "enterprise"
-    })
+    token = _cloud_token
     headers = {"Authorization": f"Bearer {token}"}
+
+    # Flush durable control-plane outbox (staff mutations, profile updates) (TS-05)
+    try:
+        from services.control_outbox import flush_control_outbox
+        flush_control_outbox(db, business_id)
+    except Exception as _ce:
+        logger.warning("[SYNC_WORKER] biz=%s: control outbox flush failed: %s", business_id, _ce)
 
     if queue_items:
         # Build (queue_item -> change) pairs, draining non-syncable / corrupt
@@ -3239,9 +3266,10 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
             )
             last_sync_str = last_success.synced_at.isoformat() if last_success else None
 
-        params = {"limit": _PULL_PAGE_LIMIT}
+        params = {"limit": _PULL_PAGE_LIMIT, "protocol": 2}
         if last_sync_str:
             params["last_sync_at"] = last_sync_str
+            params["cursor"] = last_sync_str
 
         resp = httpx.get(f"{CLOUD_URL}/api/sync/pull", params=params, headers=headers, timeout=_PULL_TIMEOUT)
         if resp.status_code == 401:
@@ -3257,59 +3285,66 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
                 "dropped and pull is PAUSED for this business. It resumes when "
                 "the owner signs in on this device (which provisions a fresh "
                 "cloud token); it will NOT recover on its own.")
+        if resp.status_code == 426:
+            _PROTOCOL_BLOCKED[business_id] = True
+            raise RuntimeError("Cloud/device sync protocol requires an upgrade; cursor retained")
         if resp.status_code != 200:
             raise Exception(f"HTTP {resp.status_code}: {resp.text}")
 
         _resp_json = resp.json()
+        if _resp_json.get("protocol") != 2:
+            _PROTOCOL_BLOCKED[business_id] = True
+            raise RuntimeError("Cloud sync requires protocol 2. Update the server before resuming; the pull cursor has not advanced.")
+        _PROTOCOL_BLOCKED.pop(business_id, None)
         pulled = _resp_json.get("changes", {})
         # Capture the server's own pull timestamp, but DON'T advance the cursor
         # yet — we advance it only AFTER the batch is applied & committed below
         # (see end of this try). Advancing here risked skipping rows if the apply
         # step failed after the cursor had already moved past them.
-        _cloud_cursor = _resp_json.get("pulled_at")
+        _resp_cursor = _resp_json.get("cursor")
+        _cloud_cursor = _resp_cursor or _resp_json.get("pulled_at")
 
         # ── TRUNCATED PAGE: the cursor must not jump past the tail ────────────
-        # `pulled_at` is the server's clock at response time. Using it after a
-        # truncated page would move the cursor past every row the page cap cut
-        # off, and those rows would never be offered again — the page cap would
-        # have turned a slow pull into silent data loss, which is strictly worse
-        # than the livelock it fixes.
-        #
-        # The safe watermark is the MINIMUM, across truncated tables, of the
-        # newest `updated_at` actually received. Rows are ordered ascending by
-        # `updated_at`, so every table has been read in full up to that instant;
-        # taking the minimum means no table is advanced past what it delivered.
         _pull_has_more = bool(_resp_json.get("has_more"))
         if _pull_has_more:
-            _watermarks = []
-            for _t in (_resp_json.get("truncated_tables") or []):
-                _ts = [
-                    _parse_dt(r.get("updated_at"))
-                    for r in (_resp_json.get("changes", {}).get(_t) or [])
-                    if r.get("updated_at")
-                ]
-                _ts = [t for t in _ts if t]
-                if _ts:
-                    _watermarks.append(max(_ts))
-            if _watermarks:
-                _cloud_cursor = min(_watermarks).isoformat()
+            if _resp_cursor:
+                _cloud_cursor = _resp_cursor
                 _PULL_MORE_PENDING.add(business_id)
                 logger.info(
                     "[SYNC_WORKER] biz=%s: pull truncated at %s row(s)/table; "
-                    "advancing the cursor only to %s (the tail of what actually "
-                    "arrived) and pulling again next tick.",
-                    business_id, _PULL_PAGE_LIMIT, _cloud_cursor,
+                    "using compound cursor and pulling again next tick.",
+                    business_id, _PULL_PAGE_LIMIT,
                 )
             else:
-                # Truncated, but no usable timestamp to advance to. Holding is
-                # the only safe option — advancing would skip the remainder.
-                _cloud_cursor = None
-                _PULL_MORE_PENDING.add(business_id)
-                logger.warning(
-                    "[SYNC_WORKER] biz=%s: pull truncated but no updated_at was "
-                    "usable to compute a safe watermark — HOLDING the cursor.",
-                    business_id,
-                )
+                _watermarks = []
+                for _t in (_resp_json.get("truncated_tables") or []):
+                    _ts = [
+                        _parse_dt(r.get("updated_at"))
+                        for r in (_resp_json.get("changes", {}).get(_t) or [])
+                        if r.get("updated_at")
+                    ]
+                    _ts = [t for t in _ts if t]
+                    if _ts:
+                        _watermarks.append(max(_ts))
+                if _watermarks:
+                    _cloud_cursor = min(_watermarks).isoformat()
+                    _PULL_MORE_PENDING.add(business_id)
+                    logger.info(
+                        "[SYNC_WORKER] biz=%s: pull truncated at %s row(s)/table; "
+                        "advancing the cursor only to %s (the tail of what actually "
+                        "arrived) and pulling again next tick.",
+                        business_id, _PULL_PAGE_LIMIT, _cloud_cursor,
+                    )
+                else:
+                    # Truncated, but no usable timestamp to advance to. Holding is
+                    # the only safe option — advancing would skip the remainder.
+                    _cloud_cursor = None
+                    _PULL_MORE_PENDING.add(business_id)
+                    logger.warning(
+                        "[SYNC_WORKER] biz=%s: pull truncated but no updated_at was "
+                        "usable to compute a safe watermark — HOLDING the cursor.",
+                        business_id,
+                    )
         else:
             _PULL_MORE_PENDING.discard(business_id)
         # Tables the cloud could not read this cycle. An absent table is NOT an
@@ -3574,7 +3609,17 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
         # A PARTIAL pull is different and still holds — see below. Those rows
         # were never received at all, so there is nothing in the inbox to retry.
         if _cloud_cursor:
-            if _pull_failed_tables:
+            _failed_now = len(_pull_row_failures)
+            if _failed_now and not _pull_failed_tables:
+                logger.warning(
+                    "[SYNC_WORKER] biz=%s: %s row(s) could not be applied this "
+                    "cycle. Advancing the cursor anyway — they are held in the "
+                    "inbox with their payloads and retry independently, so later "
+                    "rows are not blocked behind them.",
+                    business_id, _failed_now)
+                _PULL_FAILED_STREAK[business_id] = 0
+                _set_pull_cursor(db, business_id, _cloud_cursor)
+            elif _pull_failed_tables:
                 # ── PARTIAL PULL: hold the cursor (rule 58 / M-12 shape) ──────
                 #
                 # The cloud could not read some tables — on Postgres, one failed
@@ -3592,9 +3637,8 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
                 # fails forever is a cloud-side defect that must be fixed, and
                 # re-reading a window costs nothing but a query.
                 #
-                # TS-03 FIX: We MUST check this before advancing the cursor.
-                # Even if received rows failed to apply (_failed_now > 0), unread
-                # table rows are NOT in the inbox and would be permanently lost.
+                # TS-03 FIX: We MUST hold if _pull_failed_tables is non-empty,
+                # even if _failed_now > 0 (checked via `not _pull_failed_tables` above).
                 logger.error(
                     "[SYNC_WORKER] PARTIAL PULL for biz=%s: the cloud could not "
                     "read %s table(s) — %s. HOLDING the pull cursor so the same "
@@ -3604,14 +3648,6 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
                     [t.get("table") for t in _pull_failed_tables][:10],
                 )
             else:
-                _failed_now = len(_pull_row_failures)
-                if _failed_now:
-                    logger.warning(
-                        "[SYNC_WORKER] biz=%s: %s row(s) could not be applied this "
-                        "cycle. Advancing the cursor anyway — they are held in the "
-                        "inbox with their payloads and retry independently, so later "
-                        "rows are not blocked behind them.",
-                        business_id, _failed_now)
                 _PULL_FAILED_STREAK[business_id] = 0
                 _set_pull_cursor(db, business_id, _cloud_cursor)
 

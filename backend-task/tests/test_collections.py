@@ -2,7 +2,7 @@
 confirmed in billing (app/collections.py). Billing's confirm itself is tested
 in billing (backend/tests/test_field_collections.py); here its payment rows are
 written the way billing writes them."""
-from app.billing_models import BillingCustomer, BillingInvoice, BillingInvoicePayment
+from tests.billing_fixture_models import BillingCustomer, BillingInvoice, BillingInvoicePayment
 from app.db import SessionLocal
 from app.models import FieldTask
 from tests.conftest import check_in, geo
@@ -58,7 +58,12 @@ def test_owner_sees_what_billing_has_recorded(client, biz, other_biz):
         db.flush()
         a = BillingInvoice(business_id=biz.business_id, customer_id=c.id, invoice_id="INV-1", total_amount=400, paid_amount=0)
         b = BillingInvoice(business_id=biz.business_id, customer_id=c.id, invoice_id="INV-2", total_amount=400, paid_amount=0)
-        db.add_all([a, b])
+        other_customer = BillingCustomer(business_id=other_biz.business_id, name="Other payer")
+        db.add(other_customer)
+        db.flush()
+        other_invoice = BillingInvoice(business_id=other_biz.business_id, customer_id=other_customer.id,
+                                       invoice_id="OTHER-INV", total_amount=400, paid_amount=0)
+        db.add_all([a, b, other_invoice])
         db.flush()
         # As billing's confirm writes them: one payment per bill, keyed by task and bill.
         db.add_all([
@@ -66,8 +71,8 @@ def test_owner_sees_what_billing_has_recorded(client, biz, other_biz):
             BillingInvoicePayment(business_id=biz.business_id, invoice_id=b.id, amount_paid=50, idempotency_key=f"ft-collect:{uid}:{b.id}"),
             BillingInvoicePayment(business_id=biz.business_id, invoice_id=b.id, amount_paid=25,
                                   idempotency_key=f"ft-collect:{uid}:{b.id}:after:45000"),  # continued confirmation
-            BillingInvoicePayment(business_id=biz.business_id, invoice_id=b.id, amount_paid=999, idempotency_key="pos-123"),  # not ours
-            BillingInvoicePayment(business_id=other_biz.business_id, invoice_id=b.id, amount_paid=77,
+            BillingInvoicePayment(business_id=biz.business_id, invoice_id=b.id, amount_paid=10, idempotency_key="pos-123"),  # not ours
+            BillingInvoicePayment(business_id=other_biz.business_id, invoice_id=other_invoice.id, amount_paid=77,
                                   idempotency_key=f"ft-collect:{uid}:{b.id}x"),  # another business
         ])
         db.commit()

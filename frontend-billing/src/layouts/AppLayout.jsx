@@ -315,6 +315,8 @@ export default function AppLayout({ children, title }) {
     last_status: 'idle',
     last_error: null
   })
+  const accountUpdates = queueDepth.control_outbox
+  const totalPendingSync = Number(queueDepth.pending_count || 0) + Number(accountUpdates?.pending || 0) + Number(accountUpdates?.failed || 0)
 
   // ── Why sync stopped, from the SERVER ────────────────────────────────────
   // `queue-depth` now reports the worker's actual halt state. Before this the
@@ -1252,16 +1254,16 @@ export default function AppLayout({ children, title }) {
                       transition: 'all 0.2s ease',
                       backgroundColor: haltTint
                         || (effectiveMode === 'hybrid'
-                            ? (queueDepth.last_status === 'failed' && queueDepth.pending_count > 0 ? 'rgba(239, 68, 68, 0.1)' :
-                               queueDepth.pending_count > 0 ? 'rgba(245, 158, 11, 0.1)' :
+                            ? (queueDepth.last_status === 'failed' && totalPendingSync > 0 ? 'rgba(239, 68, 68, 0.1)' :
+                               totalPendingSync > 0 ? 'rgba(245, 158, 11, 0.1)' :
                                !syncHealth.isOnline ? 'rgba(255, 255, 255, 0.05)' : 'rgba(34, 197, 94, 0.1)')
                             : (syncHealth.status === 'connected' ? 'rgba(34, 197, 94, 0.1)' :
                                syncHealth.status === 'connecting' ? 'rgba(245, 158, 11, 0.1)' :
                                'rgba(239, 68, 68, 0.1)')),
                       color: haltTone
                         || (effectiveMode === 'hybrid'
-                            ? (queueDepth.last_status === 'failed' && queueDepth.pending_count > 0 ? 'var(--danger, #ef4444)' :
-                               queueDepth.pending_count > 0 ? 'var(--warning, #f59e0b)' :
+                            ? (queueDepth.last_status === 'failed' && totalPendingSync > 0 ? 'var(--danger, #ef4444)' :
+                               totalPendingSync > 0 ? 'var(--warning, #f59e0b)' :
                                 !syncHealth.isOnline ? 'var(--sidebar-muted, var(--text-muted))' : 'var(--success, #22c55e)')
                             : (syncHealth.status === 'connected' ? 'var(--success, #22c55e)' :
                                syncHealth.status === 'connecting' ? 'var(--warning, #f59e0b)' :
@@ -1290,15 +1292,15 @@ export default function AppLayout({ children, title }) {
                             <AlertIcon size={10} strokeWidth={2.5} />
                             <span>Sync Offline</span>
                           </>
-                        ) : queueDepth.last_status === 'failed' && queueDepth.pending_count > 0 ? (
+                        ) : queueDepth.last_status === 'failed' && totalPendingSync > 0 ? (
                           <>
                             <AlertIcon size={10} strokeWidth={2.5} />
                             <span>Sync Error</span>
                           </>
-                        ) : queueDepth.pending_count > 0 ? (
+                        ) : totalPendingSync > 0 ? (
                           <>
                             <span className="sync-spinner-small" />
-                            <span>{queueDepth.pending_count} pending</span>
+                            <span>{totalPendingSync} pending</span>
                           </>
                         ) : (
                           <>
@@ -1472,16 +1474,16 @@ export default function AppLayout({ children, title }) {
                       fontWeight: '700',
                       color: haltTone
                         || (effectiveMode === 'hybrid'
-                            ? (queueDepth.last_status === 'failed' && queueDepth.pending_count > 0 ? 'var(--danger)' :
-                               queueDepth.pending_count > 0 ? 'var(--warning)' : 'var(--success)')
+                            ? (queueDepth.last_status === 'failed' && totalPendingSync > 0 ? 'var(--danger)' :
+                               totalPendingSync > 0 ? 'var(--warning)' : 'var(--success)')
                             : (syncHealth.status === 'connected' ? 'var(--success)' :
                                syncHealth.status === 'connecting' ? 'var(--warning)' : 'var(--danger)'))
                     }}>
                       {haltCopy
                         ? haltCopy.title
                         : (effectiveMode === 'hybrid'
-                            ? (queueDepth.last_status === 'failed' && queueDepth.pending_count > 0 ? 'Sync Error' :
-                               queueDepth.pending_count > 0 ? 'Syncing...' : 'Synced')
+                            ? (queueDepth.last_status === 'failed' && totalPendingSync > 0 ? 'Sync Error' :
+                               totalPendingSync > 0 ? 'Syncing...' : 'Synced')
                             : (syncHealth.status === 'connected' ? 'Connected' :
                                syncHealth.status === 'connecting' ? 'Reconnecting...' : 'Error / Offline'))}
                     </span>
@@ -1538,7 +1540,7 @@ export default function AppLayout({ children, title }) {
                               fontWeight: '600',
                               color: (haltReason && haltReason !== 'auth_expired')
                                 ? haltTone
-                                : (queueDepth.pending_count > 0 ? 'var(--warning)' : 'var(--success)')
+                                : (totalPendingSync > 0 ? 'var(--warning)' : 'var(--success)')
                             }}>
                               {/* `auth_expired` is deliberately absent: it blocks
                                   the PULL only, so the outbox really is draining
@@ -1546,7 +1548,7 @@ export default function AppLayout({ children, title }) {
                               {haltReason === 'plan_required' ? 'Paused — Pro Required'
                                 : haltReason === 'offline' ? 'Waiting — offline'
                                 : haltReason === 'secret_mismatch' ? 'Held — sign in again'
-                                : (queueDepth.pending_count > 0 ? `${queueDepth.pending_count} pending` : 'Fully Synced')}
+                                : (totalPendingSync > 0 ? `${totalPendingSync} pending` : 'Fully Synced')}
                             </span>
                           </div>
 
@@ -1725,6 +1727,11 @@ export default function AppLayout({ children, title }) {
                     </div>
                   )}
 
+                  {effectiveMode === 'hybrid' && accountUpdates && (accountUpdates.pending > 0 || accountUpdates.failed > 0) && (
+                    <div role="status" style={{ color: accountUpdates.failed > 0 ? 'var(--danger)' : 'var(--warning)', fontSize: '0.76rem', padding: '6px 12px' }}>
+                      Staff/profile updates: {accountUpdates.pending} waiting · {accountUpdates.failed} need attention. Your account changes remain queued.
+                    </div>
+                  )}
                   {effectiveMode === 'hybrid' && queueDepth.last_sync_time && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', borderTop: '1px solid var(--border)', paddingTop: '6px' }}>
                       <span style={{ color: 'var(--text-secondary)' }}>Last Synced At</span>
@@ -1860,7 +1867,7 @@ export default function AppLayout({ children, title }) {
                         Sign out and sign back in on this device to reconnect.
                         <div style={{ fontWeight: 400, color: 'var(--text-secondary)', marginTop: 2 }}>
                           This device&apos;s cloud access expired. Nothing is lost —
-                          the {queueDepth.pending_count ?? 0} waiting change(s) stay
+                          the {totalPendingSync ?? 0} waiting change(s) stay
                           in the outbox and upload once you&apos;re signed in again.
                         </div>
                       </div>
@@ -1947,12 +1954,12 @@ export default function AppLayout({ children, title }) {
                       <span style={{
                         fontWeight: 700,
                         fontVariantNumeric: 'tabular-nums',
-                        color: (queueDepth.pending_count || 0) > 0
+                        color: (totalPendingSync || 0) > 0
                           ? 'var(--warning, #f59e0b)'
                           : 'var(--success, #22c55e)'
                       }}>
-                        {queueDepth.pending_count || 0}
-                        {(queueDepth.pending_count || 0) === 0 && ' — all synced'}
+                        {totalPendingSync || 0}
+                        {(totalPendingSync || 0) === 0 && ' — all synced'}
                       </span>
                     </div>
 
@@ -1981,10 +1988,10 @@ export default function AppLayout({ children, title }) {
                         {/* Only for halts that actually stop the upload. Under
                             `auth_expired` the outbox is still draining, so a
                             "waiting" count would read as stuck data. */}
-                        {haltReason !== 'auth_expired' && (queueDepth.pending_count || 0) > 0 && (
+                        {haltReason !== 'auth_expired' && (totalPendingSync || 0) > 0 && (
                           <div style={{ color: 'var(--text-muted)', marginTop: 2 }}>
-                            {queueDepth.pending_count} change
-                            {queueDepth.pending_count === 1 ? '' : 's'} waiting — nothing is lost.
+                            {totalPendingSync} change
+                            {totalPendingSync === 1 ? '' : 's'} waiting — nothing is lost.
                           </div>
                         )}
                       </div>
@@ -2009,6 +2016,7 @@ export default function AppLayout({ children, title }) {
                         // action at all — offering the wrong one is what made
                         // the 401 loop unreadable.
                         if (haltReason === 'plan_required') handleCheckPlan(e)
+                        else if (haltReason === 'protocol_upgrade_required') openDownloadPage()
                         else if (haltReason === 'auth_expired' || haltReason === 'secret_mismatch') logout()
                         else handleSyncNow()
                       }}
@@ -2046,6 +2054,8 @@ export default function AppLayout({ children, title }) {
                           <span className={checkingPlan ? 'sync-spinner-small' : ''} />
                           {checkingPlan ? 'Checking…' : 'Check plan status'}
                         </>
+                      ) : haltReason === 'protocol_upgrade_required' ? (
+                        <>Get the sync update</>
                       ) : haltReason === 'auth_expired' || haltReason === 'secret_mismatch' ? (
                         <>Sign in again</>
                       ) : haltReason === 'offline' ? (

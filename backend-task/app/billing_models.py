@@ -36,6 +36,9 @@ class BillingUser(BillingBase):
     parent_business_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
     public_id = Column(String, unique=True, index=True, nullable=True)  # BizID BA-XXXXXX
     phone = Column(String, nullable=True)
+    # Billing owns this configured merchant payee. Field collections must never
+    # substitute a staff member's account or a guessed application-wide VPA.
+    upi_vpa = Column(String, nullable=True)
     token_version = Column(Integer, default=0, nullable=False, server_default="0")
     # JSON. Read for one key only: `subscription` (the owner's plan, written by
     # billing's admin console) — see app/plan.py. Never written here.

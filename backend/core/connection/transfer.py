@@ -468,8 +468,10 @@ def import_b2b_tables(db, table_name: str, rows: list, dest_owner_id: int,
             current = sum((_number(line.line_total) for line in existing_lines), Decimal(0))
             addition = sum((_number(line["line_total"]) for line in pending), Decimal(0))
             if pending and abs(current - _number(order.total_amount)) <= Decimal("0.01"):
-                # Destination already holds the complete billed order lines; ignore redundant incoming items
-                pending.clear()
+                # UID and float-tolerant multiset matches were removed above.
+                # Anything still pending is a different financial line, even
+                # when the destination already happens to sum to the header.
+                raise B2BImportConflict("B2B order already contains complete billed lines. Nothing was imported; reconcile the source order and retry.")
             elif pending and current + addition > _number(order.total_amount) + Decimal("0.01"):
                 raise B2BImportConflict("B2B order already contains billed lines or has conflicting totals. Nothing was imported; reconcile the order and retry.")
             # No dangerous rows are pending before entering the savepoint.

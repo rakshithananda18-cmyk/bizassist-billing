@@ -538,13 +538,17 @@ def test_admin_endpoints():
     assert resp.status_code == 200
     assert resp.json()["status"] == "success"
 
-    # 6. Verify data tables are empty for the enterprise user
+    # 6. Deleting an account revokes its existing bearer token. Inspect the
+    # private deletion through the database rather than authenticating a ghost.
     resp = client.get("/database", headers=user_headers)
-    assert resp.status_code == 200
-    db_data = resp.json()
-    assert len(db_data["invoices"]) == 0
-    assert len(db_data["inventory"]) == 0
-    assert len(db_data["uploads"]) == 0
+    assert resp.status_code == 401
+    from database.db import SessionLocal
+    from database.models import User, Invoice, Inventory, UploadedFile
+    with SessionLocal() as db:
+        assert db.get(User, user_id) is None
+        assert db.query(Invoice).filter_by(business_id=user_id).count() == 0
+        assert db.query(Inventory).filter_by(business_id=user_id).count() == 0
+        assert db.query(UploadedFile).filter_by(business_id=user_id).count() == 0
 
 
 def test_pdf_upload_flow():
@@ -757,14 +761,14 @@ def test_sanitized_errors():
 
     # Inject a broken DB session via the get_db dependency override (H6: routes
     # now receive their session through Depends(get_db) rather than SessionLocal).
-    from database.db import get_db
+    from database.admin_service import get_admin_db
 
     def _broken_db():
         mock_db = MagicMock()
         mock_db.query.side_effect = Exception("Internal DB Connection Corrupted Stack Trace Info")
         yield mock_db
 
-    app.dependency_overrides[get_db] = _broken_db
+    app.dependency_overrides[get_admin_db] = _broken_db
     try:
         # Try to call set_rate_limits
         response = client.post("/admin/rate-limits/1", json={
@@ -780,4 +784,4 @@ def test_sanitized_errors():
         assert "Internal DB Connection Corrupted" not in response.json()["detail"]
         assert response.json()["detail"] == "Internal server error setting rate limits."
     finally:
-        app.dependency_overrides.pop(get_db, None)
+        app.dependency_overrides.pop(get_admin_db, None)

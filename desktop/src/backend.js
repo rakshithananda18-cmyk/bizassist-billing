@@ -23,14 +23,26 @@ function exePath(resourcesPath) {
   return path.join(resourcesPath, 'backend', name);
 }
 
-/** One health probe against GET /health. */
+/** One health probe against GET /health, verifying status=ok and db=connected (TS-08). */
 function probe() {
   return new Promise((resolve) => {
     const req = http.get(
       { host: BACKEND_HOST, port: BACKEND_PORT, path: '/health', timeout: 2000 },
       (res) => {
-        res.resume();
-        resolve(res.statusCode === 200);
+        let body = '';
+        res.on('data', (chunk) => { body += chunk; });
+        res.on('end', () => {
+          if (res.statusCode !== 200) {
+            return resolve(false);
+          }
+          try {
+            const data = JSON.parse(body);
+            // Must have status 'ok' and db 'connected'; 'disconnected' fails readiness probe
+            resolve(data.status === 'ok' && data.db === 'connected');
+          } catch {
+            resolve(false);
+          }
+        });
       }
     );
     req.on('error', () => resolve(false));

@@ -382,6 +382,11 @@ def test_order_status_transitions():
     accept_buyer_resp = client.post(f"/orders/{order_id}/status", json={"status": "accepted"}, headers=headers_buyer)
     assert accept_buyer_resp.status_code == 403
     assert "only cancel pending orders" in accept_buyer_resp.json()["detail"]
+
+    # While cancellation is a legal graph edge, the seller must reject instead.
+    seller_cancel_pending = client.post(f"/orders/{order_id}/status", json={"status": "cancelled"}, headers=headers_seller)
+    assert seller_cancel_pending.status_code == 403
+    assert "Sellers reject orders; buyers cancel them" in seller_cancel_pending.json()["detail"]
     
     # Seller accepts order -> success
     accept_seller_resp = client.post(f"/orders/{order_id}/status", json={"status": "accepted"}, headers=headers_seller)
@@ -396,12 +401,12 @@ def test_order_status_transitions():
     # Buyer tries to cancel packed order -> fail
     cancel_fail = client.post(f"/orders/{order_id}/status", json={"status": "cancelled"}, headers=headers_buyer)
     assert cancel_fail.status_code == 400
-    assert "after it is packed or shipped" in cancel_fail.json()["detail"]
+    assert "Invalid order transition" in cancel_fail.json()["detail"]
     
-    # Seller rejects order after packed (seller only rejects, never cancels)
+    # A packed order has no cancellation edge for either party.
     reject_fail = client.post(f"/orders/{order_id}/status", json={"status": "cancelled"}, headers=headers_seller)
-    assert reject_fail.status_code == 403
-    assert "Sellers reject orders; buyers cancel them" in reject_fail.json()["detail"]
+    assert reject_fail.status_code == 400
+    assert "Invalid order transition" in reject_fail.json()["detail"]
 
 def test_connection_revocation_and_scoping():
     headers_seller = get_auth_headers("seller_test_1", "SellerPassword123")

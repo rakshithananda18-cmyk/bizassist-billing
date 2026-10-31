@@ -1,5 +1,10 @@
 # BizAssist Ecosystem — Master Plan & Architecture (Synthesis v1)
 
+> **31 October 2026:** Current implementation and verification are tracked in the
+> [dated remediation record](../audit/2026-10-31/README.md) and its per-issue ledger.
+> Earlier build/status tables below are historical; do not treat them as current
+> completion or production clearance. The [credential response](../audit/2026-10-31/SECURITY-RESPONSE.md) remains an external priority.
+
 *June 2026 · The single source of truth. Reconciles three independent AI reviews (this assistant, "Codex", "Antigravity") into one plan, makes the contested decisions explicitly, and maps everything to your four goals: **easy to use · secure & unbreakable · addictive · makes money**.*
 
 > **📍 Navigation:** This is the **full, authoritative** plan (large). For a quick map, use the lean **[`MASTER_PLAN.md`](../MASTER_PLAN.md)**. Current execution evidence is in the **[2026-10-28 verification record](../release/2026-10-28-verification.md)**. The **[`PRODUCT_REVIEW.md`](PRODUCT_REVIEW.md)** review (2026-06-26) and **[August platform ledger](../PLATFORM_STATE_AND_PENDING_WORK_2026-08-03.md)** are dated historical assessments. Keep both plan summaries aligned when a decision or current status changes.

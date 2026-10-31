@@ -1,0 +1,96 @@
+{
+  "review_date": "2026-10-31",
+  "scope": "Current working tree; implementation review of BD-01 through BD-13, preserving original October 30 audit and remediation review",
+  "counts": {"implemented": 11, "contained": 2},
+  "migration": {
+    "revision": "a30f1d7b9c02",
+    "down_revision": "f7b8c9d0e1f2",
+    "implementation": "core/accounting/settlement_schema.py shared by Alembic and desktop startup",
+    "additions": ["settlement source tables and tenant/immutability constraints", "nullable historical cost evidence", "immutable quote policy fields", "existing-schema debit-note uniqueness", "nullable explicit legacy paid baseline/source/date"],
+    "chain": "Later security and archival revisions are owned and reconciled by the root/security agents."
+  },
+  "validation": [
+    {
+      "name": "Final intent, order-transition and parity-fault fixture corrections",
+      "status": "passed", "passed": 34, "failed": 0, "skipped": 0, "seconds": 39.38,
+      "command": "PYTEST_XDIST_WORKER=bd_final_fixture_oct31 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 scratch/core-workflow-venv/Scripts/python.exe scratch/core_workflow_runner.py -q tests/test_intents.py tests/test_connections.py tests/test_parity_presence_sweep.py --tb=short --junitxml=../scratch/domain-final-fixture-oct31.xml",
+      "log": "scratch/domain-final-fixture-oct31.log", "xml": "scratch/domain-final-fixture-oct31.xml",
+      "changes": ["Pending intent fixture due date is relative future, preserving overdue/customer ranking assertions", "Packed cancellation asserts invalid graph edge400 for both parties; seller cancellation403 remains checked while pending is a valid cancellation edge", "Unreadable-table execute fault is scoped to the scan and restored before fixture teardown; unknown/error and continued-table-comparison assertions retained"],
+      "scope": "Test fixtures only. Product behavior and completed-order terminal-state assertions unchanged."
+    },
+    {
+      "name": "B2B import conflict atomicity and replay compatibility",
+      "status": "passed", "passed": 45, "failed": 0, "skipped": 1, "seconds": 37.20,
+      "command": "PYTEST_XDIST_WORKER=bd_import_oct31 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 scratch/core-workflow-venv/Scripts/python.exe scratch/core_workflow_runner.py -q tests/test_b2b_import_conflicts.py tests/test_b2b_transfer.py tests/test_b2b_transfer_internals.py --tb=short --junitxml=../scratch/domain-b2b-import-oct31.xml",
+      "log": "scratch/domain-b2b-import-oct31.log", "xml": "scratch/domain-b2b-import-oct31.xml",
+      "skip_reason": "One existing PostgreSQL-only trigger/transaction-abort test skips in this SQLite run.",
+      "regression_fixed": "After UID and float-tolerant multiset replay matching, unmatched lines on an already complete order were silently discarded by pending.clear(), committing unrelated products and reporting success. They now raise B2BImportConflict and roll back the entire import. Existing high-value conflict test retained and expanded to zero-value unmatched lines; no financial atomicity assertion weakened."
+    },
+    {
+      "name": "PostgreSQL settlement command and database-contract acceptance",
+      "status": "passed", "passed": 5, "failed": 0, "skipped": 0, "seconds": 10.56,
+      "command": "scratch/core-workflow-venv/Scripts/python.exe scratch/domain_financial_pg_runner.py",
+      "pytest_command": "pytest -q --tb=short --maxfail=1 tests/test_settlements_postgres.py --junitxml=../scratch/domain-settlements-postgres-oct31.xml",
+      "database": "Fresh domain_financial_test_<uuid> on explicitly authorized disposable loopback PostgreSQL port 15603; dropped in finally after acceptance",
+      "log": "scratch/domain-settlements-postgres-oct31.log",
+      "xml": "scratch/domain-settlements-postgres-oct31.xml",
+      "ci": ".github/workflows/ci.yml existing PostgreSQL financial invariants step now includes tests/test_settlements_postgres.py; SQLite skips these five PostgreSQL-only tests",
+      "coverage": ["Native two-int PostgreSQL advisory lock observed", "Idempotent supplier replay from a second session after real commit", "Cash requires a shift and reduces its expected drawer", "Closed period rejection leaves no settlement fact", "Paid-return refund plus same-customer allocation, replay and balanced journal entries", "Foreign tenant source and different customer rejection", "Native tenant-composite FK and SQL posted-fact immutability"],
+      "fixture_note": "First attempt stopped at fixture setup because the synthetic startup owner occupied serial id 1. Unique explicit fixture tenant IDs corrected this without changing application sequences or financial code."
+    },
+    {
+      "name": "Initial domain implementation smoke",
+      "passed": 49, "failed": 0, "seconds": 34.40,
+      "scope": "WP1, WP3, earlier money regressions and phase4 bilateral integration, before final reader/baseline refinements"
+    },
+    {
+      "name": "Final targeted financial acceptance",
+      "status": "passed", "passed": 176, "failed": 0, "skipped": 0, "seconds": 87.05,
+      "command": "PYTEST_XDIST_WORKER=bd_final_oct31 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 scratch/core-workflow-venv/Scripts/python.exe scratch/core_workflow_runner.py -q tests/test_financial_remediation_final.py tests/test_invoice_account.py tests/test_standard_tools.py tests/test_shift_service_unit.py tests/test_money_audit_regressions.py --tb=short --junitxml=../scratch/backend-domain-final-oct31.xml",
+      "log": "scratch/backend-domain-final-oct31.log",
+      "xml": "scratch/backend-domain-final-oct31.xml"
+    },
+    {
+      "name": "Final invoice-account and party-ledger compatibility",
+      "status": "passed", "passed": 22, "failed": 0, "skipped": 0, "seconds": 26.25,
+      "command": "PYTEST_XDIST_WORKER=bd_account_party_oct31 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 scratch/core-workflow-venv/Scripts/python.exe scratch/core_workflow_runner.py -q tests/test_invoice_account.py tests/test_party_ledger.py --tb=short --junitxml=../scratch/backend-domain-account-party-oct31.xml",
+      "log": "scratch/backend-domain-account-party-oct31.log",
+      "xml": "scratch/backend-domain-account-party-oct31.xml"
+    },
+    {
+      "name": "Final legacy negative-return and handler parity",
+      "status": "passed", "passed": 17, "failed": 0, "skipped": 0, "seconds": 13.11,
+      "command": "PYTEST_XDIST_WORKER=bd_readers_oct31 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 scratch/core-workflow-venv/Scripts/python.exe scratch/core_workflow_runner.py -q tests/test_handlers.py tests/test_invoice_account.py::test_an_invoice_number_that_is_a_PREFIX_of_another_does_not_steal_returns tests/test_financial_remediation_final.py::test_all_collection_surfaces_use_remaining_dues --tb=short --junitxml=../scratch/backend-domain-readers-oct31.xml",
+      "log": "scratch/backend-domain-readers-oct31.log",
+      "xml": "scratch/backend-domain-readers-oct31.xml",
+      "interpretation": "Both historical negative and modern positive credit-note conventions reduce revenue; exact historical references reduce only their original account. Counts overlap earlier suites and are not additive unique-test totals."
+    },
+    {
+      "name": "Root broader backend baseline",
+      "evidence_type": "parent-agent reported result",
+      "passed": 1247, "skipped": 11, "failed": 8,
+      "interpretation": "Initial bounded full suite. Two financial account failures are addressed by this final targeted run; other environment/classification failures are owned by root. Not a claim that all backend tests passed."
+    },
+    {
+      "name": "Constrained-role PostgreSQL B2B and role/schema acceptance",
+      "evidence_type": "parent/security-agent reported result",
+      "passed": 11, "failed": 0,
+      "interpretation": "Real disposable PostgreSQL roles, authorized catalogue/order completion, bilateral money/stock and runtime role checks. Detailed command and schema proofs belong to security/root artifacts."
+    }
+  ],
+  "fixture_corrections": [
+    "Final bounded full-suite fixture follow-up: relative future pending intent bill, graph-level packed cancellation rejection with preserved seller permission assertion, and scan-scoped parity fault cleanup; all three owning suites pass34 tests.",
+    "PostgreSQL settlement fixtures use fresh explicit tenant identities to avoid synthetic startup owner id=1 without changing any application sequence.",
+    "Phase4 order setup follows the supported packed/dispatched state graph; financial assertions retained.",
+    "Pending handler/recommendation fixtures use future relative dates; separate test proves past-due Pending bills derive overdue without a status rewrite.",
+    "Genuine free synthetic bills store zero in both legacy amount and modern total fields; separate test retains historical zero-total/nonzero-amount fallback.",
+    "Historical header-only account fixture explicitly clears modern baseline provenance; modern missing-receipt bills cannot invent cash.",
+    "Unlinked historical return recognition is exact-delimited, customer/tenant scoped and read-only; new payouts still require parent links."
+  ],
+  "limits": [
+    "No production services, merchant databases, external transfers, email, deployment or live data repair used.",
+    "All local tests run under the synthetic environment/network guard with unique worker databases; escalation only permits Windows loopback TestClient sockets.",
+    "Earlier stale-fixture and missing-schema runs are diagnostic failures, not discarded passing evidence.",
+    "The canceled long combined acceptance run is not counted as a completed suite."
+  ]
+}

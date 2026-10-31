@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useCallback, useState, useEffect, useRef } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
 import { logger } from '../../utils/logger'
 import { API_BASE } from '../../config'
@@ -11,12 +11,9 @@ export default function AdminUsage() {
   const [loadError, setLoadError] = useState(null)
   const usageRequest = useRef(0)
 
-  useEffect(() => {
-    loadUsage()
-    return () => { ++usageRequest.current }
-  }, [])
 
-  async function loadUsage() {
+
+  const loadUsage = useCallback(async () => {
     const requestId = ++usageRequest.current
     setLoading(true)
     setLoadError(null)
@@ -38,7 +35,13 @@ export default function AdminUsage() {
     } finally {
       if (requestId === usageRequest.current) setLoading(false)
     }
-  }
+  }, [authFetch])
+
+  useEffect(() => {
+    const requestCounter = usageRequest
+    loadUsage()
+    return () => { ++requestCounter.current }
+  }, [loadUsage])
 
   function getBarColor(pct) {
     if (pct >= 90) return 'red'
@@ -75,7 +78,7 @@ export default function AdminUsage() {
       {/* Usage Cards Grid */}
       <div className="admin-table-widget" style={{ marginTop: 20 }}>
         <div className="admin-table-title" style={{ marginBottom: 16 }}>Live Merchant Usage Statistics</div>
-        
+
         {loading && !stats ? (
           <div className="vskel"></div>
         ) : stats?.length === 0 ? (

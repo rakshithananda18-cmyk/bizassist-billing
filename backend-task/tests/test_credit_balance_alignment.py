@@ -3,7 +3,7 @@ import os
 
 import pytest
 
-from app.billing_models import BillingInvoice, BillingInvoicePayment
+from tests.billing_fixture_models import BillingInvoice, BillingInvoicePayment
 from app.db import SessionLocal
 from app.invoices import invoice_balances
 from app.models import FieldTask

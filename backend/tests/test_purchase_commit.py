@@ -170,7 +170,7 @@ def test_confirm_purchase_invoice_creates_and_updates_entities(api_auth):
         # 2. Newly created product
         p_new = db.query(Product).filter(Product.name == "Newly Discovered Product", Product.business_id == api_auth["bid_a"]).first()
         assert p_new is not None
-        assert p_new.cost_price == 200.0
+        assert p_new.cost_price == 20.0  # Normalized base-unit cost (BD-03: 200 / 10 = 20.0)
         assert p_new.conversion_factor == 10.0
 
         # 3. Barcode association

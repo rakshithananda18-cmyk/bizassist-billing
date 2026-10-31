@@ -1,0 +1,318 @@
+{
+  "review_date": "2026-10-30",
+  "baseline_audit_commit": "f5d715c6331eb5429a5be6499fb37cbdf6fbf596",
+  "head": "6c527927cc2571cfb6a87de900bfbcd8919421d0",
+  "includes_uncommitted_changes": true,
+  "files": [
+    {
+      "path": ".github/workflows/ci.yml",
+      "exists": true,
+      "sha256": "d58317a6f196ca3cd03f657fdb46f4ef4cf8b37cbc9bc7298182f5f9cf332b5a"
+    },
+    {
+      "path": ".github/workflows/field-team.yml",
+      "exists": true,
+      "sha256": "3e35f46a9bcb9808f9c1c269a00378a022e6f9b9d333731540969e840a58016f"
+    },
+    {
+      "path": ".gitignore",
+      "exists": true,
+      "sha256": "67796e0eadc9cd8831daad60b0fbc5c627c82702b62b6bc3972abd3fde588794"
+    },
+    {
+      "path": "backend-task/app/routers/tasks.py",
+      "exists": true,
+      "sha256": "e7ee0bddead66a77e3e39547b0de7f070b9101000402a8b36e59322aae1f66cd"
+    },
+    {
+      "path": "backend-task/tests/test_task_audit_regressions.py",
+      "exists": true,
+      "sha256": "ba9ca24d65c198c150bb1bad1800aef9bf8f20b74327742b775ff840e1dd1969"
+    },
+    {
+      "path": "backend/FOUNDATION.md",
+      "exists": true,
+      "sha256": "bf6cc8aa51d0d1549de8bb66637b8829f704bbee9c09f907bf5acda7f391cbfc"
+    },
+    {
+      "path": "backend/core/api/reports.py",
+      "exists": true,
+      "sha256": "f26a5f5e30e400b22d929d2ea8bdbacb2526ab2282745ce7dc5ad37ede3bffdf"
+    },
+    {
+      "path": "backend/core/api/sales.py",
+      "exists": true,
+      "sha256": "bb98ee548d32d55125cd1d166b3d8a39ad869411551d6cfabee7e86bb713ceb9"
+    },
+    {
+      "path": "backend/core/api/staff.py",
+      "exists": true,
+      "sha256": "e3b43cae9f54eb3e38e421e3ab8823316c0e5610fc5af6fda63daf976032ed0d"
+    },
+    {
+      "path": "backend/core/billing/balances.py",
+      "exists": true,
+      "sha256": "becb82b71c2b841e06a3794297e4ccf930f015595d6be722a92469aee1d8ed32"
+    },
+    {
+      "path": "backend/core/billing/commands.py",
+      "exists": true,
+      "sha256": "e426e6e4527a7170cc48e1f3dc77f34bd15ecdf565f53cff28c4123646ffd289"
+    },
+    {
+      "path": "backend/core/billing/sequence.py",
+      "exists": true,
+      "sha256": "f6a18bb67fd3b49c2afea871341958de139d7f788f3aee4a98fe67ddf38d787d"
+    },
+    {
+      "path": "backend/core/order/service.py",
+      "exists": true,
+      "sha256": "822f8b06cf0a93dd7fe05f534f2a591d2e886e2ec5c35da27f839ac0a5bb10af"
+    },
+    {
+      "path": "backend/core/purchase/commands.py",
+      "exists": true,
+      "sha256": "658ce6f25a596f1f8fd6481bde07f5f7bf356806b2fd91e2c2d3eebca40fd93e"
+    },
+    {
+      "path": "backend/core/stock/ledger.py",
+      "exists": true,
+      "sha256": "7bc5b27e37d180982e2ab235e76c6dc96e0d46833f16688b206643e33c831939"
+    },
+    {
+      "path": "backend/database/migration.py",
+      "exists": true,
+      "sha256": "80d4098ddec386c6bc39cffee042d35ecbaa9cb908fa907dfbe8b9b7b2f6c3d3"
+    },
+    {
+      "path": "backend/database/models.py",
+      "exists": true,
+      "sha256": "136a7524d68b387045e259998b23d89c27973db82e11b9a76bc6604b409fdb7a"
+    },
+    {
+      "path": "backend/routes/data_transfer.py",
+      "exists": true,
+      "sha256": "e05259140b6f4b8d35cd94c41cda0b5e376289551d3294115659563620c5c521"
+    },
+    {
+      "path": "backend/routes/sync.py",
+      "exists": true,
+      "sha256": "19a4bb5ef51a8a9615216ad70f6d1cb24917e68aafb2e8deffd37543c7a5288d"
+    },
+    {
+      "path": "backend/routes/sync_staff.py",
+      "exists": true,
+      "sha256": "18c0b4c07fb569323dc4993a1c6311dc6af8da7888af56c38c1408406e097e12"
+    },
+    {
+      "path": "backend/services/actions.py",
+      "exists": true,
+      "sha256": "06dd67ced9093c75af49d5aef87ec36069d87823de087dc09d68f4b04a886d33"
+    },
+    {
+      "path": "backend/services/auth.py",
+      "exists": true,
+      "sha256": "7786a98cba2b43db8d4be7d32bae22ff250b9212d03954ad8981cc201a2749d1"
+    },
+    {
+      "path": "backend/services/control_outbox.py",
+      "exists": true,
+      "sha256": "34c0913bb4675019446e9cb8297940ff00e0c34fa219a6013845216740059f46"
+    },
+    {
+      "path": "backend/services/handlers/dashboard.py",
+      "exists": true,
+      "sha256": "e4c58a65191f239a3e89937e17dced092590e329914808c1a8ccaef899ff6285"
+    },
+    {
+      "path": "backend/services/immediate_sync.py",
+      "exists": true,
+      "sha256": "fc99707c9643fb260928d221ed81bbf9d728cc9970cf8e2569b4c5190f11be31"
+    },
+    {
+      "path": "backend/services/recommendations.py",
+      "exists": true,
+      "sha256": "f99d8f4904202ff62c1ee57a90ae8930c7d52719ab5600b2f729449bc718d866"
+    },
+    {
+      "path": "backend/services/self_healing.py",
+      "exists": true,
+      "sha256": "56f779c1a7cf5b7231bdb70ac06a5b3607d7a329848fc8a98af9bacdaa7f9eed"
+    },
+    {
+      "path": "backend/services/sync_worker.py",
+      "exists": true,
+      "sha256": "57463260adae8172a6f95277ee64fe7b39e21e816ef24a13c8d2ca9b38b1a28d"
+    },
+    {
+      "path": "backend/services/tools/business.py",
+      "exists": true,
+      "sha256": "950ce0a8b2b1f223ea39f8fd281b9f8b6e661f1815b4d70e3d6512686e003a53"
+    },
+    {
+      "path": "backend/services/tools/invoices.py",
+      "exists": true,
+      "sha256": "f8e2d4d4108812c3f3909994bb7a946c6473baedd0591d46c0111b171a80776f"
+    },
+    {
+      "path": "backend/tests/test_actions.py",
+      "exists": true,
+      "sha256": "de21612373f9c1e4560ab6dbf2c1829091b33500ec47b2294092d47bb9f03c95"
+    },
+    {
+      "path": "backend/tests/test_discovery.py",
+      "exists": true,
+      "sha256": "0af87e8054b602d2c3dc4f5702f8aaada8105fd1ff34ab1d892111f4f5097389"
+    },
+    {
+      "path": "backend/tests/test_purchase_commit.py",
+      "exists": true,
+      "sha256": "33db599dbd8440666db6d44fcc15a65a0ed86704fe7762d8abe815bcbbf78a54"
+    },
+    {
+      "path": "backend/tests/test_wp1_financial_contracts.py",
+      "exists": true,
+      "sha256": "18890fc04bada605ea21c3bec1ff6cd8982c54916287e566dc6e8fa9a89fcb1b"
+    },
+    {
+      "path": "backend/tests/test_wp2_sync_durable.py",
+      "exists": true,
+      "sha256": "dcff5d1eed7cea0f391680c72fdb94d57f4a4647d98e788851a4be403f9a4aa2"
+    },
+    {
+      "path": "backend/tests/test_wp3_authorization_lifecycle.py",
+      "exists": true,
+      "sha256": "1ad1f7cca2ca01ad87a876f2798c83041e49515e3212f5cc1248e98011f45697"
+    },
+    {
+      "path": "backend/tests/test_wp4_wp5_operational.py",
+      "exists": true,
+      "sha256": "4505ed4ce8edd6e0dd47efdaa0036b4e74318b38185bc8e2763cd9a179d5b7e5"
+    },
+    {
+      "path": "bizassist-landing/src/App.jsx",
+      "exists": true,
+      "sha256": "4caf51f99d7c3bb084e360ee4b916af302c7a531b9dc983856afb9e78683335f"
+    },
+    {
+      "path": "bizassist-landing/src/useLatestRelease.js",
+      "exists": true,
+      "sha256": "ce95b03a9b6593051cdc8979f0230bd45f43b9a1a7268f84af02c534a03dc469"
+    },
+    {
+      "path": "desktop/src/backend.js",
+      "exists": true,
+      "sha256": "1659d3795e5ec7f6c8322e5ff06f2d913fd9cd6de1151b820bb7961689c3f7e5"
+    },
+    {
+      "path": "docs/MASTER_PLAN.md",
+      "exists": true,
+      "sha256": "97fcf95a9d8dec9b2207c66f3a1a8f4f75ff75781d2560b2da304cc730e6ab7b"
+    },
+    {
+      "path": "docs/audit/2026-10-30/README.md",
+      "exists": true,
+      "sha256": "001984536d9d40824f1547ef6aa21a7ad9c6609de977482d7eaa0d5071fb9aec"
+    },
+    {
+      "path": "docs/audit/2026-10-30/artifact-validation.json",
+      "exists": true,
+      "sha256": "4cc7cacd384640da755f4f01d22e5bbb43354aa05965912cc86a17d0a5a18012"
+    },
+    {
+      "path": "frontend-admin/.eslintrc.cjs",
+      "exists": true,
+      "sha256": "ef27739f0e020f50f67adcc9ec8a78696f38596c264b0fc58e3aeccc65eba457"
+    },
+    {
+      "path": "frontend-admin/src/contexts/AuthContext.jsx",
+      "exists": true,
+      "sha256": "30fe2031608ed64b05199cc61bd6fa1718e49f8c0152e33a71236d8176591f6f"
+    },
+    {
+      "path": "frontend-admin/src/pages/admin/AdminBusinessDetail.jsx",
+      "exists": true,
+      "sha256": "793401f7345e7fac23e9b0d2d2b2df3ff85d259d88ff244a794e601dac426d2f"
+    },
+    {
+      "path": "frontend-ai/src/contexts/AuthContext.jsx",
+      "exists": true,
+      "sha256": "2117534fdca53c95b4b9642a7794e7641a9849d5517a76814b3315a6f49b896b"
+    },
+    {
+      "path": "frontend-ai/src/pages/Chat.jsx",
+      "exists": true,
+      "sha256": "644984a286f35c01a16605e175906e05f222401a52dd8d9f38a1008c88ca1347"
+    },
+    {
+      "path": "frontend-billing/src/__tests__/paymentShareRemediation.test.jsx",
+      "exists": true,
+      "sha256": "b734264ad51a3a8bcc6dc856fdf0751ee81bb7a5e395ed5facc4dece2bc39088"
+    },
+    {
+      "path": "frontend-billing/src/__tests__/sidebarNotifications.test.jsx",
+      "exists": true,
+      "sha256": "d3e5651daa8c5b87daf2988aaaf640d5ffe4bab945238d3d796bace99cde3191"
+    },
+    {
+      "path": "frontend-billing/src/components/payments/InvoicesListView.jsx",
+      "exists": true,
+      "sha256": "861fd26a2b0f8ed0d2c2672b4a2740774498582d1328ad4a085d465db9e9c64f"
+    },
+    {
+      "path": "frontend-billing/src/components/sales/CheckoutModal.jsx",
+      "exists": true,
+      "sha256": "01817fc879ae3a8710adca39889c80dad77ad6e0bd624dc7da4b910f8b745f91"
+    },
+    {
+      "path": "frontend-billing/src/contexts/AuthContext.jsx",
+      "exists": true,
+      "sha256": "ab578d528dc684f59a7150e2fb188a57f28a10d828c0793acbd78d8a27faaa14"
+    },
+    {
+      "path": "frontend-billing/src/hooks/useBillingProfile.js",
+      "exists": true,
+      "sha256": "be4f2d6d52ed43a069802e92aa57d8292c205b3600fc5ac44a7f5faf9bad000b"
+    },
+    {
+      "path": "frontend-billing/src/hooks/useInvoiceActions.jsx",
+      "exists": true,
+      "sha256": "95c7a2ece9d39cce4a09c37ead71334dbf0ec6daa2565b9bb309dd46c9441cf8"
+    },
+    {
+      "path": "frontend-billing/src/pages/Parties.jsx",
+      "exists": true,
+      "sha256": "5be834cef681e1402a4c3cb818dab3c1489aa113f80bdfe9794077db78552186"
+    },
+    {
+      "path": "frontend-billing/src/pages/Purchases.jsx",
+      "exists": true,
+      "sha256": "bd0c227810bfbfeeb19562d6fbf64c6130b48cc1767b6c64cffce0e9d8d100e2"
+    },
+    {
+      "path": "frontend-billing/src/pages/Stock.jsx",
+      "exists": true,
+      "sha256": "f4a811903682c248dbf6719d320d4e69986830a4722a58bc20412d6960a80908"
+    },
+    {
+      "path": "frontend-billing/src/sync/outbox.js",
+      "exists": true,
+      "sha256": "e6180b66ba9d7616e33dad51ba56b316751a577cb32ff00ddac71deb2a0a450f"
+    },
+    {
+      "path": "frontend-billing/src/sync/syncManager.js",
+      "exists": true,
+      "sha256": "8159a526b9511dcd3ed8d4ccbfcc8fe66e4c25eab38b13903ddfb0d06aa2c4f2"
+    },
+    {
+      "path": "frontend-billing/src/utils/share.js",
+      "exists": true,
+      "sha256": "86d6eaef9e7c9ddccabf6a3df57c635ad7d190c47a66d538ee8f9ff03dd41c92"
+    },
+    {
+      "path": "repair_line_items.py",
+      "exists": true,
+      "sha256": "543734b69c2690973eca88f1f7b4e5a6a3d620cd894dce2094890ccc0e5494b2"
+    }
+  ]
+}

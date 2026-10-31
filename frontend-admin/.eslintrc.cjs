@@ -12,9 +12,11 @@ module.exports = {
   settings: { react: { version: '18.2' } },
   plugins: ['react-refresh'],
   rules: {
-    'react-refresh/only-export-components': [
-      'warn',
-      { allowConstantExport: true },
-    ],
+    'react/prop-types': 'off',
+    'react/no-unescaped-entities': 'off',
+    'no-empty': ['error', { allowEmptyCatch: true }],
+    'no-unused-vars': ['error', { argsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_' }],
+    'react-hooks/exhaustive-deps': 'error',
+    'react-refresh/only-export-components': ['error', { allowExportNames: ['useAuth', 'useDialog'] }],
   },
 }

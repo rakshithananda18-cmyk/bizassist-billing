@@ -57,11 +57,10 @@ def syncs_to_cloud(business_id: int) -> bool:
         return False
 
 
-def push_profile_to_cloud(business_id: int, fields: dict) -> None:
+def push_profile_to_cloud(business_id: int, fields: dict, db=None) -> None:
     """
-    Fire-and-forget POST /api/sync/profile-push to the cloud with the given
-    profile field dict.  Only non-None values are sent, and only for a
-    Local + Cloud business.
+    Durable push: persist profile updates to SyncControlOutbox and trigger async delivery (TS-05).
+    Only non-None values are sent, and only for a Local + Cloud business.
     """
     if not _IS_LOCAL:
         return
@@ -73,30 +72,16 @@ def push_profile_to_cloud(business_id: int, fields: dict) -> None:
     if not payload:
         return
 
-    def _run():
-        try:
-            import httpx
-            from services.sync_worker import _get_cloud_token, CLOUD_URL
-            token = _get_cloud_token(business_id)
-            if not token:
-                logger.warning("[PROFILE-SYNC] No cloud token for biz %s — skipped", business_id)
-                return
-            resp = httpx.post(
-                f"{CLOUD_URL}/api/sync/profile-push",
-                json=payload,
-                headers={"Authorization": f"Bearer {token}"},
-                timeout=8.0,
-            )
-            if resp.status_code == 200:
-                logger.info("[PROFILE-SYNC] Pushed %s to cloud for biz %s",
-                            list(payload.keys()), business_id)
-            else:
-                logger.warning("[PROFILE-SYNC] Cloud returned %s: %s",
-                               resp.status_code, resp.text[:200])
-        except Exception as e:
-            logger.warning("[PROFILE-SYNC] Push failed (non-critical): %s", e)
+    from services.control_outbox import enqueue_control_event, trigger_control_flush
 
-    threading.Thread(target=_run, daemon=True).start()
+    if db is not None:
+        enqueue_control_event(db, business_id, "profile_update", payload)
+        return
+    from database.db import SessionLocal
+    with SessionLocal() as session:
+        enqueue_control_event(session, business_id, "profile_update", payload)
+        session.commit()
+    trigger_control_flush(business_id)
 
 
 def trigger_data_sync(business_id: int, db) -> None:

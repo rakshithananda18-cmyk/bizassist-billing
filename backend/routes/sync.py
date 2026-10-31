@@ -13,12 +13,13 @@ Exposes:
 from services.dates import utc_now
 import logging
 import json
+import base64
 from datetime import datetime, timezone, timedelta
 from typing import Any, Optional, List, Dict
 
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query
 from pydantic import BaseModel
-from sqlalchemy import text, func
+from sqlalchemy import text, func, or_, and_
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError, InternalError
 
@@ -423,6 +424,8 @@ def push_changes(
             # business-scoped; owner attribution is sufficient here.
             if change.entity in _USER_FK_REPOINT_ENTITIES and "user_id" in data:
                 data["user_id"] = business_id
+            if change.entity in {"supplier_payments", "customer_refunds", "customer_credit_allocations"}:
+                data["operator_id"] = business_id
 
             existing = None
             uid_val = data.get("uid")
@@ -611,6 +614,12 @@ def push_changes(
                 })
                 continue
 
+            from core.sync.protected_fields import protect_history
+            try:
+                protect_history(change.entity, data, existing)
+            except ValueError as exc:
+                rejected.append({"entity": change.entity, "row_id": change.entity_id, "reason": str(exc)})
+                continue
             # Apply fields to model instance
             target_obj = existing if existing else model_cls()
 
@@ -831,17 +840,61 @@ def push_changes(
     }
 
 
+def parse_cursor(cursor_str: Optional[str]) -> tuple[Optional[datetime], Dict[str, dict]]:
+    """Parse a sync cursor into (global_timestamp, per_table_cursors).
+
+    Accepts:
+      - None / empty: (None, {})
+      - cursor:<urlsafe_base64_json> or raw JSON string
+      - ISO datetime string (fallback for legacy sync clients)
+    """
+    if not cursor_str:
+        return None, {}
+    s = str(cursor_str).strip()
+    if s.startswith("cursor:"):
+        try:
+            raw = base64.urlsafe_b64decode(s[7:].encode("ascii")).decode("utf-8")
+            data = json.loads(raw)
+            ts = _parse_dt(data.get("ts"))
+            return ts, data.get("tables", {})
+        except Exception:
+            pass
+    elif s.startswith("{"):
+        try:
+            data = json.loads(s)
+            ts = _parse_dt(data.get("ts"))
+            return ts, data.get("tables", {})
+        except Exception:
+            pass
+    # Legacy ISO datetime string
+    dt = _parse_dt(s)
+    return dt, {}
+
+
+def encode_cursor(global_ts: datetime, table_cursors: Dict[str, dict]) -> str:
+    """Encode global_timestamp and per-table cursors into a durable cursor string."""
+    payload = {
+        "v": 1,
+        "ts": global_ts.isoformat(),
+        "tables": table_cursors,
+    }
+    raw = json.dumps(payload, separators=(",", ":"))
+    return "cursor:" + base64.urlsafe_b64encode(raw.encode("utf-8")).decode("ascii")
+
+
 @router.get("/api/sync/pull")
 def pull_changes(
     last_sync_at: Optional[str] = None,
+    cursor: Optional[str] = None,
     limit: Optional[int] = None,
+    protocol: int = 1,
     current_user: dict = Depends(require_business_owner),
     _plan: dict = Depends(require_plan("pro")),   # 402 for free plan when SUBSCRIPTION_ENFORCED=1
     db: Session = Depends(get_db),
 ):
     """
     Cloud Endpoint. Returns updates scoped to user's business_id that
-    occurred after `last_sync_at`.
+    occurred after `last_sync_at` / `cursor`.
 
     `limit` caps rows PER TABLE and is opt-in. When it truncates anything the
     response carries `has_more: true` and names the truncated tables, so the
@@ -859,19 +912,27 @@ def pull_changes(
       absent-vs-unread confusion `failed_tables` exists to prevent.
     """
     business_id = _resolve_business_id_by_username(current_user, db, require_public_id=True)
-    last_sync_dt = _parse_dt(last_sync_at) or datetime(1970, 1, 1)
+    if protocol == 2:
+        from database.change_feed import pull_feed
+        return pull_feed(db, business_id, cursor or last_sync_at, max(1, min(limit or 1000, 5000)))
+    if limit is not None or cursor or (last_sync_at and not last_sync_at.startswith("1970-01-01")):
+        raise HTTPException(426, "Sync protocol 2 is required. Update this device; queued data and the pull cursor are retained.")
+    request_start_dt = datetime.now(timezone.utc)
+    cutoff_dt = request_start_dt.replace(tzinfo=None)
+
+    raw_cursor = cursor or last_sync_at
+    last_sync_dt, table_cursors = parse_cursor(raw_cursor)
+    if last_sync_dt is None:
+        last_sync_dt = datetime(1970, 1, 1)
+
     if limit is not None:
         limit = max(1, min(int(limit), 5000))
 
     changes: Dict[str, List[dict]] = {}
-    # Tables this pull could NOT read. Returned to the client so a missing table
-    # is distinguishable from an empty one (rule 33) — see the except block.
     failed_tables: List[dict] = []
-    # Set when any table hit the page cap. A truncated table is a THIRD state
-    # alongside "read fully" and "not read", and conflating it with the first is
-    # how a paginated feed silently loses its tail.
     has_more = False
     truncated_tables: List[str] = []
+    next_table_cursors: Dict[str, dict] = {}
 
     for table_name, model_cls in _MODEL_MAP.items():
         try:
@@ -905,8 +966,26 @@ def pull_changes(
             else:
                 continue
 
-            # Apply updated_at filter if present
+            # Upper bound by snapshot boundary (TS-02)
             if "updated_at" in cols:
+                query = query.filter(model_cls.updated_at <= cutoff_dt)
+
+            # Apply lexicographical cursor (TS-01) or timestamp filter
+            if table_name in table_cursors and "updated_at" in cols:
+                tbl_info = table_cursors[table_name]
+                tbl_ts = _parse_dt(tbl_info.get("t") or tbl_info.get("ts"))
+                tbl_id = tbl_info.get("id")
+                if tbl_ts:
+                    if tbl_id is not None and "id" in cols:
+                        query = query.filter(
+                            or_(
+                                model_cls.updated_at > tbl_ts,
+                                and_(model_cls.updated_at == tbl_ts, model_cls.id > int(tbl_id))
+                            )
+                        )
+                    else:
+                        query = query.filter(model_cls.updated_at > tbl_ts)
+            elif "updated_at" in cols:
                 query = query.filter(model_cls.updated_at > last_sync_dt)
 
             # ── PAGE CAP ──────────────────────────────────────────────────────
@@ -929,12 +1008,25 @@ def pull_changes(
             # client's cursor advances through the backlog instead of re-reading
             # the same head slice forever.
             if limit and "updated_at" in cols:
-                query = query.order_by(model_cls.updated_at.asc())
+                if "id" in cols:
+                    query = query.order_by(model_cls.updated_at.asc(), model_cls.id.asc())
+                else:
+                    query = query.order_by(model_cls.updated_at.asc())
                 rows = query.limit(limit + 1).all()
                 if len(rows) > limit:
                     rows = rows[:limit]
                     has_more = True
                     truncated_tables.append(table_name)
+                    last_r = rows[-1]
+                    next_table_cursors[table_name] = {
+                        "t": last_r.updated_at.isoformat() if last_r.updated_at else cutoff_dt.isoformat(),
+                        "id": getattr(last_r, "id", None)
+                    }
+                elif rows:
+                    next_table_cursors[table_name] = {
+                        "t": cutoff_dt.isoformat(),
+                        "id": getattr(rows[-1], "id", None)
+                    }
             else:
                 rows = query.all()
             if rows:
@@ -1015,8 +1107,23 @@ def pull_changes(
             business_id, limit, len(truncated_tables), truncated_tables,
         )
 
+    # Determine safe global watermark for next cursor
+    if has_more:
+        _ts_candidates = []
+        for tname in truncated_tables:
+            if tname in next_table_cursors and next_table_cursors[tname].get("t"):
+                t_dt = _parse_dt(next_table_cursors[tname]["t"])
+                if t_dt:
+                    _ts_candidates.append(t_dt)
+        next_global_ts = min(_ts_candidates) if _ts_candidates else last_sync_dt
+    else:
+        next_global_ts = cutoff_dt
+
+    next_cursor = encode_cursor(next_global_ts, next_table_cursors if has_more else {})
+
     return {
-        "pulled_at": datetime.now(timezone.utc).isoformat(),
+        "pulled_at": request_start_dt.isoformat(),
+        "cursor": next_cursor,
         "changes": changes,
         # Rule 33: the receiver must be able to tell "no rows" from "not read".
         "failed_tables": failed_tables,
@@ -1091,7 +1198,9 @@ def get_queue_depth(
         inbox_stats = {"pending_count": 0, "entity_counts": {},
                        "stuck_count": 0, "deferred_count": 0, "rejected_count": 0}
 
+    from services.control_outbox import control_status
     return {
+        "control_outbox": control_status(db, business_id),
         "pending_count":  pending_count,
         "entity_counts":  entity_counts,   # {"invoices": 3, "customers": 1, ...}
         "inbox":          inbox_stats,
@@ -1107,6 +1216,7 @@ def get_queue_depth(
 # ── Why sync stopped ─────────────────────────────────────────────────────────
 # Precedence, most-actionable first. Two of these NEVER recover on their own.
 _HALT_ORDER = (
+    ("_PROTOCOL_BLOCKED", "protocol_upgrade_required", "update_device"),
     # (flag name, reason, how the owner fixes it)
     ("_SELF_SIGNED_REJECTED", "secret_mismatch", "relogin"),
     ("_PULL_AUTH_BLOCKED",    "auth_expired",    "relogin"),

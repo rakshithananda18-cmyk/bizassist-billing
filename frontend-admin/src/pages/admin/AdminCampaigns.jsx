@@ -9,7 +9,7 @@
 //   * Offers: redeemable codes granting Pro for N days, capped + expiring.
 //     The funnel (delivered → seen → clicked / dismissed / redeemed) renders
 //     per campaign from campaign_deliveries.
-import { useState, useEffect } from 'react'
+import { useCallback, useState, useEffect } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useDialog } from '../../contexts/DialogContext'
 import { logger } from '../../utils/logger'
@@ -62,7 +62,7 @@ const EMPTY_OFFER = { code: '', description: '', days: 30, max_redemptions: '', 
 
 export default function AdminCampaigns() {
   const { authFetch } = useAuth()
-  const { showAlert, showConfirm, showError } = useDialog()
+  const { showConfirm, showError } = useDialog()
 
   const [campaigns, setCampaigns] = useState([])
   const [offers, setOffers] = useState([])
@@ -77,7 +77,7 @@ export default function AdminCampaigns() {
   const [offerForm, setOfferForm] = useState(EMPTY_OFFER)
   const [offerError, setOfferError] = useState('')
 
-  useEffect(() => { loadAll() }, [])
+
 
   // Win-back loop (REVIEW_1 §4.4): arriving from the Metrics churn-risk table
   // with ?winback=<BizID> opens the create modal pre-targeted to that merchant.
@@ -96,7 +96,7 @@ export default function AdminCampaigns() {
     window.history.replaceState({}, '', '/admin/campaigns')
   }, [])
 
-  async function loadAll() {
+  const loadAll = useCallback(async () => {
     setLoading(true)
     try {
       const [cRes, oRes] = await Promise.all([
@@ -110,7 +110,9 @@ export default function AdminCampaigns() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [authFetch])
+
+  useEffect(() => { loadAll() }, [loadAll])
 
   // ── Campaign form helpers ──────────────────────────────────────────────────
 

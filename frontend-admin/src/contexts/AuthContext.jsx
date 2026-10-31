@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react'
 import { API_BASE } from '../config'
 import { logger, setBizId } from '../utils/logger'
+import { trustedHandoff } from '../utils/handoff'
 
 const AuthContext = createContext(null)
 
@@ -16,23 +17,23 @@ export function AuthProvider({ children }) {
       const ssoTicket = params.get('sso')
       const isLogout = params.get('logout') === 'true'
       let ssoSuccess = false
-      
+
       if (isLogout) {
         // Intercept silent logout ping from billing app
         localStorage.removeItem('user')
         localStorage.removeItem('active_session_id')
         localStorage.removeItem('biz_name')
         setUser(null)
-        
+
         const url = new URL(window.location)
         url.searchParams.delete('logout')
         window.history.replaceState({}, document.title, url)
         setLoading(false)
         return
       }
-      
+
       if (ssoTicket) {
-        // Clean up the URL immediately (synchronously) so React StrictMode's 
+        // Clean up the URL immediately (synchronously) so React StrictMode's
         // second mount doesn't try to double-redeem the single-use ticket.
         const url = new URL(window.location)
         url.searchParams.delete('sso')
@@ -57,7 +58,7 @@ export function AuthProvider({ children }) {
           logger.warn('[SSO] Ticket redemption failed:', err)
         }
       }
-      
+
       // If no SSO was handled or it failed, fall back to localStorage
       if (!ssoSuccess) {
         try {
@@ -69,7 +70,7 @@ export function AuthProvider({ children }) {
       }
       setLoading(false)
     }
-    
+
     initAuth()
   }, [])
 
@@ -82,16 +83,7 @@ export function AuthProvider({ children }) {
   // useEffect won't re-run, so the billing app uses postMessage instead.
   useEffect(() => {
     async function handleMessage(event) {
-      // Only accept messages from our known AI dashboard origins
-      const knownOrigins = [
-        window.location.origin,
-        // Allow the billing app's origin dynamically — we trust same-host ports
-        `http://${window.location.hostname}:5174`,
-        `http://${window.location.hostname}:8450`,
-      ]
-      if (!knownOrigins.includes(event.origin) && !event.origin.startsWith('http://localhost')) {
-        return
-      }
+      if (!trustedHandoff(event, { billingUrl: import.meta.env.VITE_BILLING_URL })) return
       if (!event.data || event.data.type !== 'SSO_TICKET') return
 
       const ticket = event.data.ticket

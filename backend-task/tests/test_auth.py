@@ -51,6 +51,21 @@ def test_owner_wrong_password(client, biz):
     assert r.status_code == 401
 
 
+def test_me_payment_destination_comes_only_from_own_billing_business(client, biz, other_biz):
+    with SessionLocal() as db:
+        owner = db.get(BillingUser, biz.business_id)
+        owner.upi_vpa = "fixture-merchant@bank"
+        db.get(BillingUser, other_biz.business_id).upi_vpa = "other-merchant@bank"
+        db.commit()
+    me = client.get("/api/auth/me", headers=auth(biz.token))
+    assert me.status_code == 200
+    assert me.json()["billing_business"]["upi_vpa"] == "fixture-merchant@bank"
+    with SessionLocal() as db:
+        db.get(BillingUser, biz.business_id).upi_vpa = None
+        db.commit()
+    assert client.get("/api/auth/me", headers=auth(biz.token)).json()["billing_business"]["upi_vpa"] is None
+
+
 def test_billing_cashier_cannot_sign_in_as_owner(client, biz):
     db = SessionLocal()
     name = uniq("cashier")

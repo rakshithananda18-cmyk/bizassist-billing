@@ -7,7 +7,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 from database.db import get_db, DATABASE_URL
 from database.models import User
-from services.auth import hash_password, verify_password, create_access_token, get_active_user, create_sse_ticket, require_owner, get_active_user_or_ticket, redeem_sse_ticket
+from services.auth import hash_password, verify_password, create_access_token, get_active_user, create_sse_ticket, require_owner, require_business_owner, get_active_user_or_ticket, redeem_sse_ticket
 from services.rate_limiter import check_ip_rate_limit
 from services.registration_policy import TRIAL_DAYS, normalize_phone, phone_key
 
@@ -166,31 +166,22 @@ def reclaim_local(req: ReclaimLocalRequest, request: Request, db: Session = Depe
         raise HTTPException(status_code=409, detail="This BizID is not the cloud account's for these credentials. Nothing was changed.")
 
     old_bizid = user.public_id
+    business_name = cloud.get("business_name") or req.business_name or user.business_name
+    if old_bizid and old_bizid != req.public_id:
+        from services.admin_service import purge_business_data, record_business_tombstone
+        old_name = user.business_name
+        result = purge_business_data(user.id, db, delete_owner=False, delete_staff=True, retire_account=True)
+        record_business_tombstone(db, public_id=old_bizid, username=uname,
+            business_name=old_name, reason="reclaim_rekey")
+        if result.get("identity_retained"):
+            db.flush()
+            user = User(username=uname, role="enterprise")
+            db.add(user)
     user.public_id = req.public_id
     user.password = hash_password(req.password)
-    business_name = cloud.get("business_name") or req.business_name
-    if business_name:
-        user.business_name = business_name
-
-    # If the BizID changed, the cloud tenant was recreated from scratch. Purge ALL
-    # stale local data for this business so we start fresh and never push old data
-    # to the new cloud account. Uses the SAME centralized, dependency-ordered purge
-    # as the admin "wipe user data" path (services.admin_service.purge_business_data)
-    # — the previous inline `DELETE FROM {table} WHERE business_id` loop missed
-    # child line-item tables and, critically, could leave staff sub-accounts behind
-    # (the July 2026 "phantom counters" bug). delete_owner=False keeps THIS owner
-    # row so we can re-key it below; the whole thing commits atomically here.
-    if old_bizid and old_bizid != req.public_id:
-        logger.warning(
-            f"[AUTH] Reclaimed account '{uname}' has a new BizID ({old_bizid} -> {req.public_id}). "
-            f"Purging stale local data for business ID {user.id} via centralized purge..."
-        )
-        from services.admin_service import purge_business_data, record_business_tombstone
-        purge_business_data(user.id, db, delete_owner=False, delete_staff=True)
-        # Tombstone the RETIRED old BizID so any device/cloud can later recognise
-        # it as intentionally re-keyed (not a mystery orphan). Best-effort.
-        record_business_tombstone(db, public_id=old_bizid, username=uname,
-                                  business_name=user.business_name, reason="reclaim_rekey")
+    user.business_name = business_name
+    from services.auth import bump_token_version
+    bump_token_version(db, user)
 
     db.commit()
     db.refresh(user)
@@ -246,10 +237,11 @@ def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
         if not rl["allowed"]:
             raise HTTPException(status_code=429, detail=rl["reason"])
 
-        user = db.query(User).filter(User.username == req.username).first()
-        if user:
+        from database.security import authenticate_identity, username_exists
+        user = authenticate_identity(db, req.username, req.password)
+        if user or username_exists(db, req.username):
             shown = f"username '{req.username}'"
-        if not user or not verify_password(req.password, user.password):
+        if not user:
             logger.warning(f"[AUTH] Failed login for {shown}: invalid credentials")
             raise HTTPException(status_code=401, detail="Invalid credentials")
 
@@ -360,20 +352,12 @@ def staff_login(req: StaffLoginRequest, request: Request, db: Session = Depends(
         if not rl["allowed"]:
             raise HTTPException(status_code=429, detail=rl["reason"])
 
-        owner = db.query(User).filter(
-            User.username == req.owner_username, User.parent_business_id.is_(None)
-        ).first()
-        if not owner:
+        from database.security import authenticate_identity
+        staff = authenticate_identity(db, req.staff_login_name, req.password, req.owner_username)
+        if staff is None or staff.parent_business_id is None:
             raise HTTPException(status_code=401, detail="Invalid credentials")
-        staff = (
-            db.query(User)
-            .filter(
-                User.parent_business_id == owner.id,
-                func.lower(User.staff_login_name) == (req.staff_login_name or "").strip().lower(),
-            )
-            .first()
-        )
-        if not staff or not verify_password(req.password, staff.password):
+        owner = db.get(User, staff.parent_business_id)
+        if owner is None or owner.role == "deleted":
             raise HTTPException(status_code=401, detail="Invalid credentials")
 
         business_id = owner.id
@@ -516,8 +500,8 @@ def signup(req: SignupRequest, db: Session = Depends(get_db)):
         if not any(c.isdigit() for c in password):
             raise HTTPException(status_code=400, detail="Password must contain at least one number.")
 
-        existing = db.query(User).filter(User.username == req.username).first()
-        if existing:
+        from database.security import username_exists
+        if username_exists(db, req.username):
             logger.warning(f"[AUTH] Failed signup: username '{req.username}' already exists.")
             raise HTTPException(status_code=400, detail="Username already exists")
         
@@ -550,7 +534,10 @@ def signup(req: SignupRequest, db: Session = Depends(get_db)):
         from sqlalchemy.exc import IntegrityError
         from sqlalchemy import text
 
+        from database.security import allocate_owner_id
+        owner_pk = allocate_owner_id(db)
         user = User(
+            id=owner_pk,
             username=req.username,
             password=hash_password(req.password),
             business_name=req.business_name,
@@ -801,7 +788,7 @@ def get_profile(current_user: dict = Depends(get_active_user), db: Session = Dep
 
 
 @router.put("/profile")
-def update_profile(req: ProfileUpdateRequest, current_user: dict = Depends(get_active_user), db: Session = Depends(get_db)):
+def update_profile(req: ProfileUpdateRequest, current_user: dict = Depends(require_business_owner), db: Session = Depends(get_db)):
     user = db.query(User).filter(User.username == current_user.get("username")).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -829,8 +816,7 @@ def update_profile(req: ProfileUpdateRequest, current_user: dict = Depends(get_a
     if req.upi_vpa is not None:
         user.upi_vpa = (req.upi_vpa.strip() or None)
 
-    db.commit()
-    db.refresh(user)
+    db.flush()
 
     # Immediately push profile changes to the cloud
     from services.immediate_sync import push_profile_to_cloud
@@ -844,7 +830,11 @@ def update_profile(req: ProfileUpdateRequest, current_user: dict = Depends(get_a
         "pan": req.pan,
         "logo": req.logo,
         "upi_vpa": req.upi_vpa,
-    })
+    }, db=db)
+    db.commit()
+    db.refresh(user)
+    from services.control_outbox import trigger_control_flush
+    trigger_control_flush(user.id)
     
     return {
         "id": user.id,

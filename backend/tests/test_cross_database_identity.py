@@ -179,13 +179,12 @@ class TestTheBoundaryTranslations:
         """The correct pattern, pinned so it is not "fixed" into something worse:
         the integer stays local as a token-store key, and the cloud identifies
         the business from the token's public_id claim."""
-        for parts, needle in [
-            (("services", "immediate_sync.py"), "_get_cloud_token(business_id)"),
-            (("core", "api", "staff.py"),        "_get_cloud_token"),
-        ]:
-            src = _src(*parts)
-            assert needle in src
-            assert "Authorization" in src
+        # Profile/staff routes now enqueue a durable event; the outbox owns
+        # delivery and must still authenticate with that owner's cloud token.
+        src = _src("services", "control_outbox.py")
+        assert "_get_cloud_token(business_id)" in src
+        assert '"Authorization": f"Bearer {token}"' in src
+        assert "business_public_id=ev.business_public_id" in src
 
 
 # ═════════════════════════════════════════════════════════════════════════════

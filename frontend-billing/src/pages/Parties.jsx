@@ -14,6 +14,7 @@ import PartyFormModal from '../components/parties/PartyFormModal'
 import SaleReturnModal from '../components/parties/SaleReturnModal'
 import PartyCreditDrawer from '../components/parties/PartyCreditDrawer'
 import { logger } from '../utils/logger'
+import { readAllPages } from '../utils/readPages'
 import { formatApiError } from '../utils/apiError'
 import { buildUpiUri, buildWhatsAppShareUrl, normalizePhoneIN, resolvePaymentVpa } from '../utils/share'
 import { applyDelta, hasDelta } from '../sync/applyDelta'
@@ -113,8 +114,8 @@ export default function Parties({ embedded = false, headerTabs = null, inlinePag
       // 20th contact alphabetically and the tab badge reported that truncated
       // count as the total — 23 customers displayed as "Customers (20)".
       // Matches InvoicesListView's `/invoices?per_page=500`.
-      read('/billing/customers?per_page=500'),
-      read('/billing/vendors?per_page=500'),
+      readAllPages(authFetch, '/billing/customers'),
+      readAllPages(authFetch, '/billing/vendors'),
       read('/billing/invoices'),
       read('/purchases'),
     ]).then(([c, v, invs, purchs]) => {
@@ -202,7 +203,7 @@ export default function Parties({ embedded = false, headerTabs = null, inlinePag
       if (activeTab === 'Other Invoices') {
         return !q || p.invoice_number?.toLowerCase().includes(q) || p.notes?.toLowerCase().includes(q)
       }
-      
+
       // Balance filter (Outstanding Dues / Nil)
       const outstanding = parseFloat(p.outstanding_balance ?? 0)
       if (balanceFilter === 'due' && outstanding <= 0) return false
@@ -392,7 +393,7 @@ export default function Parties({ embedded = false, headerTabs = null, inlinePag
     const total = parseFloat(invoice.total_amount || 0)
     const paid = parseFloat(invoice.paid_amount || 0)
     const balance = invoice.outstanding != null ? parseFloat(invoice.outstanding) : Math.max(total - paid, 0)
-    
+
     let phone = ''
     if (customer && customer.phone) {
       phone = customer.phone
@@ -403,10 +404,10 @@ export default function Parties({ embedded = false, headerTabs = null, inlinePag
       if (!input) return
       phone = input
     }
-    
+
     const upiVpa = resolvePaymentVpa({ profile, user })
     const businessName = (user?.business_name || 'BizAssist Merchant').toUpperCase()
-    
+
     let message = `Hi ${customer?.name || 'Customer'},\n\nHere is your Invoice ${invoiceNo} from ${businessName}:\nDate: ${invoice.date || invoice.invoice_date}\nTotal Amount: ₹${total.toLocaleString('en-IN')}\n`
     if (balance > 0) {
       if (upiVpa) {
@@ -417,7 +418,7 @@ export default function Parties({ embedded = false, headerTabs = null, inlinePag
       }
     }
     message += `\nThank you for your business!`
-    
+
     window.open(buildWhatsAppShareUrl(phone, message), '_blank')
   }
 
@@ -454,7 +455,7 @@ export default function Parties({ embedded = false, headerTabs = null, inlinePag
       }))
       return
     }
-    
+
     const invalidLine = activeLines.find(l => l.quantity > l.max_quantity)
     if (invalidLine) {
       window.dispatchEvent(new CustomEvent('show_toast', {
@@ -483,7 +484,7 @@ export default function Parties({ embedded = false, headerTabs = null, inlinePag
           note: returnNote
         })
       })
-      
+
       if (res.ok) {
         setAlert({ type: 'success', msg: `${label('sale_return')} recorded successfully! Stock and customer balance updated.` })
         setShowReturnModal(false)

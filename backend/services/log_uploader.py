@@ -133,6 +133,11 @@ def upload_logs_to_cloud(business_id: int, file_path: str, message: str = "Sched
 
 def run_daily_log_upload():
     """Daily job to archive and upload logs for all active local businesses."""
+    from database.db import engine
+    if engine.dialect.name != "sqlite":
+        # These are desktop-local archives. A shared PostgreSQL server must not
+        # enumerate tenant owners or upload its own logs as a merchant device.
+        return
     logger.info("[LOG_UPLOADER] Running daily scheduled log upload")
     
     # 1. Clean up old unsent archives in backups folder if they exceed retention

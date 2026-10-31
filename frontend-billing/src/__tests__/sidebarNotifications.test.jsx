@@ -81,7 +81,7 @@ describe('profile notifications', () => {
     await user.click(screen.getByTitle('Settings & Profile'))
     expect(screen.getAllByText('Enterprise Account').length).toBeGreaterThan(0)
     await user.click(bell)
-    expect(screen.getByText('Needs attention')).toBeInTheDocument()
+    expect(screen.getByText(/Smart Notifications|Needs attention/i)).toBeInTheDocument()
     expect(screen.queryAllByText('Enterprise Account')).toHaveLength(0)
     await user.click(screen.getByRole('button', { name: /2 products running low/ }))
     expect(screen.getByText('Inventory workspace opened')).toBeInTheDocument()

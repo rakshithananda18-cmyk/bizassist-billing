@@ -45,9 +45,9 @@ function AppearanceSync() {
 }
 
 function ProtectedRoute({ children }) {
-  const { user, loading } = useAuth()
+  const { user, token, loading } = useAuth()
   if (loading) return <PageLoader />
-  return user ? children : <Navigate to="/login" replace />
+  return user ? <React.Fragment key={token || user.public_id || user.id}>{children}</React.Fragment> : <Navigate to="/login" replace />
 }
 
 export function AppRoutes() {
@@ -271,8 +271,8 @@ function RealtimeSyncListener() {
       title="⚠️ Real-Time Sync Paused"
       onClose={() => setModalOpen(false)}
       footer={
-        <button 
-          className="btn btn-primary" 
+        <button
+          className="btn btn-primary"
           onClick={() => setModalOpen(false)}
           style={{ width: '100%' }}
         >
@@ -284,11 +284,11 @@ function RealtimeSyncListener() {
         <p style={{ margin: 0, fontSize: '0.9rem', lineHeight: '1.4', color: 'var(--text-primary)' }}>
           Real-time sync was <strong>automatically paused</strong> after repeated connection failures.
         </p>
-        
-        <div style={{ 
-          background: 'rgba(239, 68, 68, 0.1)', 
-          border: '1px solid rgba(239, 68, 68, 0.2)', 
-          borderRadius: 8, 
+
+        <div style={{
+          background: 'rgba(239, 68, 68, 0.1)',
+          border: '1px solid rgba(239, 68, 68, 0.2)',
+          borderRadius: 8,
           padding: 12,
           fontSize: '0.82rem',
           color: 'var(--danger, #ef4444)',
