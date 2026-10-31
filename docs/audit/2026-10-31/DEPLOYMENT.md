@@ -1,9 +1,24 @@
-# Deployment preflight and applied schema — 31 October 2026
+# Deployment and applied schema — 31 October 2026
 
 The owner requested GitHub and Hugging Face publication, then explicitly approved
 moving the existing database URL into a Space secret, encrypted local recovery
 copies and the five pending Alembic upgrades. This record covers the completed
-pre-push operations. Remote commit and runtime confirmation follow publication.
+pre-push operations and subsequent publication checks.
+
+Application commit `55e613d4913c422a5f6efa0c17eed2e287381482` was published
+to GitHub main/audit and Hugging Face main. The Space reported RUNNING on that
+exact served commit, PostgreSQL health returned 200/connected, the new settlement
+routes were present, and one nonexistent-account login returned 401. Main CI's
+seven jobs and the Field workflow passed. Field's live `ft_alembic_version`
+matches its source head `0003_ft_task_payment`; no Field upgrade was pending.
+
+The separate Sonar scan stopped before analysis when its JRE provisioning
+request returned HTTP403. The job had a configured token and also warned that
+its v4 action was unsupported and vulnerable. The follow-up workflow uses the
+maintained v6 action and an explicitly installed Java21 runtime, with only JRE
+auto-provisioning disabled. Source analysis, coverage inputs, upload authentication
+and exclusions are unchanged. This follows the [documented runtime option](https://docs.sonarsource.com/sonarqube-cloud/analyzing-source-code/analysis-parameters/parameters-not-settable-in-ui)
+and [Java requirement](https://docs.sonarsource.com/sonarqube-cloud/analyzing-source-code/scanners/sonarscanner-cli).
 
 ## Applied and verified
 

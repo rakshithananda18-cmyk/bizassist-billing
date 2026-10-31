@@ -1,13 +1,13 @@
 {
   "date": "2026-10-31",
-  "head": "6c527927cc2571cfb6a87de900bfbcd8919421d0",
+  "head": "55e613d4913c422a5f6efa0c17eed2e287381482",
   "includes_uncommitted_work": true,
   "excludes": [
     "ignored/private files",
     "docs/audit/2026-10-31/"
   ],
   "file_count": 1402,
-  "sha256": "9174c0682a4df1fa3d01cc8330e19b8a1762864218de7faba091f1de84fc2c15",
+  "sha256": "855166b26b7903e32c1347d4a350144f2e56e3b9ab4648e717c47ef91d1260b2",
   "files": [
     {
       "path": ".dockerignore",
@@ -39,7 +39,7 @@
     },
     {
       "path": ".github/workflows/sonar.yml",
-      "sha256": "45d2b0860222429673a619fe9168377e4b29511c99e361a3e0152a2cdda42b76"
+      "sha256": "e7ccd80ec04d5b0a9170f2ea32e4fd31205145b80ac1378cdfb68175bedd51d3"
     },
     {
       "path": ".gitignore",

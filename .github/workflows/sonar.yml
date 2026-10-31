@@ -102,17 +102,19 @@ jobs:
         run: |
           npx vitest run --coverage --coverage.reporter=lcov
 
-      # SonarSource DEPRECATED `sonarcloud-github-action` — its own repo
-      # description now reads "Deprecated. Use
-      # https://github.com/SonarSource/sonarqube-scan-action instead." Since
-      # v4.1.0 `sonarqube-scan-action` is the single entrypoint for both
-      # SonarQube Server and Cloud, and it is a drop-in replacement. It does
-      # require SONAR_HOST_URL, which the old action inferred.
-      #
-      # Pinned to a major version rather than @master: a scanner that can change
-      # under you between runs makes "the gate went red" unattributable.
+      - name: Set up scanner Java runtime
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      # v4 is unsupported. Use the maintained action and our explicit Java21
+      # runtime: the cloud JRE provisioning endpoint returned HTTP403 despite
+      # a configured token. Analysis/upload authentication remains unchanged.
       - name: SonarQube Cloud Scan
-        uses: SonarSource/sonarqube-scan-action@v4
+        uses: SonarSource/sonarqube-scan-action@v6
+        with:
+          args: -Dsonar.scanner.skipJreProvisioning=true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
