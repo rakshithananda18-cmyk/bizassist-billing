@@ -58,25 +58,6 @@ export default function WorkspaceTopBar({
           </button>
         )}
 
-        <button
-          title="Interactive Guide & Help Center"
-          onClick={() => window.dispatchEvent(new CustomEvent('open_smart_help'))}
-          style={{
-            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-            width: 34, height: 34, borderRadius: 6, border: '1px solid var(--border)',
-            background: 'transparent', cursor: 'pointer', color: 'var(--text-muted)',
-            transition: 'background .12s, color .12s',
-            marginLeft: 4,
-            fontWeight: 700,
-            fontSize: 13,
-            fontFamily: 'monospace'
-          }}
-          onMouseEnter={e => { e.currentTarget.style.background = 'rgba(194,113,79,0.15)'; e.currentTarget.style.color = 'var(--accent)' }}
-          onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-muted)' }}
-        >
-          ?
-        </button>
-
         {windowControls && (
           <>
         {/* Window controls — POS / Workspace style */}

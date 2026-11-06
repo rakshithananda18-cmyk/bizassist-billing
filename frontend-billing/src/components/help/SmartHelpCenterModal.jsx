@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import MockPosAnimation from './MockPosAnimation'
 import { BuildingMark } from '../Logo'
 import { CloseIcon } from '../Icons'
+import { HELP_CONTENT } from '../../config/helpContent'
 
 const CHAPTERS = [
   {
@@ -47,30 +48,48 @@ const FAQS = [
   },
   {
     q: 'How do I add staff counters or cashier logins?',
-    a: 'Go to Settings → Staff & Counters. As the business owner, you can create cashier credentials (e.g., counter-1, counter-2). Cashiers can only access the billing register and cannot alter historical tax records or business settings.'
+    a: 'Go to Settings -> Staff & Counters. As the business owner, you can create cashier credentials (e.g., counter-1, counter-2). Cashiers can only access the billing register and cannot alter historical tax records or business settings.'
   },
   {
     q: 'Can I print on standard 58mm and 80mm thermal printers?',
-    a: 'Yes! STATER Bill includes specialized thermal ESC/POS and browser printing presets with auto paper-cut commands. Adjust your paper roll width anytime in Settings → Print Configuration.'
+    a: 'Yes. STATER Bill includes specialized thermal ESC/POS and browser printing presets with auto paper-cut commands. Adjust your paper roll width anytime in Settings -> Print Configuration.'
   },
   {
     q: 'How do I export GST reports for my accountant?',
-    a: 'Navigate to Reports → GST & Tax Reports. You can export GSTR-1, GSTR-3B summary tables, and HSN-wise sales sheets directly to Excel or PDF with one click.'
+    a: 'Navigate to Reports -> GST & Tax Reports. You can export GSTR-1, GSTR-3B summary tables, and HSN-wise sales sheets directly to Excel or PDF with one click.'
   }
 ]
 
-export default function SmartHelpCenterModal({ isOpen, onClose, initialChapter = 0, isFirstTime = false }) {
-  const [activeTab, setActiveTab] = useState('walkthrough') // 'walkthrough' | 'shortcuts' | 'faq'
-  const [currentChapter, setCurrentChapter] = useState(initialChapter)
+export default function SmartHelpCenterModal({
+  isOpen,
+  onClose,
+  initialTab = 'page',
+  currentRoute = '/',
+  routeHelp = null,
+  isFirstTime = false
+}) {
+  const resolvedRoute = currentRoute || (typeof window !== 'undefined' ? window.location.pathname : '/')
+  const activeHelp = routeHelp || HELP_CONTENT[resolvedRoute] || HELP_CONTENT['/']
+
+  const defaultTab = isFirstTime ? 'walkthrough' : (activeHelp ? 'page' : 'walkthrough')
+  const [activeTab, setActiveTab] = useState(defaultTab)
+  const [currentChapter, setCurrentChapter] = useState(0)
   const [faqFilter, setFaqFilter] = useState('')
 
   useEffect(() => {
-    if (isOpen && isFirstTime) {
-      try {
-        localStorage.setItem('staterbill_onboarding_completed', 'true')
-      } catch {}
+    if (isOpen) {
+      if (isFirstTime) {
+        setActiveTab('walkthrough')
+        try {
+          localStorage.setItem('staterbill_onboarding_completed', 'true')
+        } catch {}
+      } else if (initialTab === 'page' && activeHelp) {
+        setActiveTab('page')
+      } else if (initialTab) {
+        setActiveTab(initialTab)
+      }
     }
-  }, [isOpen, isFirstTime])
+  }, [isOpen, isFirstTime, initialTab, resolvedRoute])
 
   if (!isOpen) return null
 
@@ -93,6 +112,8 @@ export default function SmartHelpCenterModal({ isOpen, onClose, initialChapter =
             item.a.toLowerCase().includes(faqFilter.toLowerCase())
   )
 
+  const isBillingRoute = resolvedRoute === '/' || resolvedRoute === '/billing' || resolvedRoute === '/sales'
+
   return (
     <div
       onClick={e => e.target === e.currentTarget && onClose()}
@@ -100,7 +121,7 @@ export default function SmartHelpCenterModal({ isOpen, onClose, initialChapter =
         position: 'fixed',
         inset: 0,
         zIndex: 2000,
-        background: 'rgba(0, 0, 0, 0.75)',
+        background: 'rgba(0, 0, 0, 0.78)',
         backdropFilter: 'blur(6px)',
         display: 'flex',
         alignItems: 'center',
@@ -111,14 +132,14 @@ export default function SmartHelpCenterModal({ isOpen, onClose, initialChapter =
       <div style={{
         width: '100%',
         maxWidth: 780,
-        maxHeight: '90vh',
+        maxHeight: '92vh',
         background: 'var(--bg-1, #121214)',
         border: '1px solid var(--border, #27272a)',
         borderRadius: 16,
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden',
-        boxShadow: '0 24px 60px rgba(0,0,0,0.6)',
+        boxShadow: '0 24px 60px rgba(0,0,0,0.65)',
         color: 'var(--text-primary, #f4f4f5)'
       }}>
         {/* Modal Top Header */}
@@ -130,14 +151,14 @@ export default function SmartHelpCenterModal({ isOpen, onClose, initialChapter =
           alignItems: 'center',
           justifyContent: 'space-between'
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <BuildingMark size={24} />
             <div>
               <div style={{ fontSize: 16, fontWeight: 800, letterSpacing: '0.04em' }}>
-                STATER <span style={{ color: 'var(--accent, #c2714f)' }}>Guide & Help Center</span>
+                STATER <span style={{ color: 'var(--accent, #c2714f)' }}>Guide &amp; Operational Center</span>
               </div>
               <div style={{ fontSize: 11, color: 'var(--text-muted, #71717a)' }}>
-                Interactive onboarding, keyboard workflows, and operational reference
+                {activeHelp ? `Contextual walkthrough for ${activeHelp.title}` : 'Interactive onboarding and system reference'}
               </div>
             </div>
           </div>
@@ -152,7 +173,8 @@ export default function SmartHelpCenterModal({ isOpen, onClose, initialChapter =
               cursor: 'pointer',
               padding: 4,
               display: 'flex',
-              alignItems: 'center'
+              alignItems: 'center',
+              borderRadius: 6
             }}
           >
             <CloseIcon size={18} />
@@ -165,36 +187,219 @@ export default function SmartHelpCenterModal({ isOpen, onClose, initialChapter =
           background: 'var(--bg-2, #18181b)',
           borderBottom: '1px solid var(--border, #27272a)',
           padding: '0 24px',
-          gap: 20
+          gap: 24,
+          overflowX: 'auto'
         }}>
-          {[
-            { id: 'walkthrough', label: '🎬 Interactive Walkthrough' },
-            { id: 'shortcuts',   label: '⌨ Keyboard Shortcuts' },
-            { id: 'faq',         label: '💡 Quick Answers & FAQ' }
-          ].map(tab => (
+          {activeHelp && (
             <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
+              onClick={() => setActiveTab('page')}
               style={{
                 background: 'transparent',
                 border: 'none',
-                borderBottom: activeTab === tab.id ? '2px solid var(--accent, #c2714f)' : '2px solid transparent',
-                color: activeTab === tab.id ? 'var(--text-primary, #fff)' : 'var(--text-muted, #71717a)',
-                fontWeight: activeTab === tab.id ? 700 : 500,
+                borderBottom: activeTab === 'page' ? '2px solid var(--accent, #c2714f)' : '2px solid transparent',
+                color: activeTab === 'page' ? 'var(--text-primary, #fff)' : 'var(--text-muted, #71717a)',
+                fontWeight: activeTab === 'page' ? 700 : 500,
                 fontSize: 13,
                 padding: '12px 0',
                 cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 7,
                 transition: 'all 0.15s ease'
               }}
             >
-              {tab.label}
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
+                <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+              </svg>
+              <span>{activeHelp.title} Guide</span>
             </button>
-          ))}
+          )}
+
+          <button
+            onClick={() => setActiveTab('walkthrough')}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              borderBottom: activeTab === 'walkthrough' ? '2px solid var(--accent, #c2714f)' : '2px solid transparent',
+              color: activeTab === 'walkthrough' ? 'var(--text-primary, #fff)' : 'var(--text-muted, #71717a)',
+              fontWeight: activeTab === 'walkthrough' ? 700 : 500,
+              fontSize: 13,
+              padding: '12px 0',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 7,
+              transition: 'all 0.15s ease'
+            }}
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polygon points="5 3 19 12 5 21 5 3"/>
+            </svg>
+            <span>Interactive Simulation</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('shortcuts')}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              borderBottom: activeTab === 'shortcuts' ? '2px solid var(--accent, #c2714f)' : '2px solid transparent',
+              color: activeTab === 'shortcuts' ? 'var(--text-primary, #fff)' : 'var(--text-muted, #71717a)',
+              fontWeight: activeTab === 'shortcuts' ? 700 : 500,
+              fontSize: 13,
+              padding: '12px 0',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 7,
+              transition: 'all 0.15s ease'
+            }}
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="2" y="4" width="20" height="16" rx="2.5"/>
+              <path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M8 12h.01M12 12h.01M16 12h.01M7 16h10"/>
+            </svg>
+            <span>Keyboard Shortcuts</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('faq')}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              borderBottom: activeTab === 'faq' ? '2px solid var(--accent, #c2714f)' : '2px solid transparent',
+              color: activeTab === 'faq' ? 'var(--text-primary, #fff)' : 'var(--text-muted, #71717a)',
+              fontWeight: activeTab === 'faq' ? 700 : 500,
+              fontSize: 13,
+              padding: '12px 0',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 7,
+              transition: 'all 0.15s ease'
+            }}
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10"/>
+              <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+              <line x1="12" y1="17" x2="12.01" y2="17"/>
+            </svg>
+            <span>Quick Solutions &amp; FAQ</span>
+          </button>
         </div>
 
         {/* Modal Scrollable Body */}
         <div style={{ padding: '24px', overflowY: 'auto', flex: 1 }}>
-          {/* TAB 1: INTERACTIVE MOTION WALKTHROUGH */}
+          {/* TAB 0: CONTEXTUAL PER-PAGE GUIDE */}
+          {activeTab === 'page' && activeHelp && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+              <div>
+                <span style={{
+                  fontSize: 11,
+                  fontWeight: 700,
+                  textTransform: 'uppercase',
+                  color: 'var(--accent, #c2714f)',
+                  background: 'rgba(194, 113, 79, 0.12)',
+                  padding: '3px 10px',
+                  borderRadius: 9999,
+                  letterSpacing: '0.05em'
+                }}>
+                  Page Guide
+                </span>
+                <h2 style={{ fontSize: 20, fontWeight: 800, margin: '8px 0 4px' }}>
+                  How {activeHelp.title} Works
+                </h2>
+                {activeHelp.intro && (
+                  <p style={{ fontSize: 13, color: 'var(--text-muted, #a1a1aa)', margin: 0, lineHeight: 1.5 }}>
+                    {activeHelp.intro}
+                  </p>
+                )}
+              </div>
+
+              {/* If on home/billing counter, show express motion checkout right here */}
+              {isBillingRoute && (
+                <div style={{ marginBottom: 6 }}>
+                  <MockPosAnimation autoPlay={true} />
+                </div>
+              )}
+
+              {/* Numbered Step Flow */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                {activeHelp.steps?.map((step, idx) => (
+                  <div key={idx} style={{
+                    display: 'flex',
+                    gap: 14,
+                    alignItems: 'flex-start',
+                    background: 'var(--bg-2, #18181b)',
+                    padding: '14px 16px',
+                    borderRadius: 10,
+                    border: '1px solid var(--border, #27272a)'
+                  }}>
+                    <div style={{
+                      width: 24,
+                      height: 24,
+                      borderRadius: '50%',
+                      background: 'var(--accent, #c2714f)',
+                      color: '#fff',
+                      fontSize: 12,
+                      fontWeight: 800,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexShrink: 0
+                    }}>
+                      {idx + 1}
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 2 }}>
+                        {step.t}
+                      </div>
+                      <div style={{ fontSize: 12, color: 'var(--text-secondary, #d4d4d8)', lineHeight: 1.5 }}>
+                        {step.d}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Tips & Insights */}
+              {activeHelp.tips?.length > 0 && (
+                <div style={{
+                  padding: '14px 16px',
+                  borderRadius: 10,
+                  background: 'rgba(194, 113, 79, 0.08)',
+                  border: '1px solid rgba(194, 113, 79, 0.25)'
+                }}>
+                  <div style={{
+                    fontSize: 11,
+                    fontWeight: 800,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.06em',
+                    color: 'var(--accent, #c2714f)',
+                    marginBottom: 6,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6
+                  }}>
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="12" cy="12" r="10"/>
+                      <line x1="12" y1="16" x2="12" y2="12"/>
+                      <line x1="12" y1="8" x2="12.01" y2="8"/>
+                    </svg>
+                    Good to Know
+                  </div>
+                  {activeHelp.tips.map((tip, i) => (
+                    <div key={i} style={{ fontSize: 12, color: 'var(--text-secondary, #d4d4d8)', lineHeight: 1.5, marginBottom: 4 }}>
+                      • {tip}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* TAB 1: INTERACTIVE MOTION SIMULATION */}
           {activeTab === 'walkthrough' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
               {/* Chapter Title & Tagline */}
@@ -208,7 +413,7 @@ export default function SmartHelpCenterModal({ isOpen, onClose, initialChapter =
                   padding: '3px 10px',
                   borderRadius: 9999
                 }}>
-                  Step {currentChapter + 1} of {CHAPTERS.length}
+                  System Feature {currentChapter + 1} of {CHAPTERS.length}
                 </span>
                 <h2 style={{ fontSize: 20, fontWeight: 800, margin: '8px 0 4px' }}>
                   {CHAPTERS[currentChapter].title}
@@ -232,35 +437,58 @@ export default function SmartHelpCenterModal({ isOpen, onClose, initialChapter =
                   alignItems: 'center',
                   gap: 16
                 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap', justifyContent: 'center' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap', justifyContent: 'center' }}>
                     <div style={{
-                      padding: '16px 20px',
+                      padding: '18px 24px',
                       background: 'var(--bg-1)',
                       border: '1px solid var(--border)',
                       borderRadius: 10,
-                      textAlign: 'center'
+                      textAlign: 'center',
+                      minWidth: 200
                     }}>
-                      <div style={{ fontSize: 24, marginBottom: 4 }}>💻</div>
-                      <strong style={{ fontSize: 13 }}>Local Desktop Register</strong>
-                      <div style={{ fontSize: 11, color: '#10b981', marginTop: 2 }}>● Local SQLite (0ms latency)</div>
+                      <div style={{ color: 'var(--accent)', marginBottom: 8, display: 'flex', justifyContent: 'center' }}>
+                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <rect x="2" y="3" width="20" height="14" rx="2"/>
+                          <line x1="8" y1="21" x2="16" y2="21"/>
+                          <line x1="12" y1="17" x2="12" y2="21"/>
+                        </svg>
+                      </div>
+                      <strong style={{ fontSize: 13, display: 'block' }}>Local Desktop Register</strong>
+                      <div style={{ fontSize: 11, color: '#10b981', marginTop: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
+                        <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#10b981' }} />
+                        Local SQLite (0ms latency)
+                      </div>
                     </div>
 
-                    <div style={{ fontSize: 20, color: 'var(--accent)' }}>⇄ ⚡ ⇄</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent)', letterSpacing: '0.04em' }}>AUTO-SYNC</span>
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.3"/>
+                      </svg>
+                    </div>
 
                     <div style={{
-                      padding: '16px 20px',
+                      padding: '18px 24px',
                       background: 'var(--bg-1)',
                       border: '1px solid var(--border)',
                       borderRadius: 10,
-                      textAlign: 'center'
+                      textAlign: 'center',
+                      minWidth: 200
                     }}>
-                      <div style={{ fontSize: 24, marginBottom: 4 }}>☁️</div>
-                      <strong style={{ fontSize: 13 }}>Google Cloud Run (Mumbai)</strong>
-                      <div style={{ fontSize: 11, color: '#3b82f6', marginTop: 2 }}>● Supabase Postgres Ledger</div>
+                      <div style={{ color: '#3b82f6', marginBottom: 8, display: 'flex', justifyContent: 'center' }}>
+                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/>
+                        </svg>
+                      </div>
+                      <strong style={{ fontSize: 13, display: 'block' }}>Google Cloud Run (Mumbai)</strong>
+                      <div style={{ fontSize: 11, color: '#3b82f6', marginTop: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
+                        <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#3b82f6' }} />
+                        Supabase Postgres Ledger
+                      </div>
                     </div>
                   </div>
-                  <div style={{ fontSize: 13, color: 'var(--text-muted)', textAlign: 'center', maxWidth: 440 }}>
-                    If WiFi disconnects, your cash registers continue billing seamlessly. As soon as you are reconnected, bills stream automatically to Cloud Run with zero lost records.
+                  <div style={{ fontSize: 13, color: 'var(--text-muted)', textAlign: 'center', maxWidth: 460, lineHeight: 1.5 }}>
+                    If WiFi disconnects, your cash registers continue billing seamlessly. As soon as connectivity returns, bills stream automatically to Cloud Run with zero lost records.
                   </div>
                 </div>
               ) : currentChapter === 2 ? (
@@ -273,17 +501,17 @@ export default function SmartHelpCenterModal({ isOpen, onClose, initialChapter =
                   flexDirection: 'column',
                   gap: 12
                 }}>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>Batch Tracking & Alert Simulator</div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>Batch Tracking &amp; Alert Simulator</div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
-                    <div style={{ padding: 12, background: 'var(--bg-1)', borderRadius: 8, border: '1px solid #10b981' }}>
+                    <div style={{ padding: 14, background: 'var(--bg-1)', borderRadius: 8, border: '1px solid rgba(16, 185, 129, 0.4)' }}>
                       <div style={{ fontSize: 11, color: '#10b981', fontWeight: 700 }}>BATCH #B-2026-A</div>
-                      <div style={{ fontSize: 13, fontWeight: 600, marginTop: 2 }}>Organic Arabica (500g)</div>
-                      <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Expiry: Dec 2027 • 48 Units in Stock</div>
+                      <div style={{ fontSize: 13, fontWeight: 600, marginTop: 3 }}>Organic Arabica (500g)</div>
+                      <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>Expiry: Dec 2027 • 48 Units in Stock</div>
                     </div>
-                    <div style={{ padding: 12, background: 'var(--bg-1)', borderRadius: 8, border: '1px solid #ef4444' }}>
+                    <div style={{ padding: 14, background: 'var(--bg-1)', borderRadius: 8, border: '1px solid rgba(239, 68, 68, 0.4)' }}>
                       <div style={{ fontSize: 11, color: '#ef4444', fontWeight: 700 }}>BATCH #B-2025-C (EXPIRING SOON)</div>
-                      <div style={{ fontSize: 13, fontWeight: 600, marginTop: 2 }}>Dairy Milk Powder</div>
-                      <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Expiry: in 14 days • Auto-alerted</div>
+                      <div style={{ fontSize: 13, fontWeight: 600, marginTop: 3 }}>Dairy Milk Powder</div>
+                      <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>Expiry: in 14 days • Auto-alerted</div>
                     </div>
                   </div>
                 </div>
@@ -297,18 +525,18 @@ export default function SmartHelpCenterModal({ isOpen, onClose, initialChapter =
                   flexDirection: 'column',
                   gap: 14
                 }}>
-                  <div style={{ fontSize: 14, fontWeight: 700 }}>Cash Drawer & Shift Reconciliation</div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: 12, background: 'var(--bg-1)', borderRadius: 8 }}>
+                  <div style={{ fontSize: 14, fontWeight: 700 }}>Cash Drawer &amp; Shift Reconciliation</div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: 14, background: 'var(--bg-1)', borderRadius: 8, border: '1px solid var(--border)' }}>
                     <div>
                       <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Counter 1 (Main Cashier)</div>
-                      <div style={{ fontSize: 14, fontWeight: 700 }}>Opening Cash: ₹2,000.00</div>
+                      <div style={{ fontSize: 14, fontWeight: 700, marginTop: 2 }}>Opening Cash: ₹2,000.00</div>
                     </div>
                     <div style={{ textAlign: 'right' }}>
                       <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Total Cash Collected</div>
-                      <div style={{ fontSize: 14, fontWeight: 700, color: '#10b981' }}>+ ₹14,850.00</div>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: '#10b981', marginTop: 2 }}>+ ₹14,850.00</div>
                     </div>
                   </div>
-                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5 }}>
                     At the end of each shift, cashiers submit their closing drawer tally. STATER Bill computes overages or shortages against recorded receipts with precision.
                   </div>
                 </div>
@@ -347,7 +575,7 @@ export default function SmartHelpCenterModal({ isOpen, onClose, initialChapter =
                     cursor: currentChapter === 0 ? 'not-allowed' : 'pointer'
                   }}
                 >
-                  ← Back
+                  Previous
                 </button>
 
                 {/* Step indicator dots */}
@@ -384,7 +612,7 @@ export default function SmartHelpCenterModal({ isOpen, onClose, initialChapter =
                     cursor: 'pointer'
                   }}
                 >
-                  {currentChapter < CHAPTERS.length - 1 ? 'Next Step →' : 'Got It, Let’s Bill!'}
+                  {currentChapter < CHAPTERS.length - 1 ? 'Next Step' : 'Complete Walkthrough'}
                 </button>
               </div>
             </div>
@@ -436,12 +664,12 @@ export default function SmartHelpCenterModal({ isOpen, onClose, initialChapter =
             </div>
           )}
 
-          {/* TAB 3: QUICK ANSWERS & FAQS */}
+          {/* TAB 3: QUICK SOLUTIONS & FAQS */}
           {activeTab === 'faq' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               <input
                 type="text"
-                placeholder="Search help topics, GST, offline billing..."
+                placeholder="Search operational topics, GST, offline billing..."
                 value={faqFilter}
                 onChange={e => setFaqFilter(e.target.value)}
                 style={{

@@ -132,8 +132,8 @@ function StatRow({ label, value, sub, progress }) {
 
 export default function AdminInfrastructure() {
   const { authFetch } = useAuth()
-  const { showError } = useDialog()
   const [data, setData] = useState(null)
+  const [error, setError] = useState(null)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [autoRefresh, setAutoRefresh] = useState(true)
@@ -144,18 +144,19 @@ export default function AdminInfrastructure() {
     if (!isSilent) setRefreshing(true)
     try {
       const res = await authFetch(`${API_BASE}/admin/infrastructure-metrics`)
-      if (!res.ok) throw new Error('Failed to load infrastructure telemetry')
+      if (!res.ok) throw new Error(`Telemetry service returned HTTP ${res.status}`)
       const json = await res.json()
       setData(json)
+      setError(null)
       setLastUpdated(new Date())
     } catch (err) {
       logger.error('Error loading infrastructure metrics:', err)
-      if (!isSilent) showError(err)
+      setError(err.message || 'Failed to load infrastructure telemetry')
     } finally {
       setLoading(false)
       setRefreshing(false)
     }
-  }, [authFetch, showError])
+  }, [authFetch])
 
   useEffect(() => {
     fetchMetrics()
@@ -242,6 +243,51 @@ export default function AdminInfrastructure() {
           </button>
         </div>
       </div>
+
+      {/* Telemetry Status / Pending Deployment Notice */}
+      {error && (
+        <div style={{
+          marginBottom: 20,
+          padding: '16px 20px',
+          borderRadius: 12,
+          background: 'rgba(239, 68, 68, 0.08)',
+          border: '1px solid rgba(239, 68, 68, 0.25)',
+          color: '#f87171',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: 12
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <Icon name="alert-triangle" size={20} style={{ color: '#ef4444', flexShrink: 0 }} />
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 14, color: '#fca5a5' }}>
+                Cloud Run Telemetry Endpoint Pending Deployment
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted, #a1a1aa)', marginTop: 2 }}>
+                Could not reach <code>{API_BASE}/admin/infrastructure-metrics</code> ({error}). Deploy the latest backend to Cloud Run via <code>bash backend/deploy_cloudrun.sh staterbill</code> to activate live telemetry.
+              </div>
+            </div>
+          </div>
+          <button
+            onClick={() => fetchMetrics(false)}
+            disabled={refreshing}
+            style={{
+              padding: '6px 14px',
+              borderRadius: 6,
+              background: 'rgba(239, 68, 68, 0.2)',
+              border: '1px solid rgba(239, 68, 68, 0.4)',
+              color: '#fff',
+              fontSize: 12,
+              fontWeight: 600,
+              cursor: refreshing ? 'not-allowed' : 'pointer'
+            }}
+          >
+            {refreshing ? 'Checking...' : 'Retry Connection'}
+          </button>
+        </div>
+      )}
 
       {loading && !data ? (
         <div style={{ textAlign: 'center', padding: '60px 0', color: 'var(--text-muted)' }}>

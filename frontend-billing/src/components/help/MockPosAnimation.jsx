@@ -5,7 +5,7 @@ import React, { useState, useEffect } from 'react'
  * 60fps hardware-accelerated interactive simulation of the STATER Bill express checkout.
  * Used in:
  * 1. First-time onboarding tutorial
- * 2. Smart Help Center modal
+ * 2. Smart Help Center modal & per-page guides
  * 3. bizassist-landing hero showcase
  */
 export default function MockPosAnimation({ autoPlay = true, onComplete }) {
@@ -26,7 +26,7 @@ export default function MockPosAnimation({ autoPlay = true, onComplete }) {
     timers.push(setTimeout(() => setStage(3), 3200))
     // 4.2s: Thermal receipt unrolls from printer slot
     timers.push(setTimeout(() => setStage(4), 4200))
-    // 8.0s: Loop or finish
+    // 8.5s: Loop or finish
     timers.push(setTimeout(() => {
       if (onComplete) onComplete()
       setStage(0)
@@ -79,10 +79,14 @@ export default function MockPosAnimation({ autoPlay = true, onComplete }) {
             cursor: 'pointer',
             display: 'flex',
             alignItems: 'center',
-            gap: 4
+            gap: 5
           }}
         >
-          <span>↺</span> Replay Motion
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="23 4 23 10 17 10"></polyline>
+            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+          </svg>
+          <span>Replay Motion</span>
         </button>
       </div>
 
@@ -98,13 +102,27 @@ export default function MockPosAnimation({ autoPlay = true, onComplete }) {
           borderRadius: 8,
           border: '1px solid var(--border, #27272a)'
         }}>
-          <span style={{ fontSize: 13, color: 'var(--accent, #c2714f)' }}>⌕ [Barcode Scan]</span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, fontWeight: 700, color: 'var(--accent, #c2714f)' }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 5v14M8 5v14M12 5v14M17 5v14M21 5v14" />
+            </svg>
+            Barcode Scan
+          </span>
           <span style={{
             fontSize: 12,
             fontFamily: 'monospace',
             color: stage >= 1 ? 'var(--text-primary, #fff)' : 'var(--text-muted, #71717a)'
           }}>
-            {stage === 0 ? 'Scanning 890103045612...' : '890103045612 ✓'}
+            {stage === 0 ? (
+              'Scanning 890103045612...'
+            ) : (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: '#10b981' }}>
+                890103045612
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="20 6 9 17 4 12"></polyline>
+                </svg>
+              </span>
+            )}
           </span>
         </div>
 
@@ -215,7 +233,21 @@ export default function MockPosAnimation({ autoPlay = true, onComplete }) {
             transition: 'background 0.3s ease, transform 0.2s ease',
             transform: stage === 3 ? 'scale(1.02)' : 'scale(1)'
           }}>
-            {stage >= 3 ? '✓ Paid via Dynamic UPI (₹531.00)' : '⚡ Quick Pay (F8 / Cash / UPI)'}
+            {stage >= 3 ? (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="20 6 9 17 4 12"></polyline>
+                </svg>
+                Paid via Dynamic UPI (₹531.00)
+              </span>
+            ) : (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+                </svg>
+                Quick Pay (F8 / Cash / UPI)
+              </span>
+            )}
           </button>
         </div>
 

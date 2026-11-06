@@ -32,7 +32,7 @@ const billingBackendIsCloud = () => {
 }
 
 export function getFieldTeamUrl() {
-  let url = import.meta.env.VITE_FIELD_TEAM_URL || FIELD_TEAM_CLOUD_URL
+  let url = import.meta.env.VITE_FIELD_TEAM_URL || (IS_LOCAL_APP ? FIELD_TEAM_CLOUD_URL : '')
   // Local development databases are separate fixtures, not the operational
   // Field Team. A stale dev URL must not silently select local billing data.
   try {

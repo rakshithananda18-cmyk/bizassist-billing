@@ -2605,30 +2605,6 @@ export default function AppLayout({ children, title }) {
               {!isCashier && !isSupplyAdder && !isMobileViewport && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                   <NotificationBell placement="sidebar" onOpen={() => setShowProfileMenu(false)} />
-                  <button
-                    type="button"
-                    title="Interactive Guide & Help Center"
-                    onClick={() => setShowHelpCenter(true)}
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      width: 28,
-                      height: 28,
-                      borderRadius: 6,
-                      background: 'var(--bg-2, #18181b)',
-                      border: '1px solid var(--border, #27272a)',
-                      color: 'var(--text-muted, #a1a1aa)',
-                      fontWeight: 700,
-                      fontSize: 12,
-                      cursor: 'pointer',
-                      fontFamily: 'monospace'
-                    }}
-                    onMouseEnter={e => { e.currentTarget.style.color = 'var(--accent)'; e.currentTarget.style.borderColor = 'var(--accent)' }}
-                    onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.borderColor = 'var(--border)' }}
-                  >
-                    ?
-                  </button>
                 </div>
               )}
             </div>
