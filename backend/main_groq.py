@@ -286,6 +286,11 @@ _default_origins = (
     "https://bizassist-billing.vercel.app,"
     "https://staterbill.com,"
     "https://www.staterbill.com,"
+    "https://admin.staterbill.com,"
+    "https://team.staterbill.com,"
+    "https://ai.staterbill.com,"
+    "https://bizassist-task.vercel.app,"
+    "https://bizassist-dev-workspace-ai.vercel.app,"
     "https://rakshit-dev-bizassist.hf.space"
 )
 _allowed_origins = [
