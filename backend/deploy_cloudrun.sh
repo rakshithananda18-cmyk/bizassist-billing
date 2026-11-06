@@ -33,15 +33,11 @@ gcloud projects add-iam-policy-binding "${PROJECT}" \
     --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
     --role="roles/run.builder" --condition=None --quiet >/dev/null
 
-# Grant secret accessor to service account
-for SECRET in DATABASE_URL JWT_SECRET GROQ_API_KEY; do
-    if gcloud secrets describe "${SECRET}" --project "${PROJECT}" >/dev/null 2>&1; then
-        gcloud secrets add-iam-policy-binding "${SECRET}" \
-            --project "${PROJECT}" \
-            --member="serviceAccount:${RUN_SA}" \
-            --role="roles/secretmanager.secretAccessor" --quiet >/dev/null
-    fi
-done
+# Grant Secret Manager Secret Accessor to the Cloud Run service account at the project level
+echo "== Granting Secret Manager access to ${RUN_SA}..."
+gcloud projects add-iam-policy-binding "${PROJECT}" \
+    --member="serviceAccount:${RUN_SA}" \
+    --role="roles/secretmanager.secretAccessor" --condition=None --quiet >/dev/null
 
 SECRETS_PARAM="DATABASE_URL=DATABASE_URL:latest,JWT_SECRET=JWT_SECRET:latest"
 if gcloud secrets describe GROQ_API_KEY --project "${PROJECT}" >/dev/null 2>&1; then
