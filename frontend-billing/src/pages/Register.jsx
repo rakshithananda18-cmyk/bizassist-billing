@@ -5,7 +5,7 @@
 // ============================================================================
 import React, { useState, useEffect, useRef } from 'react'
 import { API_BASE, CLOUD_URL, IS_LOCAL_APP } from '../config'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation, Link } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { logger } from '../utils/logger'
 import {
@@ -25,6 +25,8 @@ import { normalizeRegistrationPhone } from '../utils/registrationPhone'
 export default function Register() {
   const { signup } = useAuth()
   const navigate  = useNavigate()
+  const location  = useLocation()
+  const [userCheckStatus, setUserCheckStatus] = useState(null) // null | 'checking' | 'available' | 'taken'
 
   const [form, setForm] = useState({
     businessName: '',
@@ -53,6 +55,40 @@ export default function Register() {
   // Set when Local + Cloud fell back to Local (no trial for this business):
   // say so before going in, instead of letting the sync quietly not happen.
   const [fallbackNote, setFallbackNote] = useState(null)
+
+  useEffect(() => {
+    if (location.state?.prefillUsername) {
+      setForm(f => ({ ...f, username: location.state.prefillUsername }))
+    }
+  }, [location.state])
+
+  // Live debounced check for username availability directly in the registration field
+  useEffect(() => {
+    const u = (form.username || '').trim()
+    if (!u || u.length < 3) {
+      setUserCheckStatus(null)
+      return
+    }
+    setUserCheckStatus('checking')
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/biz_id/check`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: u })
+        })
+        if (res.ok) {
+          const data = await res.json()
+          setUserCheckStatus(data.exists ? 'taken' : 'available')
+        } else {
+          setUserCheckStatus(null)
+        }
+      } catch {
+        setUserCheckStatus(null)
+      }
+    }, 350)
+    return () => clearTimeout(timer)
+  }, [form.username])
 
   useEffect(() => {
     // Templates come from the active backend; if the local (desktop) backend
@@ -351,7 +387,18 @@ export default function Register() {
             </fieldset>
 
             <div className="form-group" style={{ marginTop: '4px' }}>
-              <label htmlFor="username">Username or Email</label>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <label htmlFor="username">Username or Email</label>
+                {userCheckStatus === 'checking' && (
+                  <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Checking…</span>
+                )}
+                {userCheckStatus === 'available' && (
+                  <span style={{ fontSize: '0.72rem', color: '#10b981', fontWeight: 600 }}>✓ Available</span>
+                )}
+                {userCheckStatus === 'taken' && (
+                  <span style={{ fontSize: '0.72rem', color: '#ef4444', fontWeight: 600 }}>✗ Already registered</span>
+                )}
+              </div>
               <input
                 id="username"
                 type="text"
@@ -360,6 +407,12 @@ export default function Register() {
                 onChange={e => setForm(f => ({ ...f, username: e.target.value }))}
                 required
               />
+              {userCheckStatus === 'taken' && (
+                <div style={{ fontSize: '0.74rem', color: '#ef4444', marginTop: 4, display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <span>This business username already exists.</span>
+                  <Link to="/login" style={{ color: 'var(--accent)', fontWeight: 600, textDecoration: 'underline' }}>Sign in instead →</Link>
+                </div>
+              )}
             </div>
 
             <div className="form-group" style={{ marginTop: '4px' }}>

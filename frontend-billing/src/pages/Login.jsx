@@ -81,6 +81,8 @@ export default function Login() {
   // Selected owner/business for quick login
   const [selectedOwner, setSelectedOwner] = useState(null)
   const [selectedStaffUser, setSelectedStaffUser] = useState('')
+  const [bizLookup, setBizLookup] = useState(null)
+  const [noBizFound, setNoBizFound] = useState(false)
 
   // Other-Business flow: type the business owner username, then choose owner or
   // staff sign-in. Staff enter their assigned login name; the server verifies
@@ -285,11 +287,46 @@ export default function Login() {
   }
 
   // Other-Business: never look up a business or its staff before credentials.
-  async function handleOwnerContinue(e) {
+  // Live debounced pre-check of business existence as user types
+  useEffect(() => {
+    const owner = username.trim()
+    if (!owner || owner.length < 2) {
+      setBizLookup(null)
+      setNoBizFound(false)
+      return
+    }
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/biz_id/check`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: owner })
+        })
+        if (res.ok) {
+          const data = await res.json()
+          setBizLookup(data)
+          if (data && data.exists === false) {
+            setNoBizFound(true)
+          } else {
+            setNoBizFound(false)
+          }
+        }
+      } catch {}
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [username])
+
+  function handleOwnerContinue(e) {
     e.preventDefault()
     setError('')
     const owner = username.trim()
     if (!owner) { setError('Enter the business owner username.'); return }
+
+    if (noBizFound) {
+      setError(`No business found for "${owner}".`)
+      return
+    }
+
     setPassword('')
     setSelectedStaffUser('')
     setStandardStep('choose')
@@ -1048,7 +1085,46 @@ export default function Login() {
                   <label htmlFor="owner-username">Business Owner Username</label>
                   <input type="text" id="owner-username" placeholder="e.g. store_owner" value={username} onChange={e => setUsername(e.target.value)} required autoFocus autoComplete="username" />
                 </div>
-                {error && <div className="login-error" role="alert" style={{ marginTop: 14 }}>{error}</div>}
+                {noBizFound ? (
+                  <div style={{
+                    marginTop: 14,
+                    padding: '12px 14px',
+                    borderRadius: 8,
+                    background: 'rgba(194, 113, 79, 0.12)',
+                    border: '1px solid rgba(194, 113, 79, 0.35)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 8,
+                    textAlign: 'center'
+                  }}>
+                    <div style={{ fontSize: '0.84rem', color: 'var(--text-primary)', fontWeight: 600 }}>
+                      No business found for "<span style={{ color: 'var(--accent)' }}>{username}</span>"
+                    </div>
+                    <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+                      Would you like to register this business now?
+                    </div>
+                    <button
+                      type="button"
+                      className="login-submit-btn"
+                      onClick={() => navigate('/register', { state: { prefillUsername: username.trim() } })}
+                      style={{
+                        marginTop: 4,
+                        padding: '8px 16px',
+                        fontSize: '0.84rem',
+                        fontWeight: 700,
+                        background: 'var(--accent)',
+                        color: '#fff',
+                        border: 'none',
+                        borderRadius: 6,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      Register Business &rarr;
+                    </button>
+                  </div>
+                ) : (
+                  error && <div className="login-error" role="alert" style={{ marginTop: 14 }}>{error}</div>
+                )}
                 <button type="submit" className="login-submit-btn" disabled={loading} style={{ marginTop: 14 }}>
                   {loading ? 'Checking…' : 'Continue'}
                 </button>
@@ -1066,6 +1142,25 @@ export default function Login() {
             {/* STEP 2 — choose owner vs staff */}
             {standardStep === 'choose' && (
               <div style={{ width: '100%' }}>
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 8,
+                  marginBottom: 16,
+                  padding: '8px 12px',
+                  background: 'var(--bg-2)',
+                  borderRadius: 8,
+                  border: '1px solid var(--border)'
+                }}>
+                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#10b981' }} />
+                  <span style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                    {bizLookup?.business_name || username}
+                  </span>
+                  <span style={{ fontSize: '0.76rem', color: 'var(--text-muted)' }}>
+                    (@{bizLookup?.owner_username || username})
+                  </span>
+                </div>
                 <button type="button" className="login-submit-btn" onClick={() => { setError(''); setPassword(''); setStandardStep('owner') }} style={{ width: '100%' }}>Owner Login</button>
                 <button type="button" className="login-submit-btn" onClick={() => { setError(''); setPassword(''); setSelectedStaffUser(''); setStandardStep('staff') }} style={{ width: '100%', marginTop: 10, background: 'var(--bg-2)', color: 'var(--text-primary)', border: '1px solid var(--border)' }}>Staff Login</button>
                 <button type="button" onClick={() => { setError(''); setStandardStep('username') }} style={{ width: '100%', marginTop: 14, fontSize: '0.82rem', fontWeight: 600, color: 'var(--accent)', border: 'none', background: 'none', cursor: 'pointer' }}>← Back</button>

@@ -24,6 +24,7 @@ import WebLocalOnlyNotice from '../components/hosting/WebLocalOnlyNotice'
 import SidebarContextMenu from '../components/layout/SidebarContextMenu'
 import ToastContainer from '../components/layout/ToastContainer'
 import GlobalShortcutsModal from '../components/layout/GlobalShortcutsModal'
+import SmartHelpCenterModal from '../components/help/SmartHelpCenterModal'
 import WorkspaceSwitcher from '../components/layout/WorkspaceSwitcher'
 import SessionExpiredModal from '../components/layout/SessionExpiredModal'
 import TrialEndedModal from '../components/layout/TrialEndedModal'
@@ -1139,6 +1140,22 @@ export default function AppLayout({ children, title }) {
 
   // ── Global Toast Notifications ─────────────────────────────────────────────
   const [toasts, setToasts] = React.useState([])
+  const [showHelpCenter, setShowHelpCenter] = React.useState(false)
+  const [isFirstTimeOnboarding, setIsFirstTimeOnboarding] = React.useState(false)
+
+  React.useEffect(() => {
+    try {
+      const completed = localStorage.getItem('staterbill_onboarding_completed')
+      if (!completed) {
+        setShowHelpCenter(true)
+        setIsFirstTimeOnboarding(true)
+      }
+    } catch {}
+
+    const handleOpenHelp = () => setShowHelpCenter(true)
+    window.addEventListener('open_smart_help', handleOpenHelp)
+    return () => window.removeEventListener('open_smart_help', handleOpenHelp)
+  }, [])
 
   React.useEffect(() => {
     const handleToast = (e) => {
@@ -2586,7 +2603,33 @@ export default function AppLayout({ children, title }) {
                 </div>
               </div>
               {!isCashier && !isSupplyAdder && !isMobileViewport && (
-                <NotificationBell placement="sidebar" onOpen={() => setShowProfileMenu(false)} />
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <NotificationBell placement="sidebar" onOpen={() => setShowProfileMenu(false)} />
+                  <button
+                    type="button"
+                    title="Interactive Guide & Help Center"
+                    onClick={() => setShowHelpCenter(true)}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: 28,
+                      height: 28,
+                      borderRadius: 6,
+                      background: 'var(--bg-2, #18181b)',
+                      border: '1px solid var(--border, #27272a)',
+                      color: 'var(--text-muted, #a1a1aa)',
+                      fontWeight: 700,
+                      fontSize: 12,
+                      cursor: 'pointer',
+                      fontFamily: 'monospace'
+                    }}
+                    onMouseEnter={e => { e.currentTarget.style.color = 'var(--accent)'; e.currentTarget.style.borderColor = 'var(--accent)' }}
+                    onMouseLeave={e => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.borderColor = 'var(--border)' }}
+                  >
+                    ?
+                  </button>
+                </div>
               )}
             </div>
           </div>
@@ -2817,6 +2860,12 @@ export default function AppLayout({ children, title }) {
           }}
         />
       )}
+
+      <SmartHelpCenterModal
+        isOpen={showHelpCenter}
+        onClose={() => setShowHelpCenter(false)}
+        isFirstTime={isFirstTimeOnboarding}
+      />
     </div>
   )
 }

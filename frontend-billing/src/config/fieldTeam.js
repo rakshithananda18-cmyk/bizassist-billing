@@ -32,7 +32,7 @@ const billingBackendIsCloud = () => {
 }
 
 export function getFieldTeamUrl() {
-  let url = import.meta.env.VITE_FIELD_TEAM_URL || (IS_LOCAL_APP ? FIELD_TEAM_CLOUD_URL : '')
+  let url = import.meta.env.VITE_FIELD_TEAM_URL || FIELD_TEAM_CLOUD_URL
   // Local development databases are separate fixtures, not the operational
   // Field Team. A stale dev URL must not silently select local billing data.
   try {
@@ -65,7 +65,7 @@ export function fieldTeamNeedsCloudData({ isLocalApp, effectiveMode, url = getFi
 async function cloudTicket() {
   // Minted by the cloud at sign-in on this device (AuthContext
   // _provisionCloudSyncToken). Without it the owner signs in on Field Team.
-  const token = localStorage.getItem('bizassist_cloud_token')
+  const token = localStorage.getItem('bizassist_cloud_token') || localStorage.getItem('billing_token')
   if (!token) return null
   const res = await fetch(`${CLOUD_URL}/handoff-ticket`, {
     method: 'POST',

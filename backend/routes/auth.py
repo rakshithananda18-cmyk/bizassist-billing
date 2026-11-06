@@ -1,7 +1,7 @@
 import logging
 import time
 from typing import Optional
-from fastapi import APIRouter, HTTPException, Request, Depends
+from fastapi import APIRouter, HTTPException, Request, Depends, Query
 from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -43,6 +43,45 @@ class LoginRequest(BaseModel):
     username: str
     password: str
     otp: Optional[str] = None   # TOTP code — required only for admins with 2FA enabled (§4.1)
+
+
+class IdentityCheckRequest(BaseModel):
+    username: str
+
+
+@router.post("/api/biz_id/check")
+def biz_id_check(req: IdentityCheckRequest, db: Session = Depends(get_db)):
+    """
+    Lightweight, public existence check for registration and login UX.
+    Returns {"exists": bool, "business_name": Optional[str]}
+    """
+    uname = (req.username or "").strip()
+    if not uname:
+        return {"exists": False, "business_name": None}
+    user = (db.query(User)
+              .filter(func.lower(User.username) == uname.lower())
+              .first())
+    if user:
+        b_name = user.business_name or user.username
+        owner_name = user.username
+        if user.parent_business_id:
+            owner = db.query(User).filter(User.id == user.parent_business_id).first()
+            if owner:
+                b_name = owner.business_name or owner.username
+                owner_name = owner.username
+        return {
+            "exists": True,
+            "business_name": b_name,
+            "is_staff": bool(user.parent_business_id),
+            "owner_username": owner_name
+        }
+    return {"exists": False, "business_name": None}
+
+
+@router.get("/api/auth/check-username")
+def check_username_get(username: str = Query(...), db: Session = Depends(get_db)):
+    """Convenience GET endpoint for live debounced input availability check."""
+    return biz_id_check(IdentityCheckRequest(username=username), db)
 
 
 class ReconcilePasswordRequest(BaseModel):

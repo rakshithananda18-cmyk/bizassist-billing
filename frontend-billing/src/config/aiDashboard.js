@@ -28,7 +28,7 @@ export function getAiDashboardUrl() {
     // Anything else (5174 dev, LAN) → Vite dev server on 5173.
     return port === '8450' ? `http://${hostname}:8451` : `http://${hostname}:5173`
   }
-  return import.meta.env.VITE_AI_DASHBOARD_URL || null
+  return import.meta.env.VITE_AI_DASHBOARD_URL || 'https://bizassist-dev-workspace-ai.vercel.app'
 }
 
 // Keep a reference to the opened tab so we can re-use it and postMessage

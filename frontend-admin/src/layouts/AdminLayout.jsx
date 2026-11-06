@@ -25,6 +25,7 @@ const NAV_SECTIONS = [
     section: 'System Ops & Logs',
     items: [
       { to: '/admin/health',     icon: 'shield',    label: 'Health & Audits' },
+      { to: '/admin/infra',      icon: 'server',    label: 'Cloud & Infrastructure' },
       { to: '/admin/telemetry',  icon: 'activity',  label: 'Telemetry & Logs' },
       { to: '/admin/cache',      icon: 'server',    label: 'System Cache' },
     ]
@@ -38,6 +39,7 @@ const PAGE_TITLES = {
   '/admin/metrics':    'Fleet Growth & Metrics',
   '/admin/usage':      'API Usage & Rate Limits',
   '/admin/health':     'System Diagnostics & Audits',
+  '/admin/infra':      'Cloud & Infrastructure Analytics',
   '/admin/telemetry':  'Live Telemetry & Logs',
   '/admin/cache':      'System Cache & Database Ops',
   '/admin/settings':   'System & Admin Settings',

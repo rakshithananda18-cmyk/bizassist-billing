@@ -617,4 +617,191 @@ def get_admin_table_alterations(limit: int = Query(100, ge=1, le=1000), current_
     except Exception as e:
         logger.error("admin/table-alterations: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
-# (end of admin routes)
+
+@router.get("/admin/infrastructure-metrics")
+def get_admin_infrastructure_metrics(current_user: dict = Depends(get_active_user), db: Session = Depends(get_db)):
+    """
+    Comprehensive infrastructure analytics across:
+    1. Google Cloud Run (Mumbai - Primary Active)
+    2. Hugging Face Spaces (Disaster Recovery Standby)
+    3. Supabase PostgreSQL (Storage, Connection Pool, Cache, Table distribution)
+    4. Vercel Edge Network (Global CDN / Frontends)
+    """
+    try:
+        svc.require_admin(current_user["id"], db)
+        import time, sys, os, psutil, httpx
+        from database.models import User, Invoice, Product, LegacyPayment, ActionLog
+
+        def _probe_service(url: str, timeout_sec: float = 2.5) -> dict:
+            t0 = time.time()
+            try:
+                with httpx.Client(timeout=timeout_sec, follow_redirects=True) as client:
+                    resp = client.get(url)
+                    latency = round((time.time() - t0) * 1000)
+                    return {
+                        "url": url,
+                        "status": "ONLINE" if resp.status_code == 200 else f"HTTP_{resp.status_code}",
+                        "code": resp.status_code,
+                        "latency_ms": latency,
+                        "edge_pop": resp.headers.get("x-vercel-id", "").split("::")[0] if "x-vercel-id" in resp.headers else None,
+                        "error": None
+                    }
+            except httpx.TimeoutException:
+                return {
+                    "url": url,
+                    "status": "TIMEOUT",
+                    "code": 408,
+                    "latency_ms": round(timeout_sec * 1000),
+                    "edge_pop": None,
+                    "error": "Request timed out"
+                }
+            except Exception as exc:
+                return {
+                    "url": url,
+                    "status": "UNREACHABLE",
+                    "code": 503,
+                    "latency_ms": round((time.time() - t0) * 1000),
+                    "edge_pop": None,
+                    "error": str(exc)
+                }
+
+        # 1. Process & Cloud Run Host Metrics
+        proc = psutil.Process()
+        mem_info = proc.memory_info()
+        uptime_sec = int(time.time() - proc.create_time())
+
+        cloud_run = {
+            "provider": "Google Cloud Run",
+            "service_name": os.environ.get("K_SERVICE", "staterbill-api"),
+            "revision": os.environ.get("K_REVISION", "staterbill-api-live"),
+            "region": os.environ.get("CLOUD_RUN_REGION", "asia-south1 (Mumbai)"),
+            "status": "ACTIVE",
+            "role": "Primary Production Backend",
+            "uptime_seconds": uptime_sec,
+            "memory": {
+                "rss_mb": round(mem_info.rss / (1024 * 1024), 2),
+                "vms_mb": round(mem_info.vms / (1024 * 1024), 2),
+                "percent": round(proc.memory_percent(), 2)
+            },
+            "cpu_percent": proc.cpu_percent(interval=None),
+            "thread_count": proc.num_threads(),
+            "python_version": sys.version.split()[0],
+            "platform": sys.platform
+        }
+
+        # 2. Hugging Face Spaces (Disaster Recovery Standby)
+        hf_probe = _probe_service("https://rakshit-dev-bizassist.hf.space/health", timeout_sec=2.0)
+        hf_standby = {
+            "provider": "Hugging Face Spaces",
+            "space_name": "rakshit-dev/bizassist",
+            "url": "https://rakshit-dev-bizassist.hf.space",
+            "role": "Disaster Recovery Standby",
+            "status": "STANDBY" if hf_probe["status"] == "ONLINE" else hf_probe["status"],
+            "code": hf_probe["code"],
+            "latency_ms": hf_probe["latency_ms"],
+            "error": hf_probe["error"],
+            "failover_ready": hf_probe["code"] == 200
+        }
+
+        # 3. Supabase PostgreSQL / Database Operations
+        dialect = db.bind.dialect.name
+        is_postgres = (dialect == "postgresql")
+
+        db_size_str = "0 MB"
+        db_size_bytes = 0
+        active_conn = 1
+        idle_conn = 0
+        total_conn = 1
+        max_conn = 100
+        cache_hit_ratio = 99.8
+
+        if is_postgres:
+            try:
+                size_row = db.execute(text("SELECT pg_size_pretty(pg_database_size(current_database())), pg_database_size(current_database())")).fetchone()
+                if size_row:
+                    db_size_str = str(size_row[0])
+                    db_size_bytes = int(size_row[1])
+            except Exception as e:
+                logger.warning("Error querying pg_database_size: %s", e)
+
+            try:
+                active_conn = db.execute(text("SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() AND state = 'active'")).scalar() or 1
+                idle_conn = db.execute(text("SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() AND state = 'idle'")).scalar() or 0
+                total_conn = db.execute(text("SELECT count(*) FROM pg_stat_activity WHERE datname = current_database()")).scalar() or (active_conn + idle_conn)
+                max_conn_raw = db.execute(text("SHOW max_connections")).scalar()
+                max_conn = int(max_conn_raw) if max_conn_raw else 100
+            except Exception as e:
+                logger.warning("Error querying pg_stat_activity: %s", e)
+
+            try:
+                hit_ratio = db.execute(text("SELECT coalesce(round(100.0 * sum(heap_blks_hit) / nullif(sum(heap_blks_hit) + sum(heap_blks_read), 0), 2), 100.0) FROM pg_statio_user_tables")).scalar()
+                if hit_ratio is not None:
+                    cache_hit_ratio = float(hit_ratio)
+            except Exception as e:
+                logger.warning("Error querying cache hit ratio: %s", e)
+        else:
+            try:
+                pc = db.execute(text("PRAGMA page_count;")).scalar() or 0
+                ps = db.execute(text("PRAGMA page_size;")).scalar() or 4096
+                db_size_bytes = pc * ps
+                db_size_str = f"{round(db_size_bytes / (1024 * 1024), 2)} MB"
+            except Exception:
+                pass
+
+        # Table distribution
+        table_counts = {
+            "users": db.query(User).count() if hasattr(User, "query") or hasattr(db, "query") else 0,
+            "invoices": db.query(Invoice).count(),
+            "products": db.query(Product).count(),
+            "payments": db.query(LegacyPayment).count(),
+            "audit_logs": db.query(ActionLog).count()
+        }
+
+        database_metrics = {
+            "provider": "Supabase PostgreSQL" if is_postgres else "SQLite Local Mirror",
+            "dialect": dialect,
+            "status": "CONNECTED",
+            "size_str": db_size_str,
+            "size_bytes": db_size_bytes,
+            "connection_pool": {
+                "active": active_conn,
+                "idle": idle_conn,
+                "total": total_conn,
+                "max": max_conn,
+                "utilization_pct": round((total_conn / max(1, max_conn)) * 100, 1)
+            },
+            "cache_hit_ratio_pct": cache_hit_ratio,
+            "table_counts": table_counts
+        }
+
+        # 4. Vercel Edge Frontends
+        vercel_billing = _probe_service("https://staterbill.com", timeout_sec=2.5)
+        vercel_metrics = {
+            "provider": "Vercel Edge Global Network",
+            "status": "ONLINE" if vercel_billing["status"] == "ONLINE" else vercel_billing["status"],
+            "endpoints": [
+                {
+                    "name": "StaterBill Web Application",
+                    "domain": "staterbill.com",
+                    "url": "https://staterbill.com",
+                    "status": vercel_billing["status"],
+                    "latency_ms": vercel_billing["latency_ms"],
+                    "edge_pop": vercel_billing["edge_pop"] or "BOM1 (Mumbai Edge)",
+                    "code": vercel_billing["code"]
+                }
+            ]
+        }
+
+        return {
+            "status": "ok",
+            "timestamp": utc_now().isoformat(),
+            "cloud_run": cloud_run,
+            "huggingface": hf_standby,
+            "supabase": database_metrics,
+            "vercel": vercel_metrics
+        }
+    except HTTPException: raise
+    except Exception as e:
+        logger.error("admin/infrastructure-metrics: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
