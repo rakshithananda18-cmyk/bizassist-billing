@@ -13,7 +13,10 @@
  */
 import { API_BASE } from '../config'
 
-const CLOUD_URL = import.meta.env.VITE_CLOUD_TELEMETRY_URL || 'https://rakshit-dev-bizassist.hf.space'
+// Cloud Run Mumbai telemetry endpoint
+const CLOUD_URL = import.meta.env.VITE_CLOUD_TELEMETRY_URL || 'https://staterbill-api-1076771386585.asia-south1.run.app'
+// Hugging Face fallback (uncomment to re-enable):
+// const CLOUD_URL = 'https://rakshit-dev-bizassist.hf.space'
 const SOURCE = 'frontend-billing'
 const FLUSH_MS = 20000
 const MAX_QUEUE = 40

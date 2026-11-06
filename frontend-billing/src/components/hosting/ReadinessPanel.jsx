@@ -142,26 +142,20 @@ export default function ReadinessPanel({ localProbe, googleProbe, hfProbe, cloud
           sublabel={LOCAL_URL}
           probe={localProbe}
         />
-        {googleProbe || hfProbe ? (
-          <>
-            <ProbeCard
-              label="Google Cloud Run (Mumbai)"
-              sublabel="Primary API · asia-south1"
-              probe={googleProbe || cloudProbe}
-            />
-            <ProbeCard
-              label="Hugging Face Spaces"
-              sublabel="Standby API · Redundant Fallback"
-              probe={hfProbe || { status: 'checking', ms: null, error: null }}
-            />
-          </>
-        ) : (
+        <ProbeCard
+          label="Google Cloud Run (Mumbai)"
+          sublabel="Primary API · asia-south1"
+          probe={googleProbe || cloudProbe}
+        />
+        {/* Hugging Face standby card disabled (uncomment to re-enable):
+        {hfProbe && (
           <ProbeCard
-            label="Cloud Backend"
-            sublabel={CLOUD_URL}
-            probe={cloudProbe}
+            label="Hugging Face Spaces"
+            sublabel="Standby API · Redundant Fallback"
+            probe={hfProbe}
           />
         )}
+        */}
         {sseProbe && (
           <ProbeCard
             label="Real-time Sync (SSE)"

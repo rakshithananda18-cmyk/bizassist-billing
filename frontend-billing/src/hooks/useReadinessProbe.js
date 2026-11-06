@@ -110,7 +110,9 @@ export function useReadinessProbe() {
     const [lResult, gResult, hResult, iResult] = await Promise.all([
       runLocalProbe(),
       runNamedCloudProbe(PRIMARY_CLOUD_RUN_URL),
-      runNamedCloudProbe(SECONDARY_HF_URL),
+      // Hugging Face standby probe disabled (uncomment to re-enable):
+      // SECONDARY_HF_URL ? runNamedCloudProbe(SECONDARY_HF_URL) : Promise.resolve(null),
+      Promise.resolve(null),
       runInternetProbe(),
     ])
     logger.debug('[PROBE] Probe results received:', { local: lResult.status, google: gResult.status, hf: hResult.status, internet: iResult.status })

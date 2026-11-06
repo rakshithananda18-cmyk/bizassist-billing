@@ -22,7 +22,7 @@ describe('ReadinessPanel', () => {
     )
 
     expect(screen.getByText('Local Backend')).toBeInTheDocument()
-    expect(screen.getByText('Cloud Backend')).toBeInTheDocument()
+    expect(screen.getByText('Google Cloud Run (Mumbai)')).toBeInTheDocument()
     expect(screen.getByText('Internet')).toBeInTheDocument()
 
     // Online labels with ms should be displayed
@@ -36,12 +36,11 @@ describe('ReadinessPanel', () => {
     expect(onRecheck).toHaveBeenCalledTimes(1)
   })
 
-  it('renders dual cloud infrastructure (Google Cloud Run + Hugging Face Spaces)', () => {
+  it('renders Google Cloud Run (Mumbai) infrastructure card', () => {
     render(
       <ReadinessPanel
         localProbe={{ status: 'online', ms: 10, error: null }}
         googleProbe={{ status: 'online', ms: 330, error: null }}
-        hfProbe={{ status: 'online', ms: 1800, error: null }}
         internetProbe={{ status: 'online', ms: 50, error: null }}
         onRecheck={() => {}}
       />
@@ -50,10 +49,6 @@ describe('ReadinessPanel', () => {
     expect(screen.getByText('Google Cloud Run (Mumbai)')).toBeInTheDocument()
     expect(screen.getByText('Primary API · asia-south1')).toBeInTheDocument()
     expect(screen.getByText('Online (330ms)')).toBeInTheDocument()
-
-    expect(screen.getByText('Hugging Face Spaces')).toBeInTheDocument()
-    expect(screen.getByText('Standby API · Redundant Fallback')).toBeInTheDocument()
-    expect(screen.getByText('Online (1800ms)')).toBeInTheDocument()
   })
 
   it('renders offline/checking/cors states correctly', () => {

@@ -33,17 +33,19 @@ export const IS_LOCAL_APP =
   typeof window !== 'undefined' && isLocalHost(window.location.hostname);
 
 export const PRIMARY_CLOUD_RUN_URL = 'https://staterbill-api-1076771386585.asia-south1.run.app';
-export const SECONDARY_HF_URL = 'https://rakshit-dev-bizassist.hf.space';
+// Hugging Face standby backend (uncomment to re-enable):
+// export const SECONDARY_HF_URL = 'https://rakshit-dev-bizassist.hf.space';
+export const SECONDARY_HF_URL = null;
 
 export const CLOUD_URL = (
   import.meta.env.VITE_API_URL ||
   PRIMARY_CLOUD_RUN_URL
 ).replace(/\/$/, '');
 
-export const FALLBACK_CLOUD_URL = (
-  import.meta.env.VITE_FALLBACK_API_URL ||
-  (CLOUD_URL.includes('run.app') ? SECONDARY_HF_URL : PRIMARY_CLOUD_RUN_URL)
-).replace(/\/$/, '');
+// Cloud fallback disabled — Google Cloud Run is the sole cloud backend.
+// To re-enable Hugging Face fallback, uncomment below:
+// export const FALLBACK_CLOUD_URL = (import.meta.env.VITE_FALLBACK_API_URL || 'https://rakshit-dev-bizassist.hf.space').replace(/\/$/, '');
+export const FALLBACK_CLOUD_URL = null;
 
 let activeCloudUrl = CLOUD_URL;
 
@@ -54,15 +56,16 @@ export function getActiveCloudUrl() {
 export function switchActiveCloudUrl(target) {
   if (target) {
     activeCloudUrl = target.replace(/\/$/, '');
-  } else {
+  } else if (FALLBACK_CLOUD_URL) {
     activeCloudUrl = activeCloudUrl === CLOUD_URL ? FALLBACK_CLOUD_URL : CLOUD_URL;
   }
   API_BASE = getApiBase();
-  console.log(`[FAILOVER] Active cloud URL set to: ${activeCloudUrl}`);
+  console.log(`[CONFIG] Active cloud URL set to: ${activeCloudUrl}`);
   return activeCloudUrl;
 }
 
 export function getAlternateCloudUrl(current = activeCloudUrl) {
+  if (!FALLBACK_CLOUD_URL) return null;
   return current === CLOUD_URL ? FALLBACK_CLOUD_URL : CLOUD_URL;
 }
 
