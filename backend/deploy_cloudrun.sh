@@ -62,7 +62,7 @@ gcloud run deploy "${SERVICE}" \
     --cpu-boost \
     --concurrency 80 \
     --timeout 120 \
-    --set-env-vars "ADMIN_API_ENABLED=1,TZ=Asia/Kolkata,BIZ_TIMEZONE=Asia/Kolkata,WEB_CONCURRENCY=1,ALLOWED_ORIGINS=https://staterbill.com,https://www.staterbill.com,https://admin.staterbill.com,https://bizassist-billing.vercel.app" \
+    --set-env-vars "^;^ADMIN_API_ENABLED=1;TZ=Asia/Kolkata;BIZ_TIMEZONE=Asia/Kolkata;WEB_CONCURRENCY=1;ALLOWED_ORIGINS=https://staterbill.com,https://www.staterbill.com,https://admin.staterbill.com,https://bizassist-billing.vercel.app" \
     --set-secrets "${SECRETS_PARAM}" \
     --quiet
 
