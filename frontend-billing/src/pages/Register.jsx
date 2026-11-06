@@ -184,7 +184,7 @@ export default function Register() {
     {/* Blurred Backdrop */}
     <div className="login-backdrop" aria-hidden="true">
       <aside className="lb-sidebar">
-        <div className="lb-logo" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><BuildingMark size={18} /> BizAssist</div>
+        <div className="lb-logo" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><BuildingMark size={18} /> <strong>STATER</strong> Bill</div>
         <div className="lb-nav-section">Supply & Inflow</div>
         <div className="lb-navitem">Supplier Orders</div>
         <div className="lb-navitem">Purchase Bills</div>
@@ -239,7 +239,7 @@ export default function Register() {
           <div className="login-glow"></div>
           <div className="login-symbol" style={{ marginBottom: 4 }}><BuildingMark size={32} /></div>
           <h1 className="login-title" style={{ fontSize: 24 }}>Create your account</h1>
-          <p className="login-subtitle" style={{ marginBottom: 12 }}>ADVANCED BILLING SYSTEM</p>
+          <p className="login-subtitle" style={{ marginBottom: 12, letterSpacing: '0.1em', fontSize: '0.72rem' }}>στατήρ • THE GOLD STANDARD IN POS</p>
 
           <div className="login-tabs" style={{ marginBottom: 16 }}>
             <button
@@ -264,7 +264,7 @@ export default function Register() {
                 <strong style={{ color: 'var(--text-primary)' }}>Your account is ready.</strong> {fallbackNote}
               </div>
               <button className="login-submit-btn" type="button" style={{ padding: '10px' }} onClick={() => navigate('/', { replace: true })}>
-                Continue to BizAssist
+                Continue to STATER Bill
               </button>
             </div>
           ) : (
@@ -497,7 +497,7 @@ export default function Register() {
                   required
                 />
                 <label htmlFor="agreeTerms" style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', cursor: 'pointer', lineHeight: 1.35 }}>
-                  I agree to the Terms of Service and acknowledge the Privacy Notice.
+                  I agree to the <a href="/terms" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent, #c15f3c)', textDecoration: 'underline' }}>Terms of Service</a> and acknowledge the <a href="/privacy" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent, #c15f3c)', textDecoration: 'underline' }}>Privacy Policy</a>.
                 </label>
               </div>
               <div id="terms-help" style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginLeft: 24, marginTop: 3 }}>

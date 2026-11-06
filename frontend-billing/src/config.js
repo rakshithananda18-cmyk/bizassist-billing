@@ -37,7 +37,7 @@ export const CLOUD_URL = import.meta.env.VITE_API_URL || 'https://rakshit-dev-bi
 // Public WEB app (Vercel) — the only origin an outsider can open. Share links
 // must ALWAYS use this: on the desktop app `window.location.origin` is
 // localhost/LAN, which is unreachable for the customer receiving the link.
-export const PUBLIC_WEB_URL = (import.meta.env.VITE_PUBLIC_WEB_URL || 'https://bizassist-billing.vercel.app').replace(/\/$/, '');
+export const PUBLIC_WEB_URL = (import.meta.env.VITE_PUBLIC_WEB_URL || 'https://staterbill.com').replace(/\/$/, '');
 export const LOCAL_URL =
   typeof window !== 'undefined' && isLocalHost(window.location.hostname)
     ? `http://${window.location.hostname}:8001`

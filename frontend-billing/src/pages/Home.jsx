@@ -89,7 +89,7 @@ export default function Home() {
 
   const hour = new Date().getHours()
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
-  const businessName = profile?.business_name || 'BizAssist User'
+  const businessName = profile?.business_name || 'STATER Bill User'
 
   // Indian order, day before month: SUNDAY 25 OCTOBER, 2026.
   const formattedDate = new Date().toLocaleDateString('en-IN', {

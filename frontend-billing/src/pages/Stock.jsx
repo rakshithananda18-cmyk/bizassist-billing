@@ -675,7 +675,7 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
 
     const w = window.open('', '_blank', 'width=800,height=900')
     if (!w) {
-      setAlert({ type: 'warning', msg: 'Allow pop-ups for BizAssist, then use Print GRN again.' })
+      setAlert({ type: 'warning', msg: 'Allow pop-ups for STATER Bill, then use Print GRN again.' })
       return
     }
     const rowsHtml = intakeRows.map((r, i) => {

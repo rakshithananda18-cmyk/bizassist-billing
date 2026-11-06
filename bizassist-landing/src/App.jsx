@@ -227,7 +227,7 @@ function Navbar() {
         <a href="#" className="flex items-center gap-2.5">
           <LogoMark />
           <span className="text-lg font-extrabold tracking-tight text-white">
-            Biz<span className="text-electric-400">Assist</span>
+            STATER <span className="text-electric-400 font-semibold">Bill</span>
           </span>
         </a>
         <div className="ml-auto hidden items-center gap-7 text-sm font-medium text-slate-300 md:flex">
@@ -258,23 +258,21 @@ function Hero() {
         <Reveal>
           <span className="glass inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-xs font-semibold text-electric-400">
             <span className="h-1.5 w-1.5 animate-pulse-soft rounded-full bg-electric-400" />
-            Now with silent auto-updates & AI insights
+            🏛️ Named after the Stater (στατήρ) — The Ancient Gold Standard of Trade
           </span>
         </Reveal>
 
         <Reveal delay={100}>
           <h1 className="mx-auto mt-7 max-w-4xl text-5xl font-black leading-[1.06] tracking-tight md:text-7xl">
-            <span className="text-gradient">Billing at the speed</span>
+            <span className="text-gradient">The gold standard</span>
             <br />
-            <span className="text-white">of your counter.</span>
+            <span className="text-white">in counter billing & POS.</span>
           </h1>
         </Reveal>
 
         <Reveal delay={200}>
           <p className="mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-slate-400">
-            BizAssist is the offline-first billing & POS desktop app for serious retailers.
-            Sub-second invoicing, GST reports, inventory and dues — with hybrid cloud sync
-            backing up every keystroke. No internet? No problem.
+            STATER Bill by ARES is the lightning-fast, offline-first billing & POS system inspired by the ancient Greek Stater (στατήρ) — the benchmark of honest commerce. Sub-second invoicing, GST reports, inventory, and hybrid cloud sync that never drops.
           </p>
         </Reveal>
 
@@ -403,7 +401,7 @@ function FinalCta() {
               Your counter deserves better than a browser tab.
             </h2>
             <p className="mx-auto mt-4 max-w-xl text-slate-400">
-              Join shops running BizAssist all day, every day — rain, shine or fibre cut.
+              Join shops running STATER Bill all day, every day — with the timeless endurance of the ancient Stater.
             </p>
             <div className="mt-8 flex justify-center">
               <DownloadButtons large />
@@ -422,16 +420,19 @@ function Footer() {
         <div className="flex items-center gap-2.5">
           <LogoMark size="h-7 w-7" />
           <span className="font-extrabold text-white">
-            Biz<span className="text-electric-400">Assist</span>
+            STATER <span className="text-electric-400 font-semibold">Bill</span>
           </span>
         </div>
-        <div className="flex items-center gap-6 text-sm text-slate-400 md:ml-auto">
+        <div className="flex flex-wrap items-center gap-5 text-sm text-slate-400 md:ml-auto">
           <a href="#features" className="transition hover:text-white">Features</a>
           <a href="#how" className="transition hover:text-white">How it works</a>
           <a href={RELEASES_PAGE} className="transition hover:text-white">Releases</a>
-          <a href="mailto:rakshithananda18@gmail.com" className="transition hover:text-white">Contact</a>
+          <a href="https://bizassist-billing.vercel.app/terms" target="_blank" rel="noopener noreferrer" className="transition hover:text-white">Terms</a>
+          <a href="https://bizassist-billing.vercel.app/privacy" target="_blank" rel="noopener noreferrer" className="transition hover:text-white">Privacy</a>
+          <a href="https://bizassist-billing.vercel.app/refund-policy" target="_blank" rel="noopener noreferrer" className="transition hover:text-white">Refunds</a>
+          <a href="https://bizassist-billing.vercel.app/contact" target="_blank" rel="noopener noreferrer" className="transition hover:text-white">Contact</a>
         </div>
-        <p className="text-xs text-slate-600 md:ml-6">© {new Date().getFullYear()} BizAssist. All rights reserved.</p>
+        <p className="text-xs text-slate-600 md:ml-6">© {new Date().getFullYear()} STATER Bill — A product of A. Rakshit Enterprise Solutions Pvt Ltd (ARES). Inspired by the Stater (στατήρ).</p>
       </div>
     </footer>
   )

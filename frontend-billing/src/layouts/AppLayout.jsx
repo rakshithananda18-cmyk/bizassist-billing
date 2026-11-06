@@ -1095,7 +1095,7 @@ export default function AppLayout({ children, title }) {
 
   React.useEffect(() => {
     if (title) {
-      document.title = `${title} | BizAssist`
+      document.title = `${title} | Stater Bill`
     }
   }, [title])
 
@@ -1168,7 +1168,7 @@ export default function AppLayout({ children, title }) {
   // carrying an exception for the page that superseded it — /parties and /stock
   // are both ordinary pages now, and only the counter is full-bleed.
   const isSalesPage = location.pathname === '/sales'
-  const pageTitle = title || PAGE_TITLES[location.pathname] || 'BizAssist'
+  const pageTitle = title || PAGE_TITLES[location.pathname] || 'Stater Bill'
 
   return (
     <div className={`app-shell ${isSalesPage ? 'pos-layout-shell' : ''}`}>

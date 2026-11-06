@@ -37,6 +37,10 @@ const InvoiceViewer = lazy(() => import('./invoice/InvoiceViewer'))
 const PublicInvoiceViewer = lazy(() => import('./pages/PublicInvoiceViewer'))
 const Support = lazy(() => import('./pages/Support'))
 const StockWorkspace = lazy(() => import('./pages/StockWorkspace'))
+const Terms = lazy(() => import('./pages/Terms'))
+const Privacy = lazy(() => import('./pages/Privacy'))
+const Contact = lazy(() => import('./pages/Contact'))
+const RefundPolicy = lazy(() => import('./pages/RefundPolicy'))
 
 
 function AppearanceSync() {
@@ -60,6 +64,10 @@ export function AppRoutes() {
       <Route path="/login"    element={user ? <Navigate to="/" replace /> : <Login />} />
       <Route path="/register" element={user ? <Navigate to="/" replace /> : <Register />} />
       <Route path="/public/invoice/:uid" element={<PublicInvoiceViewer />} />
+      <Route path="/terms" element={<Terms />} />
+      <Route path="/privacy" element={<Privacy />} />
+      <Route path="/contact" element={<Contact />} />
+      <Route path="/refund-policy" element={<RefundPolicy />} />
 
       <Route path="/"          element={<ProtectedRoute><Home      /></ProtectedRoute>} />
       <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />

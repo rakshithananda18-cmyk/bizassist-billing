@@ -284,6 +284,8 @@ _default_origins = (
     "https://bizassist-react.vercel.app,"
     "https://bizassist.vercel.app,"
     "https://bizassist-billing.vercel.app,"
+    "https://staterbill.com,"
+    "https://www.staterbill.com,"
     "https://rakshit-dev-bizassist.hf.space"
 )
 _allowed_origins = [

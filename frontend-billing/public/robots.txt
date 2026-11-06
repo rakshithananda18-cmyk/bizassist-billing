@@ -1,0 +1,21 @@
+# https://www.robotstxt.org/robotstxt.html
+User-agent: *
+Allow: /
+Allow: /login
+Allow: /register
+Allow: /terms
+Allow: /privacy
+Allow: /contact
+Allow: /refund-policy
+Disallow: /dashboard
+Disallow: /sales
+Disallow: /settings
+Disallow: /stock
+Disallow: /parties
+Disallow: /reports
+Disallow: /money
+Disallow: /b2b
+Disallow: /pos-live-counter
+Disallow: /api/
+
+Sitemap: https://staterbill.com/sitemap.xml

@@ -136,7 +136,7 @@ export default function LockScreen() {
           </div>
           <div style={{ textAlign: 'center' }}>
             <div style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-primary, #f1f5f9)', letterSpacing: '-0.01em' }}>
-              {user?.business_name || 'BizAssist'}
+              {user?.business_name || 'STATER Bill'}
             </div>
             <div style={{ fontSize: '0.8rem', color: 'var(--text-muted, #64748b)', marginTop: 2 }}>
               Session Locked · {user?.username}

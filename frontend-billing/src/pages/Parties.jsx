@@ -378,7 +378,7 @@ export default function Parties({ embedded = false, headerTabs = null, inlinePag
     if (balance <= 0) return
 
     const upiVpa = resolvePaymentVpa({ profile, user })
-    const businessName = (user?.business_name || 'BizAssist Merchant').toUpperCase()
+    const businessName = (user?.business_name || 'STATER Bill Merchant').toUpperCase()
 
     const upiLink = upiVpa ? buildUpiUri({ vpa: upiVpa, payeeName: businessName, amount: balance }) : ''
     const message = upiVpa
@@ -406,7 +406,7 @@ export default function Parties({ embedded = false, headerTabs = null, inlinePag
     }
 
     const upiVpa = resolvePaymentVpa({ profile, user })
-    const businessName = (user?.business_name || 'BizAssist Merchant').toUpperCase()
+    const businessName = (user?.business_name || 'STATER Bill Merchant').toUpperCase()
 
     let message = `Hi ${customer?.name || 'Customer'},\n\nHere is your Invoice ${invoiceNo} from ${businessName}:\nDate: ${invoice.date || invoice.invoice_date}\nTotal Amount: ₹${total.toLocaleString('en-IN')}\n`
     if (balance > 0) {

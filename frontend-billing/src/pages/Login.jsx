@@ -384,7 +384,7 @@ export default function Login() {
     <>
     <div className="login-backdrop" aria-hidden="true">
       <aside className="lb-sidebar">
-        <div className="lb-logo" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><BuildingMark size={18} /> BizAssist</div>
+        <div className="lb-logo" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><BuildingMark size={18} /> <strong>STATER</strong> Bill</div>
         <div className="lb-nav-section">Supply & Inflow</div>
         <div className="lb-navitem">Supplier Orders</div>
         <div className="lb-navitem">Purchase Bills</div>
@@ -431,12 +431,12 @@ export default function Login() {
       </main>
     </div>
 
-    <div className="login-container" id="login-container">
+    <div className="login-container" id="login-container" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', overflowY: 'auto', padding: '32px 16px 24px', boxSizing: 'border-box' }}>
       <div className="login-card" style={{ boxSizing: 'border-box' }}>
         <div className="login-glow"></div>
         <div className="login-symbol"><BuildingMark size={42} /></div>
-        <h1 className="login-title">BIZASSIST</h1>
-        <p className="login-subtitle">ADVANCED BILLING SYSTEM</p>
+        <h1 className="login-title" style={{ letterSpacing: '0.07em', fontWeight: 900 }}>STATER <span style={{ color: 'var(--accent)', fontWeight: 600, letterSpacing: 'normal' }}>Bill</span></h1>
+        <p className="login-subtitle" style={{ letterSpacing: '0.12em', fontSize: '0.72rem' }}>στατήρ • THE GOLD STANDARD IN POS</p>
 
         {/* Post-migration greeting — the sign-out was intentional (JWT swap) */}
         {migrationNote && (
@@ -1120,6 +1120,31 @@ export default function Login() {
           </div>
         )}
       </div>
+      <footer style={{
+        marginTop: 18,
+        marginBottom: 8,
+        width: '100%',
+        maxWidth: 440,
+        display: 'flex',
+        flexWrap: 'wrap',
+        justifyContent: 'center',
+        alignItems: 'center',
+        gap: '8px 14px',
+        fontSize: '0.76rem',
+        color: 'var(--text-muted, #6b7280)',
+        zIndex: 10,
+        textAlign: 'center',
+      }}>
+        <a href="/terms" target="_blank" rel="noopener noreferrer" style={{ color: 'inherit', textDecoration: 'none' }}>Terms of Service</a>
+        <span>•</span>
+        <a href="/privacy" target="_blank" rel="noopener noreferrer" style={{ color: 'inherit', textDecoration: 'none' }}>Privacy Policy</a>
+        <span>•</span>
+        <a href="/refund-policy" target="_blank" rel="noopener noreferrer" style={{ color: 'inherit', textDecoration: 'none' }}>Refund Policy</a>
+        <span>•</span>
+        <a href="/contact" target="_blank" rel="noopener noreferrer" style={{ color: 'inherit', textDecoration: 'none' }}>Contact</a>
+        <span>•</span>
+        <span>© {new Date().getFullYear()} Stater Bill • ARES Pvt Ltd</span>
+      </footer>
     </div>
     {/* First-run self-test: field installs can check backend/cloud/DB/clock
         and one-click send diagnostics instead of failing silently. */}
