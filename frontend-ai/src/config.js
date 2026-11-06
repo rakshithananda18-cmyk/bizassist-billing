@@ -16,6 +16,6 @@ export const API_BASE =
   import.meta.env.VITE_API_URL ||
   (isLocal
     ? `http://${window.location.hostname}:8001`
-    : 'https://rakshit-dev-bizassist.hf.space')
+    : 'https://staterbill-api-1076771386585.asia-south1.run.app')
 
 export const DEBUG = isLocal

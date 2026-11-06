@@ -32,7 +32,12 @@ export const isLocalHost = (hostname) => {
 export const IS_LOCAL_APP =
   typeof window !== 'undefined' && isLocalHost(window.location.hostname);
 
-export const CLOUD_URL = import.meta.env.VITE_API_URL || 'https://rakshit-dev-bizassist.hf.space';
+export const CLOUD_URL =
+  import.meta.env.VITE_API_URL ||
+  'https://staterbill-api-1076771386585.asia-south1.run.app';
+
+export const FALLBACK_CLOUD_URL =
+  'https://rakshit-dev-bizassist.hf.space';
 
 // Public WEB app (Vercel) — the only origin an outsider can open. Share links
 // must ALWAYS use this: on the desktop app `window.location.origin` is
