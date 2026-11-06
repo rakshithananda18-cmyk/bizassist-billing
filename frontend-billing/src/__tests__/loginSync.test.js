@@ -8,7 +8,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { reconcileBizIdOnLogin } from '../utils/loginSync'
 
-const CLOUD = 'https://rakshit-dev-bizassist.hf.space'
+import { CLOUD_URL as CLOUD } from '../config'
 
 // Build a fetch mock: cloud/local /profile carry is_premium; counts drive the
 // divergence direction. `premium`, `cloudTotal`, `localTotal` are per-test.

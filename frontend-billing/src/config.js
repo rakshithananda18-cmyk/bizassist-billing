@@ -32,12 +32,39 @@ export const isLocalHost = (hostname) => {
 export const IS_LOCAL_APP =
   typeof window !== 'undefined' && isLocalHost(window.location.hostname);
 
-export const CLOUD_URL =
-  import.meta.env.VITE_API_URL ||
-  'https://staterbill-api-1076771386585.asia-south1.run.app';
+export const PRIMARY_CLOUD_RUN_URL = 'https://staterbill-api-1076771386585.asia-south1.run.app';
+export const SECONDARY_HF_URL = 'https://rakshit-dev-bizassist.hf.space';
 
-export const FALLBACK_CLOUD_URL =
-  'https://rakshit-dev-bizassist.hf.space';
+export const CLOUD_URL = (
+  import.meta.env.VITE_API_URL ||
+  PRIMARY_CLOUD_RUN_URL
+).replace(/\/$/, '');
+
+export const FALLBACK_CLOUD_URL = (
+  import.meta.env.VITE_FALLBACK_API_URL ||
+  (CLOUD_URL.includes('run.app') ? SECONDARY_HF_URL : PRIMARY_CLOUD_RUN_URL)
+).replace(/\/$/, '');
+
+let activeCloudUrl = CLOUD_URL;
+
+export function getActiveCloudUrl() {
+  return activeCloudUrl;
+}
+
+export function switchActiveCloudUrl(target) {
+  if (target) {
+    activeCloudUrl = target.replace(/\/$/, '');
+  } else {
+    activeCloudUrl = activeCloudUrl === CLOUD_URL ? FALLBACK_CLOUD_URL : CLOUD_URL;
+  }
+  API_BASE = getApiBase();
+  console.log(`[FAILOVER] Active cloud URL set to: ${activeCloudUrl}`);
+  return activeCloudUrl;
+}
+
+export function getAlternateCloudUrl(current = activeCloudUrl) {
+  return current === CLOUD_URL ? FALLBACK_CLOUD_URL : CLOUD_URL;
+}
 
 // Public WEB app (Vercel) — the only origin an outsider can open. Share links
 // must ALWAYS use this: on the desktop app `window.location.origin` is
@@ -64,7 +91,7 @@ export function getApiBase() {
   if (IS_LOCAL_APP) {
     // Local app can optionally point to cloud (user explicitly chose cloud-only mode)
     const savedMode = localStorage.getItem('bizassist_hosting_mode');
-    if (savedMode === 'cloud') return CLOUD_URL;
+    if (savedMode === 'cloud') return activeCloudUrl;
 
     // Connect to configured LAN master server if checked
     const useLanDb = localStorage.getItem('bizassist_use_lan_db') === 'true';
@@ -76,7 +103,7 @@ export function getApiBase() {
   }
 
   // Hard rule: browser URL (Vercel / any non-localhost) = cloud backend
-  return CLOUD_URL;
+  return activeCloudUrl;
 }
 
 export let API_BASE = getApiBase();

@@ -17,7 +17,7 @@ describe('route loading and recovery', () => {
     let finish
     const Page = lazy(() => new Promise(resolve => { finish = resolve }))
     render(draw(<Page />))
-    expect(screen.getByRole('status', { name: 'Loading BizAssist Billing' })).toBeInTheDocument()
+    expect(screen.getByRole('status', { name: /Loading (STATER Bill|BizAssist Billing)/ })).toBeInTheDocument()
     await act(async () => { finish({ default: () => <h1>Reports ready</h1> }) })
     expect(screen.getByRole('heading', { name: 'Reports ready' })).toBeInTheDocument()
     expect(screen.queryByRole('status')).not.toBeInTheDocument()

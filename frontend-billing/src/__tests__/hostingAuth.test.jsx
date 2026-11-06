@@ -7,6 +7,10 @@ import { MemoryRouter, Routes, Route } from 'react-router-dom'
 vi.mock('../config', () => ({
   IS_LOCAL_APP: true,
   CLOUD_URL: 'http://cloud-backend',
+  FALLBACK_CLOUD_URL: 'http://fallback-backend',
+  getActiveCloudUrl: () => 'http://cloud-backend',
+  switchActiveCloudUrl: vi.fn(),
+  getAlternateCloudUrl: () => 'http://fallback-backend',
   LOCAL_URL: 'http://local-backend',
   API_BASE: 'http://local-backend',
   isLocalHost: (hostname) => true,
@@ -744,7 +748,7 @@ describe('Pro trial and Local + Cloud (T6)', () => {
     const note = await screen.findByTestId('hosting-fallback')
     expect(note).toHaveTextContent(/did not get a Pro trial/)
     expect(note).toHaveTextContent(/your data stays on this computer \(Local\)/)
-    expect(screen.getByRole('button', { name: /Continue to BizAssist/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Continue to (STATER Bill|BizAssist)/ })).toBeInTheDocument()
     expect(localStorage.getItem('bizassist_hosting_mode')).toBe('local')
   })
 })

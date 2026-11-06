@@ -1,6 +1,16 @@
 import React, { useContext, useState, useEffect, useCallback, useRef } from 'react'
 import { authContext as AuthContext } from './contextIdentity'
-import { API_BASE, updateApiBase, IS_LOCAL_APP, CLOUD_URL, LOCAL_URL } from '../config'
+import {
+  API_BASE,
+  updateApiBase,
+  IS_LOCAL_APP,
+  CLOUD_URL,
+  LOCAL_URL,
+  FALLBACK_CLOUD_URL,
+  getActiveCloudUrl,
+  switchActiveCloudUrl,
+  getAlternateCloudUrl,
+} from '../config'
 import { resolveHostingMode, shouldPersistMode } from '../utils/resolveHostingMode'
 import { logger, setBizId } from '../utils/logger'
 import { reconcileBizIdOnLogin } from '../utils/loginSync'
@@ -35,7 +45,73 @@ const authFetchWithTimeout = async (url, options, timeoutMs = AUTH_REQUEST_TIMEO
   }
 }
 
+/**
+ * Dual-Cloud Active Failover:
+ * Transparently retries requests against the backup cloud endpoint
+ * (Cloud Run Mumbai <-> Hugging Face Spaces) if the current cloud endpoint
+ * experiences a timeout, network failure, or HTTP 502/503/504 gateway outage.
+ */
+const authFetchWithFailover = async (url, options, timeoutMs = 6000) => {
+  const currentCloud = (typeof getActiveCloudUrl === 'function' ? getActiveCloudUrl() : CLOUD_URL) || CLOUD_URL
+  const altCloud = (typeof getAlternateCloudUrl === 'function' ? getAlternateCloudUrl() : FALLBACK_CLOUD_URL) || FALLBACK_CLOUD_URL
+  const canFailover = !IS_LOCAL_APP || (typeof url === 'string' && (url.includes('run.app') || url.includes('hf.space')))
+
+  try {
+    const res = await authFetchWithTimeout(url, options, timeoutMs)
+    if (res.status >= 502 && res.status <= 504 && canFailover && altCloud && altCloud !== currentCloud) {
+      logger.warn(`[FAILOVER] Primary cloud returned HTTP ${res.status}. Attempting backup backend...`)
+      throw new Error(`Server returned HTTP ${res.status}`)
+    }
+    return res
+  } catch (primaryErr) {
+    if (!canFailover || !altCloud || altCloud === currentCloud) {
+      throw primaryErr
+    }
+
+    let fallbackUrl = url
+    if (typeof url === 'string' && currentCloud && url.startsWith(currentCloud)) {
+      fallbackUrl = url.replace(currentCloud, altCloud)
+    } else if (typeof url === 'string' && (url.includes('run.app') || url.includes('hf.space'))) {
+      try {
+        const parsed = new URL(url)
+        fallbackUrl = `${altCloud}${parsed.pathname}${parsed.search}`
+      } catch {
+        throw primaryErr
+      }
+    } else {
+      throw primaryErr
+    }
+
+    logger.warn(`[FAILOVER] Primary endpoint unreachable (${primaryErr.message}). Retrying on fallback: ${fallbackUrl}...`)
+    try {
+      const fallbackRes = await authFetchWithTimeout(fallbackUrl, options, timeoutMs)
+      if (fallbackRes.ok || fallbackRes.status < 500) {
+        if (typeof switchActiveCloudUrl === 'function') {
+          switchActiveCloudUrl(altCloud)
+        }
+        logger.info(`[FAILOVER] Active cloud seamlessly switched to: ${altCloud}`)
+        return fallbackRes
+      }
+      return fallbackRes
+    } catch (fallbackErr) {
+      logger.error(`[FAILOVER] Both primary and fallback backends failed.`, {
+        primary: primaryErr.message,
+        fallback: fallbackErr.message,
+      })
+      throw primaryErr
+    }
+  }
+}
+
 // Decode token payload (base64) client-side to read user_id / public_id without network
+
+const isCloudEndpoint = (u) =>
+  typeof u === 'string' &&
+  (u.includes('run.app') || u.includes('hf.space') || u === CLOUD_URL || u === FALLBACK_CLOUD_URL)
+
+const isSameBackendOrCloudFailover = (a, b) =>
+  a === b || (isCloudEndpoint(a) && isCloudEndpoint(b))
+
 function decodeToken(tok) {
   if (!tok) return null
   try {
@@ -257,7 +333,7 @@ export function AuthProvider({ children }) {
     // 1. Try the platform's primary backend (local on the downloaded app).
     let res
     try {
-      res = await authFetchWithTimeout(`${API_BASE}/login`, {
+      res = await authFetchWithFailover(`${API_BASE}/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password }),
@@ -391,7 +467,7 @@ export function AuthProvider({ children }) {
     // 1. Try the platform's primary backend (local on the desktop app).
     let res
     try {
-      res = await authFetchWithTimeout(`${API_BASE}/login/staff`, {
+      res = await authFetchWithFailover(`${API_BASE}/login/staff`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body,
@@ -467,7 +543,7 @@ export function AuthProvider({ children }) {
   }, [])
 
   const _doSignup = useCallback(async (base, body) => {
-    const res = await fetch(`${base}/signup`, {
+    const res = await authFetchWithFailover(`${base}/signup`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -765,7 +841,7 @@ export function AuthProvider({ children }) {
   const fetchProfile = useCallback(async () => {
     if (!token) return
     const backend = API_BASE, generation = authGeneration.current
-    const current = () => generation === authGeneration.current && tokenStorage.getItem('billing_token') === token && API_BASE === backend
+    const current = () => generation === authGeneration.current && tokenStorage.getItem('billing_token') === token && isSameBackendOrCloudFailover(API_BASE, backend)
     try {
       if (!current()) return
       const res = await fetch(`${backend}/profile`, {
@@ -794,7 +870,7 @@ export function AuthProvider({ children }) {
   const fetchSettings = useCallback(async (force = false) => {
     if (!token) return
     const backend = API_BASE, generation = authGeneration.current
-    const current = () => generation === authGeneration.current && tokenStorage.getItem('billing_token') === token && API_BASE === backend
+    const current = () => generation === authGeneration.current && tokenStorage.getItem('billing_token') === token && isSameBackendOrCloudFailover(API_BASE, backend)
     try {
       if (!current()) return
       const url = force ? `${backend}/settings?force=true` : `${backend}/settings`
@@ -910,7 +986,7 @@ export function AuthProvider({ children }) {
   const fetchBusinessConfig = useCallback(async () => {
     if (!token) return
     const backend = API_BASE, generation = authGeneration.current
-    const current = () => generation === authGeneration.current && tokenStorage.getItem('billing_token') === token && API_BASE === backend
+    const current = () => generation === authGeneration.current && tokenStorage.getItem('billing_token') === token && isSameBackendOrCloudFailover(API_BASE, backend)
     try {
       if (!current()) return
       const res = await fetch(`${backend}/business/config`, {
@@ -1024,7 +1100,7 @@ export function AuthProvider({ children }) {
   // Authenticated fetch helper
   const authFetch = useCallback(async (path, opts = {}) => {
     const backend = API_BASE, generation = authGeneration.current
-    const current = () => generation === authGeneration.current && tokenStorage.getItem('billing_token') === token && API_BASE === backend
+    const current = () => generation === authGeneration.current && tokenStorage.getItem('billing_token') === token && isSameBackendOrCloudFailover(API_BASE, backend)
     if (!current()) throw new Error('Session changed')
     // DELIBERATELY NO ABSOLUTE-URL PASSTHROUGH.
     // A revision that allowed callers to pass a fully-qualified URL here caused
@@ -1054,10 +1130,10 @@ export function AuthProvider({ children }) {
 
     let res
     try {
-      res = await fetch(`${backend}${apiPath}`, {
+      res = await authFetchWithFailover(`${backend}${apiPath}`, {
         ...opts,
         headers
-      })
+      }, 12000)
     } catch (err) {
       logger.error(`authFetch network failure for path: ${path}`, err)
       window.dispatchEvent(new CustomEvent('show_toast', {
