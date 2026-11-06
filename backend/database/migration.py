@@ -1733,8 +1733,14 @@ def run_migrations_and_seed():
         db.close()
 
     from database.change_feed import install_change_feed
-    with engine.begin() as feed_connection:
-        install_change_feed(feed_connection)
-        from database.security import install_security
-        install_security(feed_connection)
+    try:
+        with engine.begin() as feed_connection:
+            install_change_feed(feed_connection)
+            from database.security import install_security
+            install_security(feed_connection)
+    except Exception as e:
+        if "deadlock" in str(e).lower() or "lock" in str(e).lower():
+            logger.warning(f"[Migration] Concurrent boot lock/deadlock in install_change_feed/install_security (peer completed): {e}")
+        else:
+            raise
     logger.info("[Migration] Done.")

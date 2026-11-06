@@ -42,14 +42,15 @@ def install_change_feed(connection, **_kw):
             END $$;
             REVOKE ALL ON FUNCTION bizassist_feed_emit(integer,text,jsonb,text) FROM PUBLIC;
         """))
-    for name, model in _sources(connection).items():
+    for name, model in sorted(_sources(connection).items(), key=lambda x: x[0]):
         cols = {c["name"] for c in inspect(connection).get_columns(name)}
         owner_sql = _owner_expressions(name, cols)
         if not owner_sql:
             raise RuntimeError(f"No change-feed ownership rule for {name}")
         if pg:
             calls = " ".join(f"PERFORM bizassist_feed_emit(({expr}),TG_TABLE_NAME,body,TG_OP);" for expr in owner_sql)
-            connection.execute(text(f"""
+            try:
+                connection.execute(text(f"""
                 CREATE OR REPLACE FUNCTION bizassist_feed_{name}() RETURNS trigger
                 LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
                 DECLARE body jsonb;
@@ -62,6 +63,11 @@ def install_change_feed(connection, **_kw):
                 CREATE TRIGGER bizassist_feed_capture BEFORE INSERT OR UPDATE OR DELETE ON "{name}"
                 FOR EACH ROW EXECUTE FUNCTION bizassist_feed_{name}();
             """))
+            except Exception as e:
+                if "deadlock" in str(e).lower() or "lock" in str(e).lower():
+                    logger.warning(f"[change_feed] Concurrent migration on table {name} (peer installed trigger): {e}")
+                else:
+                    raise
             # BEFORE INSERT does not see an ORM-generated id when the PK is
             # server-generated? PostgreSQL defaults are assigned before this
             # trigger, while UID defaults are assigned by SQLAlchemy before SQL.
