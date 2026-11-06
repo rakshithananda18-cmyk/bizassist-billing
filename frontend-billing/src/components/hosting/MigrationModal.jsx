@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
-import { API_BASE, updateApiBase } from '../../config'
+import { API_BASE, updateApiBase, CLOUD_URL, LOCAL_URL } from '../../config'
 import { useAuth } from '../../contexts/AuthContext'
 import { logger } from '../../utils/logger'
 import { assertCompleteImport } from '../../utils/dataTransferResult'
@@ -102,7 +102,7 @@ export default function MigrationModal({ fromMode, toMode, onComplete, onError, 
   // HTTP 401 — its JWT_SECRET differs). BackupModal carries this same fix;
   // MigrationModal sending the local token to the cloud was the cause of the
   // silent "Local + Cloud" switch failure (import → 401 → modal closed).
-  const CLOUD_BASE = import.meta.env.VITE_API_URL || 'https://rakshit-dev-bizassist.hf.space'
+  const CLOUD_BASE = CLOUD_URL
   const headersFor = useCallback((base) => {
     let cloudTok = null
     try { cloudTok = localStorage.getItem('bizassist_cloud_token') } catch { /* ignore */ }
@@ -125,7 +125,7 @@ export default function MigrationModal({ fromMode, toMode, onComplete, onError, 
 
   async function run() {
     logger.info(`[MIGRATION] Starting hosting mode migration from ${fromMode} to ${toMode}`)
-    const CLOUD_URL = import.meta.env.VITE_API_URL || 'https://rakshit-dev-bizassist.hf.space'
+    // using imported CLOUD_URL
     const LOCAL_URL = 'http://localhost:8001'
     const SOURCE_API_BASE = fromMode === 'cloud' ? CLOUD_URL : LOCAL_URL
     const DEST_API_BASE = (toMode === 'cloud' || toMode === 'hybrid') ? CLOUD_URL : LOCAL_URL

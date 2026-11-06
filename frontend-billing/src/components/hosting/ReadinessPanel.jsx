@@ -1,6 +1,6 @@
 import React from 'react'
 import { SyncIcon } from '../Icons'
-import { CLOUD_URL, LOCAL_URL } from '../../config'
+import { CLOUD_URL, LOCAL_URL, PRIMARY_CLOUD_RUN_URL, SECONDARY_HF_URL } from '../../config'
 
 function StatusDot({ status }) {
   const classMap = {
@@ -84,7 +84,7 @@ function ProbeCard({ label, sublabel, probe }) {
   )
 }
 
-export default function ReadinessPanel({ localProbe, cloudProbe, internetProbe, sseProbe, onRecheck }) {
+export default function ReadinessPanel({ localProbe, googleProbe, hfProbe, cloudProbe, internetProbe, sseProbe, onRecheck }) {
   const now = new Date()
   const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 
@@ -142,11 +142,26 @@ export default function ReadinessPanel({ localProbe, cloudProbe, internetProbe, 
           sublabel={LOCAL_URL}
           probe={localProbe}
         />
-        <ProbeCard
-          label="Cloud Backend"
-          sublabel={CLOUD_URL}
-          probe={cloudProbe}
-        />
+        {googleProbe || hfProbe ? (
+          <>
+            <ProbeCard
+              label="Google Cloud Run (Mumbai)"
+              sublabel="Primary API · asia-south1"
+              probe={googleProbe || cloudProbe}
+            />
+            <ProbeCard
+              label="Hugging Face Spaces"
+              sublabel="Standby API · Redundant Fallback"
+              probe={hfProbe || { status: 'checking', ms: null, error: null }}
+            />
+          </>
+        ) : (
+          <ProbeCard
+            label="Cloud Backend"
+            sublabel={CLOUD_URL}
+            probe={cloudProbe}
+          />
+        )}
         {sseProbe && (
           <ProbeCard
             label="Real-time Sync (SSE)"

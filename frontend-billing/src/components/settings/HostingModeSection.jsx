@@ -14,7 +14,7 @@ import { Toggle } from './SettingsPrimitives'
 
 // ─── Hosting Mode Section (card-based mode switcher with modal chain) ─────────
 export default function HostingModeSection({ currentMode, onModeChange, token, isFreePlan = false, autoSwitchTarget = null, onAutoSwitchConsumed = null, autoBackup, onAutoBackupChange, backupReminderDays, onReminderDaysChange }) {
-  const { localProbe, cloudProbe, internetProbe, sseProbe, recheck } = useReadinessProbe()
+  const { localProbe, googleProbe, hfProbe, cloudProbe, internetProbe, sseProbe, recheck } = useReadinessProbe()
   const [preflightTarget,  setPreflightTarget]  = useState(null)  // 'local'|'cloud'|'hybrid'
   const [consequenceTarget, setConsequenceTarget] = useState(null)
   const [migrationState,   setMigrationState]   = useState(null)  // { from, to }
@@ -234,6 +234,8 @@ export default function HostingModeSection({ currentMode, onModeChange, token, i
       {/* Readiness panel */}
       <ReadinessPanel
         localProbe={localProbe}
+        googleProbe={googleProbe}
+        hfProbe={hfProbe}
         cloudProbe={cloudProbe}
         internetProbe={internetProbe}
         sseProbe={sseProbe}

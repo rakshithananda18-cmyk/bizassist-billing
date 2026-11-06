@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { logger } from '../utils/logger'
-import { LOCAL_URL, CLOUD_URL, IS_LOCAL_APP } from '../config'
+import { LOCAL_URL, CLOUD_URL, PRIMARY_CLOUD_RUN_URL, SECONDARY_HF_URL, IS_LOCAL_APP } from '../config'
 
 const INTERVAL_MS = 30_000
 
@@ -41,6 +41,19 @@ async function runLocalProbe() {
   }
 }
 
+async function runNamedCloudProbe(url) {
+  const t0 = Date.now()
+  try {
+    const res = await fetchWithTimeout(`${url}/health`, 6000)
+    const ms = Date.now() - t0
+    if (!res.ok) return { status: 'offline', ms: null, error: `HTTP ${res.status}` }
+    return { status: ms > 1000 ? 'slow' : 'online', ms, error: null }
+  } catch (err) {
+    if (err?.name === 'AbortError') return { status: 'offline', ms: null, error: 'Timeout' }
+    return { status: 'offline', ms: null, error: err?.message || 'Network error' }
+  }
+}
+
 async function runCloudProbe() {
   const t0 = Date.now()
   try {
@@ -73,6 +86,8 @@ const INIT = { status: 'checking', ms: null, error: null }
 
 export function useReadinessProbe() {
   const [localProbe,    setLocalProbe]    = useState(INIT)
+  const [googleProbe,   setGoogleProbe]   = useState(INIT)
+  const [hfProbe,       setHfProbe]       = useState(INIT)
   const [cloudProbe,    setCloudProbe]    = useState(INIT)
   const [internetProbe, setInternetProbe] = useState(INIT)
   const [sseProbe,      setSseProbe]      = useState(INIT)
@@ -81,23 +96,28 @@ export function useReadinessProbe() {
 
   const runAll = useCallback(async () => {
     setLocalProbe(INIT)
+    setGoogleProbe(INIT)
+    setHfProbe(INIT)
     setCloudProbe(INIT)
     setInternetProbe(INIT)
     setSseProbe(INIT)
 
-    logger.debug('[PROBE] Initiating readiness probes (local backend, cloud backend, internet connectivity)...')
+    logger.debug('[PROBE] Initiating readiness probes (local, Google Cloud Run, Hugging Face, internet)...')
     
     // Request latest SSE status update
     window.dispatchEvent(new CustomEvent('sync-status-request'))
 
-    const [lResult, cResult, iResult] = await Promise.all([
+    const [lResult, gResult, hResult, iResult] = await Promise.all([
       runLocalProbe(),
-      runCloudProbe(),
+      runNamedCloudProbe(PRIMARY_CLOUD_RUN_URL),
+      runNamedCloudProbe(SECONDARY_HF_URL),
       runInternetProbe(),
     ])
-    logger.debug('[PROBE] Probe results received:', { local: lResult.status, cloud: cResult.status, internet: iResult.status })
+    logger.debug('[PROBE] Probe results received:', { local: lResult.status, google: gResult.status, hf: hResult.status, internet: iResult.status })
     setLocalProbe(lResult)
-    setCloudProbe(cResult)
+    setGoogleProbe(gResult)
+    setHfProbe(hResult)
+    setCloudProbe(gResult)
     setInternetProbe(iResult)
   }, [])
 
@@ -147,5 +167,5 @@ export function useReadinessProbe() {
     }
   }, [])
 
-  return { localProbe, cloudProbe, internetProbe, sseProbe, recheck }
+  return { localProbe, googleProbe, hfProbe, cloudProbe, internetProbe, sseProbe, recheck }
 }
