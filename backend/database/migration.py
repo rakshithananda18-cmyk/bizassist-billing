@@ -972,7 +972,7 @@ def _install_overfill_guard(conn, child, parent, fk, TARGET, suffix, TOL, is_pg)
             already = conn.execute(text(
                 "SELECT 1 FROM pg_trigger WHERE tgname = :n"), {"n": name}).fetchone()
             if already:
-                _rollback_quietly(conn, f"{name} already-installed check")
+                conn.rollback()
                 return
             # A CHECK constraint cannot contain a subquery, so Postgres needs a
             # real trigger function.
@@ -1001,7 +1001,7 @@ def _install_overfill_guard(conn, child, parent, fk, TARGET, suffix, TOL, is_pg)
                 "SELECT 1 FROM sqlite_master WHERE type='trigger' AND name = :n"),
                 {"n": name}).fetchone()
             if already:
-                _rollback_quietly(conn, f"{name} already-installed check")
+                conn.rollback()
                 return
             tgt_sql = f"(SELECT {TARGET} FROM {parent} WHERE id = NEW.{fk})"
             cur_sql = (f"COALESCE((SELECT SUM(line_total) FROM {child} "
