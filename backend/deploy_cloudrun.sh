@@ -73,9 +73,60 @@ EXISTING="$(gcloud run services describe "$SERVICE" --project "$PROJECT" --regio
 ROLLOUT_FLAGS=()
 if [[ -n "$EXISTING" ]]; then ROLLOUT_FLAGS=(--no-traffic --tag candidate); fi
 
+IMAGE_REGISTRY="${REGION}-docker.pkg.dev/${PROJECT}/cloud-run-source-deploy/${SERVICE}"
+IMAGE_TAG="$(date +%Y%m%d%H%M%S)"
+TARGET_IMAGE="${IMAGE_REGISTRY}:${IMAGE_TAG}"
+
+DEPLOY_ARGS=(--source backend)
+echo "== Attempting fast container build with Cloud Build layer caching (E2_HIGHCPU_8)..."
+TMP_BUILD_CONFIG="$(mktemp /tmp/cloudbuild_fast.XXXXXX.yaml 2>/dev/null || echo "/tmp/cloudbuild_fast_${IMAGE_TAG}.yaml")"
+cat <<'BUILDEOF' > "$TMP_BUILD_CONFIG"
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        docker pull ${_IMAGE_REGISTRY}:latest || true
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '-t'
+      - '${_TARGET_IMAGE}'
+      - '-t'
+      - '${_IMAGE_REGISTRY}:latest'
+      - '--cache-from'
+      - '${_IMAGE_REGISTRY}:latest'
+      - '.'
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - '${_TARGET_IMAGE}'
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - '${_IMAGE_REGISTRY}:latest'
+options:
+  machineType: 'E2_HIGHCPU_8'
+BUILDEOF
+
+if gcloud builds submit backend \
+    --config="$TMP_BUILD_CONFIG" \
+    --project "$PROJECT" \
+    --region "$REGION" \
+    --substitutions="_IMAGE_REGISTRY=${IMAGE_REGISTRY},_TARGET_IMAGE=${TARGET_IMAGE}" \
+    --quiet; then
+    echo "== Fast build succeeded! Deploying pre-built container image..."
+    DEPLOY_ARGS=(--image "$TARGET_IMAGE")
+else
+    echo "== Fast build unavailable or failed; falling back to source deploy..."
+    DEPLOY_ARGS=(--source backend)
+fi
+rm -f "$TMP_BUILD_CONFIG"
+
 for attempt in 1 2 3; do
     # Fan-out/replay/rate-limit state is process-local; scaling needs shared delivery first.
-    if gcloud run deploy "$SERVICE" --project "$PROJECT" --region "$REGION" --source backend "${ROLLOUT_FLAGS[@]}" \
+    if gcloud run deploy "$SERVICE" --project "$PROJECT" --region "$REGION" "${DEPLOY_ARGS[@]}" "${ROLLOUT_FLAGS[@]}" \
         --service-account "$RUN_SA" --allow-unauthenticated --min-instances "$MIN_INSTANCES" --max-instances 1 \
         --cpu 1 --memory 1Gi --cpu-boost --concurrency 80 --timeout 120 \
         --update-env-vars "$ENV_VARS" --update-secrets "$SECRETS_PARAM" --quiet; then break; fi
