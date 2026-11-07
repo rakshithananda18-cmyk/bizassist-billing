@@ -167,7 +167,7 @@ try {
     $url = $description.status.url
     $probeUrl = $url
     if ($existing) {
-        $probeUrl = ($description.status.traffic | Where-Object { $_.tag -eq 'rc' } | Select-Object -First 1).url
+        $probeUrl = ($description.status.traffic | Where-Object { $_.tag -eq 'candidate' } | Select-Object -First 1).url
         if (-not $probeUrl) { throw 'Release candidate tag URL is missing; traffic was not moved.' }
     }
     if (-not (Wait-RcHealth $probeUrl)) {

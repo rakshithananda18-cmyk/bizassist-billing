@@ -71,7 +71,7 @@ if ! secret_exists ADMIN_SERVICE_URL; then echo 'ADMIN_SERVICE_URL is not mounte
 ENV_VARS="^;^ADMIN_API_ENABLED=1;TZ=Asia/Kolkata;BIZ_TIMEZONE=Asia/Kolkata;WEB_CONCURRENCY=1;SUBSCRIPTION_ENFORCED=${SUBSCRIPTION_ENFORCED};CLOUD_RUN_REGION=${REGION};SSE_MAX_STREAM_SECONDS=100;ALLOWED_ORIGINS=${ALLOWED_ORIGINS}"
 EXISTING="$(gcloud run services describe "$SERVICE" --project "$PROJECT" --region "$REGION" --format='value(status.url)' 2>/dev/null || true)"
 ROLLOUT_FLAGS=()
-if [[ -n "$EXISTING" ]]; then ROLLOUT_FLAGS=(--no-traffic --tag rc); fi
+if [[ -n "$EXISTING" ]]; then ROLLOUT_FLAGS=(--no-traffic --tag candidate); fi
 
 for attempt in 1 2 3; do
     # Fan-out/replay/rate-limit state is process-local; scaling needs shared delivery first.
@@ -86,7 +86,7 @@ DESCRIPTION="$(gcloud run services describe "$SERVICE" --project "$PROJECT" --re
 URL="$(printf '%s' "$DESCRIPTION" | python3 -c 'import json,sys; print(json.load(sys.stdin)["status"]["url"])')"
 PROBE_URL="$URL"
 if [[ -n "$EXISTING" ]]; then
-    PROBE_URL="$(printf '%s' "$DESCRIPTION" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next((t.get("url", "") for t in d["status"].get("traffic",[]) if t.get("tag")=="rc"),""))')"
+    PROBE_URL="$(printf '%s' "$DESCRIPTION" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next((t.get("url", "") for t in d["status"].get("traffic",[]) if t.get("tag")=="candidate"),""))')"
     [[ -n "$PROBE_URL" ]] || { echo 'Release candidate tag URL missing; traffic was not moved.' >&2; exit 1; }
 fi
 # Poll the actual tagged revision URL. HTTP 200 alone is insufficient: DB readiness must pass.

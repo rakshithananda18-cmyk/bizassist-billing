@@ -41,7 +41,7 @@ def test_shared_scheduler_manifest_covers_only_supported_jobs():
 
 def test_shell_health_gate_targets_actual_tag_and_checks_database():
     script = (ROOT/"backend/deploy_cloudrun.sh").read_text()
-    assert 't.get("tag")=="rc"' in script
+    assert 't.get("tag")=="candidate"' in script
     assert 't.get("url", "")' in script
     assert '"${PROBE_URL}/health"' in script
     assert 'd.get("db")=="connected"' in script
