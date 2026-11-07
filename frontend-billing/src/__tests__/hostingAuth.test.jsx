@@ -306,7 +306,7 @@ describe('Login staff resolution (T2)', () => {
 
     await expect(
       actionRef.current.staffLogin('owner1', 'cashier1', 'wrongpassword')
-    ).rejects.toThrow('Invalid credentials')
+    ).rejects.toThrow('Wrong username or password.')
   })
 
   it('recent-login: an empty local result does not wipe cached staff or hide the choice', async () => {

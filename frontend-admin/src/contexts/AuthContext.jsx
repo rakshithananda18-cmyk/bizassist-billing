@@ -1,227 +1,196 @@
-import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react'
+import { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { API_BASE } from '../config'
-import { logger, setBizId } from '../utils/logger'
+import { setBizId } from '../utils/logger'
 import { trustedHandoff } from '../utils/handoff'
-
+import { boundedFetch, isSessionRejection, responseError } from '../utils/httpErrors'
+import { useSessionRefresh } from '../hooks/useSessionRefresh'
 const AuthContext = createContext(null)
+const HANDOFF_ERROR = 'Billing could not sign you in. Open Dashboard BIZASSIST from Billing again, or sign in here.'
 
 export function AuthProvider({ children }) {
-  const [user,       setUser]       = useState(null)   // enterprise user
-  const [adminUser,  setAdminUser]  = useState(null)   // admin user
-  const [loading,    setLoading]    = useState(true)
+  const [user, setUser] = useState(null)
+  const [adminUser, setAdminUser] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [notice, setNotice] = useState(null)
+  const generation = useRef(0)
+  const sessions = useRef({})
+  sessions.current = { user, adminUser }
+  const initial = useRef(null)
+  if (!initial.current) {
+    const params = new URLSearchParams(window.location.search)
+    initial.current = { ticket: params.get('sso'), logout: params.get('logout') === 'true', promise: null }
+  }
+  const rememberPath = useCallback(() => {
+    const path = window.location.pathname + window.location.search + window.location.hash
+    if (path.startsWith('/admin/') && window.location.pathname !== '/admin/login') {
+      try { sessionStorage.setItem('admin_return_path', path) } catch { /* storage unavailable */ }
+    }
+  }, [])
+  const clearSession = useCallback(() => {
+    generation.current++
+    for (const store of [localStorage, sessionStorage]) {
+      for (const key of ['user', 'admin_user', 'active_session_id', 'biz_name', 'token', 'access_token', 'admin_token']) store.removeItem(key)
+    }
+    setUser(null)
+    setAdminUser(null)
+  }, [])
+  const adminLogout = useCallback(() => {
+    rememberPath()
+    generation.current++
+    localStorage.removeItem('admin_user')
+    localStorage.removeItem('biz_name')
+    setAdminUser(null)
+  }, [rememberPath])
+  const acceptUser = useCallback(data => {
+    localStorage.setItem('user', JSON.stringify(data))
+    if (data.business_name) localStorage.setItem('biz_name', data.business_name)
+    setUser(data)
+  }, [])
+  const acceptAdmin = useCallback(data => {
+    localStorage.setItem('admin_user', JSON.stringify(data))
+    setAdminUser(data)
+  }, [])
+  const { warning: userWarning, refreshSession: refreshUser } = useSessionRefresh(user, acceptUser, clearSession)
+  const { warning: adminWarning, refreshSession: refreshAdmin } = useSessionRefresh(adminUser, acceptAdmin, adminLogout)
+  useEffect(() => { setBizId(user?.public_id || null) }, [user])
 
-  // Restore sessions from localStorage or SSO on mount
+  const redeem = useCallback(async ticket => {
+    const res = await boundedFetch(`${API_BASE}/redeem-ticket`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ticket }),
+    })
+    if (!res.ok) throw await responseError(res)
+    const data = await res.json()
+    if (!data.token) throw new Error('Missing sign-in session')
+    if (data.role === 'admin') {
+      const confirmation = await boundedFetch(`${API_BASE}/admin/session`, { headers: { Authorization: `Bearer ${data.token}` } })
+      if (!confirmation.ok) throw await responseError(confirmation)
+      return { ...data, ...(await confirmation.json()), token: data.token }
+    }
+    return data
+  }, [])
+  const acceptHandoff = useCallback(data => {
+    if (data.role === 'admin') acceptAdmin(data)
+    else acceptUser(data)
+    setNotice(null)
+  }, [acceptUser, acceptAdmin])
   useEffect(() => {
-    const initAuth = async () => {
-      const params = new URLSearchParams(window.location.search)
-      const ssoTicket = params.get('sso')
-      const isLogout = params.get('logout') === 'true'
-      let ssoSuccess = false
-
-      if (isLogout) {
-        // Intercept silent logout ping from billing app
-        localStorage.removeItem('user')
-        localStorage.removeItem('active_session_id')
-        localStorage.removeItem('biz_name')
-        setUser(null)
-
+    let active = true
+    const launch = initial.current
+    const init = async () => {
+      if (launch.logout) {
+        clearSession()
         const url = new URL(window.location)
         url.searchParams.delete('logout')
         window.history.replaceState({}, document.title, url)
         setLoading(false)
         return
       }
-
-      if (ssoTicket) {
-        // Clean up the URL immediately (synchronously) so React StrictMode's
-        // second mount doesn't try to double-redeem the single-use ticket.
+      if (launch.ticket) {
+        clearSession()
+        const requestGeneration = generation.current
         const url = new URL(window.location)
         url.searchParams.delete('sso')
         window.history.replaceState({}, document.title, url)
-
+        if (!launch.promise) launch.promise = redeem(launch.ticket)
         try {
-          const res = await fetch(`${API_BASE}/redeem-ticket`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ ticket: ssoTicket })
-          })
-          if (res.ok) {
-            const data = await res.json()
-            localStorage.setItem('user', JSON.stringify(data))
-            if (data.business_name) localStorage.setItem('biz_name', data.business_name)
-            setUser(data)
-            ssoSuccess = true
-          } else {
-            logger.warn('[SSO] Ticket redemption rejected by server')
-          }
-        } catch (err) {
-          logger.warn('[SSO] Ticket redemption failed:', err)
-        }
+          const data = await launch.promise
+          if (!active || requestGeneration !== generation.current) return
+          acceptHandoff(data)
+        } catch {
+          if (!active || requestGeneration !== generation.current) return
+          clearSession()
+          setNotice(HANDOFF_ERROR)
+        } finally { if (active) setLoading(false) }
+        return
       }
-
-      // If no SSO was handled or it failed, fall back to localStorage
-      if (!ssoSuccess) {
-        try {
-          const u = localStorage.getItem('user')
-          const a = localStorage.getItem('admin_user')
-          if (u) setUser(JSON.parse(u))
-          if (a) setAdminUser(JSON.parse(a))
-        } catch {}
-      }
+      try {
+        const savedUser = localStorage.getItem('user')
+        const savedAdmin = localStorage.getItem('admin_user')
+        if (savedUser) setUser(JSON.parse(savedUser))
+        if (savedAdmin) setAdminUser(JSON.parse(savedAdmin))
+      } catch { clearSession() }
       setLoading(false)
     }
-
-    initAuth()
-  }, [])
-
-  // Keep the [BizId=…] logging context in sync with the signed-in business.
-  useEffect(() => { setBizId(user?.public_id || null) }, [user])
-
-  // Listen for SSO tickets sent via postMessage from the billing app.
-  // This fires when the tab is already open (React is mounted) and the user
-  // clicks "Open AI Dashboard" again after having logged out — the mount
-  // useEffect won't re-run, so the billing app uses postMessage instead.
+    init()
+    return () => { active = false }
+  }, [clearSession, redeem, acceptHandoff])
   useEffect(() => {
-    async function handleMessage(event) {
+    const onMessage = async event => {
       if (!trustedHandoff(event, { billingUrl: import.meta.env.VITE_BILLING_URL })) return
-      if (!event.data || event.data.type !== 'SSO_TICKET') return
-
-      const ticket = event.data.ticket
-      if (!ticket) return
-
+      if (event.data?.type === 'AUTH_LOGOUT') { clearSession(); setLoading(false); return }
+      if (event.data?.type !== 'SSO_TICKET' || !event.data.ticket) return
+      clearSession()
+      setNotice(null)
+      setLoading(true)
+      const requestGeneration = generation.current
       try {
-        const res = await fetch(`${API_BASE}/redeem-ticket`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ticket })
-        })
-        if (res.ok) {
-          const data = await res.json()
-          localStorage.setItem('user', JSON.stringify(data))
-          if (data.business_name) localStorage.setItem('biz_name', data.business_name)
-          setUser(data)
-        } else {
-          logger.warn('[SSO] postMessage ticket redemption rejected by server')
-        }
-      } catch (err) {
-        logger.warn('[SSO] postMessage ticket redemption failed:', err)
+        const data = await redeem(event.data.ticket)
+        if (requestGeneration === generation.current) { acceptHandoff(data); setLoading(false) }
+      } catch {
+        if (requestGeneration === generation.current) { clearSession(); setNotice(HANDOFF_ERROR); setLoading(false) }
       }
     }
-
-    window.addEventListener('message', handleMessage)
-    return () => window.removeEventListener('message', handleMessage)
-  }, [])
-
-
-  // ── Enterprise login ──────────────────────────────────────────
-  const login = useCallback(async (username, password) => {
-    const res = await fetch(`${API_BASE}/login`, {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ username, password })
-    })
-    if (!res.ok) {
-      const data = await res.json()
-      throw new Error(data.detail || 'Login failed')
-    }
-    const data = await res.json()
-    localStorage.setItem('user', JSON.stringify(data))
-    setUser(data)
-    return data
-  }, [])
-
-  // ── Enterprise signup ─────────────────────────────────────────
-  const signup = useCallback(async (username, password, businessName) => {
-    const res = await fetch(`${API_BASE}/signup`, {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ username, password, business_name: businessName })
-    })
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}))
-      throw new Error(data.detail || 'Registration failed')
-    }
-    const data = await res.json()
-    localStorage.setItem('user', JSON.stringify(data))
-    if (data.business_name) localStorage.setItem('biz_name', data.business_name)
-    setUser(data)
-    return data
-  }, [])
-
-  const logout = useCallback(() => {
-    localStorage.removeItem('user')
-    localStorage.removeItem('active_session_id')
-    localStorage.removeItem('biz_name')
-    setUser(null)
-  }, [])
-
-  // ── Admin login (optional TOTP code when 2FA is enabled, §4.1) ─
-  const adminLogin = useCallback(async (username, password, otp = undefined) => {
-    const res = await fetch(`${API_BASE}/login`, {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify(otp ? { username, password, otp } : { username, password })
-    })
-    if (!res.ok) {
-      const data = await res.json()
-      throw new Error(data.detail || 'Login failed')
-    }
-    const data = await res.json()
-    if (data.role !== 'admin') throw new Error('Access denied. Admin role required.')
-    localStorage.setItem('admin_user', JSON.stringify(data))
-    setAdminUser(data)
-    return data
-  }, [])
-
-  const adminLogout = useCallback(() => {
-    localStorage.removeItem('admin_user')
-    localStorage.removeItem('biz_name')
-    setAdminUser(null)
-  }, [])
-
-  // ── Authenticated fetch (auto-attaches Bearer token & intercepts 401s) ─────────
-  // Memoized so it's stable across renders — otherwise every consumer's
-  // useCallbacks (loadSessions, selectSession, …) change identity each render,
-  // re-firing effects that re-fetch chat history and clobber the live messages.
-  const authFetch = useCallback(async (url, options = {}) => {
-    // If fetching an admin endpoint (contains /admin/), prioritize the adminUser token.
-    // Otherwise, prioritize the enterprise user token.
-    const isAdminRequest = url.includes('/admin/')
-    const token = isAdminRequest
-      ? (adminUser?.token || user?.token)
-      : (user?.token || adminUser?.token)
-
-    const res = await fetch(url, {
-      ...options,
-      headers: {
-        ...(options.headers || {}),
-        ...(token ? { Authorization: `Bearer ${token}` } : {})
-      }
-    })
-    if (res.status === 401) {
-      if (isAdminRequest) {
-        adminLogout()
+    const onStorage = event => {
+      if (!['user', 'admin_user'].includes(event.key) && event.key !== null) return
+      generation.current++
+      if (event.key === null || !event.newValue) {
+        if (event.key === 'admin_user') setAdminUser(null)
+        else { localStorage.removeItem('biz_name'); setUser(null); if (event.key === null) setAdminUser(null) }
       } else {
-        logout()
+        try { (event.key === 'admin_user' ? setAdminUser : setUser)(JSON.parse(event.newValue)) }
+        catch { clearSession() }
       }
+    }
+    window.addEventListener('message', onMessage)
+    window.addEventListener('storage', onStorage)
+    let channel
+    try {
+      if (typeof BroadcastChannel !== 'undefined') {
+        channel = new BroadcastChannel('bizassist_auth_channel')
+        channel.onmessage = event => { if (event.data?.type === 'LOGOUT') clearSession() }
+      }
+    } catch { /* not supported */ }
+    return () => { window.removeEventListener('message', onMessage); window.removeEventListener('storage', onStorage); channel?.close() }
+  }, [clearSession, redeem, acceptHandoff])
+  const credentials = useCallback(async (path, body, admin = false) => {
+    const requestGeneration = ++generation.current
+    const res = await boundedFetch(`${API_BASE}${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    if (!res.ok) throw await responseError(res)
+    const data = await res.json()
+    if (requestGeneration !== generation.current) throw new Error('Sign-in cancelled')
+    if (admin && data.role !== 'admin') throw new Error('Access denied. Admin role required.')
+    ;(admin ? acceptAdmin : acceptUser)(data)
+    setNotice(null)
+    return data
+  }, [acceptAdmin, acceptUser])
+  const login = useCallback((username, password) => credentials('/login', { username, password }), [credentials])
+  const signup = useCallback((username, password, businessName) => credentials('/signup', { username, password, business_name: businessName }), [credentials])
+  const adminLogin = useCallback((username, password, otp) => credentials('/login', otp ? { username, password, otp } : { username, password }, true), [credentials])
+  const logout = clearSession
+  const authFetch = useCallback(async (url, options = {}) => {
+    const isAdmin = url.includes('/admin/')
+    const active = isAdmin ? (adminUser || user) : (user || adminUser)
+    const token = active?.token
+    const requestGeneration = generation.current
+    const res = await boundedFetch(url, {
+      ...options, headers: { ...(options.headers || {}), ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    })
+    const latest = isAdmin ? (sessions.current.adminUser || sessions.current.user) : (sessions.current.user || sessions.current.adminUser)
+    if (requestGeneration === generation.current && token === latest?.token) {
+      if (isSessionRejection(res)) { if (isAdmin) adminLogout(); else clearSession() }
+      else if (res.status === 401) await (isAdmin ? refreshAdmin : refreshUser)(true)
     }
     return res
-  }, [user, adminUser, logout, adminLogout])
-
-  const value = useMemo(() => ({
-    user, adminUser, loading,
-    login, signup, logout,
-    adminLogin, adminLogout,
-    authFetch
-  }), [user, adminUser, loading, login, signup, logout, adminLogin, adminLogout, authFetch])
-
+  }, [adminUser, user, adminLogout, clearSession, refreshAdmin, refreshUser])
+  const value = useMemo(() => ({ user, adminUser, loading, notice, login, signup, logout, adminLogin, adminLogout, authFetch }),
+    [user, adminUser, loading, notice, login, signup, logout, adminLogin, adminLogout, authFetch])
   return (
     <AuthContext.Provider value={value}>
+      {(notice || adminWarning || userWarning) && <div role="alert" className="auth-session-notice">{notice || adminWarning || userWarning}
+        {notice && <button type="button" onClick={() => { setNotice(null); window.location.assign('/admin/login') }}>Sign in</button>}
+      </div>}
       {children}
     </AuthContext.Provider>
   )
 }
-
-export function useAuth() {
-  return useContext(AuthContext)
-}
+export function useAuth() { return useContext(AuthContext) }

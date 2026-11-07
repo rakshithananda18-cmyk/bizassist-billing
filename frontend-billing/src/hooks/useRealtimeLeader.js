@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from 'react'
 import { API_BASE, IS_LOCAL_APP } from '../config'
 import { logger } from '../utils/logger'
 import { syncManager } from '../sync/syncManager'
+import { createSseConnection } from '../sync/sseConnection'
 
 export function useRealtimeLeader(token, settings, user) {
   const tabIdRef = useRef(Math.random().toString(36).substring(2, 11))
@@ -48,7 +49,10 @@ export function useRealtimeLeader(token, settings, user) {
     }
 
     // Initialize BroadcastChannel
-    const channel = new BroadcastChannel('bizassist_sse_leader')
+    const scope = `${user.public_id || ''}:${user.user_id || user.id || ''}`
+    const leaderKey = `realtime_leader_tab:${scope}`
+    const heartbeatKey = `realtime_leader_ts:${scope}`
+    const channel = new BroadcastChannel(`bizassist_sse_leader:${scope}`)
     channelRef.current = channel
 
     // A late SSE onopen/onerror can fire AFTER this effect's cleanup closed the
@@ -131,174 +135,54 @@ export function useRealtimeLeader(token, settings, user) {
       }
     }
 
-    const scheduleReconnect = () => {
-      if (!isCurrentLeader) return
-      if (sessionPaused) return   // paused this session after repeated failures — wait for refresh/online/manual reconnect
-      if (reconnectTimeoutRef.current) return
-      
-      logger.info('[REALTIME] Scheduling reconnect in 5 seconds...')
-      reconnectTimeoutRef.current = setTimeout(() => {
-        reconnectTimeoutRef.current = null
-        if (isCurrentLeader) {
-          connectSSE()
-        }
-      }, 5000)
-    }
-
-    const handleFailure = async (reason) => {
-      if (!isCurrentLeader) return
-
-      consecutiveFailureCountRef.current += 1
-      logger.warn(`[REALTIME] SSE connection failure count: ${consecutiveFailureCountRef.current}/5. Reason: ${reason}`)
-
-      if (consecutiveFailureCountRef.current >= 5) {
-        logger.error('[REALTIME] SSE failed 5 consecutive times — pausing reconnects for THIS session only (no server change).')
-        consecutiveFailureCountRef.current = 0
-
-        // SESSION-ONLY pause. We deliberately no longer persist
-        // realtime_sync_global=false to the server. That made the auto-disable a
-        // one-way door: a transient blip (or the reclaim/login churn) would
-        // silently disable sync forever, leaving a permanent red "Disconnected"
-        // pill even after the connection fully recovered — the user had to hunt
-        // down a Settings toggle to fix it. Now we simply stop hammering the cloud
-        // for this session and surface a clear, resumable state. It auto-recovers
-        // on a page refresh, when the network comes back online, or on an explicit
-        // reconnect (Sync popover "Reconnect"). Owners and cashiers behave the same.
-        sessionPaused = true
-        if (reconnectTimeoutRef.current) {
-          clearTimeout(reconnectTimeoutRef.current)
-          reconnectTimeoutRef.current = null
-        }
-        connectionError = 'Real-time sync paused after repeated connection errors. It retries automatically on refresh, or use Reconnect.'
-        emitStatus('error')
-        // Notify the UI. sessionOnly=true tells the modal to show a "paused,
-        // resumable" message rather than "disabled in settings".
-        window.dispatchEvent(new CustomEvent('realtime-sync-auto-disabled', { detail: { reason, sessionOnly: true } }))
-        safePost({ type: 'status_change', status: 'error', error: connectionError })
-      }
-    }
-
-    // Connect to SSE stream (Leader only)
-    const connectSSE = async () => {
-      if (esRef.current) {
-        esRef.current.close()
-        esRef.current = null
-      }
-
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current)
-        reconnectTimeoutRef.current = null
-      }
-
-      if (!navigator.onLine) {
-        logger.warn('[REALTIME] Offline, deferring EventSource connection.')
-        return
-      }
-
-      logger.info('[REALTIME] Connecting to SSE stream. Mode:', hostingMode, 'Leader Tab:', tabId)
-      window.dispatchEvent(new CustomEvent('show_toast', {
-        detail: { type: 'info', msg: `Connecting to cloud sync stream (${hostingMode} mode)…` }
-      }))
-
+    const connectSSE = () => {
+      esRef.current?.close()
+      if (!isCurrentLeader || !navigator.onLine) return
       emitStatus('connecting')
-      safePost({ type: 'status_change', status: 'connecting', error: null })
-
-      try {
-        // Fetch short-lived ticket first (Feature 1)
-        const response = await fetch(`${API_BASE}/realtime/ticket`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`
+      esRef.current = createSseConnection({
+        fetchTicket: async () => {
+          const response = await fetch(`${API_BASE}/realtime/ticket`, {
+            method: 'POST', headers: { Authorization: `Bearer ${token}` },
+            signal: AbortSignal.timeout(65000),
+          })
+          if (!response.ok) throw new Error(`Ticket ${response.status}`)
+          const { ticket } = await response.json()
+          return `${API_BASE}/realtime/events?ticket=${encodeURIComponent(ticket)}`
+        },
+        onEvent: data => { void processEvent(data, true); safePost({ type: 'sync_event', data }) },
+        onGap: () => {
+          const data = { type: 'sync.reconnect' }
+          void processEvent(data, true)
+          safePost({ type: 'sync_event', data })
+          void syncManager.pull().catch(() => {})
+        },
+        onStatus: status => {
+          if (!isCurrentLeader || channelClosed) return
+          if (status === 'degraded') {
+            connectionError = 'Live sync interrupted. Retrying…'
+            emitStatus('error')
+            safePost({ type: 'status_change', status: 'error', error: connectionError })
+            window.dispatchEvent(new CustomEvent('show_toast', { detail: { type: 'warning', msg: connectionError } }))
+          } else {
+            connectionError = null
+            consecutiveFailureCountRef.current = 0
+            emitStatus('connected')
+            safePost({ type: 'status_change', status: 'connected', error: null, restored: status === 'restored' })
+            if (status === 'restored') window.dispatchEvent(new CustomEvent('show_toast', { detail: { type: 'success', msg: 'Live sync restored' } }))
           }
-        })
-
-        if (!response.ok) {
-          throw new Error(`Failed to fetch SSE ticket: ${response.statusText}`)
-        }
-
-        const { ticket } = await response.json()
-        const url = `${API_BASE}/realtime/events?ticket=${encodeURIComponent(ticket)}`
-        
-        const es = new EventSource(url)
-        esRef.current = es
-
-        es.onopen = () => {
-          logger.info('[REALTIME] SSE connection established.')
-          const wasDisconnected = consecutiveFailureCountRef.current > 0
-          connectionError = null
-          consecutiveFailureCountRef.current = 0 // Reset failure counter on success
-          emitStatus('connected')
-          safePost({ type: 'status_change', status: 'connected', error: null })
-          window.dispatchEvent(new CustomEvent('show_toast', {
-            detail: { type: 'success', msg: 'Cloud real-time sync connected.' }
-          }))
-          // If we just recovered from a drop, silently refresh all page data.
-          // This catches any changes that arrived while we were offline.
-          // Draft/form state is never touched — pages only re-fetch their list data.
-          if (wasDisconnected) {
-            logger.info('[REALTIME] Reconnected after failure — dispatching sync.reconnect for stale-data refresh')
-            window.dispatchEvent(new CustomEvent('sync-event', {
-              detail: { type: 'sync.reconnect' }
-            }))
-          }
-        }
-
-        es.onmessage = async (e) => {
-          try {
-            const data = JSON.parse(e.data)
-            logger.debug('[REALTIME] Received SSE event:', data)
-            
-            // Process event (including pulling from server if needed)
-            await processEvent(data, true)
-
-            // Broadcast event to followers
-            safePost({ type: 'sync_event', data })
-          } catch (err) {
-            logger.error('[REALTIME] SSE parse error:', err)
-          }
-        }
-
-        es.onerror = (err) => {
-          logger.error('[REALTIME] SSE error:', err)
-          if (esRef.current) {
-            esRef.current.close()
-            esRef.current = null
-          }
-          connectionError = 'Sync stream interrupted. Reconnecting…'
-          emitStatus('error')
-          safePost({ type: 'status_change', status: 'error', error: connectionError })
-          window.dispatchEvent(new CustomEvent('show_toast', {
-            detail: { type: 'error', msg: 'Sync stream interrupted. Reconnecting…' }
-          }))
-          handleFailure(connectionError)
-          scheduleReconnect()
-        }
-      } catch (err) {
-        logger.error('[REALTIME] EventSource setup failed:', err)
-        if (esRef.current) {
-          esRef.current.close()
-          esRef.current = null
-        }
-        connectionError = err.message || 'Failed to initialize sync client.'
-        emitStatus('error')
-        safePost({ type: 'status_change', status: 'error', error: connectionError })
-        window.dispatchEvent(new CustomEvent('show_toast', {
-          detail: { type: 'error', msg: `Sync connection failed: ${connectionError}` }
-        }))
-        handleFailure(connectionError)
-        scheduleReconnect()
-      }
+        },
+      })
     }
 
     const checkLeadership = () => {
-      const currentLeader = localStorage.getItem('realtime_leader_tab')
-      const lastHeartbeat = parseInt(localStorage.getItem('realtime_leader_ts') || '0', 10)
+      const currentLeader = localStorage.getItem(leaderKey)
+      const lastHeartbeat = parseInt(localStorage.getItem(heartbeatKey) || '0', 10)
       const now = Date.now()
 
       if (!currentLeader || currentLeader === tabId || now - lastHeartbeat > 8000) {
         // Claim leadership
-        localStorage.setItem('realtime_leader_tab', tabId)
-        localStorage.setItem('realtime_leader_ts', now.toString())
+        localStorage.setItem(leaderKey, tabId)
+        localStorage.setItem(heartbeatKey, now.toString())
         
         if (!isCurrentLeader) {
           logger.info(`[REALTIME] Tab ${tabId} elected as leader.`)
@@ -323,10 +207,10 @@ export function useRealtimeLeader(token, settings, user) {
     }
 
     const releaseLeadership = () => {
-      const currentLeader = localStorage.getItem('realtime_leader_tab')
+      const currentLeader = localStorage.getItem(leaderKey)
       if (currentLeader === tabId) {
-        localStorage.removeItem('realtime_leader_tab')
-        localStorage.removeItem('realtime_leader_ts')
+        localStorage.removeItem(leaderKey)
+        localStorage.removeItem(heartbeatKey)
         safePost({ type: 'leader_left', tabId })
       }
       if (reconnectTimeoutRef.current) {
@@ -362,13 +246,9 @@ export function useRealtimeLeader(token, settings, user) {
           // Pass isOnline from broadcast so follower shows correct Online/Offline state.
           const broadcastIsOnline = typeof msg.isOnline === 'boolean' ? msg.isOnline : null
           emitStatus(msg.status, msg.error, broadcastIsOnline)
-          if (msg.status === 'connected') {
+          if (msg.status === 'connected' && msg.restored) {
             window.dispatchEvent(new CustomEvent('show_toast', {
-              detail: { type: 'success', msg: 'Cloud real-time sync connected.' }
-            }))
-          } else if (msg.status === 'connecting') {
-            window.dispatchEvent(new CustomEvent('show_toast', {
-              detail: { type: 'info', msg: `Connecting to cloud sync stream (${hostingMode} mode)…` }
+              detail: { type: 'success', msg: 'Live sync restored' }
             }))
           } else if (msg.status === 'offline') {
             window.dispatchEvent(new CustomEvent('show_toast', {
@@ -400,7 +280,7 @@ export function useRealtimeLeader(token, settings, user) {
     // Heartbeat and election checking loop
     const heartbeatInterval = setInterval(() => {
       if (isCurrentLeader) {
-        localStorage.setItem('realtime_leader_ts', Date.now().toString())
+        localStorage.setItem(heartbeatKey, Date.now().toString())
       } else {
         checkLeadership()
       }
@@ -489,5 +369,5 @@ export function useRealtimeLeader(token, settings, user) {
       window.removeEventListener('sync-status-request', handleStatusRequest)
       window.removeEventListener('beforeunload', releaseLeadership)
     }
-  }, [user?.id, token, hostingMode, isRealtimeGlobalEnabled])
+  }, [user?.id, user?.user_id, user?.public_id, token, hostingMode, isRealtimeGlobalEnabled])
 }

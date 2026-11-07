@@ -112,6 +112,9 @@ class _Listener:
         self.last_event_at: Optional[float] = None
         self.last_pull_at: float = 0.0
         self.last_error: Optional[str] = None
+        self.last_event_id: Optional[str] = None
+        self._stream_had_line = False
+        self._rotated = False
         self.pull_count = 0
         self.echo_suppressed = 0
         # Set when the cloud says this business may not hold the stream at all
@@ -149,9 +152,13 @@ class _Listener:
                 continue
 
             try:
+                self._stream_had_line = False
+                self._rotated = False
                 self._stream(CLOUD_URL, token)
                 backoff = _RECONNECT_BASE_SEC   # clean disconnect — reset backoff
             except Exception as e:
+                if self._stream_had_line:
+                    backoff = _RECONNECT_BASE_SEC
                 self.last_error = f"{type(e).__name__}: {e}"
                 logger.debug(
                     "[INSTANT_PULL] biz=%s stream ended: %s", self.business_id, self.last_error
@@ -170,18 +177,23 @@ class _Listener:
                 )
                 return
 
-            if self.stop_event.wait(backoff):
+            if self.stop_event.wait(1.0 if self._rotated else backoff):
                 break
             backoff = min(backoff * 2, _RECONNECT_MAX_SEC)
 
     def _stream(self, cloud_url: str, token: str):
+        self._stream_had_line = False
+        self._rotated = False
         headers = {
             "Authorization": f"Bearer {token}",
             "Accept": "text/event-stream",
             "Cache-Control": "no-cache",
         }
-        # read timeout None: an SSE stream is idle by nature between events.
-        timeout = httpx.Timeout(connect=10.0, read=None, write=10.0, pool=10.0)
+        if self.last_event_id:
+            headers["Last-Event-ID"] = self.last_event_id
+        # A healthy stream sends a keep-alive every 15 s. Three missed beats
+        # indicate a dead connection even when the TCP socket remains open.
+        timeout = httpx.Timeout(connect=10.0, read=45.0, write=10.0, pool=10.0)
 
         with httpx.stream(
             "GET", f"{cloud_url}/realtime/events", headers=headers, timeout=timeout
@@ -204,9 +216,24 @@ class _Listener:
             self.last_error = None
             logger.info("[INSTANT_PULL] biz=%s connected to cloud event stream", self.business_id)
 
+            event_name = None
             for raw in resp.iter_lines():
                 if self.stop_event.is_set():
                     return
+                if raw and not self._stream_had_line:
+                    self._stream_had_line = True
+                if not raw:
+                    event_name = None
+                    continue
+                if raw.startswith("event:"):
+                    event_name = raw[6:].strip()
+                    if event_name == "rotate":
+                        self._rotated = True
+                        return
+                    continue
+                if raw.startswith("id:"):
+                    self.last_event_id = raw[3:].strip()
+                    continue
                 if not raw or not raw.startswith("data:"):
                     continue
                 payload = raw[5:].strip()
@@ -218,7 +245,14 @@ class _Listener:
                     continue
 
                 self.last_event_at = time.time()
-                if event.get("type") in _PULL_EVENTS:
+                if event_name == "hello":
+                    if event.get("replay") in ("gap", "none"):
+                        self.last_event_id = event.get("cursor")
+                    if event.get("replay") == "gap":
+                        self._maybe_pull({"type":"sync.pull_ping", "catch_up":True})
+                elif event.get("type") == "resync_required":
+                    self._maybe_pull({"type":"sync.pull_ping"})
+                elif event.get("type") in _PULL_EVENTS:
                     self._maybe_pull(event)
 
     def _maybe_pull(self, event: Dict[str, Any]):
@@ -227,7 +261,7 @@ class _Listener:
         # Our own push, reflected back at us. Acting on it starts the loop
         # documented at _ECHO_WINDOW_SEC.
         last_push = _last_local_push.get(self.business_id)
-        if last_push is not None and (time.monotonic() - last_push) < _ECHO_WINDOW_SEC:
+        if not event.get("catch_up") and last_push is not None and (time.monotonic() - last_push) < _ECHO_WINDOW_SEC:
             self.echo_suppressed += 1
             logger.debug(
                 "[INSTANT_PULL] biz=%s ignoring %s — echo of this device's own push "

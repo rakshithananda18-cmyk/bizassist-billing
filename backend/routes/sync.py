@@ -43,6 +43,16 @@ from database.models import (
 router = APIRouter()
 logger = logging.getLogger("bizassist.routes.sync")
 
+
+@router.get("/api/sync/status")
+def sync_status(current_user: dict = Depends(require_business_owner)):
+    from core.cloud_endpoint import CLOUD_URL, CLOUD_URL_SOURCE
+    from services.sync_worker import get_cloud_state
+    state = get_cloud_state(current_user.get("business_id") or current_user["user_id"]) or {}
+    return {"cloud_url":CLOUD_URL, "cloud_url_source":CLOUD_URL_SOURCE,
+            "cloud_state":state.get("state"), "last_probe_at":state.get("last_probe_at"),
+            "retry_after":state.get("retry_after")}
+
 # (R-7) Single shared source — see database/sync_map.py
 from database.sync_map import (
     MODEL_MAP as _MODEL_MAP,

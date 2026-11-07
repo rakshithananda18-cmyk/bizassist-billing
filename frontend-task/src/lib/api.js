@@ -1,7 +1,20 @@
 // lib/api.js — the one place the app talks to the backend (same contract as
 // billing's src/api/client.js: Bearer token, JSON in/out, ApiError with detail).
-const BASE = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '')
+const hostname = typeof window === 'undefined' ? '' : window.location?.hostname || ''
+const localHost = !hostname || ['localhost', '[::1]', '::1'].includes(hostname) || hostname.endsWith('.local') || /^(127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(hostname)
+const BASE = (import.meta.env.VITE_API_URL || (localHost ? '' : 'https://bizassist-task-qyfsbxu27a-el.a.run.app')).replace(/\/$/, '')
 const TOKEN_KEY = 'task_token'
+const PAGE_STARTED = Date.now()
+const wait = ms => new Promise(resolve => setTimeout(resolve, ms))
+
+function exchangeWindow(ticket) {
+  try {
+    const [exp, payload] = ticket.split('.')
+    const claims = JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/')))
+    if (Number.isInteger(claims.iat) && Number(exp) > claims.iat) return Math.min(130, Number(exp) - claims.iat + 10) * 1000
+  } catch { /* legacy ticket */ }
+  return 30000
+}
 
 export const tokenStore = {
   get: () => { try { return localStorage.getItem(TOKEN_KEY) } catch { return null } },
@@ -39,18 +52,40 @@ export async function request(method, path, { body, query } = {}) {
     if ([...qs].length) url += `?${qs}`
   }
   const token = tokenStore.get()
+  const exchange = method === 'POST' && path === '/api/auth/exchange' && body?.ticket
+  const canRetry = Boolean(exchange || method === 'GET')
+  const deadline = exchange ? PAGE_STARTED + exchangeWindow(body.ticket) : Date.now() + 60000
   let res
-  try {
-    res = await fetch(url, {
+  let attempt = 0
+  for (;;) {
+    if (token !== tokenStore.get()) throw new ApiError('Business session changed. Please try again.', 409)
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), Math.min(exchange ? 70000 : 60000, Math.max(1, deadline - Date.now())))
+    try {
+      res = await fetch(url, {
       method,
       headers: {
         ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
       body: body !== undefined ? JSON.stringify(body) : undefined,
-    })
-  } catch {
-    throw new ApiError('No connection — check mobile data / Wi-Fi.', 0)
+      signal: controller.signal,
+      })
+    } catch {
+      clearTimeout(timer)
+      const delay = [2000, 4000, 8000][attempt++]
+      if (canRetry && (typeof navigator === 'undefined' || navigator.onLine !== false) && delay && Date.now() + delay < deadline) { await wait(delay); continue }
+      throw new ApiError(typeof navigator !== 'undefined' && navigator.onLine === false
+        ? 'No connection — check mobile data / Wi-Fi.'
+        : 'Could not reach the Field Team server. It may be starting up.', 0)
+    } finally { clearTimeout(timer) }
+    const retryable = canRetry && [429, 500, 502, 503, 504].includes(res.status)
+    const fallback = [2000, 4000, 8000][attempt++]
+    const retryAfter = res.headers?.get?.('Retry-After')
+    const retryMs = retryAfter && (Number.isFinite(Number(retryAfter)) ? Number(retryAfter) * 1000 : Date.parse(retryAfter) - Date.now())
+    const delay = Number.isFinite(retryMs) && retryAfter ? Math.max(0, retryMs) : fallback
+    if (retryable && fallback && Date.now() + delay < deadline) { await wait(delay); continue }
+    break
   }
   const text = await res.text()
   let data = null
@@ -60,8 +95,11 @@ export async function request(method, path, { body, query } = {}) {
   if (token !== tokenStore.get()) throw new ApiError('Business session changed. Please try again.', 409)
   if (!res.ok) {
     // 401: session gone. 402: the business is not on BizAssist Pro (any more).
-    if ((res.status === 401 || res.status === 402) && token) window.dispatchEvent(new CustomEvent('task:unauthorized', { detail: detailText(data?.detail) }))
-    throw new ApiError(detailText(data?.detail) || `Request failed (${res.status})`, res.status, data)
+    const sessionRejected = res.status === 401 && /Bearer\s+.*error\s*=\s*"invalid_token"/i.test(res.headers?.get?.('WWW-Authenticate') || '')
+    if ((sessionRejected || res.status === 402) && token) window.dispatchEvent(new CustomEvent('task:unauthorized', { detail: detailText(data?.detail) }))
+    const error = new ApiError(detailText(data?.detail) || ([429, 500, 502, 503, 504].includes(res.status) ? 'The Field Team server is starting or busy. Please try again.' : `Request failed (${res.status})`), res.status, data)
+    error.sessionRejected = sessionRejected
+    throw error
   }
   return data
 }

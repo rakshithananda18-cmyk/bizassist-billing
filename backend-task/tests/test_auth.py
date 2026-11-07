@@ -163,8 +163,8 @@ def test_billing_handoff_ticket_signs_the_owner_in_once(client, biz):
 
 
 @pytest.mark.parametrize("make", [
-    lambda c: _billing_ticket(c, ttl=-5),                              # expired
-    lambda c: _billing_ticket(c, ttl=3600),                            # not a 30 s hand-off
+    lambda c: _billing_ticket(c, ttl=-16),                             # expired beyond the 15 s clock leeway
+    lambda c: _billing_ticket(c, ttl=3600),                            # beyond the maximum 120 s lifetime
     lambda c: _billing_ticket(c, secret="another-billing-secret-0123456789abcdef"),
     lambda c: (lambda t: t.rsplit(".", 1)[0] + "." + "0" * 64)(_billing_ticket(c)),
     lambda c: "not-a-ticket",

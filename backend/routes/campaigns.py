@@ -181,11 +181,11 @@ def admin_set_offer_active(offer_id: int, body: OfferActiveRequest,
 # ── Admin: sync doctor ───────────────────────────────────────────────────────
 
 @router.get("/admin/sync-doctor")
-def admin_sync_doctor(current_user: dict = Depends(get_active_user), db: Session = Depends(get_admin_db)):
+def admin_sync_doctor(business_id: int = None, current_user: dict = Depends(get_active_user), db: Session = Depends(get_admin_db)):
     """Red/amber/green sync health per business, worst first."""
     try:
         svc.require_admin(current_user["id"], db)
-        return svc.sync_doctor(db)
+        return svc.sync_doctor(db, business_id=business_id)
     except HTTPException: raise
     except Exception as e:
         logger.error("admin/sync-doctor: %s", e, exc_info=True)

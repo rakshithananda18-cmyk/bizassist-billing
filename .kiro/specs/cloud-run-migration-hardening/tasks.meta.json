@@ -1,0 +1,927 @@
+{
+  "pbtResults": {
+    "1.5 Field Team API: hand-off, boot and origins (C3)": {
+      "status": "passed",
+      "failingExample": "Bug confirmed: all 9 exploration tests fail on the unfixed code, as expected.\ntest_ticket_refusal_reasons.py:\n- bad_signature (30 s ticket signed with another key, redeemed at 1 s): 401 \"Sign-in link expired — open Field Team from BizAssist Billing again\", no reason= log line.\n- expired (30 s ticket redeemed at 60 s): 401 with the same detail, no log.\n- already_used (second redemption at 2 s): 401 with the same detail, no log.\n- audience (aud=ai_dashboard ticket, redeemed at 1 s): 200, the owner is signed in because aud is never checked.\n- 90 s field_team ticket redeemed at 100 s (frozen clock): 401 \"Sign-in link expired — ...\", refused at now > exp with no leeway.\ntest_boot_skips_upgrade_at_head.py:\n- A fresh SQLite database at 0003_ft_task_payment, and the service database at head after start-up: run_migrations() still calls command.upgrade(cfg, \"head\").\ntest_default_origins.py:\n- ALLOWED_ORIGINS unset: ALLOWED_ORIGINS is the 4 localhost origins, and the preflight from https://bizassist-task.vercel.app gets 400.\n- ALLOWED_ORIGINS=https://team.staterbill.com: the listed origin gets 200, and https://bizassist-task.vercel.app gets 400 because the list replaces the defaults.",
+      "lastRunTimestamp": 1794073265087
+    }
+  },
+  "executionHistory": {
+    "1.1 Billing API: cloud endpoint, tickets, sessions and plan gates (C1, C4, C5)": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071496963
+      },
+      {
+        "executionId": "b30772f4-5a10-41b5-8eea-06d8297f0b13",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071556841
+      }
+    ],
+    "1.2 Billing API: real-time streams and admin routes (C6, C12 P0 part)": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071499924
+      }
+    ],
+    "1.3 Billing API: boot, change feed, sync worker and B2B proxy (C2, C7; fixed in part 2)": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071500206
+      }
+    ],
+    "1.4 Billing API: scheduled jobs, discovery and durable admin state (C8, rest of C12; fixed in part 2)": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071500467
+      }
+    ],
+    "1.5 Field Team API: hand-off, boot and origins (C3)": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071500748
+      },
+      {
+        "executionId": "b30772f4-5a10-41b5-8eea-06d8297f0b13",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071557473
+      }
+    ],
+    "1.6 Billing web app: launch, session, gates, login and live sync (C9, C6 client; run by the user)": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071501093
+      },
+      {
+        "executionId": "b30772f4-5a10-41b5-8eea-06d8297f0b13",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071558688
+      }
+    ],
+    "1.7 Field Team, AI dashboard and admin console web apps (C10, C11; run by the user)": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071501756
+      },
+      {
+        "executionId": "b30772f4-5a10-41b5-8eea-06d8297f0b13",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071559614
+      }
+    ],
+    "2.1 Billing API: sessions, tickets, CORS, admin, streams and secrets": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071501984
+      }
+    ],
+    "2.2 Billing API: local start-up, replication and warm-cloud B2B": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071502191
+      }
+    ],
+    "2.3 Field Team API: hand-off and access rules": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071502426
+      }
+    ],
+    "2.4 Web apps: trust, routing, free plans and launch guards (run by the user)": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071502695
+      }
+    ],
+    "3.1 Add the cloud endpoint resolver": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071502944
+      }
+    ],
+    "3.2 Route every backend cloud caller through the resolver": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071503200
+      }
+    ],
+    "3.3 Add `GET /api/sync/status`": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071503406
+      }
+    ],
+    "3.4 Pass the endpoint to the desktop backend": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071503933
+      }
+    ],
+    "3.5 Add the Hugging Face forwarder": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071504157
+      }
+    ],
+    "3.6 Verify the C1 exploration tests now pass": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071504373
+      }
+    ],
+    "3.7 Verify the preservation tests still pass": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071504583
+      }
+    ],
+    "4.1 Add the `spent_tickets` and `revoked_sessions` tables (do this first)": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071504902
+      }
+    ],
+    "4.2 Add the session-rejection marker and CORS headers": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071505119
+      }
+    ],
+    "4.3 Build every session's claims in one helper": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071505337
+      }
+    ],
+    "4.4 Mint tickets with a purpose, an audience and `iat`": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071505573
+      }
+    ],
+    "4.5 Verify tickets by audience, once, with the token-version check on `/redeem-ticket`": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071505818
+      }
+    ],
+    "4.6 Add `POST /auth/logout` and revoke dashboard sessions": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071506030
+      }
+    ],
+    "4.7 Verify the C4 exploration tests now pass": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071506230
+      }
+    ],
+    "4.8 Verify the preservation tests still pass": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071506450
+      }
+    ],
+    "5.1 Skip the upgrade when the schema is at head": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071506669
+      }
+    ],
+    "5.2 Allow the production origin by default": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071506965
+      }
+    ],
+    "5.3 Give each ticket refusal its own reason": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071507226
+      }
+    ],
+    "5.4 Harden the Field Team deploy script": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071507490
+      }
+    ],
+    "5.5 Verify the C3 exploration tests now pass": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071507739
+      }
+    ],
+    "5.6 Verify the preservation tests still pass": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071507966
+      }
+    ],
+    "6.1 Return per-feature gates from the subscription view": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071508207
+      }
+    ],
+    "6.2 Verify the C5 exploration test now passes": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071508478
+      }
+    ],
+    "6.3 Verify the preservation tests still pass": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071508765
+      }
+    ],
+    "7.1 Declare and guard `psutil`": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071509035
+      }
+    ],
+    "7.2 Count rows without reading tenant tables": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071509286
+      }
+    ],
+    "7.3 Probe only configured hosts and cache the response": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071509538
+      }
+    ],
+    "7.4 Return JSON 500s from the rate-limits and usage-stats routes": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071509758
+      }
+    ],
+    "7.5 Add `GET /admin/session` for the console's SSO check (needed by task 10.3)": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071509996
+      }
+    ],
+    "7.6 Verify the C12 P0 exploration tests now pass": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071510221
+      }
+    ],
+    "7.7 Verify the preservation tests still pass": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071510454
+      }
+    ],
+    "8.1 Launch Field Team reliably": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071510679
+      }
+    ],
+    "8.2 Open the AI dashboard inside the click and end its session on sign-out": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071510894
+      }
+    ],
+    "8.3 Sign out only on a session rejection; add sliding refresh and the settings retry": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071511091
+      }
+    ],
+    "8.4 Gate on a known plan and key the preview timer per BizID and user": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071511348
+      }
+    ],
+    "8.5 Remove the account lookups before sign-in (web app and API)": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071511578
+      }
+    ],
+    "8.6 Wait out cold starts on sign-in and show readable errors": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071511796
+      }
+    ],
+    "8.7 Fix the login layout": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071512032
+      }
+    ],
+    "8.8 Verify the C9 exploration tests now pass": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071512324
+      }
+    ],
+    "8.9 Verify the preservation tests still pass": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071512840
+      }
+    ],
+    "9.1 Trust the Billing origins and fall back to staterbill.com": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071513054
+      }
+    ],
+    "9.2 Ask for the named business when a launch has no ticket": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071513249
+      }
+    ],
+    "9.3 Explain connection failures and retry the ticket exchange": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071513479
+      }
+    ],
+    "9.4 Verify the C10 exploration tests now pass": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071513704
+      }
+    ],
+    "9.5 Verify the preservation tests still pass": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071513932
+      }
+    ],
+    "10.1 Trust the Billing origins in both hand-off helpers": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071514144
+      }
+    ],
+    "10.2 Handle AI dashboard sign-in failures and session rejections": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071514369
+      }
+    ],
+    "10.3 Confirm the admin role with the server and clear everything on logout": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071514579
+      }
+    ],
+    "10.4 Keep the admin session alive and return to the same page": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071514799
+      }
+    ],
+    "10.5 Fix the Infrastructure page and the admin lint error": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071515069
+      }
+    ],
+    "10.6 Verify the C11 exploration tests now pass": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071515285
+      }
+    ],
+    "10.7 Verify the preservation tests still pass": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071515502
+      }
+    ],
+    "11.1 Keep a per-business event history in `RealtimeManager`": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071515733
+      }
+    ],
+    "11.2 Rotate streams with ids, `hello` and replay": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071515960
+      }
+    ],
+    "11.3 Reconnect quietly in the Billing web app": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071516178
+      }
+    ],
+    "11.4 Detect dead streams in the desktop cloud listener": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071516415
+      }
+    ],
+    "11.5 Verify the C6 exploration tests now pass": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071516621
+      }
+    ],
+    "11.6 Verify the preservation tests still pass": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071516841
+      }
+    ],
+    "12. Checkpoint - P0 fixes: ensure all tests pass": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071517054
+      }
+    ],
+    "13.1 Remove the C2 xfail markers": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071517259
+      }
+    ],
+    "13.2 Add the `schema_state` table, its Alembic revision and grants": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071517486
+      }
+    ],
+    "13.3 Add the schema-signature fast path (Postgres only)": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071517712
+      }
+    ],
+    "13.4 Serialise the slow path under one advisory lock": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071517961
+      }
+    ],
+    "13.5 Seed the change feed with set-based statements": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071518468
+      }
+    ],
+    "13.6 Leave unchanged change-feed functions and triggers alone": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071518675
+      }
+    ],
+    "13.7 Add the change-feed logger and classify errors by SQLSTATE": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071518905
+      }
+    ],
+    "13.8 Bound change-feed lock waits and retry lock conflicts": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071519135
+      }
+    ],
+    "13.9 Load the embedding model lazily on Cloud Run": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071519377
+      }
+    ],
+    "13.10 Verify the C2 exploration tests now pass": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071519600
+      }
+    ],
+    "13.11 Verify the preservation tests still pass": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071519820
+      }
+    ],
+    "14.1 Remove the C7 xfail markers": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071520086
+      }
+    ],
+    "14.2 Track the cloud state per business": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071520322
+      }
+    ],
+    "14.3 Honour `Retry-After` with jitter": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071520557
+      }
+    ],
+    "14.4 Refresh the cloud token 12 h early and retry with backoff": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071520804
+      }
+    ],
+    "14.5 Fit pushes inside the request limit and key each chunk": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071521062
+      }
+    ],
+    "14.6 Run the parity sweep over protocol-2 pages": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071521295
+      }
+    ],
+    "14.7 Make the B2B proxy degrade on a cold cloud": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071521551
+      }
+    ],
+    "14.8 Give the renderer's B2B writes a 75 s timeout": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071521780
+      }
+    ],
+    "14.9 Fill the cloud-state fields of `GET /api/sync/status`": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071522005
+      }
+    ],
+    "14.10 Show the cloud state in the Billing sync popover": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071522280
+      }
+    ],
+    "14.11 Verify the C7 exploration tests now pass": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071522486
+      }
+    ],
+    "14.12 Verify the preservation tests still pass": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071522687
+      }
+    ],
+    "15. Checkpoint - P1 fixes: ensure all tests pass": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071522891
+      }
+    ],
+    "16.1 Remove the C8 xfail markers": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071523105
+      }
+    ],
+    "16.2 Add the `scheduled_job_runs` and `discovery_registrations` tables (before the code that uses them)": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071523340
+      }
+    ],
+    "16.3 Add `POST /internal/cron/{job}` and the job runner": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071523577
+      }
+    ],
+    "16.4 Leave the scheduled jobs to Cloud Scheduler on Cloud Run": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071523848
+      }
+    ],
+    "16.5 Run the existing jobs through the runner": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071524007
+      }
+    ],
+    "16.6 Persist LAN discovery registrations": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071524228
+      }
+    ],
+    "16.7 Verify the C8 exploration tests now pass": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071524442
+      }
+    ],
+    "16.8 Verify the preservation tests still pass": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071524644
+      }
+    ],
+    "17.1 Remove the C12 xfail markers": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071524875
+      }
+    ],
+    "17.2 Add the `platform_settings` and `client_log_archives` tables (before the code that uses them)": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071525099
+      }
+    ],
+    "17.3 Group the fleet queries": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071525372
+      }
+    ],
+    "17.4 Add single-business admin routes and page the business details": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071525629
+      }
+    ],
+    "17.5 Load one business on the admin detail page": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071525879
+      }
+    ],
+    "17.6 Store the router mode in `platform_settings`": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071526142
+      }
+    ],
+    "17.7 Keep client log archives in `client_log_archives`": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071526371
+      }
+    ],
+    "17.8 Point the server log to Cloud Logging and name the instance": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071526607
+      }
+    ],
+    "17.9 Write the admin audit to `action_logs`": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071526839
+      }
+    ],
+    "17.10 Verify the C12 exploration tests now pass": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071527065
+      }
+    ],
+    "17.11 Verify the preservation tests still pass": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071527281
+      }
+    ],
+    "18.1 Add the billing deploy-script check (before the script changes)": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071527504
+      }
+    ],
+    "18.2 Apply the C13.1 settings to `backend/deploy_cloudrun.sh`": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071527802
+      }
+    ],
+    "18.3 Apply the same settings to `backend/deploy_cloudrun.ps1`": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071528020
+      }
+    ],
+    "18.4 Add `ALLOWED_ORIGINS` to the billing CORS defaults instead of replacing them": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071528221
+      }
+    ],
+    "18.5 Keep unmanaged secrets in `backend-task/deploy_cloudrun.ps1`": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071528435
+      }
+    ],
+    "18.6 Point the release check at the current production hosts": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071528669
+      }
+    ],
+    "18.7 Emit build-info.json from each frontend build": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071528968
+      }
+    ],
+    "18.8 Point the landing page's legal links at staterbill.com": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071529204
+      }
+    ],
+    "18.9 Describe Cloud Run and staterbill.com in the setup documents": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071529434
+      }
+    ],
+    "18.10 Write the Cloud Run migration runbook": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071529659
+      }
+    ],
+    "18.11 Remove the last xfail markers from `test_no_retired_host_defaults.py`": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071529861
+      }
+    ],
+    "18.12 Verify the C13 exploration tests now pass": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071530264
+      }
+    ],
+    "18.13 Verify the preservation tests still pass": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071530598
+      }
+    ],
+    "19. Final fix verification": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071531139
+      }
+    ],
+    "20. Final checkpoint - ensure all tests pass": [
+      {
+        "executionId": "77aae6e2-da45-460b-a1c9-b358232b9390",
+        "chatSessionId": "sess_70b49782-b1d8-4673-9ebd-406e2659def0",
+        "timestamp": 1794071531521
+      }
+    ]
+  }
+}

@@ -1,0 +1,10 @@
+[
+  {"job":"daily_summary","schedule":"0 8 * * *"},
+  {"job":"overdue_alerts","schedule":"0 9 * * *"},
+  {"job":"low_stock_alerts","schedule":"5 9 * * *"},
+  {"job":"expiry_alerts","schedule":"10 9 * * *"},
+  {"job":"books_integrity_audit","schedule":"30 3 * * *"},
+  {"job":"telemetry_retention","schedule":"30 2 * * *"},
+  {"job":"memory_distillation","schedule":"0 23 * * 0"},
+  {"job":"telemetry_db_maintenance","schedule":"0 3 * * 0"}
+]

@@ -37,6 +37,8 @@ export default function AdminBusinesses() {
   // Inspector details states
   const [inspectDetails, setInspectDetails] = useState(null)
   const [inspectLoading, setInspectLoading] = useState(false)
+  const [inspectMoreLoading, setInspectMoreLoading] = useState(null)
+  const inspectRequest = useRef(0)
 
   // Subscription modal states (Phase B.5)
   const [showPlanModal, setShowPlanModal] = useState(false)
@@ -297,20 +299,43 @@ export default function AdminBusinesses() {
 
   // --- INSPECTOR ---
   async function openInspectModal(b) {
+    const request = ++inspectRequest.current
     setInspectDetails(null)
     setInspectLoading(true)
+    setInspectMoreLoading(null)
     setShowInspectModal(true)
     try {
-      const res = await authFetch(`${API_BASE}/admin/business-details/${b.id}`)
+      const res = await authFetch(`${API_BASE}/admin/business-details/${b.id}?limit=50&offset=0`)
       if (!res.ok) throw new Error('Could not inspect business explorer data')
       const data = await res.json()
+      if (request !== inspectRequest.current) return
       setInspectDetails(data)
     } catch (err) {
+      if (request !== inspectRequest.current) return
       await showError(err)
       setShowInspectModal(false)
     } finally {
-      setInspectLoading(false)
+      if (request === inspectRequest.current) setInspectLoading(false)
     }
+  }
+
+  async function loadMoreDetails(section) {
+    if (!inspectDetails || inspectMoreLoading) return
+    const request = inspectRequest.current
+    const businessId = inspectDetails.id
+    const offset = inspectDetails[section]?.length || 0
+    setInspectMoreLoading(section)
+    try {
+      const response = await authFetch(`${API_BASE}/admin/business-details/${businessId}?section=${encodeURIComponent(section)}&limit=50&offset=${offset}`)
+      if (!response.ok) throw new Error('Could not load more business records')
+      const page = await response.json()
+      if (request !== inspectRequest.current) return
+      setInspectDetails(previous => !previous || previous.id !== businessId ? previous : ({
+        ...previous, [section]: [...(previous[section] || []), ...(page[section] || [])],
+        pagination: { ...previous.pagination, sections: { ...previous.pagination?.sections, [section]: page.has_more } },
+      }))
+    } catch (error) { if (request === inspectRequest.current) await showError(error) }
+    finally { if (request === inspectRequest.current) setInspectMoreLoading(null) }
   }
 
   const filteredBusinesses = businesses.filter(b => {
@@ -805,6 +830,13 @@ export default function AdminBusinesses() {
               <div className="vskel" style={{ marginTop: 24 }}></div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 16, marginTop: 24 }}>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  {Object.entries(inspectDetails.pagination?.sections || {}).filter(([, more]) => more).map(([section]) => (
+                    <button type="button" key={section} onClick={() => loadMoreDetails(section)} disabled={Boolean(inspectMoreLoading)}>
+                      {inspectMoreLoading === section ? 'Loading…' : `Load more ${section.replace('_', ' ')}`}
+                    </button>
+                  ))}
+                </div>
                 {/* Uploaded datasets */}
                 <details className="tree-node">
                   <summary className="tree-summary" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Icon name="package" size={14} /> Uploaded Datasets ({inspectDetails.uploads.length})</summary>
@@ -857,7 +889,7 @@ export default function AdminBusinesses() {
                           </tr>
                         </thead>
                         <tbody>
-                          {inspectDetails.invoices.slice(0, 50).map((inv, i) => (
+                          {inspectDetails.invoices.map((inv, i) => (
                             <tr key={i}>
                               <td style={{ fontFamily: 'monospace' }}>{inv.invoice_id || 'N/A'}</td>
                               <td style={{ fontWeight: 500 }}>{inv.customer}</td>
@@ -877,7 +909,7 @@ export default function AdminBusinesses() {
                           {inspectDetails.invoices.length > 50 && (
                             <tr>
                               <td colSpan="6" style={{ textAlign: 'center', color: 'var(--secondary-text)', padding: 8 }}>
-                                Showing first 50 of {inspectDetails.invoices.length} invoices.
+                                Loaded {inspectDetails.invoices.length} invoices.
                               </td>
                             </tr>
                           )}
@@ -904,7 +936,7 @@ export default function AdminBusinesses() {
                           </tr>
                         </thead>
                         <tbody>
-                          {inspectDetails.inventory.slice(0, 50).map((item, i) => (
+                          {inspectDetails.inventory.map((item, i) => (
                             <tr key={i}>
                               <td style={{ fontWeight: 600, color: 'var(--accent-color)' }}>{item.product_name}</td>
                               <td>{item.stock} items</td>
@@ -915,7 +947,7 @@ export default function AdminBusinesses() {
                           {inspectDetails.inventory.length > 50 && (
                             <tr>
                               <td colSpan="4" style={{ textAlign: 'center', color: 'var(--secondary-text)', padding: 8 }}>
-                                Showing first 50 of {inspectDetails.inventory.length} products.
+                                Loaded {inspectDetails.inventory.length} products.
                               </td>
                             </tr>
                           )}
@@ -942,7 +974,7 @@ export default function AdminBusinesses() {
                           </tr>
                         </thead>
                         <tbody>
-                          {inspectDetails.payments.slice(0, 50).map((p, i) => (
+                          {inspectDetails.payments.map((p, i) => (
                             <tr key={i}>
                               <td style={{ fontWeight: 500 }}>{p.customer}</td>
                               <td style={{ fontWeight: 600 }}>₹{p.amount.toLocaleString('en-IN')}</td>
@@ -960,7 +992,7 @@ export default function AdminBusinesses() {
                           {inspectDetails.payments.length > 50 && (
                             <tr>
                               <td colSpan="4" style={{ textAlign: 'center', color: 'var(--secondary-text)', padding: 8 }}>
-                                Showing first 50 of {inspectDetails.payments.length} payments.
+                                Loaded {inspectDetails.payments.length} payments.
                               </td>
                             </tr>
                           )}

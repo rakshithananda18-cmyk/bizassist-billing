@@ -20,6 +20,7 @@ Usage:
 import atexit
 import logging
 import threading
+import os
 from concurrent.futures import ThreadPoolExecutor as PyThreadPoolExecutor
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.executors.pool import ThreadPoolExecutor as APSThreadPoolExecutor
@@ -82,6 +83,10 @@ class SafeAPSchedulerExecutor(APSThreadPoolExecutor):
 
 def start_scheduler():
     global _scheduler
+
+    if os.getenv("K_SERVICE", "").strip():
+        logger.info("[SCHED] Cloud Scheduler owns cloud jobs through POST /internal/cron/{job}")
+        return
 
     if _SHUTTING_DOWN.is_set():
         # A late startup during teardown would resurrect the exact loop the

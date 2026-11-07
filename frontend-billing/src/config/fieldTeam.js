@@ -6,12 +6,11 @@
  * database and owner accounts with this app.
  *
  * The link points to VITE_FIELD_TEAM_URL (the Field Team Vercel URL). The
- * desktop app is built without it, so there it falls back to the production
- * Field Team (FIELD_TEAM_CLOUD_URL); other builds without it hide the link.
+ * production Field Team (FIELD_TEAM_CLOUD_URL) is the default for every build.
  * Field Team is cloud-only: there is no bundled desktop copy. An explicit
  * development test override can open a local fixture; normal use stays cloud.
  *
- * Sign-in is handed over the same way the AI dashboard does it: a 30-second,
+ * Sign-in is handed over the same way the AI dashboard does it: a short-lived,
  * single-use ticket from POST /handoff-ticket, opened as `?sso=<ticket>`.
  * Field Team verifies it with the shared JWT_SECRET, so a sleeping billing
  * Space never blocks it. A cloud Field Team only knows the CLOUD's secret, so
@@ -32,7 +31,7 @@ const billingBackendIsCloud = () => {
 }
 
 export function getFieldTeamUrl() {
-  let url = import.meta.env.VITE_FIELD_TEAM_URL || (IS_LOCAL_APP ? FIELD_TEAM_CLOUD_URL : '')
+  let url = import.meta.env.VITE_FIELD_TEAM_URL || FIELD_TEAM_CLOUD_URL
   // Local development databases are separate fixtures, not the operational
   // Field Team. A stale dev URL must not silently select local billing data.
   try {
@@ -65,15 +64,28 @@ export function fieldTeamNeedsCloudData({ isLocalApp, effectiveMode, url = getFi
 async function cloudTicket() {
   // Minted by the cloud at sign-in on this device (AuthContext
   // _provisionCloudSyncToken). Without it the owner signs in on Field Team.
-  const token = localStorage.getItem('bizassist_cloud_token') || localStorage.getItem('billing_token')
+  const token = localStorage.getItem('bizassist_cloud_token')
   if (!token) return null
   const res = await fetch(`${CLOUD_URL}/handoff-ticket`, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${token}` },
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ purpose: 'field_team' }),
+    signal: AbortSignal.timeout(65000),
   })
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
   return (await res.json())?.ticket || null
 }
+
+export function fieldTeamLaunchUrl(user) {
+  const url = getFieldTeamUrl()
+  if (!url) return null
+  const target = new URL(`${url}/`)
+  target.searchParams.set('from_billing', '1')
+  target.searchParams.set('billing_origin', window.location.origin)
+  if (user?.public_id) target.searchParams.set('billing_business', user.public_id)
+  return target.href
+}
+const toast = msg => window.dispatchEvent(new CustomEvent('show_toast', { detail: { type: 'warning', msg } }))
 
 /** Open Field Team signed in as the current owner. */
 export async function openFieldTeam({ user } = {}) {
@@ -86,7 +98,8 @@ export async function openFieldTeam({ user } = {}) {
   // has lost the click, and mobile Safari (owners on phones) blocks it as a
   // pop-up. If the named tab is already open this reuses it.
   const win = window.open('', WINDOW_NAME)
-  if (!win) return
+  if (!win) { toast('Your browser blocked the Field Team window. Allow pop-ups for this site, or open the link in a new tab.'); return }
+  try { if (!win.location.href || win.location.href === 'about:blank') win.document?.write('<p>Opening Field Team…</p>') } catch { /* reused cross-origin window */ }
 
   const target = new URL(`${url}/`)
   const launchId = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${version}`
@@ -135,7 +148,7 @@ export async function openFieldTeam({ user } = {}) {
     if (IS_LOCAL_APP && fieldTeamIsCloud(url) && !billingBackendIsCloud()) {
       ticket = await cloudTicket()
     } else {
-      const res = await api.post('/handoff-ticket')
+      const res = await api.post('/handoff-ticket', { purpose: 'field_team' }, { signal: AbortSignal.timeout(65000) })
       if (res && res.ticket) ticket = res.ticket
     }
   } catch (err) {
@@ -146,6 +159,6 @@ export async function openFieldTeam({ user } = {}) {
   // start-up code runs again and redeems the fresh ticket.
   if (version !== launchVersion) return
   if (ticket) target.searchParams.set('sso', ticket)
-  win.location.href = target.href
-  win.focus()
+  else toast("Couldn't hand over your sign-in. Sign in on Field Team with the same account.")
+  try { win.location.href = target.href; win.focus() } catch { toast('Open Field Team again to continue signing in.') }
 }

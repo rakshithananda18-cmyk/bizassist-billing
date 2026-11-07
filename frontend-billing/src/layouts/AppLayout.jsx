@@ -1,3 +1,4 @@
+import { planGate, previewTimerKey } from '../utils/planGates'
 import React from 'react'
 import { createPortal } from 'react-dom'
 import { NavLink, Link, useNavigate, useLocation } from 'react-router-dom'
@@ -9,7 +10,7 @@ import { logger } from '../utils/logger'
 import { formatIST } from '../utils/format'
 import { resolveHostingMode } from '../utils/resolveHostingMode'
 import { getAiDashboardUrl, openAiDashboard } from '../config/aiDashboard'
-import { fieldTeamNeedsCloudData, getFieldTeamUrl, openFieldTeam } from '../config/fieldTeam'
+import { fieldTeamNeedsCloudData, fieldTeamLaunchUrl, getFieldTeamUrl, openFieldTeam } from '../config/fieldTeam'
 import { applyNavOrder, navOrderKeys } from './navOrder'
 import { IS_DESKTOP_APP, openDownloadPage } from '../config/downloadApp'
 import { BuildingMark } from '../components/Logo'
@@ -38,13 +39,13 @@ import { BillsIcon, CashIcon, ChevronDownIcon, CloseIcon, ConnectionIcon, Contac
 
 // Separate apps opened from the sidebar — a NAV item's `external` names one.
 // Each runs on its own origin; its opener hands the owner's session over with
-// a 30-second /handoff-ticket. `proOnly` applies the plan gate below;
+// a short-lived /handoff-ticket. `gate` applies the server plan gate below;
 // `needsCloudData` stops a desktop on Local only opening a cloud app empty.
 const EXTERNAL_APPS = {
-  ai:        { getUrl: getAiDashboardUrl, open: openAiDashboard, proOnly: true },
+  ai:        { getUrl: getAiDashboardUrl, open: openAiDashboard, gate: 'ai' },
   // Pro, like the AI dashboard. Field Team's own server enforces it too
   // (backend-task/app/plan.py); this only shows the badge and the upgrade note.
-  fieldTeam: { getUrl: getFieldTeamUrl,   open: openFieldTeam,   proOnly: true, needsCloudData: fieldTeamNeedsCloudData },
+  fieldTeam: { getUrl: getFieldTeamUrl,   open: openFieldTeam,   gate: 'field_team', needsCloudData: fieldTeamNeedsCloudData },
 }
 
 const NAV = [
@@ -223,13 +224,14 @@ export default function AppLayout({ children, title }) {
   // response carries the business's real plan + whether enforcement is live.
   // Replaces the old hardcoded AI_DASHBOARD_GATED const.
   const subscription = settings?.subscription
-  const aiGated = !subscription?.plan || subscription?.plan !== 'pro'
+  const planKnown = typeof subscription?.plan === 'string'
+  const gate = name => planGate(subscription, name)
 
   const handleOpenExternal = async (external, navLabel) => {
     if (['cashier', 'supply_adder'].includes(user?.role)) return
     const app = EXTERNAL_APPS[external]
     if (!app?.getUrl()) return
-    if (app.proOnly && aiGated) {
+    if (gate(app.gate)) {
       confirm({
         mode: 'alert',
         title: 'Pro plan feature',
@@ -252,7 +254,7 @@ export default function AppLayout({ children, title }) {
     app.open({ user })
   }
 
-  const isFreePlan = !subscription?.plan || subscription?.plan !== 'pro'
+  const isFreePlan = planKnown && subscription.plan !== 'pro'
 
   // A lapsed signup trial on the WEB gets its own screen, shown at once (with a
   // way to look around first) and again in place of the 5-minute lock. Their
@@ -286,13 +288,13 @@ export default function AppLayout({ children, title }) {
 
     // Allow admins to bypass
     const isOwnerOrStaff = user?.role !== 'admin'
-    const isFree = !subscription?.plan || subscription?.plan !== 'pro'
+    const isFree = gate('web_preview') && !trialEnded
     
     if (isOwnerOrStaff && isFree) {
-      let sessionStart = sessionStorage.getItem('bizassist_session_start_time')
+      let sessionStart = sessionStorage.getItem(previewTimerKey(user))
       if (!sessionStart) {
         sessionStart = String(Date.now())
-        sessionStorage.setItem('bizassist_session_start_time', sessionStart)
+        sessionStorage.setItem(previewTimerKey(user), sessionStart)
       }
       
       const checkExpiry = () => {
@@ -308,7 +310,7 @@ export default function AppLayout({ children, title }) {
     } else {
       setSessionExpired(false)
     }
-  }, [user, subscription])
+  }, [user, subscription, trialEnded])
 
   const [queueDepth, setQueueDepth] = React.useState({
     pending_count: 0,
@@ -316,6 +318,20 @@ export default function AppLayout({ children, title }) {
     last_status: 'idle',
     last_error: null
   })
+  const [cloudStatus, setCloudStatus] = React.useState(null)
+  React.useEffect(() => {
+    if (!token || !IS_LOCAL_APP || ['cashier', 'supply_adder'].includes(user?.role)) return
+    let stopped = false
+    const load = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/sync/status`, { headers: { Authorization: `Bearer ${token}` } })
+        if (res.ok && !stopped) setCloudStatus(await res.json())
+      } catch { /* existing sync diagnostics remain available */ }
+    }
+    load()
+    const timer = setInterval(load, 30000)
+    return () => { stopped = true; clearInterval(timer) }
+  }, [token, user?.role])
   const accountUpdates = queueDepth.control_outbox
   const totalPendingSync = Number(queueDepth.pending_count || 0) + Number(accountUpdates?.pending || 0) + Number(accountUpdates?.failed || 0)
 
@@ -1758,6 +1774,12 @@ export default function AppLayout({ children, title }) {
                     </div>
                   )}
 
+                  {cloudStatus?.cloud_state && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }} title={cloudStatus.cloud_url || undefined}>
+                      <span>Cloud service</span>
+                      <span>{({ online: 'Online', waking: 'Starting…', busy: 'Busy — retrying…', offline: 'Unreachable' })[cloudStatus.cloud_state] || 'Unavailable'}</span>
+                    </div>
+                  )}
                   {/* ── Cloud pull row (hybrid only, Pro only) ───────────────── */}
                   {effectiveMode === 'hybrid' && (() => {
                     const isPro = subscription?.plan === 'pro'
@@ -2308,9 +2330,9 @@ export default function AppLayout({ children, title }) {
                       }
                       if (external) {
                         const app = EXTERNAL_APPS[external]
-                        const href = app?.getUrl()
+                        const href = external === 'fieldTeam' ? fieldTeamLaunchUrl(user) : app?.getUrl()
                         if (!href) return null
-                        const gated = app.proOnly && aiGated
+                        const gated = gate(app.gate)
                         return (
                           <a
                             key={navLabel}
@@ -2319,6 +2341,7 @@ export default function AppLayout({ children, title }) {
                             data-label={navLabel}
                             onContextMenu={handleCtxMenu}
                             onClick={async (e) => {
+                              if (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey || e.button !== 0) return
                               e.preventDefault()
                               setMobileMenuOpen(false)
                               await handleOpenExternal(external, navLabel)
@@ -2566,7 +2589,7 @@ export default function AppLayout({ children, title }) {
                     <DownloadIcon size={14} /> Download Desktop App
                   </button>
                 )}
-                <button className="profile-menu-item logout" onClick={() => { setShowProfileMenu(false); logout(); navigate('/login'); }}>
+                <button className="profile-menu-item logout" onClick={async () => { setShowProfileMenu(false); await logout(); navigate('/login'); }}>
                   <LogoutIcon size={14} /> Sign Out
                 </button>
                 <div className="profile-menu-theme">
@@ -2756,7 +2779,7 @@ export default function AppLayout({ children, title }) {
                     <DownloadIcon size={14} /> Download Desktop App
                   </button>
                 )}
-                <button className="profile-menu-item logout" onClick={() => { setShowProfileMenu(false); logout(); navigate('/login'); }}>
+                <button className="profile-menu-item logout" onClick={async () => { setShowProfileMenu(false); await logout(); navigate('/login'); }}>
                   <LogoutIcon size={14} /> Sign Out
                 </button>
                 <div className="profile-menu-theme">
@@ -2820,18 +2843,18 @@ export default function AppLayout({ children, title }) {
             try { sessionStorage.setItem('bizassist_trial_ended_dismissed', '1') } catch { /* ignore */ }
             setTrialNoticeDismissed(true)
           }}
-          onSignOut={() => {
+          onSignOut={async () => {
             sessionStorage.removeItem('bizassist_session_start_time')
             sessionStorage.removeItem('bizassist_trial_ended_dismissed')
-            logout()
+            await logout()
             navigate('/login')
           }}
         />
       ) : sessionExpired && !trialEnded && (
         <SessionExpiredModal
-          onSignOut={() => {
+          onSignOut={async () => {
             sessionStorage.removeItem('bizassist_session_start_time')
-            logout()
+            await logout()
             navigate('/login')
           }}
         />

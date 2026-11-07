@@ -40,6 +40,7 @@ from routes.sync_staff import router as sync_staff_router  # immediate staff syn
 from routes.sync_profile import router as sync_profile_router  # immediate profile sync to cloud
 from routes.campaigns import router as campaigns_router  # promotions/offers + sync doctor (Admin Console growth half)
 from routes.activity import router as activity_router  # owner activity feed (audit trail → human summaries)
+from routes.internal_cron import router as internal_cron_router
 from core.api import core_router          # billing ecosystem — wired from core/
 
 from database.db import engine, SessionLocal, DATABASE_URL
@@ -87,13 +88,20 @@ if _workers and str(_workers).strip().isdigit() and int(_workers) > 1:
     )
 
 # ── DB ────────────────────────────────────────────────────────────────────────
-Base.metadata.create_all(bind=engine)
+def _create_tables_at_import(target_engine):
+    if target_engine.dialect.name != "postgresql":
+        Base.metadata.create_all(bind=target_engine)
+
+
+_create_tables_at_import(engine)
 run_migrations_and_seed()
 
 @asynccontextmanager
 async def lifespan(_app):
     """Startup/shutdown lifecycle handler."""
     import asyncio
+    from core.cloud_endpoint import CLOUD_URL, CLOUD_URL_SOURCE
+    logger.info("[CLOUD] cloud API = %s (from %s)", CLOUD_URL, CLOUD_URL_SOURCE)
     from services.realtime import realtime_manager
     realtime_manager.set_loop(asyncio.get_running_loop())
 
@@ -153,7 +161,7 @@ async def lifespan(_app):
         if _db_url.startswith("postgresql"):
             return   # Cloud backend — skip (we ARE the registry, not a registrant)
 
-        CLOUD_URL = os.getenv("CLOUD_URL", "https://rakshit-dev-bizassist.hf.space")
+        from core.cloud_endpoint import CLOUD_URL
         INTERVAL = 30 * 60   # renew every 30 minutes
 
         async def _register_once():
@@ -270,32 +278,16 @@ async def lifespan(_app):
 # it would let any locally-saved HTML file call the API. If you need it for
 # local file testing, add it explicitly via ALLOWED_ORIGINS.
 _default_origins = (
-    "http://localhost:5500,http://127.0.0.1:5500,"
-    "http://localhost:3000,"
-    "http://localhost:5173,http://127.0.0.1:5173,"
-    "http://localhost:5174,http://127.0.0.1:5174,"
-    "http://localhost:5175,http://127.0.0.1:5175,"
-    # Packaged desktop app serves its renderer on these loopback ports
-    # (desktop/src/main.js: BILLING_PORT 8450, AI_PORT 8451). The regex below
-    # also covers any 127.0.0.1:PORT, but list them explicitly so the app's
-    # allowed origin is obvious and greppable.
-    "http://127.0.0.1:8450,http://localhost:8450,"
-    "http://127.0.0.1:8451,http://localhost:8451,"
-    "https://bizassist-react.vercel.app,"
-    "https://bizassist.vercel.app,"
     "https://bizassist-billing.vercel.app,"
     "https://staterbill.com,"
     "https://www.staterbill.com,"
     "https://admin.staterbill.com,"
-    "https://team.staterbill.com,"
-    "https://ai.staterbill.com,"
     "https://bizassist-task.vercel.app,"
-    "https://bizassist-dev-workspace-ai.vercel.app,"
-    "https://rakshit-dev-bizassist.hf.space"
+    "https://bizassist-dev-workspace-ai.vercel.app"
 )
-_allowed_origins = [
-    o.strip() for o in os.getenv("ALLOWED_ORIGINS", _default_origins).split(",") if o.strip()
-]
+_allowed_origins = list(dict.fromkeys(
+    o.strip() for o in (_default_origins + "," + os.getenv("ALLOWED_ORIGINS", "")).split(",") if o.strip()
+))
 
 # ── App ───────────────────────────────────────────────────────────────────────
 app = FastAPI(title="BizAssist API", lifespan=lifespan)
@@ -326,8 +318,8 @@ app.add_middleware(
     allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2[0-9]|3[0-1])\.\d+\.\d+)(:\d+)?$",
     allow_credentials=False,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "X-Client-Request-Id"],
-    expose_headers=["X-Total-Count"],
+    allow_headers=["Authorization", "Content-Type", "X-Client-Request-Id", "Last-Event-ID"],
+    expose_headers=["X-Total-Count", "WWW-Authenticate", "Retry-After"],
 )
 
 # ── Error contract ────────────────────────────────────────────────────────────
@@ -525,5 +517,6 @@ app.include_router(sync_staff_router)     # Phase 5 - Immediate staff sync
 app.include_router(sync_profile_router)   # Phase 5 - Immediate profile sync
 app.include_router(campaigns_router)      # Promotions & offers + sync doctor (REVIEW_1 §4.2-4.3)
 app.include_router(activity_router)       # Owner activity feed — every action, human-readable
+app.include_router(internal_cron_router)
 app.include_router(b2b_status_router)   # B2B link state, so the UI can explain a degraded mode
 app.include_router(core_router)           # billing ecosystem (sales + business templates + future)

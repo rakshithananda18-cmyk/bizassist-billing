@@ -4,7 +4,8 @@ const KEY = 'task_theme'
 const BUSINESS_MODE_PREFIX = 'task_theme_v2:'
 const APPEARANCE_PREFIX = 'task_billing_appearance_v1:'
 const LEGACY_OWNER_KEY = 'task_theme_legacy_owner'
-const BILLING_CLOUD_URL = 'https://bizassist-billing.vercel.app'
+const BILLING_CLOUD_URL = 'https://staterbill.com'
+const DEFAULT_BILLING_ORIGINS = ['https://staterbill.com', 'https://www.staterbill.com', 'https://bizassist-billing.vercel.app']
 const MODES = new Set(['system', 'light', 'dark'])
 const TOKEN_NAMES = new Set([
   '--accent', '--accent-light', '--accent-hover', '--accent-solid', '--accent-solid-hover',
@@ -40,10 +41,10 @@ export function sanitizeBillingUrl(value) {
   try {
     const url = new URL(value)
     if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) return null
-    const configured = import.meta.env.VITE_BILLING_URL
-    let configuredOrigin = null
-    try { configuredOrigin = configured ? new URL(configured).origin : null } catch { /* invalid config */ }
-    if (url.origin === BILLING_CLOUD_URL || url.origin === configuredOrigin
+    const configured = (import.meta.env.VITE_BILLING_URL || '').split(',').map(value => {
+      try { const parsed = new URL(value.trim()); return ['http:', 'https:'].includes(parsed.protocol) && !parsed.username && !parsed.password ? parsed.origin : null } catch { return null }
+    })
+    if ([...DEFAULT_BILLING_ORIGINS, ...configured].includes(url.origin)
       || (localHost(url.hostname) && ['5174', '8450'].includes(url.port))) return url.origin
   } catch { /* invalid URL */ }
   return null
@@ -100,7 +101,7 @@ export function acceptBillingAppearance(appearance) {
 
 export function getBillingUrl(path = '/') {
   const inherited = readAppearance()?.billingUrl
-  const configured = sanitizeBillingUrl(import.meta.env.VITE_BILLING_URL)
+  const configured = (import.meta.env.VITE_BILLING_URL || '').split(',').map(sanitizeBillingUrl).find(Boolean)
   const fallback = typeof window !== 'undefined' && localHost(window.location.hostname)
     ? `${window.location.protocol}//${window.location.hostname}:5174` : BILLING_CLOUD_URL
   const origin = inherited || configured || fallback

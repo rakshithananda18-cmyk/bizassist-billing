@@ -57,11 +57,8 @@ logger = logging.getLogger("bizassist.b2b_proxy")
 
 router = APIRouter(tags=["b2b"])
 
-CLOUD_URL = (
-    os.environ.get("CLOUD_API_URL")
-    or os.environ.get("VITE_API_URL")
-    or "https://rakshit-dev-bizassist.hf.space"
-).rstrip("/")
+from core.cloud_endpoint import CLOUD_URL
+_WRITE_TIMEOUT = httpx.Timeout(connect=10.0, read=70.0, write=30.0, pool=10.0)
 
 # Paths whose truth lives in the cloud.
 #
@@ -251,7 +248,7 @@ async def b2b_cloud_proxy(request: Request, call_next):
 
     url = f"{CLOUD_URL}{path}"
     try:
-        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+        async with httpx.AsyncClient(timeout=_TIMEOUT if request.method in _READ_METHODS else _WRITE_TIMEOUT) as client:
             upstream = await client.request(
                 request.method,
                 url,
@@ -274,6 +271,9 @@ async def b2b_cloud_proxy(request: Request, call_next):
         )
 
     # A cloud-issued token that the cloud itself rejects means it has aged out.
+    if request.method in _READ_METHODS and (upstream.status_code == 429 or upstream.status_code >= 500):
+        logger.info("[B2B_PROXY] Cloud busy (HTTP %s); serving the local mirror", upstream.status_code)
+        return await call_next(request)
     # Drop it so the next login re-provisions, and serve reads from the mirror
     # rather than bouncing the user out of a working local session.
     if upstream.status_code == 401:
@@ -285,6 +285,7 @@ async def b2b_cloud_proxy(request: Request, call_next):
         if request.method in _READ_METHODS:
             logger.info("[B2B_PROXY] cloud token stale for business %s — serving the local mirror", business_id)
             return await call_next(request)
+        return JSONResponse(status_code=424, content={"detail":"Sign in to BizAssist cloud again to change B2B data.", "code":"cloud_sign_in_required"})
 
     passthrough = {
         k: v for k, v in upstream.headers.items()

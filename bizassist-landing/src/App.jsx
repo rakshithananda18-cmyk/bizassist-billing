@@ -427,10 +427,10 @@ function Footer() {
           <a href="#features" className="transition hover:text-white">Features</a>
           <a href="#how" className="transition hover:text-white">How it works</a>
           <a href={RELEASES_PAGE} className="transition hover:text-white">Releases</a>
-          <a href="https://bizassist-billing.vercel.app/terms" target="_blank" rel="noopener noreferrer" className="transition hover:text-white">Terms</a>
-          <a href="https://bizassist-billing.vercel.app/privacy" target="_blank" rel="noopener noreferrer" className="transition hover:text-white">Privacy</a>
-          <a href="https://bizassist-billing.vercel.app/refund-policy" target="_blank" rel="noopener noreferrer" className="transition hover:text-white">Refunds</a>
-          <a href="https://bizassist-billing.vercel.app/contact" target="_blank" rel="noopener noreferrer" className="transition hover:text-white">Contact</a>
+          <a href="https://staterbill.com/terms" target="_blank" rel="noopener noreferrer" className="transition hover:text-white">Terms</a>
+          <a href="https://staterbill.com/privacy" target="_blank" rel="noopener noreferrer" className="transition hover:text-white">Privacy</a>
+          <a href="https://staterbill.com/refund-policy" target="_blank" rel="noopener noreferrer" className="transition hover:text-white">Refunds</a>
+          <a href="https://staterbill.com/contact" target="_blank" rel="noopener noreferrer" className="transition hover:text-white">Contact</a>
         </div>
         <p className="text-xs text-slate-600 md:ml-6">© {new Date().getFullYear()} STATER Bill — A product of A. Rakshit Enterprise Solutions Pvt Ltd (ARES). Inspired by the Stater (στατήρ).</p>
       </div>

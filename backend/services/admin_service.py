@@ -15,7 +15,7 @@ Phase A hardening (Admin Console plan):
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import Optional
-from sqlalchemy import func
+from sqlalchemy import func, case
 from sqlalchemy.orm import Session
 from fastapi import HTTPException
 import os
@@ -26,7 +26,7 @@ from database.models import (
     Customer, Vendor, Product, PurchaseOrder, PurchaseOrderLineItem,
     PurchaseInvoice, PurchaseInvoiceLineItem, AIFeedback, AIQueryOverride,
     BusinessFact, AlertConfig, SyncQueue, SyncLog, RegisterShift, ShiftCashMovement,
-    DeletedBusiness
+    DeletedBusiness, ClientLogArchive
 )
 from core.models import (
     StockLedger, ProductBarcode, BusinessSettings, InvoicePayment,
@@ -52,51 +52,25 @@ def _admin_api_enabled() -> bool:
 
 
 def audit_log(admin, action: str, details: dict = None, db: Session = None):
-    """Append who/what/when for every admin mutation (JSONL + DB fallback).
-
-    Identities are recorded by **BizID** (users.public_id) + username, not the
-    numeric row id — numeric ids differ between the cloud and local databases,
-    while the BizID is the stable cross-DB identity spine. `admin` may be a
-    User row (preferred) or a bare int id (legacy callers)."""
-    try:
-        log_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "logs")
-        os.makedirs(log_dir, exist_ok=True)
-        log_file = os.path.join(log_dir, "admin_audit.jsonl")
-        with open(log_file, "a") as f:
-            entry = {
-                "timestamp": utc_now().isoformat(),
-                "admin_id": getattr(admin, "id", admin),
-                "admin_bizid": getattr(admin, "public_id", None),
-                "admin_username": getattr(admin, "username", None),
-                "action": action,
-                "details": details or {}
-            }
-            f.write(json.dumps(entry) + "\n")
-    except Exception as e:
-        logger.error(f"Audit log JSONL failed: {e}")
-
+    """Database is the durable audit authority; disk is a labelled fallback."""
+    entry = {"timestamp":utc_now().isoformat(),"admin_id":getattr(admin,"id",admin),"admin_bizid":getattr(admin,"public_id",None),"admin_username":getattr(admin,"username",None),"action":action,"details":details or {}}
     if db is not None:
         try:
             from database.models import ActionLog
-            business_id = getattr(admin, "id", admin)
-            target = None
-            if details and "target" in details:
-                target = str(details["target"])
-            elif details and "target_username" in details:
-                target = str(details["target_username"])
-                
-            log_row = ActionLog(
-                business_id=business_id,
-                action=action,
-                target=target,
-                detail=json.dumps(details) if details else None,
-                status="success"
-            )
-            db.add(log_row)
+            db.add(ActionLog(business_id=entry["admin_id"], action=action, target=str((details or {}).get("target", (details or {}).get("target_username", ""))) or None, detail=json.dumps(details or {}), status="success"))
             db.commit()
-        except Exception as e:
+            return
+        except Exception:
             db.rollback()
-            logger.error(f"Audit log DB write failed: {e}")
+            logger.warning("Durable admin audit unavailable; using this instance only", exc_info=True)
+    try:
+        log_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)),"logs")
+        os.makedirs(log_dir,exist_ok=True)
+        entry["storage"] = "this instance only"
+        with open(os.path.join(log_dir,"admin_audit.jsonl"),"a",encoding="utf-8") as output:
+            output.write(json.dumps(entry)+"\n")
+    except Exception:
+        logger.exception("Admin audit fallback failed")
 
 
 def require_admin(user_id: int, db: Session, action: str = None, details: dict = None) -> User:
@@ -148,96 +122,66 @@ def _settings_dict(u: User) -> dict:
         return {}
 
 
-def list_businesses(db: Session) -> list:
-    """Per business: core stats + fleet fields (hosting mode, last sync,
-    queue depth, online-in-last-24h) + subscription plan."""
+def list_businesses(db: Session, business_id: int = None) -> list:
+    """Fleet aggregates use a fixed query count and can target one business."""
     now = utc_now()
-    businesses = db.query(User).filter(User.role == "enterprise").all()
+    query = db.query(User).filter(User.role == "enterprise")
+    if business_id is not None:
+        query = query.filter(User.id == business_id)
+    businesses = query.all()
+    if business_id is not None and not businesses:
+        raise HTTPException(status_code=404, detail="Business not found")
+    ids = [b.id for b in businesses]
+    if not ids:
+        return []
+    invoices = {row[0]: row[1:] for row in db.query(Invoice.business_id, func.count(Invoice.id), func.sum(Invoice.amount)).filter(Invoice.business_id.in_(ids)).group_by(Invoice.business_id).all()}
+    inventory = dict(db.query(Inventory.business_id, func.count(Inventory.id)).filter(Inventory.business_id.in_(ids)).group_by(Inventory.business_id).all())
+    uploads = dict(db.query(UploadedFile.business_id, func.count(UploadedFile.id)).filter(UploadedFile.business_id.in_(ids)).group_by(UploadedFile.business_id).all())
+    syncs = dict(db.query(SyncLog.business_id, func.max(SyncLog.synced_at)).filter(SyncLog.business_id.in_(ids)).group_by(SyncLog.business_id).all())
+    queues = {r[0]: r[1:] for r in db.query(SyncQueue.business_id, func.count(SyncQueue.id), func.sum(case((SyncQueue.error.isnot(None), 1), else_=0))).filter(SyncQueue.business_id.in_(ids), SyncQueue.synced_at.is_(None)).group_by(SyncQueue.business_id).all()}
+    from database.models import ConflictLog
+    conflicts = dict(db.query(ConflictLog.business_id, func.count(ConflictLog.id)).filter(ConflictLog.business_id.in_(ids), ConflictLog.resolution == "review_needed", ConflictLog.resolved_at.is_(None)).group_by(ConflictLog.business_id).all())
     result = []
     for b in businesses:
-        s = _settings_dict(b)
-        sub = s.get("subscription") or {}
-        last_sync = (
-            db.query(func.max(SyncLog.synced_at))
-            .filter(SyncLog.business_id == b.id).scalar()
-        )
-        pending_q = (
-            db.query(SyncQueue)
-            .filter(SyncQueue.business_id == b.id, SyncQueue.synced_at.is_(None))
-        )
-        queue_depth = pending_q.count()
-        # Lightweight fleet attention signal — CHEAP counts only (errored sync
-        # rows + unreviewed financial conflicts). The expensive hash-chain
-        # integrity walk stays on the per-business detail view.
-        sync_errors = pending_q.filter(SyncQueue.error.isnot(None)).count()
-        try:
-            from database.models import ConflictLog
-            unreviewed_conflicts = (
-                db.query(func.count(ConflictLog.id))
-                .filter(ConflictLog.business_id == b.id,
-                        ConflictLog.resolution == "review_needed",
-                        ConflictLog.resolved_at.is_(None))
-                .scalar()
-            ) or 0
-        except Exception:
-            unreviewed_conflicts = 0
-        needs_attention = (sync_errors > 0) or (unreviewed_conflicts > 0)
-        online_24h = bool(last_sync and (now - last_sync) < timedelta(hours=24))
-        result.append({
-            "id":              b.id,
-            "bizid":           b.public_id,   # stable identity across cloud/local DBs
-            "username":        b.username,
-            "business_name":   b.business_name,
-            "invoice_count":   db.query(Invoice).filter(Invoice.business_id == b.id).count(),
-            "total_revenue":   db.query(func.sum(Invoice.amount)).filter(Invoice.business_id == b.id).scalar() or 0,
-            "inventory_count": db.query(Inventory).filter(Inventory.business_id == b.id).count(),
-            "upload_count":    db.query(UploadedFile).filter(UploadedFile.business_id == b.id).count(),
-            # Fleet fields
-            "hosting_mode":    s.get("general", {}).get("hosting_mode", "local"),
-            "last_sync_at":    last_sync.isoformat() if last_sync else None,
-            "sync_queue_depth": queue_depth,
-            "sync_errors":     sync_errors,
-            "unreviewed_conflicts": unreviewed_conflicts,
-            "needs_attention": needs_attention,
-            "online_last_24h": online_24h,
-            # Subscription
-            "plan":            sub.get("plan", "free"),
-            "plan_status":     sub.get("status"),
-            "plan_expires_at": sub.get("expires_at"),
-        })
+        settings = _settings_dict(b)
+        sub = settings.get("subscription") or {}
+        last_sync = syncs.get(b.id)
+        queue_depth, sync_errors = queues.get(b.id, (0, 0))
+        unreviewed = conflicts.get(b.id, 0)
+        invoice_count, revenue = invoices.get(b.id, (0, 0))
+        result.append({"id": b.id,"bizid": b.public_id,"username": b.username,"business_name": b.business_name,"invoice_count": invoice_count,"total_revenue": revenue or 0,"inventory_count": inventory.get(b.id,0),"upload_count": uploads.get(b.id,0),"hosting_mode": settings.get("general",{}).get("hosting_mode","local"),"last_sync_at":last_sync.isoformat() if last_sync else None,"sync_queue_depth":queue_depth,"sync_errors":sync_errors or 0,"unreviewed_conflicts":unreviewed,"needs_attention":bool(sync_errors or unreviewed),"online_last_24h":bool(last_sync and now-last_sync < timedelta(hours=24)),"plan":sub.get("plan","free"),"plan_status":sub.get("status"),"plan_expires_at":sub.get("expires_at")})
     return result
 
 
 # ── Sync doctor (REVIEW_1 §4.2) ──────────────────────────────────────────────
 
-def sync_doctor(db: Session) -> list:
-    """Automated per-business sync health: red / amber / green with reasons.
-    The v1.1.1 sync-duplication incident showed these checks must be permanent.
-
-    green — no pending ops, or pending ops all younger than 15 min
-    amber — pending ops older than 15 min, or last push had failures
-    red   — pending ops older than 60 min, or repeated failures on the
-            newest 20 log rows, or errors recorded on queued ops
-    """
+def sync_doctor(db: Session, business_id: int = None) -> list:
+    """Grouped queue metrics and a window bounded to 20 logs per business."""
     now = utc_now()
+    query = db.query(User).filter(User.role == "enterprise")
+    if business_id is not None:
+        query = query.filter(User.id == business_id)
+    businesses = query.all()
+    if business_id is not None and not businesses:
+        raise HTTPException(status_code=404, detail="Business not found")
+    ids = [b.id for b in businesses]
+    if not ids:
+        return []
+    pending = {r[0]:r[1:] for r in db.query(SyncQueue.business_id, func.count(SyncQueue.id), func.min(SyncQueue.created_at), func.sum(case((SyncQueue.error.isnot(None),1),else_=0))).filter(SyncQueue.business_id.in_(ids),SyncQueue.synced_at.is_(None)).group_by(SyncQueue.business_id).all()}
+    ranked = db.query(SyncLog.business_id.label("business_id"), SyncLog.status.label("status"), SyncLog.synced_at.label("synced_at"), func.row_number().over(partition_by=SyncLog.business_id, order_by=SyncLog.id.desc()).label("rn")).filter(SyncLog.business_id.in_(ids)).subquery()
+    recent_by_business = {}
+    for r in db.query(ranked).filter(ranked.c.rn <= 20).order_by(ranked.c.rn).all():
+        recent_by_business.setdefault(r.business_id, []).append(r)
     out = []
-    for b in db.query(User).filter(User.role == "enterprise").all():
-        pending = db.query(SyncQueue).filter(
-            SyncQueue.business_id == b.id, SyncQueue.synced_at.is_(None))
-        pending_count = pending.count()
-        oldest_pending = pending.order_by(SyncQueue.created_at.asc()).first()
-        errored_pending = pending.filter(SyncQueue.error.isnot(None)).count()
-
-        recent = (db.query(SyncLog)
-                  .filter(SyncLog.business_id == b.id)
-                  .order_by(SyncLog.id.desc()).limit(20).all())
-        recent_failures = sum(1 for r in recent if r.status == "failed")
+    for b in businesses:
+        pending_count, oldest_pending, errored_pending = pending.get(b.id,(0,None,0))
+        recent = recent_by_business.get(b.id, [])
+        recent_failures = sum(r.status == "failed" for r in recent)
         last_sync = recent[0].synced_at if recent else None
-
         reasons, status = [], "green"
         stuck_minutes = None
-        if oldest_pending is not None and oldest_pending.created_at:
-            stuck_minutes = int((now - oldest_pending.created_at).total_seconds() // 60)
+        if oldest_pending is not None:
+            stuck_minutes = int((now - oldest_pending).total_seconds() // 60)
             if stuck_minutes >= 60:
                 status = "red"; reasons.append(f"oldest queued op stuck {stuck_minutes} min")
             elif stuck_minutes >= 15:
@@ -258,9 +202,8 @@ def sync_doctor(db: Session) -> list:
             "recent_failures": recent_failures,
             "last_sync_at": last_sync.isoformat() if last_sync else None,
         })
-    # Worst first so the fleet monitor surfaces problems at the top.
-    order = {"red": 0, "amber": 1, "green": 2}
-    out.sort(key=lambda r: (order.get(r["status"], 3), -(r["pending_ops"] or 0)))
+    order = {"red":0,"amber":1,"green":2}
+    out.sort(key=lambda r:(order.get(r["status"],3), -(r["pending_ops"] or 0)))
     return out
 
 
@@ -548,10 +491,21 @@ def telemetry_devices(db=None) -> list:
     return sorted(out, key=lambda d: d.get("last_seen") or "", reverse=True)
 
 
+from uuid import uuid4
+_INSTANCE_STARTED = utc_now().isoformat()
+_INSTANCE_BOOT_ID = uuid4().hex
+
+
+def instance_info() -> dict:
+    return {"service":os.getenv("K_SERVICE"),"revision":os.getenv("K_REVISION"),"started_at":_INSTANCE_STARTED,"boot_id":_INSTANCE_BOOT_ID}
+
+
 def server_log_tail(lines: int = 200, q: str = None) -> dict:
     """Tail of the backend server log (bizassist.log) for the Debug tab.
     Optional `q` substring filter (e.g. a BizID or username) gives a segregated
     view of one business's lines without shipping the whole log."""
+    if os.getenv("K_SERVICE"):
+        return {"path":None,"filter":q,"lines":[],"instance":instance_info(),"note":"Server logs for this service are in Cloud Logging.","cloud_logging_filter":'resource.type="cloud_run_revision" AND resource.labels.service_name='+json.dumps(os.environ["K_SERVICE"])}
     lines = max(1, min(int(lines or 200), 2000))
     candidates = ("bizassist.log", os.path.join("logs", "bizassist.log"))
     for path in candidates:
@@ -561,10 +515,10 @@ def server_log_tail(lines: int = 200, q: str = None) -> dict:
                     all_lines = [l.rstrip("\n") for l in f.readlines()]
                 if q:
                     all_lines = [l for l in all_lines if q in l]
-                return {"path": path, "filter": q, "lines": all_lines[-lines:]}
+                return {"path": path, "filter": q, "lines": all_lines[-lines:], "instance":instance_info()}
             except Exception as e:
                 raise HTTPException(status_code=500, detail=f"Failed to read server log: {e}")
-    return {"path": None, "filter": q, "lines": []}
+    return {"path": None, "filter": q, "lines": [], "instance":instance_info()}
 
 
 def telemetry_businesses(db=None) -> list:
@@ -650,7 +604,9 @@ def read_audit_log(limit: int = 200, db: Session = None) -> list:
         lines = f.readlines()
     for line in reversed(lines):
         try:
-            rows.append(json.loads(line))
+            entry = json.loads(line)
+            entry["storage"] = "this instance only"
+            rows.append(entry)
         except Exception:
             continue
         if len(rows) >= limit:
@@ -1054,7 +1010,8 @@ def purge_business_data(user_id: int, db: Session, *, delete_owner: bool = False
     for model in (
         LegacyPayment, UploadedFile, DocumentEmbedding, ChatMessage, TokenUsage,
         RateLimitConfig, AlertConfig, AIFeedback, AIQueryOverride, BusinessFact,
-        BusinessSettings, Expense, Godown, PeriodLock, ShiftCashMovement, RegisterShift
+        BusinessSettings, Expense, Godown, PeriodLock, ShiftCashMovement, RegisterShift,
+        ClientLogArchive
     ):
         db.query(model).filter(model.business_id == user_id).delete(synchronize_session=False)
 
@@ -1167,14 +1124,24 @@ def reset_chroma_docs() -> dict:
             "message": "Chroma document collections reset. Re-upload your files to rebuild the index."}
 
 
-def business_details(user_id: int, db: Session) -> dict:
+def business_details(user_id: int, db: Session, *, section: str = None, limit: int = 50, offset: int = 0) -> dict:
     target = require_target_user(user_id, db)
-    uploads  = db.query(UploadedFile).filter(UploadedFile.business_id == user_id).all()
-    invoices = db.query(Invoice).filter(Invoice.business_id == user_id).all()
-    inventory = db.query(Inventory).filter(Inventory.business_id == user_id).all()
-    payments = db.query(LegacyPayment).filter(LegacyPayment.business_id == user_id).all()
-    msgs = db.query(ChatMessage).filter(ChatMessage.business_id == user_id).order_by(ChatMessage.timestamp.desc()).all()
-    return {
+    sections = {"uploads", "invoices", "inventory", "payments", "chat_history"}
+    if section is not None and section not in sections:
+        raise HTTPException(status_code=422, detail="Unknown business detail section")
+    has_more = {}
+    def page(query, name):
+        if section is not None and section != name:
+            return []
+        rows = query.offset(offset).limit(limit+1).all()
+        has_more[name] = len(rows)>limit
+        return rows[:limit]
+    uploads  = page(db.query(UploadedFile).filter(UploadedFile.business_id == user_id).order_by(UploadedFile.id.desc()), "uploads")
+    invoices = page(db.query(Invoice).filter(Invoice.business_id == user_id).order_by(Invoice.id.desc()), "invoices")
+    inventory = page(db.query(Inventory).filter(Inventory.business_id == user_id).order_by(Inventory.id.desc()), "inventory")
+    payments = page(db.query(LegacyPayment).filter(LegacyPayment.business_id == user_id).order_by(LegacyPayment.id.desc()), "payments")
+    msgs = page(db.query(ChatMessage).filter(ChatMessage.business_id == user_id).order_by(ChatMessage.timestamp.desc(), ChatMessage.id.desc()), "chat_history")
+    result = {
         "id": target.id, "username": target.username, "business_name": target.business_name,
         "uploads":  [{"id": u.id, "filename": u.filename, "file_type": u.file_type, "rows_count": u.rows_count, "upload_time": u.upload_time} for u in uploads],
         "invoices": [{"id": i.id, "invoice_id": i.invoice_id, "customer": i.customer, "product": i.product, "amount": i.amount, "status": i.status, "invoice_date": i.invoice_date, "due_date": i.due_date} for i in invoices],
@@ -1182,6 +1149,12 @@ def business_details(user_id: int, db: Session) -> dict:
         "payments": [{"id": p.id, "customer": p.customer, "amount": p.amount, "due_date": p.due_date, "paid": p.paid} for p in payments],
         "chat_history": [{"id": m.id, "role": m.role, "content": m.content, "session_id": m.session_id, "session_title": m.session_title, "timestamp": m.timestamp.isoformat() if m.timestamp else None} for m in msgs],
     }
+
+    result["has_more"] = has_more.get(section, False) if section else any(has_more.values())
+    result["pagination"] = {"section":section,"limit":limit,"offset":offset,"sections":has_more}
+    if section:
+        result = {key:value for key,value in result.items() if key not in sections or key==section}
+    return result
 
 
 def get_rate_limit_config(user_id: int, db: Session) -> dict:
@@ -1209,13 +1182,21 @@ def set_rate_limit_config(user_id: int, body, db: Session) -> dict:
 
 
 def all_usage_stats(db: Session) -> list:
+    from services.rate_limiter import DEFAULTS
     businesses = db.query(User).filter(User.role == "enterprise").all()
+    ids = [b.id for b in businesses]
+    if not ids:
+        return []
+    configs = {c.business_id:c for c in db.query(RateLimitConfig).filter(RateLimitConfig.business_id.in_(ids)).all()}
+    today = datetime.combine(utc_now().date(), datetime.min.time())
+    usage = {r[0]:r[1:] for r in db.query(TokenUsage.business_id,func.count(TokenUsage.id),func.sum(TokenUsage.total_tokens),func.sum(case((TokenUsage.model_tier=="AI_COMPLEX",1),else_=0))).filter(TokenUsage.business_id.in_(ids),TokenUsage.timestamp>=today).group_by(TokenUsage.business_id).all()}
     result = []
     for b in businesses:
-        s = get_usage_summary(b.id)
-        s["business_name"] = b.business_name
-        s["username"]      = b.username
-        result.append(s)
+        cfg = configs.get(b.id)
+        def limit(key):
+            return getattr(cfg,key) if cfg is not None else DEFAULTS[key]
+        queries,tokens,complex_queries = usage.get(b.id,(0,0,0))
+        result.append({"business_id":b.id,"business_name":b.business_name,"username":b.username,"queries_today":int(queries or 0),"tokens_today":int(tokens or 0),"complex_today":int(complex_queries or 0),"queries_limit":limit("requests_per_day"),"tokens_limit":limit("max_tokens_per_day"),"complex_limit":limit("complex_per_day"),"requests_per_minute":limit("requests_per_minute")})
     return result
 
 

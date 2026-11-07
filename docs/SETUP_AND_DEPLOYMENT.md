@@ -1,3 +1,11 @@
+# Production deployment
+
+The current production release uses Google Cloud Run for both APIs and
+staterbill.com for Billing. Follow [the ordered migration runbook](runbooks/cloud-run-migration.md)
+for the exact per-project Vercel variables, domain settings, Secret Manager
+configuration, health checks, forwarder and rollback commands. Cloud Run sleeps
+when idle by default; sign-in and idempotent requests tolerate cold starts.
+
 # BizAssist - Setup Guide
 
 Everything you need to get BizAssist running after cloning the repo, on any computer.
@@ -60,11 +68,11 @@ any code - you just set this variable differently per environment.
 | Flow | `DATABASE_URL` value | Extra steps | Use it when |
 |------|----------------------|-------------|-------------|
 | **SQLite (default, zero setup)** | `sqlite:///./bizassist.db` (or leave unset) | none | Quick local dev. This is the simplest. |
-| **Supabase (online)** | the Supabase connection string | none locally | Shared/online data; this is what Hugging Face uses. |
+| **Supabase (online)** | the Supabase connection string | none locally | Shared/online data; this is what Cloud Run uses. |
 | **Local Postgres** | `postgresql://postgres:devpass@localhost:5432/bizassist` | install Postgres (section 4) | Only when you need to test Postgres behaviour locally. |
 
 **Recommendation:** use **SQLite** for everyday local dev (no friction), and
-**Supabase** for Hugging Face / production. Local Postgres is optional.
+**Supabase** for Cloud Run / production. Local Postgres is optional.
 
 ---
 
@@ -171,210 +179,94 @@ Tests run on SQLite and should all pass.
 
 ---
 
-## 7. Deploying to Hugging Face
+## 7. Production deployment: Cloud Run and Vercel
 
-- HF builds the backend from `backend/Dockerfile`, which installs
-  `backend/requirements_hf.txt` (separate from local `requirements.txt`).
-- Set `DATABASE_URL` (the Supabase URL) and `GROQ_API_KEY` as **Space Secrets**,
-  not in any committed file.
-- HF storage is ephemeral, which is exactly why production uses Supabase.
+Deploy the Field Team API first, Billing second, the Hugging Face compatibility
+forwarder third, then all four frontends and a new desktop installer. Follow
+[the release runbook](runbooks/cloud-run-migration.md) for exact commands,
+Secret Manager checks and rollback. Existing installations continue using the
+legacy Space through `ops/hf-forwarder/` until they upgrade.
 
----
+Billing deploy commands, from the repository root:
 
-## New-computer cheat sheet
-
+```powershell
+.\backend\deploy_cloudrun.ps1 -Project staterbill -Setup
+# Later deploys omit -Setup.
 ```
+
+```bash
+bash backend/deploy_cloudrun.sh --setup staterbill
+```
+
+The deploy scripts keep unmanaged environment variables and secret mounts,
+use one worker and one instance, keep `--min-instances 0`, set
+`SUBSCRIPTION_ENFORCED=0`, and rotate SSE connections before Cloud Run's 120s
+request limit. They probe the tagged revision's `/health` before moving traffic.
+Cloud Scheduler invokes eight secret-authenticated jobs; durable leases and
+business cursors resume incomplete runs. Pause those jobs before rolling back
+to a revision that still schedules in-process jobs.
+
+Before deploying, back up PostgreSQL and run Billing's `python -m alembic
+upgrade head` with schema-owner credentials from Secret Manager. Current head:
+`h4_auth_admin_runtime_state`. Field Team has its own `ft_*` migration chain.
+Constrained runtime credentials never perform DDL. Mount `ADMIN_SERVICE_URL`
+when the runtime role cannot perform privileged admin operations.
+
+Both APIs must use the same JWT_SECRET and database. The runbook explains how
+to compare SHA-256 digests without printing a secret. The optional authenticated
+release check verifies a 90-second `field_team` handoff; AI dashboard handoffs
+are 60 seconds. Field Team and AI still enforce Pro on their own endpoints.
+Free Billing web accounts keep the five-minute preview once plan status is known.
+
+### Vercel production projects
+
+Use the corresponding frontend directory as each project's root and `npm run
+build` as the build command, with output `dist`. Set the following public
+build variables in Production, then redeploy each project. An unset variable
+uses its production default; the build records configured URLs in
+`/build-info.json` for release verification.
+
+| Project | Variable | Value |
+|---|---|---|
+| frontend-billing | VITE_API_URL | https://staterbill-api-1076771386585.asia-south1.run.app |
+| frontend-billing | VITE_FIELD_TEAM_URL | https://bizassist-task.vercel.app |
+| frontend-billing | VITE_AI_DASHBOARD_URL | https://bizassist-dev-workspace-ai.vercel.app |
+| frontend-billing | VITE_PUBLIC_WEB_URL | https://staterbill.com |
+| frontend-task | VITE_API_URL | https://bizassist-task-qyfsbxu27a-el.a.run.app |
+| frontend-task | VITE_BILLING_URL | https://staterbill.com,https://www.staterbill.com |
+| frontend-ai | VITE_API_URL | https://staterbill-api-1076771386585.asia-south1.run.app |
+| frontend-ai | VITE_BILLING_URL | https://staterbill.com,https://www.staterbill.com |
+| frontend-admin | VITE_API_URL | https://staterbill-api-1076771386585.asia-south1.run.app |
+| frontend-admin | VITE_BILLING_URL | https://staterbill.com,https://www.staterbill.com |
+
+Billing uses `staterbill.com`, `www.staterbill.com` redirects to it with a valid
+certificate, and Admin uses `admin.staterbill.com`. Field Team and AI keep the
+Vercel addresses above. Disable Vercel Authentication on AI's production
+deployment so owners can reach Dashboard BIZASSIST. The owner has reported
+these console changes completed; verify them against the deployed builds.
+
+### Release verification
+
+```powershell
+python dev/check_cloud_release.py --report scratch/cloud-release-check.json
+```
+
+The check tolerates API cold starts and checks readiness, CORS, frontend build
+URLs, the www redirect, certificates and accidental Vercel sign-in redirects.
+Use its digest options and optional owner token only from a private operator
+shell; reports contain no tokens or digests. Public checks alone cannot prove
+the authenticated business workflows or physical printing: complete the
+runbook's end-to-end checks before declaring a production release.
+
+### Local development on a new computer
+
+```powershell
 git clone <repo>
 cd bizassist
 .\dependencies.bat
-copy backend\.env.example backend\.env   # then add GROQ_API_KEY (+ DATABASE_URL if not SQLite)
+Copy-Item .env.example backend\.env
 .\start_dev.bat
 ```
-With SQLite (the default), that's the whole process. Postgres only adds section 4.
 
----
-
-# Ecosystem Deployment Guide — HF Spaces & Vercel
-
-This guide outlines the steps to publish only the backend to Hugging Face Spaces and deploy the two frontend applications (`frontend-billing` and `frontend-ai`) to Vercel.
-
----
-
-## 🏗️ Architecture Overview
-
-```mermaid
-graph TD
-    Client1[POS Billing Frontend - Vercel] -->|API Requests| HF[FastAPI Backend - HF Spaces]
-    Client2[AI Assistant Frontend - Vercel] -->|API Requests| HF
-    HF --> DB[(Supabase Postgres or SQLite)]
-    Client3[Field Team PWA - Vercel] -->|API Requests| CR[Field Team API - Cloud Run, Mumbai]
-    CR --> DB
-```
-
-> [!IMPORTANT]
-> The backend acts as the central API. Both Vercel frontends communicate with it via the `VITE_API_URL` environment variable.
->
-> **Field Team** (`backend-task/` + `frontend-task/`) is the exception: a separate service on Google Cloud Run (Mumbai) with its own Vercel project, sharing the database and owner accounts. The API deploys with `.\backend-task\deploy_cloudrun.ps1` (Cloud Build builds `backend-task/Dockerfile`); the screens are one more Vercel project, Root Directory `frontend-task`. Steps and checks: [FIELD_TEAM_MASTER_PLAN.md §8.1](FIELD_TEAM_MASTER_PLAN.md).
-
----
-
-## 1. Backend: Deploy to Hugging Face Spaces (Docker SDK)
-
-Hugging Face Spaces supports running custom Dockerfiles on a free tier (2vCPU, 16GB RAM). We have already configured a `Dockerfile` and `.dockerignore` inside the `backend/` folder.
-
-### Step 1: Create a Space on Hugging Face
-1. Log in to [Hugging Face](https://huggingface.co/).
-2. Click **Spaces** > **Create new Space**.
-3. Fill in your details:
-   - **Space name**: e.g., `bizassist-backend`
-   - **SDK**: Select **Docker** (under custom options, choose **Blank** template).
-   - **Visibility**: Public or Private (Public is recommended for API access).
-
-### Step 2: Initialize Git inside `backend/` and Push
-Since you only want to publish the backend to HF, initialize Git directly inside the `backend` folder:
-
-```bash
-# Navigate to the backend directory
-cd backend
-
-# Initialize Git repository
-git init
-
-# Track all backend code files (the .gitignore ensures DB and secrets are ignored)
-git add .
-
-# Create the initial commit
-git commit -m "Initial commit of BizAssist Backend"
-
-# Add the Hugging Face Space remote
-git remote add origin https://huggingface.co/spaces/YOUR_HF_USERNAME/YOUR_SPACE_NAME
-
-# Force push to main (HF Spaces default branch is main)
-git push -u origin main --force
-```
-
-### Step 3: Configure Environment Variables in HF Spaces
-Go to your Space page, navigate to **Settings** > **Variables and secrets**, and add the required secrets:
-* `GROQ_API_KEY`: Your Groq AI key.
-* `SUPABASE_URL`: (If migrating database to Supabase Postgres).
-* `SUPABASE_KEY`: (If using Supabase).
-* `JWT_SECRET`: For auth token signing.
-
----
-
-## 2. Frontends: Deploy to Vercel (Monorepo Setup)
-
-You do **not** need to create separate repositories for the frontends. Vercel supports deploying subdirectories directly from a single monorepo.
-
-### Option A: The Monorepo Approach (Recommended)
-1. Push the entire workspace (containing both frontends and docs) to a single private GitHub repository.
-2. In Vercel, import that repository **twice** (once for each frontend).
-
-#### Project 1: POS Billing (`frontend-billing`)
-1. In Vercel Dashboard, click **Add New** > **Project** and select your GitHub repository.
-2. In the configuration:
-   - **Framework Preset**: Select **Vite** or leave as **Other**.
-   - **Root Directory**: Click Edit, select **`frontend-billing`**.
-3. Under **Environment Variables**, add:
-   - Key: `VITE_API_URL`
-   - Value: `https://YOUR_HF_USERNAME-YOUR_SPACE_NAME.hf.space` (Your HF Space public API URL).
-   - Optional — Key: `VITE_FIELD_TEAM_URL`, Value: the Field Team (`bizassist-task`) Vercel URL, e.g. `https://bizassist-task.vercel.app`. Shows the owner-only **Field Team** sidebar link, which signs the owner in with a 30-second handoff ticket (same as Dashboard BIZASSIST). Vite reads it at build time, so redeploy after setting it.
-4. Click **Deploy**.
-
-#### Project 2: AI Assistant (`frontend-ai`)
-1. In Vercel Dashboard, click **Add New** > **Project** and import the same repository again.
-2. In the configuration:
-   - **Framework Preset**: Select **Vite** or leave as **Other**.
-   - **Root Directory**: Click Edit, select **`frontend-ai`**.
-3. Under **Environment Variables**, add:
-   - Key: `VITE_API_URL`
-   - Value: `https://YOUR_HF_USERNAME-YOUR_SPACE_NAME.hf.space`
-4. Click **Deploy**.
-
----
-
-### Option B: Separate Repositories
-If you prefer completely separate repositories:
-1. Initialize git inside `frontend-billing` and push to its own repository.
-2. Initialize git inside `frontend-ai` and push to its own repository.
-3. Import each project separately into Vercel (no root directory edits needed).
-4. Configure `VITE_API_URL` in both Vercel dashboard projects.
-
----
-
-## 3. Post-Deployment Verification
-
-Once all three parts are deployed, verify connectivity:
-1. Open the Vercel URL for `frontend-billing` in your browser.
-2. Verify you can sign in/sign up (which will request auth from your HF Space backend).
-3. Open `frontend-ai` and verify the AI Chat responds to commands.
-
----
-
-## 4. Running Database Migrations on Production (Alembic)
-
-Since the backend application does not automatically run Alembic migrations on startup, you must apply new migrations manually to the production database when you release schema changes.
-
-### Step 1: Get the Production Database URL
-Retrieve the connection string from your Supabase Dashboard or the Hugging Face Space secrets. The URL looks like:
-`postgresql://postgres.<project-ref>:<password>@<region>.pooler.supabase.com:5432/postgres`
-
-Do not commit the real URL, paste it into docs, or keep it in the local repo.
-For production, store it only in the Hugging Face Space secrets as
-`DATABASE_URL`. Local development should keep using SQLite, for example:
-
-```env
-DATABASE_URL=sqlite:///./bizassist.db
-```
-
-### Step 2: Run the Migration command
-Navigate to the `backend` directory, activate the Python virtual environment,
-temporarily set the `DATABASE_URL` environment variable from your secrets
-manager, and execute the upgrade command. Do this only for a deliberate
-production migration session.
-
-#### On Windows (PowerShell):
-```powershell
-# Navigate to backend
-cd backend
-
-# Set environment variable (temporary for this session)
-$env:DATABASE_URL="<SUPABASE_DATABASE_URL_FROM_SECRET>"
-
-# Execute migration to head
-& ..\venv\Scripts\python -m alembic upgrade head
-```
-
-#### On Linux / macOS / Bash:
-```bash
-# Navigate to backend
-cd backend
-
-# Run migration
-DATABASE_URL="<SUPABASE_DATABASE_URL_FROM_SECRET>" python -m alembic upgrade head
-```
-
-### Step 3: Rolling Back Migrations
-If you need to undo a migration, use the `downgrade` command:
-
-#### On Windows (PowerShell):
-```powershell
-& ..\venv\Scripts\python -m alembic downgrade -1
-```
-
-#### On Linux / macOS / Bash:
-```bash
-DATABASE_URL="<SUPABASE_DATABASE_URL_FROM_SECRET>" python -m alembic downgrade -1
-```
-
-### Step 4: Verification
-To check if the migration was successfully applied, run a quick query to inspect rowsecurity (RLS) on your tables:
-```python
-from sqlalchemy import create_engine, text
-engine = create_engine("DATABASE_URL_HERE")
-with engine.connect() as conn:
-    res = conn.execute(text("SELECT tablename, rowsecurity FROM pg_tables WHERE schemaname = 'public'")).fetchall()
-    for row in res:
-         print(row[0], "RLS Enabled:", row[1])
-```
-
+Local SQLite needs no cloud credentials. Desktop installers must ship without
+an .env file; the bundled backend receives the same Cloud Run URL as the shell.

@@ -59,3 +59,5 @@ tzdata>=2024.1                 # zoneinfo tz database for slim images: services.
 # ── Billing / invoicing ────────────────────────────────────────
 qrcode[pil]>=7.4.0             # QR code on thermal bills (requires Pillow, already listed)
 weasyprint>=60.0               # optional: PDF export of public invoices (try/except guarded)
+
+psutil>=5.9.0  # optional runtime process diagnostics

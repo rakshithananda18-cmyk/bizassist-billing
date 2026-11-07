@@ -20,9 +20,18 @@ import { reconcileDeviceModeOnLogin } from '../utils/deviceMode'
 import { syncManager } from '../sync/syncManager'
 import { tokenStorage } from '../utils/tokenStorage'
 import { clearBillingProfileCache } from '../hooks/useBillingProfile'
-import { notifyAiLogout } from '../config/aiDashboard'
+import { notifyAiLogout, getAiDashboardUrl } from '../config/aiDashboard'
+import { sessionFetch, resilientSessionFetch, invalidateSessionRefresh } from '../api/session'
+import { readableError } from '../api/httpErrors'
+import { useSessionRefresh } from '../hooks/useSessionRefresh'
 
 const AUTH_REQUEST_TIMEOUT_MS = 8000
+export const WEB_AUTH_BUDGET_MS = 65000
+function clearPreviewTimers() {
+  try {
+    for (const key of Object.keys(sessionStorage)) if (key.startsWith('bizassist_preview_start:') || key === 'bizassist_session_start_time') sessionStorage.removeItem(key)
+  } catch { /* unavailable storage */ }
+}
 
 // Authentication is a security boundary, but it must also have a bounded wait.
 // An unavailable local service used to leave the login screen spinning forever.
@@ -51,7 +60,7 @@ const authFetchWithTimeout = async (url, options, timeoutMs = AUTH_REQUEST_TIMEO
  * (Cloud Run Mumbai <-> Hugging Face Spaces) if the current cloud endpoint
  * experiences a timeout, network failure, or HTTP 502/503/504 gateway outage.
  */
-const authFetchWithFailover = async (url, options, timeoutMs = 6000) => {
+const authFetchWithFailover = async (url, options, timeoutMs = IS_LOCAL_APP ? AUTH_REQUEST_TIMEOUT_MS : WEB_AUTH_BUDGET_MS) => {
   const currentCloud = (typeof getActiveCloudUrl === 'function' ? getActiveCloudUrl() : CLOUD_URL) || CLOUD_URL
   const altCloud = (typeof getAlternateCloudUrl === 'function' ? getAlternateCloudUrl() : FALLBACK_CLOUD_URL) || FALLBACK_CLOUD_URL
   const canFailover = !IS_LOCAL_APP || (typeof url === 'string' && (url.includes('run.app') || url.includes('hf.space')))
@@ -132,6 +141,14 @@ function syncScopeFor(user) {
 
 export function AuthProvider({ children }) {
   const authGeneration = useRef(0)
+  const reportedLoadErrors = useRef(new Set())
+  const reportLoadError = async (response, path) => {
+    if (response.ok) { reportedLoadErrors.current.delete(path); return }
+    if (reportedLoadErrors.current.has(path) || [401, 403].includes(response.status)) return
+    reportedLoadErrors.current.add(path)
+    const message = readableError(response.status, response.headers?.get?.('content-type'), await response.clone().text())
+    window.dispatchEvent(new CustomEvent('show_toast', { detail: { type: 'warning', msg: message } }))
+  }
   const [user, setUser]   = useState(null)
   const [token, setToken] = useState(() => tokenStorage.getItem('billing_token') || null)
   const [loading, setLoading] = useState(true)
@@ -178,6 +195,10 @@ export function AuthProvider({ children }) {
 
   const _saveSession = useCallback((data) => {
     authGeneration.current++
+    invalidateSessionRefresh()
+    reportedLoadErrors.current.clear()
+    clearPreviewTimers()
+    setSettings(null)
     const savedGeneration = authGeneration.current
     setProfile(null)
     syncManager.clearScope()
@@ -340,8 +361,8 @@ export function AuthProvider({ children }) {
       })
     } catch (err) {
       if (err?.code === 'AUTH_REQUEST_TIMEOUT') {
-        const target = IS_LOCAL_APP && API_BASE === LOCAL_URL ? 'local billing service' : 'sign-in service'
-        throw new Error(`The ${target} is not responding. Wait a moment, then restart BizAssist if it persists.`)
+        if (!IS_LOCAL_APP) throw new Error('The server did not respond. Check your connection and try again.')
+        throw new Error('The local billing service is not responding. Wait a moment, then restart BizAssist if it persists.')
       }
       throw err
     }
@@ -455,7 +476,7 @@ export function AuthProvider({ children }) {
     // 3. No fallback applied → surface the original error.
     const err = await res.json().catch(() => ({}))
     logger.error('Login request failed with status:', res.status, err.detail)
-    throw new Error(err.detail || 'Invalid credentials')
+    throw new Error([400, 401, 403].includes(res.status) ? 'Wrong username or password.' : readableError(res.status, res.headers?.get?.('content-type'), err))
   }, [_saveSession, _provisionCloudSyncToken])
 
   // Staff login (§9.5): staff never use a global username — authenticate scoped to
@@ -474,8 +495,8 @@ export function AuthProvider({ children }) {
       })
     } catch (err) {
       if (err?.code === 'AUTH_REQUEST_TIMEOUT') {
-        const target = IS_LOCAL_APP && API_BASE === LOCAL_URL ? 'local billing service' : 'sign-in service'
-        throw new Error(`The ${target} is not responding. Wait a moment, then restart BizAssist if it persists.`)
+        if (!IS_LOCAL_APP) throw new Error('The server did not respond. Check your connection and try again.')
+        throw new Error('The local billing service is not responding. Wait a moment, then restart BizAssist if it persists.')
       }
       throw err
     }
@@ -523,7 +544,7 @@ export function AuthProvider({ children }) {
     // 3. No fallback applied → surface the original error.
     const err = await res.json().catch(() => ({}))
     logger.error('Staff login failed:', res.status, err.detail)
-    throw new Error(err.detail || 'Invalid credentials')
+    throw new Error([400, 401, 403].includes(res.status) ? 'Wrong username or password.' : readableError(res.status, res.headers?.get?.('content-type'), err))
   }, [_saveSession])
 
   // Apply the chosen business template on a backend (best-effort).
@@ -543,14 +564,24 @@ export function AuthProvider({ children }) {
   }, [])
 
   const _doSignup = useCallback(async (base, body) => {
-    const res = await authFetchWithFailover(`${base}/signup`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
+    const requestId = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`
+    const send = () => authFetchWithFailover(`${base}/signup`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Client-Request-Id': requestId }, body: JSON.stringify(body),
     })
+    let res
+    try { res = await send() }
+    catch (error) {
+      // A timeout can occur after the account committed. Recover it with proof
+      // of the same credentials before making another signup attempt.
+      const recovered = await authFetchWithFailover(`${base}/login`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: body.username, password: body.password }),
+      })
+      if (recovered.ok) return recovered.json()
+      if (recovered.status === 401) res = await send()
+      else throw new Error(readableError(recovered.status, recovered.headers?.get?.('content-type'), await recovered.text()))
+    }
     if (!res.ok) {
-      const err = await res.json().catch(() => ({}))
-      const e = new Error(err.detail || 'Registration failed')
+      const e = new Error(readableError(res.status, res.headers?.get?.('content-type'), await res.text()))
       e.status = res.status
       throw e
     }
@@ -574,7 +605,7 @@ export function AuthProvider({ children }) {
       try {
         cloudData = await _doSignup(CLOUD_URL, { username, password, business_name, phone })
       } catch (err) {
-        if (err.status === 400) {
+        if (err.status === 400 && /username|already (?:exists|registered|taken)/i.test(err.message)) {
           // Username already taken on the cloud — most likely the same person.
           throw new Error('An account with this username already exists. Please log in instead.')
         }
@@ -669,9 +700,26 @@ export function AuthProvider({ children }) {
       trialUnavailable: Object.prototype.hasOwnProperty.call(data, 'trial') && !data.trial }
   }, [_saveSession, _applyTemplate, _doSignup, _provisionCloudSyncToken])
 
-  const logout = useCallback((announce = true) => {
+  const logout = useCallback(async (announce = true) => {
     authGeneration.current++
+    invalidateSessionRefresh()
+    reportedLoadErrors.current.clear()
+    clearPreviewTimers()
     notifyAiLogout()
+    const outgoingToken = tokenStorage.getItem('billing_token')
+    if (announce === true && outgoingToken) {
+      const controller = new AbortController()
+      const timeout = setTimeout(() => controller.abort(), 3000)
+      try {
+        await Promise.race([
+          fetch(`${API_BASE}/auth/logout`, { method: 'POST', headers: { Authorization: `Bearer ${outgoingToken}` }, keepalive: true, signal: controller.signal }),
+          new Promise(resolve => setTimeout(resolve, 3000)),
+        ])
+      } catch { /* local logout remains available offline */ }
+      finally { clearTimeout(timeout) }
+      // A new login while the old logout was pending owns the session now.
+      if (tokenStorage.getItem('billing_token') !== outgoingToken) return
+    }
     logger.info('Logging out user, clearing local session token.')
 
     // Clear billing profile cache so next user does not inherit prior business profile (WEB-07)
@@ -694,9 +742,7 @@ export function AuthProvider({ children }) {
 
     // Hidden cross-origin iframe to trigger AI dashboard logout synchronously
     try {
-      const { hostname, port } = window.location
-      const aiUrl = import.meta.env.VITE_AI_DASHBOARD_URL ||
-        (port === '8450' ? `http://${hostname}:8451` : `http://${hostname}:5173`)
+      const aiUrl = getAiDashboardUrl()
 
       const iframe = document.createElement('iframe')
       iframe.style.display = 'none'
@@ -715,6 +761,8 @@ export function AuthProvider({ children }) {
     localStorage.removeItem('pos_upi_vpa')  // clear device payment handle so next business doesn't inherit it
     setToken(null)
     setUser(null)
+    setSettings(null)
+    setProfile(null)
     setAppReady(false)
     setBizId(null)   // stop tagging logs with the signed-out business
   }, [])
@@ -722,6 +770,13 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     const changed = event => {
       if (token && (event.key === 'billing_token' || event.key === 'billing_user') && !event.newValue) logout(false)
+      else if (event.key === 'billing_token' && event.newValue) {
+        try {
+          const saved = JSON.parse(localStorage.getItem('billing_user') || 'null')
+          if (saved?.public_id && saved.public_id !== user?.public_id) { window.location.reload(); return }
+        } catch { /* same-session refresh still works */ }
+        setToken(event.newValue)
+      }
     }
     window.addEventListener('storage', changed)
     let channel
@@ -732,7 +787,7 @@ export function AuthProvider({ children }) {
       }
     } catch { /* storage events remain available */ }
     return () => { window.removeEventListener('storage', changed); channel?.close() }
-  }, [token, logout])
+  }, [token, user?.public_id, logout])
 
   /**
    * switchMode — change hosting mode and force re-login.
@@ -774,7 +829,7 @@ export function AuthProvider({ children }) {
       logger.warn('[MODE SWITCH] Could not save mode to backend (continuing anyway):', err)
     }
     // 2. Update localStorage so the new API_BASE is effective immediately
-    logout()
+    await logout()
     updateApiBase(newMode)
     // 3. Force logout — clears stale JWT; user will log in against new backend
     localStorage.removeItem('billing_token')
@@ -836,6 +891,13 @@ export function AuthProvider({ children }) {
     logger.info(`[MODE] Done. API_BASE is now: ${API_BASE}`)
   }, [token])
 
+  useSessionRefresh(token)
+  useEffect(() => {
+    const changed = event => { if (event.detail?.token) setToken(event.detail.token) }
+    window.addEventListener('auth_token_refreshed', changed)
+    return () => window.removeEventListener('auth_token_refreshed', changed)
+  }, [])
+
   const [profile, setProfile] = useState(null)
 
   const fetchProfile = useCallback(async () => {
@@ -844,17 +906,13 @@ export function AuthProvider({ children }) {
     const current = () => generation === authGeneration.current && tokenStorage.getItem('billing_token') === token && isSameBackendOrCloudFailover(API_BASE, backend)
     try {
       if (!current()) return
-      const res = await fetch(`${backend}/profile`, {
+      const res = await sessionFetch(`${backend}/profile`, {
         headers: {
           Authorization: `Bearer ${token}`
         }
       })
       if (!current()) return
-      if (res.status === 404) {
-        logger.warn('[AUTH] Restored session user not found on active backend. Auto-logging out.')
-        logout()
-        return
-      }
+      await reportLoadError(res, '/profile')
       if (res.ok) {
         const data = await res.json()
         if (!current()) return
@@ -874,17 +932,13 @@ export function AuthProvider({ children }) {
     try {
       if (!current()) return
       const url = force ? `${backend}/settings?force=true` : `${backend}/settings`
-      const res = await fetch(url, {
+      const res = await sessionFetch(url, {
         headers: {
           Authorization: `Bearer ${token}`
         }
       })
       if (!current()) return
-      if (res.status === 404) {
-        logger.warn('[AUTH] Restored session settings user not found on active backend. Auto-logging out.')
-        logout()
-        return
-      }
+      await reportLoadError(res, '/settings')
       if (res.ok) {
         const data = await res.json()
         if (!current()) return
@@ -983,23 +1037,36 @@ export function AuthProvider({ children }) {
     }
   }, [token, logout])
 
+  useEffect(() => {
+    if (!token || settings) return
+    let stopped = false, attempt = 0, timer
+    const schedule = () => {
+      timer = setTimeout(async () => {
+        if (stopped) return
+        await fetchSettings()
+        if (!stopped) schedule()
+      }, [2000, 4000, 8000, 16000][attempt++] || 30000)
+    }
+    schedule()
+    const retry = () => { if (!stopped) void fetchSettings() }
+    window.addEventListener('focus', retry)
+    window.addEventListener('online', retry)
+    return () => { stopped = true; clearTimeout(timer); window.removeEventListener('focus', retry); window.removeEventListener('online', retry) }
+  }, [token, settings, fetchSettings])
+
   const fetchBusinessConfig = useCallback(async () => {
     if (!token) return
     const backend = API_BASE, generation = authGeneration.current
     const current = () => generation === authGeneration.current && tokenStorage.getItem('billing_token') === token && isSameBackendOrCloudFailover(API_BASE, backend)
     try {
       if (!current()) return
-      const res = await fetch(`${backend}/business/config`, {
+      const res = await sessionFetch(`${backend}/business/config`, {
         headers: {
           Authorization: `Bearer ${token}`
         }
       })
       if (!current()) return
-      if (res.status === 404) {
-        logger.warn('[AUTH] Restored session business config user not found on active backend. Auto-logging out.')
-        logout()
-        return
-      }
+      await reportLoadError(res, '/business/config')
       if (res.ok) {
         const data = await res.json()
         if (!current()) return
@@ -1086,7 +1153,7 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     const handleUnauthorized = () => {
       logger.warn('[AuthContext] auth_unauthorized event triggered. Auto-logging out.')
-      logout()
+      logout(false)
       window.dispatchEvent(new CustomEvent('show_toast', {
         detail: { type: 'error', msg: 'Session expired. Please log in again.' }
       }))
@@ -1100,7 +1167,7 @@ export function AuthProvider({ children }) {
   // Authenticated fetch helper
   const authFetch = useCallback(async (path, opts = {}) => {
     const backend = API_BASE, generation = authGeneration.current
-    const current = () => generation === authGeneration.current && tokenStorage.getItem('billing_token') === token && isSameBackendOrCloudFailover(API_BASE, backend)
+    const current = () => generation === authGeneration.current && isSameBackendOrCloudFailover(API_BASE, backend)
     if (!current()) throw new Error('Session changed')
     // DELIBERATELY NO ABSOLUTE-URL PASSTHROUGH.
     // A revision that allowed callers to pass a fully-qualified URL here caused
@@ -1130,10 +1197,10 @@ export function AuthProvider({ children }) {
 
     let res
     try {
-      res = await authFetchWithFailover(`${backend}${apiPath}`, {
+      res = await resilientSessionFetch(`${backend}${apiPath}`, {
         ...opts,
         headers
-      }, 12000)
+      }, { budgetMs: opts.timeoutMs || (apiPath.startsWith('/connections/') && !['GET', 'HEAD'].includes((opts.method || 'GET').toUpperCase()) ? 75000 : 65000) })
     } catch (err) {
       logger.error(`authFetch network failure for path: ${path}`, err)
       window.dispatchEvent(new CustomEvent('show_toast', {
@@ -1144,23 +1211,10 @@ export function AuthProvider({ children }) {
 
     if (!current()) throw new Error('Session changed')
 
-    if (res.status === 401) {
-      logger.warn(`authFetch encountered 401 (Unauthorized) for path: ${path}. Auto-logging out.`)
-      logout()
-      throw new Error('Session expired')
-    }
 
     if (!res.ok) {
-      res.clone().json().then(err => {
-        const detail = err?.detail || `Error: ${res.statusText || res.status}`
-        window.dispatchEvent(new CustomEvent('show_toast', {
-          detail: { type: 'error', msg: detail }
-        }))
-      }).catch(() => {
-        window.dispatchEvent(new CustomEvent('show_toast', {
-          detail: { type: 'error', msg: `Request failed with status ${res.status}` }
-        }))
-      })
+      const message = readableError(res.status, res.headers?.get?.('content-type'), await res.clone().text())
+      window.dispatchEvent(new CustomEvent('show_toast', { detail: { type: 'error', msg: message } }))
     }
 
     logger.debug(`authFetch response status for path ${path}: ${res.status}`)

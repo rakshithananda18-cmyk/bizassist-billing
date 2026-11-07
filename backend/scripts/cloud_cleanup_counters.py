@@ -33,9 +33,9 @@ try:
 except ImportError:
     sys.exit("This script needs httpx:  pip install httpx")
 
-DEFAULT_CLOUD = (os.environ.get("CLOUD_API_URL")
-                 or os.environ.get("VITE_API_URL")
-                 or "https://rakshit-dev-bizassist.hf.space")
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from core.cloud_endpoint import CLOUD_URL as DEFAULT_CLOUD
 
 JUNK_RE = re.compile(r"^(c|cash)_[0-9a-f]{8}$")
 

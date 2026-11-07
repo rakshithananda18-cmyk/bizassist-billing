@@ -174,7 +174,7 @@ def upload_archive_to_object_storage(data: bytes, filename: str) -> bool:
 
 # ── Scheduled maintenance ────────────────────────────────────────────────────
 
-def run_telemetry_db_maintenance():
+def run_telemetry_db_maintenance(after_business_id=None, deadline=None):
     """Weekly: retention purge + size guard. Safe to run anywhere."""
     try:
         from database.db import SessionLocal

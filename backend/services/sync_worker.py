@@ -15,6 +15,12 @@ import os
 import json
 import asyncio
 import threading
+import time
+import random
+import hashlib
+import math
+from dataclasses import dataclass, asdict
+from email.utils import parsedate_to_datetime
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Any
 
@@ -38,7 +44,47 @@ from services.dates import utc_now
 
 logger = logging.getLogger("bizassist.sync_worker")
 
-CLOUD_URL = os.environ.get("CLOUD_API_URL") or os.environ.get("VITE_API_URL") or "https://rakshit-dev-bizassist.hf.space"
+from core.cloud_endpoint import CLOUD_URL
+
+
+@dataclass
+class CloudState:
+    state: str
+    retry_after: Optional[float] = None
+    last_probe_at: Optional[float] = None
+    last_success_at: Optional[float] = None
+
+
+_CLOUD_STATE: Dict[int, CloudState] = {}
+_rng = random.Random()
+
+
+def get_cloud_state(business_id):
+    state = _CLOUD_STATE.get(business_id)
+    return asdict(state) if state else None
+
+
+def _parse_retry_after(value, now):
+    try:
+        delay = float(value)
+    except (ValueError, TypeError):
+        try:
+            target = parsedate_to_datetime(value)
+            if target.tzinfo is None:
+                target = target.replace(tzinfo=timezone.utc)
+            stamp = (now if now.tzinfo else now.replace(tzinfo=timezone.utc)).timestamp() if isinstance(now, datetime) else now
+            delay = target.timestamp() - stamp
+        except (ValueError, TypeError, OverflowError):
+            return 30.0
+    if not math.isfinite(delay):
+        return 30.0
+    return min(300.0, max(0.0, delay))
+
+
+def _chunk_request_id(business_id, outbox_ids, payload):
+    body = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    source = json.dumps([business_id, sorted(outbox_ids), hashlib.sha256(body.encode()).hexdigest()], separators=(",", ":"))
+    return hashlib.sha256(source.encode()).hexdigest()
 
 # Keep track of last execution times in-memory
 _LAST_RUN: Dict[int, datetime] = {}
@@ -84,6 +130,7 @@ _PULL_MAX_FAILED_STREAK = 3
 # asked for every row of every table inside 10 s, timed out, correctly refused to
 # advance the cursor, and re-attempted the identical impossible request forever.
 _PULL_PAGE_LIMIT = 1000
+_PARITY_BUDGET_S = 600
 
 # Was 10.0 while the same endpoint was called by the parity audit with 180.0 —
 # the discrepancy was the tell that 10 s never fitted a wide window. Now that
@@ -458,7 +505,7 @@ _PULL_AUTH_BLOCKED: Dict[int, bool] = {}
 # request mid-apply → "The read operation timed out" → the WHOLE batch was
 # marked failed and re-sent every cycle, so the outbox never drained. Give reads
 # a generous budget and chunk the outbox so each request completes in-window.
-_PUSH_TIMEOUT = httpx.Timeout(connect=10.0, read=120.0, write=60.0, pool=10.0)
+_PUSH_TIMEOUT = httpx.Timeout(connect=10.0, read=100.0, write=30.0, pool=10.0)
 _PUSH_CHUNK_SIZE = 20
 
 # Outbox backoff for rows the cloud HELD (deferred / unaccounted). Doubling from
@@ -640,12 +687,23 @@ def _invalidate_cloud_token(business_id: int):
 # before expiry. A device that is online at least once a day never lapses; one
 # that stays offline past expiry degrades exactly as before — reads from the
 # local mirror, writes refused — and recovers at the next online login.
-_REFRESH_WHEN_UNDER = timedelta(hours=6)
+_REFRESH_WHEN_UNDER = timedelta(hours=12)
 
 # Businesses whose refresh attempt failed recently, so a dead network doesn't
 # mean one refresh POST per scheduler tick.
 _REFRESH_BACKOFF: Dict[int, datetime] = {}
 _REFRESH_RETRY_AFTER = timedelta(minutes=15)
+_REFRESH_RETRY_DELAYS = (60, 120, 240, 480, 900)
+_REFRESH_FAILURES: Dict[int, int] = {}
+
+
+def _defer_refresh(business_id, response=None):
+    failures = _REFRESH_FAILURES.get(business_id, 0)
+    delay = _REFRESH_RETRY_DELAYS[min(failures, len(_REFRESH_RETRY_DELAYS) - 1)]
+    if response is not None and response.status_code in (429, 503):
+        delay = _parse_retry_after(response.headers.get("Retry-After"), utc_now().replace(tzinfo=timezone.utc))
+    _REFRESH_FAILURES[business_id] = failures + 1
+    _REFRESH_BACKOFF[business_id] = utc_now() + timedelta(seconds=delay)
 
 
 def _token_expiry(token: str) -> Optional[datetime]:
@@ -700,10 +758,10 @@ def ensure_fresh_cloud_token(business_id: int) -> Optional[str]:
         resp = httpx.post(
             f"{CLOUD_URL}/auth/refresh",
             headers={"Authorization": f"Bearer {token}"},
-            timeout=10.0,
+            timeout=45.0,
         )
     except Exception as e:
-        _REFRESH_BACKOFF[business_id] = utc_now() + _REFRESH_RETRY_AFTER
+        _defer_refresh(business_id)
         logger.info("[SYNC_WORKER] Cloud token refresh deferred for business %s (offline: %s)",
                     business_id, e)
         return token
@@ -714,10 +772,11 @@ def ensure_fresh_cloud_token(business_id: int) -> Optional[str]:
         # provision a new one.
         _invalidate_cloud_token(business_id)
         _REFRESH_BACKOFF.pop(business_id, None)
+        _REFRESH_FAILURES.pop(business_id, None)
         return None
 
     if resp.status_code != 200:
-        _REFRESH_BACKOFF[business_id] = utc_now() + _REFRESH_RETRY_AFTER
+        _defer_refresh(business_id, resp)
         logger.info("[SYNC_WORKER] Cloud token refresh returned %s for business %s",
                     resp.status_code, business_id)
         return token
@@ -728,11 +787,12 @@ def ensure_fresh_cloud_token(business_id: int) -> Optional[str]:
         fresh = None
 
     if not fresh:
-        _REFRESH_BACKOFF[business_id] = utc_now() + _REFRESH_RETRY_AFTER
+        _defer_refresh(business_id)
         return token
 
     store_cloud_token(business_id, fresh)
     _REFRESH_BACKOFF.pop(business_id, None)
+    _REFRESH_FAILURES.pop(business_id, None)
     logger.info("[SYNC_WORKER] Cloud token refreshed for business %s (slid before expiry)", business_id)
     return fresh
 
@@ -1597,61 +1657,50 @@ def _cloud_parity_check(db: Session, business_id: int) -> dict:
         logger.warning("[PARITY] biz=%s: no cloud token — skipping", business_id)
         return summary
 
-    # ── The parameter name matters, and it was wrong ──────────────────────────
-    # This read `params={"since": "2020-01-01T00:00:00"}` until 2026-08-01.
-    # `/api/sync/pull` has no `since` parameter — its signature is
-    # `pull_changes(last_sync_at, limit, ...)` — and FastAPI silently drops
-    # unknown query params. So `last_sync_at` arrived as None, the endpoint fell
-    # through to `datetime(1970, 1, 1)`, and the "2020" in that string had never
-    # had any effect in the lifetime of this function.
-    #
-    # The behaviour was accidentally correct (parity DOES want everything, see
-    # below) which is why nothing caught it. It is fixed because the next person
-    # to narrow that window would have watched their change do nothing.
-    #
-    # NO `limit` — deliberate, and the endpoint's own docstring says so. Parity
-    # decides whether a local row is ABSENT from the cloud, and absence cannot
-    # be read off a page that stopped early; the `has_more` guard below refuses
-    # to judge a truncated snapshot for exactly that reason.
-    #
-    # The cost is a large request. It timed out at 180 s against the live Space
-    # on 2026-08-01, which is the same request shape that was failing when the
-    # LCL-OW-0037 payment was lost. `/health` is pinged first so a sleeping HF
-    # Space wakes on a cheap call instead of burning the read budget on a cold
-    # start — the difference between "the Space was asleep" and "the endpoint
-    # cannot answer", which are not the same problem.
-    try:
-        httpx.get(f"{CLOUD_URL}/health", timeout=10.0)
-    except Exception:
-        pass        # best-effort warm-up; the real request reports the failure
-    try:
-        resp = httpx.get(
-            f"{CLOUD_URL}/api/sync/pull",
-            params={"last_sync_at": "1970-01-01T00:00:00"},
-            headers={"Authorization": f"Bearer {token}"},
-            timeout=httpx.Timeout(connect=10.0, read=180.0, write=30.0, pool=10.0),
-        )
-    except Exception as e:
-        summary["errors"].append(f"pull request failed: {e}")
-        logger.warning("[PARITY] biz=%s: pull request failed: %s", business_id, e)
-        return summary
-
-    if resp.status_code != 200:
-        summary["errors"].append(f"pull HTTP {resp.status_code}")
-        logger.warning("[PARITY] biz=%s: pull returned %s", business_id, resp.status_code)
-        return summary
-
-    try:
-        body = resp.json()
-    except Exception as e:
-        summary["errors"].append(f"pull JSON decode failed: {e}")
-        return summary
-
-    # The cloud pull response wraps all table data under a "changes" key
-    # (see sync_worker line: pulled = _resp_json.get("changes", {})).
-    # Reading the top-level body directly returns None for every table lookup,
-    # which caused every local UID to be flagged as MISSING (false positive).
-    cloud_data: dict = body.get("changes", {}) if isinstance(body, dict) else {}
+    # Read the complete commit-ordered feed in bounded pages. A partial snapshot
+    # cannot establish that a UID is absent, so never compare it as complete.
+    started = time.monotonic()
+    cursor = None
+    cloud_rows = {}
+    body = {}
+    while True:
+        if time.monotonic() - started >= _PARITY_BUDGET_S:
+            summary["errors"].append("incomplete: parity time budget exhausted")
+            return summary
+        try:
+            params = {"protocol": 2, "limit": _PULL_PAGE_LIMIT}
+            if cursor:
+                params["cursor"] = cursor
+            resp = httpx.get(f"{CLOUD_URL}/api/sync/pull", params=params,
+                headers={"Authorization": f"Bearer {token}"}, timeout=_PULL_TIMEOUT)
+            if resp.status_code != 200:
+                summary["errors"].append(f"pull HTTP {resp.status_code}")
+                return summary
+            body = resp.json()
+            if not isinstance(body, dict):
+                raise ValueError("invalid pull response")
+            if body.get("failed_tables"):
+                break
+            for entity, rows in body.get("changes", {}).items():
+                table = cloud_rows.setdefault(entity, {})
+                for row in rows:
+                    uid = row.get("uid") or row.get("id")
+                    if row.get("_sync_deleted"):
+                        table.pop(uid, None)
+                    else:
+                        table[uid] = row
+            if not body.get("has_more"):
+                break
+            next_cursor = body.get("cursor")
+            if not next_cursor or next_cursor == cursor:
+                summary["errors"].append("truncated cloud snapshot (has_more; no advancing cursor)")
+                return summary
+            cursor = next_cursor
+        except Exception as exc:
+            summary["errors"].append(f"pull request failed: {type(exc).__name__}")
+            logger.warning("[PARITY] biz=%s pull failed: %s", business_id, exc)
+            return summary
+    cloud_data = {entity:list(rows.values()) for entity, rows in cloud_rows.items()}
 
     # ── 3b. Refuse to judge absence from an INCOMPLETE snapshot ───────────────
     # The pull endpoint reports `failed_tables` precisely because "a table that
@@ -2609,6 +2658,9 @@ def _apply_pulled_row(db, business_id: int, table_name: str, model_cls, record: 
 
 def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool = False, do_pull: bool = False):
     business_id = user.id
+    cloud_state = _CLOUD_STATE.get(business_id)
+    if cloud_state and cloud_state.retry_after and time.time() < cloud_state.retry_after:
+        return
 
     # ── Lift a stale Pro-plan pause ──────────────────────────────────────────
     # A cloud 402 sets `_PLAN_BLOCKED`, and the gate further down then returns
@@ -2686,11 +2738,26 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
                        business_id, _repair_err)
 
     # 1. Probe cloud endpoint health
+    now = time.time()
+    previous_success = cloud_state.last_success_at if cloud_state else None
     try:
-        resp = httpx.get(f"{CLOUD_URL}/health", timeout=10.0)
-        if resp.status_code != 200 or resp.json().get("status") != "ok":
-            raise Exception("Cloud health probe returned non-ok status")
+        read_timeout = 45.0 if previous_success is None or now - previous_success > 600 else 10.0
+        resp = httpx.get(f"{CLOUD_URL}/health", timeout=httpx.Timeout(connect=10.0, read=read_timeout, write=10.0, pool=10.0))
+        try:
+            healthy = resp.status_code == 200 and resp.json().get("status") == "ok"
+        except (ValueError, AttributeError):
+            healthy = False
+        if not healthy:
+            delay = _parse_retry_after(resp.headers.get("Retry-After"), now)
+            _CLOUD_STATE[business_id] = CloudState("busy", now + delay * (1 + _rng.uniform(0, .2)), now, previous_success)
+            logger.info("[SYNC_WORKER] Cloud busy/starting for business %s (HTTP %s)", business_id, resp.status_code)
+            return
+    except httpx.TimeoutException:
+        _CLOUD_STATE[business_id] = CloudState("waking", None, now, previous_success)
+        logger.info("[SYNC_WORKER] Cloud is starting for business %s; retrying next tick", business_id)
+        return
     except Exception as e:
+        _CLOUD_STATE[business_id] = CloudState("offline", None, now, previous_success)
         logger.warning("[SYNC_WORKER] Cloud unreachable for business %s: %s", business_id, e)
         # (H-2) Only record a SyncLog row on the online→offline transition, so an
         # extended outage doesn't append a row every interval (unbounded growth).
@@ -2707,6 +2774,7 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
         return
 
     # Cloud is reachable — clear the offline flag so the next outage logs once.
+    _CLOUD_STATE[business_id] = CloudState("online", None, now, now)
     _OFFLINE_STATE[business_id] = False
 
     # Pro-plan pause: the cloud already refused this business's sync (402). Don't
@@ -2846,7 +2914,7 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
                 resp = httpx.post(
                     f"{CLOUD_URL}/api/sync/push",
                     json={"changes": chunk_changes},
-                    headers=headers,
+                    headers={**headers, "X-Client-Request-Id": _chunk_request_id(business_id, [it.id for it, _c in chunk], {"changes":chunk_changes})},
                     timeout=_PUSH_TIMEOUT,
                 )
                 if resp.status_code != 200 or resp.json().get("status") != "success":

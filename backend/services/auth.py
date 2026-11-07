@@ -64,6 +64,13 @@ def create_access_token(data: dict, expires_delta: timedelta = None) -> str:
     encoded_jwt = jwt.encode(to_encode, JWT_SECRET, algorithm=JWT_ALGORITHM)
     return encoded_jwt
 
+SESSION_REJECTION_HEADERS = {"WWW-Authenticate": 'Bearer error="invalid_token"'}
+
+
+def session_rejected(detail: str) -> HTTPException:
+    return HTTPException(status_code=401, detail=detail, headers=SESSION_REJECTION_HEADERS)
+
+
 def decode_access_token(token: str) -> dict:
     try:
         payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
@@ -73,12 +80,12 @@ def decode_access_token(token: str) -> dict:
         # is expected operation, not a fault — log at INFO so it doesn't read as
         # a server error in the console.
         logger.info("[AUTH] 401 expired token — client should re-authenticate")
-        raise HTTPException(status_code=401, detail="Signature has expired")
+        raise session_rejected("Signature has expired")
     except jwt.InvalidTokenError:
         # Usually a stale client token after a backend restart / JWT_SECRET change
         # (e.g. a browser tab left open). Not a backend fault — INFO, not WARN.
         logger.info("[AUTH] 401 invalid/stale token — client should re-authenticate")
-        raise HTTPException(status_code=401, detail="Invalid token")
+        raise session_rejected("Invalid token")
 
 # ── Token revocation (REVIEW_1 GAP-1) ────────────────────────────────────────
 # Every JWT carries a `tv` (token_version) claim; users.token_version is the
@@ -134,7 +141,7 @@ def _current_token_version(user_id: int) -> int:
             db.close()
         if row is None:
             logger.info("[AUTH] 401 token subject no longer exists user_id=%s", user_id)
-            raise HTTPException(status_code=401, detail="Session revoked — please log in again")
+            raise session_rejected("Session revoked — please log in again")
         tv = row[0] if row[0] is not None else 0
     except Exception as e:
         if isinstance(e, HTTPException):
@@ -150,15 +157,19 @@ def _validate_token_version(payload: dict) -> None:
     uid = payload.get("user_id") or payload.get("id")
     if uid is None:
         logger.info("[AUTH] 401 token missing account subject")
-        raise HTTPException(status_code=401, detail="Invalid session subject")
+        raise session_rejected("Invalid session subject")
     try:
         current = _current_token_version(int(uid))
     except (TypeError, ValueError):
         logger.info("[AUTH] 401 token has invalid account subject user_id=%r", uid)
-        raise HTTPException(status_code=401, detail="Invalid session subject")
-    if int(payload.get("tv", 0) or 0) != current:
+        raise session_rejected("Invalid session subject")
+    try:
+        presented_version = int(payload.get("tv", 0) or 0)
+    except (ValueError, TypeError):
+        raise session_rejected("Invalid session subject")
+    if presented_version != current:
         logger.info("[AUTH] 401 revoked token (tv mismatch) user_id=%s", uid)
-        raise HTTPException(status_code=401, detail="Session revoked — please log in again")
+        raise session_rejected("Session revoked — please log in again")
 
 
 def get_active_user(authorization: str = Header(None), token: str = Query(None)) -> dict:
@@ -170,13 +181,14 @@ def get_active_user(authorization: str = Header(None), token: str = Query(None))
 
     if not jwt_token:
         logger.info("[AUTH] Request rejected — missing or malformed Authorization header")
-        raise HTTPException(status_code=401, detail="Bearer authorization token missing")
+        raise session_rejected("Bearer authorization token missing")
     # NOTE: the request-scoped BizID for [BizId=…] logging is set in the HTTP
     # middleware (main_groq.py), NOT here. A sync dependency runs in a threadpool
     # context that is discarded before the route handler, so setting the
     # contextvar here would never reach the handler's log lines.
     payload = decode_access_token(jwt_token)
     _validate_token_version(payload)
+    _validate_parent_session(payload)
     return payload
 
 
@@ -321,37 +333,115 @@ def _ticket_sig(b64_payload: str, exp: int) -> str:
     return _hmac.new(JWT_SECRET.encode(), msg, _hashlib.sha256).hexdigest()
 
 
-def create_sse_ticket(user_payload: dict, expires_in_seconds: int = 30) -> str:
-    """Mint a short-lived, single-use, stateless (restart-proof) ticket."""
-    exp = int(_time.time()) + int(expires_in_seconds)
-    raw = _json.dumps(user_payload, sort_keys=True, separators=(",", ":"), default=str)
+from dataclasses import dataclass
+from sqlalchemy.exc import IntegrityError
+
+
+@dataclass(frozen=True)
+class TicketCheck:
+    claims: dict | None
+    reason: str
+
+
+def create_sse_ticket(user_payload: dict, expires_in_seconds: int = 30, *, aud=None) -> str:
+    """Mint a purpose-bound short-lived ticket in the legacy wire format."""
+    now = int(_time.time())
+    exp = now + min(120, int(expires_in_seconds))
+    claims = dict(user_payload, iat=now, jti=_secrets.token_hex(12))
+    if aud is not None:
+        claims["aud"] = aud
+    raw = _json.dumps(claims, sort_keys=True, separators=(",", ":"), default=str)
     b64 = _base64.urlsafe_b64encode(raw.encode()).decode().rstrip("=")
     return f"{exp}.{b64}.{_ticket_sig(b64, exp)}"
 
 
-def redeem_sse_ticket(ticket: str) -> dict | None:
-    """Verify signature + expiry, enforce single-use; return user payload or None."""
+_spent_inserts = 0
+
+
+def _spend_ticket(ticket: str, exp: int, leeway: int) -> bool:
+    """Atomically claim the digest, including across restarts and processes."""
+    global _spent_inserts
+    from database.db import SessionLocal
+    from database.models import SpentTicket
+    db = SessionLocal()
+    try:
+        digest = _hashlib.sha256(ticket.encode()).hexdigest()
+        db.add(SpentTicket(digest=digest, expires_at=datetime.utcfromtimestamp(exp + leeway)))
+        db.commit()
+        _spent_inserts += 1
+        if _spent_inserts % 100 == 0:
+            stale = db.query(SpentTicket.digest).filter(SpentTicket.expires_at < utc_now() - timedelta(hours=1)).limit(500).all()
+            if stale:
+                db.query(SpentTicket).filter(SpentTicket.digest.in_([row[0] for row in stale])).delete(synchronize_session=False)
+                db.commit()
+        return True
+    except IntegrityError:
+        db.rollback()
+        return False
+    except Exception as exc:
+        db.rollback()
+        logger.warning("[AUTH] Durable ticket claim unavailable; using process replay protection: %s", type(exc).__name__)
+        return ticket not in _used_tickets
+    finally:
+        db.close()
+
+
+def verify_ticket(ticket: str, *, audiences, leeway: int = 15) -> TicketCheck:
+    """Verify bounded signed claims before consuming a single-use credential."""
+    reason, claims, exp = "malformed", None, 0
     try:
         exp_s, b64, sig = ticket.split(".", 2)
         exp = int(exp_s)
-    except (ValueError, AttributeError):
-        return None
-    now = int(_time.time())
-    if now > exp:
-        return None
-    if not _hmac.compare_digest(sig, _ticket_sig(b64, exp)):
-        return None
-    if ticket in _used_tickets:   # single-use (best-effort across restarts)
-        return None
-    for tk, e in list(_used_tickets.items()):   # opportunistic cleanup
-        if e < now:
-            _used_tickets.pop(tk, None)
-    _used_tickets[ticket] = exp
+        now = int(_time.time())
+        if not _hmac.compare_digest(sig, _ticket_sig(b64, exp)):
+            reason = "bad_signature"
+        elif now > exp + leeway:
+            reason = "expired"
+        else:
+            claims = _json.loads(_base64.urlsafe_b64decode(b64 + "=" * (-len(b64) % 4)).decode())
+            if not isinstance(claims, dict):
+                reason = "malformed"
+            elif claims.get("aud") not in audiences:
+                reason = "wrong_audience"
+            elif "iat" in claims and (not isinstance(claims["iat"], (int, float)) or exp - claims["iat"] > 120 or exp <= claims["iat"] or claims["iat"] > now + leeway):
+                reason = "invalid_lifetime"
+            elif ticket in _used_tickets or not _spend_ticket(ticket, exp, leeway):
+                reason = "already_used"
+            else:
+                for tk, expiry in list(_used_tickets.items()):
+                    if expiry < now:
+                        _used_tickets.pop(tk, None)
+                _used_tickets[ticket] = exp + leeway
+                if claims.get("aud") is None:
+                    logger.info("[AUTH] hand-off ticket accepted reason=legacy_no_aud")
+                return TicketCheck(claims, "ok")
+    except (ValueError, TypeError, AttributeError, UnicodeError):
+        reason = "malformed"
+    logger.info("[AUTH] hand-off ticket refused reason=%s exp_delta=%s", reason, exp - int(_time.time()))
+    return TicketCheck(None, reason)
+
+
+def redeem_sse_ticket(ticket: str) -> dict | None:
+    return verify_ticket(ticket, audiences={None, "sse"}).claims
+
+
+def _validate_parent_session(payload: dict) -> None:
+    """Dashboard tokens inherit revocation of their originating Billing session."""
+    if not payload.get("psid"):
+        return
+    from database.db import SessionLocal
+    from database.models import RevokedSession
+    db = SessionLocal()
     try:
-        pad = "=" * (-len(b64) % 4)
-        return _json.loads(_base64.urlsafe_b64decode(b64 + pad).decode())
+        revoked = db.query(RevokedSession.sid).filter(RevokedSession.sid.in_([payload["psid"], payload.get("sid")]), RevokedSession.expires_at > utc_now()).first()
+        if revoked:
+            raise session_rejected("Session revoked — please log in again")
+    except HTTPException:
+        raise
     except Exception:
-        return None
+        raise HTTPException(status_code=503, detail="Session validation is temporarily unavailable")
+    finally:
+        db.close()
 
 
 def get_active_user_or_ticket(
@@ -364,8 +454,9 @@ def get_active_user_or_ticket(
         user = redeem_sse_ticket(ticket)
         if user is None:
             logger.warning("[AUTH] Ticket invalid, expired, or already used")
-            raise HTTPException(status_code=401, detail="Invalid or expired ticket")
+            raise session_rejected("Invalid or expired ticket")
         _validate_token_version(user)
+        _validate_parent_session(user)
         logger.info("[AUTH] Ticket verified successfully for user %s", user.get("username"))
         return user
 

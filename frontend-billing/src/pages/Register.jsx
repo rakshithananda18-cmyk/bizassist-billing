@@ -26,7 +26,6 @@ export default function Register() {
   const { signup } = useAuth()
   const navigate  = useNavigate()
   const location  = useLocation()
-  const [userCheckStatus, setUserCheckStatus] = useState(null) // null | 'checking' | 'available' | 'taken'
 
   const [form, setForm] = useState({
     businessName: '',
@@ -40,6 +39,13 @@ export default function Register() {
   const [error, setError] = useState('')
   const errorRef = useRef(null)
   const [loading, setLoading] = useState(false)
+  const [waking, setWaking] = useState(false)
+  useEffect(() => {
+    setWaking(false)
+    if (!loading || IS_LOCAL_APP) return
+    const timer = setTimeout(() => setWaking(true), 4000)
+    return () => clearTimeout(timer)
+  }, [loading])
   const [showPasswordCriteria, setShowPasswordCriteria] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
@@ -61,34 +67,6 @@ export default function Register() {
       setForm(f => ({ ...f, username: location.state.prefillUsername }))
     }
   }, [location.state])
-
-  // Live debounced check for username availability directly in the registration field
-  useEffect(() => {
-    const u = (form.username || '').trim()
-    if (!u || u.length < 3) {
-      setUserCheckStatus(null)
-      return
-    }
-    setUserCheckStatus('checking')
-    const timer = setTimeout(async () => {
-      try {
-        const res = await fetch(`${API_BASE}/api/biz_id/check`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username: u })
-        })
-        if (res.ok) {
-          const data = await res.json()
-          setUserCheckStatus(data.exists ? 'taken' : 'available')
-        } else {
-          setUserCheckStatus(null)
-        }
-      } catch {
-        setUserCheckStatus(null)
-      }
-    }, 350)
-    return () => clearTimeout(timer)
-  }, [form.username])
 
   useEffect(() => {
     // Templates come from the active backend; if the local (desktop) backend
@@ -239,7 +217,7 @@ export default function Register() {
         <div className="lb-h1" style={{ fontSize: '1.5rem', fontWeight: 700 }}>Home</div>
         
         {/* KPI Grid (4 cards) */}
-        <div className="lb-grid-4" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px' }}>
+        <div className="login-backdrop-grid">
           <div className="lb-card" style={{ height: '80px', borderRadius: '8px', background: 'var(--bg-2)', border: '1px solid var(--border)' }} />
           <div className="lb-card" style={{ height: '80px', borderRadius: '8px', background: 'var(--bg-2)', border: '1px solid var(--border)' }} />
           <div className="lb-card" style={{ height: '80px', borderRadius: '8px', background: 'var(--bg-2)', border: '1px solid var(--border)' }} />
@@ -247,7 +225,7 @@ export default function Register() {
         </div>
 
         {/* Second Row Grid (4 cards) */}
-        <div className="lb-grid-4" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px' }}>
+        <div className="login-backdrop-grid">
           <div className="lb-card" style={{ height: '80px', borderRadius: '8px', background: 'var(--bg-2)', border: '1px solid var(--border)' }} />
           <div className="lb-card" style={{ height: '80px', borderRadius: '8px', background: 'var(--bg-2)', border: '1px solid var(--border)' }} />
           <div className="lb-card" style={{ height: '80px', borderRadius: '8px', background: 'var(--bg-2)', border: '1px solid var(--border)' }} />
@@ -271,7 +249,8 @@ export default function Register() {
     <div className="split-page registration-page" style={{ position: 'relative', zIndex: 2 }}>
       {/* Left Panel: Registration Card */}
       <div className="split-left" style={{ position: 'relative', background: 'transparent', padding: '16px 20px' }}>
-        <div className="login-card" style={{ maxWidth: '440px', width: '100%', margin: 'auto', padding: '24px 28px' }}>
+        <div className="login-card login-card--wide">
+          {waking && <p role="status">Waking up the server… this can take up to a minute.</p>}
           <div className="login-glow"></div>
           <div className="login-symbol" style={{ marginBottom: 4 }}><BuildingMark size={32} /></div>
           <h1 className="login-title" style={{ fontSize: 24 }}>Create your account</h1>
@@ -389,15 +368,6 @@ export default function Register() {
             <div className="form-group" style={{ marginTop: '4px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <label htmlFor="username">Username or Email</label>
-                {userCheckStatus === 'checking' && (
-                  <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Checking…</span>
-                )}
-                {userCheckStatus === 'available' && (
-                  <span style={{ fontSize: '0.72rem', color: '#10b981', fontWeight: 600 }}>✓ Available</span>
-                )}
-                {userCheckStatus === 'taken' && (
-                  <span style={{ fontSize: '0.72rem', color: '#ef4444', fontWeight: 600 }}>✗ Already registered</span>
-                )}
               </div>
               <input
                 id="username"
@@ -407,12 +377,6 @@ export default function Register() {
                 onChange={e => setForm(f => ({ ...f, username: e.target.value }))}
                 required
               />
-              {userCheckStatus === 'taken' && (
-                <div style={{ fontSize: '0.74rem', color: '#ef4444', marginTop: 4, display: 'flex', gap: 6, alignItems: 'center' }}>
-                  <span>This business username already exists.</span>
-                  <Link to="/login" style={{ color: 'var(--accent)', fontWeight: 600, textDecoration: 'underline' }}>Sign in instead →</Link>
-                </div>
-              )}
             </div>
 
             <div className="form-group" style={{ marginTop: '4px' }}>

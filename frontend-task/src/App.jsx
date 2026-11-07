@@ -25,7 +25,7 @@ import MyScore from './pages/staff/MyScore'
 
 export default function App() {
   const { me, loading } = useAuth()
-  if (loading) return <div className="login-page"><Loader label="Opening BizAssist…" /></div>
+  if (loading) return <div className="login-page"><Loader label="Field Team is starting…" /></div>
   if (!me) {
     if (typeof window !== 'undefined' && window.location.pathname.startsWith('/register')) {
       window.location.href = getBillingUrl('/register')

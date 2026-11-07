@@ -19,7 +19,7 @@ import uuid
 from datetime import datetime
 from sqlalchemy import (
     Column, Integer, BigInteger, String, Float, DateTime,
-    Boolean, Text, ForeignKey, Index, UniqueConstraint, text
+    Boolean, Text, LargeBinary, ForeignKey, Index, UniqueConstraint, text
 )
 from sqlalchemy.orm import relationship
 from database.db import Base
@@ -1052,7 +1052,7 @@ class SyncFeedEvent(Base):
     row_uid = Column(String, nullable=False)
     operation = Column(String, nullable=False)
     payload = Column(Text, nullable=False)
-    __table_args__ = (UniqueConstraint("business_id", "revision", name="uq_feed_business_revision"),)
+    __table_args__ = (UniqueConstraint("business_id", "revision", name="uq_feed_business_revision"), Index("ix_sync_feed_events_business_entity_row_uid", "business_id", "entity", "row_uid"))
 
 
 class SyncControlReceipt(Base):
@@ -1897,6 +1897,11 @@ from sqlalchemy import inspect
 import json
 
 EXCLUDED_TABLES = {
+    # Private control-plane state is neither business data nor a mutation
+    # payload. In particular, never duplicate archives, session identifiers or
+    # ticket digests into the tenant-visible table-alteration audit.
+    "spent_tickets", "revoked_sessions", "platform_settings", "client_log_archives",
+    "schema_state", "scheduled_job_runs", "discovery_registrations",
     "sync_control_outbox", "sync_control_origins", "sync_control_receipts", "sync_control_streams",
     "sync_feed_events", "sync_feed_clock",
     "table_alterations", "action_log", "action_logs", "token_usage",
@@ -2140,6 +2145,42 @@ def audit_after_flush(session, flush_context):
                 }
             )
 
+
+# Cloud control-plane state is deliberately excluded from the sync MODEL_MAP.
+class SpentTicket(Base):
+    __tablename__ = "spent_tickets"
+    digest = Column(String(64), primary_key=True)
+    expires_at = Column(DateTime, nullable=False, index=True)
+
+
+class RevokedSession(Base):
+    __tablename__ = "revoked_sessions"
+    sid = Column(String(64), primary_key=True)
+    expires_at = Column(DateTime, nullable=False, index=True)
+
+
+class PlatformSetting(Base):
+    __tablename__ = "platform_settings"
+    key = Column(String(100), primary_key=True)
+    value = Column(Text, nullable=False)
+    updated_at = Column(DateTime, default=utc_now, nullable=False)
+    updated_by = Column(Integer, nullable=True)
+
+
+class ClientLogArchive(Base):
+    __tablename__ = "client_log_archives"
+    id = Column(Integer, primary_key=True)
+    business_id = Column(Integer, nullable=False)
+    feedback_id = Column(Integer, nullable=True, index=True)
+    kind = Column(String(16), nullable=False)
+    filename = Column(String(255), nullable=False)
+    content = Column(LargeBinary, nullable=False)
+    size = Column(Integer, nullable=False)
+    created_at = Column(DateTime, default=utc_now, nullable=False)
+    __table_args__ = (Index("ix_client_log_archives_business_created", "business_id", "created_at"),)
+
+
+from database.runtime_state import SchemaState, ScheduledJobRun, DiscoveryRegistration
 
 # Install capture on disposable/new schemas as well as migrated installations.
 from database.change_feed import register_metadata_hook

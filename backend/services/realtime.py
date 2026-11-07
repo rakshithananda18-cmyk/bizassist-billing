@@ -1,6 +1,8 @@
 import asyncio
 import logging
 import os
+from uuid import uuid4
+from collections import deque, defaultdict
 from typing import Dict, Set, Any, Optional
 from fastapi import HTTPException
 
@@ -9,7 +11,7 @@ logger = logging.getLogger("bizassist.realtime")
 # ── Cross-network relay config ─────────────────────────────────────────────────
 # Local (SQLite) backend only: relay pos.* events to the cloud so cashiers
 # on different networks receive them in real time via cloud SSE.
-_CLOUD_URL = os.getenv("CLOUD_URL", "https://rakshit-dev-bizassist.hf.space")
+from core.cloud_endpoint import CLOUD_URL as _CLOUD_URL
 _DATABASE_URL = os.getenv("DATABASE_URL", "")
 _IS_LOCAL_BACKEND = not _DATABASE_URL.startswith("postgresql")
 
@@ -60,6 +62,10 @@ def delta_event(
 
 class RealtimeManager:
     def __init__(self):
+        self.epoch = uuid4().hex[:8]
+        self._sequences = defaultdict(int)
+        self._history = defaultdict(lambda: deque(maxlen=max(1, int(os.getenv("SSE_REPLAY_BUFFER", "256")))))
+        self._queue_sequences = {}
         # Maps business_id -> Set of asyncio.Queue
         self.connections: Dict[int, Set[asyncio.Queue]] = {}
         # The main server event loop. Subscriber queues are bound to it, so any
@@ -106,12 +112,44 @@ class RealtimeManager:
         if business_id not in self.connections:
             self.connections[business_id] = set()
         self.connections[business_id].add(q)
+        self._queue_sequences[q] = {}
         conn_type = "LAN" if _IS_LOCAL_BACKEND else "Cloud"
         logger.info(f"[REALTIME][{conn_type}] Business {business_id} subscribed. Active connections: {len(self.connections[business_id])}")
         return q
 
+    def event_id(self, business_id: int, event: dict, queue=None):
+        # A coalesced trigger can remain queued after history has rolled over.
+        # Retain its sequence only while that subscriber still owns the item.
+        if queue is not None:
+            seq = self._queue_sequences.get(queue, {}).pop(id(event), None)
+            if seq is not None:
+                return f"{self.epoch}-{seq}"
+        for seq, item in reversed(self._history.get(business_id, ())):
+            if item is event:
+                return f"{self.epoch}-{seq}"
+        return None
+
+    def subscribe_from(self, business_id: int, last_event_id=None):
+        # No await between subscription and snapshot: broadcasts cannot race it.
+        queue = self.subscribe(business_id)
+        if not last_event_id:
+            return queue, [], "none"
+        try:
+            epoch, seq = last_event_id.rsplit("-", 1)
+            seq = int(seq)
+            history = list(self._history.get(business_id, ()))
+            current = self._sequences[business_id]
+            if epoch != self.epoch or seq < 0 or seq > current or (seq < current and (not history or seq < history[0][0] - 1)):
+                return queue, [], "gap"
+            replay = [(number,event) for number,event in history if number > seq]
+            self._queue_sequences[queue].update({id(event):number for number,event in replay})
+            return queue, [event for _,event in replay], "complete"
+        except (ValueError, TypeError, AttributeError):
+            return queue, [], "gap"
+
     def unsubscribe(self, business_id: int, q: asyncio.Queue):
         """Unsubscribe a client queue."""
+        self._queue_sequences.pop(q, None)
         if business_id in self.connections:
             self.connections[business_id].discard(q)
             if not self.connections[business_id]:
@@ -121,7 +159,10 @@ class RealtimeManager:
 
     async def broadcast(self, business_id: int, event: Dict[str, Any]):
         """Broadcast an event to all connected queues for a business_id."""
-        event_type = event.get('type')
+        event_type = str(event.get('type') or '')
+        if event_type != 'pos.presence':
+            self._sequences[business_id] += 1
+            self._history[business_id].append((self._sequences[business_id], event))
         if event_type == 'pos.presence':
             logger.debug(f"[REALTIME] Broadcasting to Business {business_id}: {event_type}")
         else:
@@ -161,6 +202,8 @@ class RealtimeManager:
             try:
                 # Add to queue without blocking if space available
                 q.put_nowait(event)
+                if event_type != "pos.presence":
+                    self._queue_sequences.setdefault(q, {})[id(event)] = self._sequences[business_id]
             except asyncio.QueueFull:
                 # Discard slow reader
                 logger.warning(f"[REALTIME] Queue full for Business {business_id}, dropping connection.")

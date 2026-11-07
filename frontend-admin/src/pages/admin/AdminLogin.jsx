@@ -21,7 +21,10 @@ export default function AdminLogin() {
     setLoading(true)
     try {
       await adminLogin(username, password, needsOtp ? otp : undefined)
-      navigate('/admin/dashboard')
+      const destination = sessionStorage.getItem('admin_return_path')
+      sessionStorage.removeItem('admin_return_path')
+      const safe = typeof destination === 'string' && destination.startsWith('/admin/') && !destination.includes('\\') && destination.split(/[?#]/)[0] !== '/admin/login'
+      navigate(safe ? destination : '/admin/dashboard')
     } catch (err) {
       // Backend signals "2FA code required" after a correct password —
       // reveal the OTP field instead of treating it as a failure.

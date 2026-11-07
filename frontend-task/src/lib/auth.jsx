@@ -72,7 +72,7 @@ export function AuthProvider({ children }) {
       return data
     } catch (e) {
       if (tokenStore.get() !== token) return null
-      if (e.status === 401 || e.status === 402) clearSession()
+      if (e.sessionRejected || e.status === 402) clearSession()
       setNotice(e.message || 'Could not verify your business. Please retry.')
       return null
     } finally {
@@ -111,7 +111,9 @@ export function AuthProvider({ children }) {
         if (!active) return
         launchHandled = true
         if (data) await accept(data)
-        else setNotice('Billing could not hand over this session. Sign in with the same Billing account to continue.')
+        else setNotice(billingLaunch.expectedBusiness
+          ? `Sign in with the Billing account for ${billingLaunch.expectedBusiness} to continue.`
+          : 'Billing could not hand over this session. Sign in with the same Billing account to continue.')
       }).catch(e => {
         if (!active) return
         launchHandled = true

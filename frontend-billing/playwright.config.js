@@ -14,6 +14,7 @@ export default defineConfig({
   reporter: [['html', { open: 'never' }], ['list']],
   use: {
     baseURL: BASE_URL,
+    channel: process.env.PLAYWRIGHT_CHANNEL || undefined,
     trace: 'on-first-retry',       // trace viewer on failure
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',

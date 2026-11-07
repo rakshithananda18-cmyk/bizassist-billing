@@ -1,3 +1,25 @@
+/*
+ * Bug condition exploration, task 1.7 (C10). Property 1 (bug condition) and Property 5
+ * (trusted Billing origins). Clause 1.2, expected 2.2.
+ *
+ * The cases in "Billing origins after the move to staterbill.com" encode the expected
+ * behaviour and must FAIL on the unfixed code. The cases above them are existing
+ * behaviour and keep passing.
+ *
+ * Expected counterexamples, read from src/lib/theme.js (sanitizeBillingUrl trusts only
+ * BILLING_CLOUD_URL = https://bizassist-billing.vercel.app, one VITE_BILLING_URL origin,
+ * and local hosts on ports 5174 and 8450):
+ *   - sanitizeBillingUrl('https://staterbill.com/settings?sso=discarded') returns null
+ *     instead of 'https://staterbill.com'; the same for https://www.staterbill.com.
+ *   - VITE_BILLING_URL = 'https://billing.staging.example, https://billing.partner.example/'
+ *     is read as one URL, new URL() throws, and
+ *     sanitizeBillingUrl('https://billing.staging.example/parties') returns null.
+ *   - On https://bizassist-task.vercel.app with no inherited or configured origin,
+ *     getBillingUrl() returns 'https://bizassist-billing.vercel.app/' and
+ *     getBillingUrl('/register') 'https://bizassist-billing.vercel.app/register'.
+ *
+ * Run in frontend-task: npx vitest run --pool=threads --reporter=dot
+ */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 let styles
@@ -115,5 +137,37 @@ describe('Return to Billing', () => {
     expect(theme.getBillingUrl('/parties')).toBe('https://billing.staging.example/parties')
     expect(theme.getBillingUrl('//unrelated.example')).toBe('https://billing.staging.example/')
     expect(theme.getBillingUrl('/\\unrelated.example')).toBe('https://billing.staging.example/')
+  })
+})
+
+describe('Billing origins after the move to staterbill.com (1.2)', () => {
+  // Set the environment first and import a fresh module, so these cases hold whether
+  // theme.js reads VITE_BILLING_URL on each call (as today) or once at load.
+  async function reload(billingUrl = '') {
+    vi.stubEnv('VITE_BILLING_URL', billingUrl)
+    vi.resetModules()
+    theme = await import('./theme')
+  }
+
+  it.each(['https://staterbill.com', 'https://www.staterbill.com'])('trusts %s as Billing without VITE_BILLING_URL', async origin => {
+    await reload()
+    expect(theme.sanitizeBillingUrl(`${origin}/settings?sso=discarded`)).toBe(origin)
+  })
+
+  it('trusts each origin of a comma-separated VITE_BILLING_URL next to the defaults', async () => {
+    await reload('https://billing.staging.example, https://billing.partner.example/')
+    expect(theme.sanitizeBillingUrl('https://billing.staging.example/parties')).toBe('https://billing.staging.example')
+    expect(theme.sanitizeBillingUrl('https://billing.partner.example')).toBe('https://billing.partner.example')
+    expect(theme.sanitizeBillingUrl('https://staterbill.com')).toBe('https://staterbill.com')
+  })
+
+  it('points Back to Billing and Register at https://staterbill.com when the opening origin is unknown', async () => {
+    vi.stubGlobal('window', {
+      location: { hostname: 'bizassist-task.vercel.app', protocol: 'https:' },
+      matchMedia: () => media, dispatchEvent: vi.fn(), addEventListener: vi.fn(),
+    })
+    await reload()
+    expect(theme.getBillingUrl()).toBe('https://staterbill.com/')
+    expect(theme.getBillingUrl('/register')).toBe('https://staterbill.com/register')
   })
 })

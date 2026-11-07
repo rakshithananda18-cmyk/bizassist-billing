@@ -11,12 +11,13 @@ Lets you flip routers WHILE THE SERVER IS RUNNING (no restart):
               legacy remains the automatic fallback on any LLM failure.
               (alias: "on")
 
-Startup default comes from the LLM_ROUTER env var; the admin endpoint
-(POST /admin/router-mode) changes it live. In-memory by design — a restart
-returns to the .env default, so a bad flip can never survive a reboot.
+The admin endpoint persists overrides in platform_settings. Every instance
+refreshes its cache within 30 seconds; LLM_ROUTER supplies the default when
+there is no saved override.
 """
 import logging
 import os
+import time
 from threading import Lock
 
 logger = logging.getLogger("bizassist.router_mode")
@@ -30,46 +31,78 @@ VALID_MODES = ("off", "shadow", "on")
 _PRETTY = {"off": "legacy", "shadow": "shadow", "on": "new"}
 
 _lock = Lock()
-_explicit = None   # set ONLY via set_mode() (admin UI); wins over the env var
+_explicit = None
+_cached_at = 0.0
+_cached_value = None
+_cache_known = False
+_CACHE_TTL_S = 30
+_store_warned = False
 
 
 def _normalize(value: str):
     return _ALIASES.get((value or "").strip().lower())
 
 
+def _store(value=None, *, updated_by=None, delete=False):
+    from database.db import SessionLocal
+    from database.models import PlatformSetting
+    from services.dates import utc_now
+    db = SessionLocal()
+    try:
+        row = db.get(PlatformSetting, "llm_router")
+        if delete:
+            if row is not None:
+                db.delete(row)
+            db.commit()
+        elif value is not None:
+            if row is None:
+                db.add(PlatformSetting(key="llm_router", value=value, updated_at=utc_now(), updated_by=updated_by))
+            else:
+                row.value, row.updated_at, row.updated_by = value, utc_now(), updated_by
+            db.commit()
+        else:
+            return _normalize(row.value) if row else None
+    finally:
+        db.close()
+
+
 def get_mode() -> str:
-    """
-    Current routing mode: 'off' (legacy) | 'shadow' | 'on' (new).
-    Precedence: an explicit runtime set_mode() > the LLM_ROUTER env var.
-    The env var is re-read on every call (cheap), so nothing is ever stale.
-    """
+    global _explicit, _cached_at, _cached_value, _cache_known, _store_warned
     with _lock:
-        if _explicit is not None:
-            return _explicit
-    return _normalize(os.getenv("LLM_ROUTER", "off")) or "off"
+        if _cache_known and _explicit == _cached_value and time.monotonic() - _cached_at < _CACHE_TTL_S:
+            return _explicit or _normalize(os.getenv("LLM_ROUTER", "off")) or "off"
+        try:
+            _explicit = _store()
+        except Exception as exc:
+            if not _store_warned:
+                logger.warning("[ROUTER] Persistent mode unavailable; using this instance's mode: %s", type(exc).__name__)
+                _store_warned = True
+        _cached_at, _cached_value, _cache_known = time.monotonic(), _explicit, True
+        return _explicit or _normalize(os.getenv("LLM_ROUTER", "off")) or "off"
 
 
-def set_mode(value: str) -> str:
-    """
-    Switch routing live. Accepts legacy/off, shadow, new/on/llm.
-    Returns the canonical mode; raises ValueError on junk input.
-    """
-    global _explicit
+def set_mode(value: str, *, updated_by=None) -> str:
+    global _explicit, _cached_at, _cached_value, _cache_known
     norm = _normalize(value)
     if norm is None:
-        raise ValueError(
-            f"invalid mode '{value}' — use one of: legacy, shadow, new")
+        raise ValueError(f"invalid mode '{value}' — use one of: legacy, shadow, new")
+    # Persist before changing the running process, so a failed admin write is
+    # visible and never claims to have changed every instance.
+    _store(norm, updated_by=updated_by)
     with _lock:
-        old, _explicit = _explicit, norm
-    logger.info(f"[ROUTER] mode switched: {_PRETTY.get(old) if old else 'env-default'} → {_PRETTY[norm]}")
+        _explicit, _cached_at, _cached_value, _cache_known = norm, time.monotonic(), norm, True
+    logger.info("[ROUTER] mode switched to %s", _PRETTY[norm])
     return norm
 
 
 def reset_mode() -> None:
-    """Clear the runtime override — fall back to the env default. (Tests/admin.)"""
-    global _explicit
+    global _explicit, _cached_at, _cached_value, _cache_known
+    try:
+        _store(delete=True)
+    except Exception as exc:
+        logger.warning("[ROUTER] Persistent reset unavailable: %s", type(exc).__name__)
     with _lock:
-        _explicit = None
+        _explicit, _cached_at, _cached_value, _cache_known = None, 0.0, None, False
 
 
 def pretty(mode: str = None) -> str:

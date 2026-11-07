@@ -2,10 +2,10 @@
 // Symmetric workspace switcher between Billing POS/ERP and companion Field Team app.
 import React from 'react'
 import { MonitorIcon, TruckIcon } from '../Icons'
-import { getFieldTeamUrl } from '../../config/fieldTeam'
+import { fieldTeamLaunchUrl } from '../../config/fieldTeam'
 
 export default function WorkspaceSwitcher({ activeWorkspace = 'billing', user, onFieldTeam }) {
-  const fieldUrl = getFieldTeamUrl()
+  const fieldUrl = fieldTeamLaunchUrl(user)
   if (!fieldUrl || !onFieldTeam || ['cashier', 'supply_adder'].includes(user?.role)) return null
 
   return (
@@ -36,9 +36,13 @@ export default function WorkspaceSwitcher({ activeWorkspace = 'billing', user, o
         <MonitorIcon size={13} /> Billing
       </span>
 
-      <button
-        type="button"
-        onClick={onFieldTeam}
+      <a
+        href={fieldUrl}
+        onClick={event => {
+          if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey || event.button !== 0) return
+          event.preventDefault()
+          onFieldTeam()
+        }}
         className="workspace-tab"
         style={{
           display: 'inline-flex',
@@ -57,7 +61,7 @@ export default function WorkspaceSwitcher({ activeWorkspace = 'billing', user, o
         title="Open companion Field Team workspace"
       >
         <TruckIcon size={13} /> Field Team
-      </button>
+      </a>
     </nav>
   )
 }

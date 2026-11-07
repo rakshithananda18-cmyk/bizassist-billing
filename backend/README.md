@@ -8,44 +8,38 @@ app_port: 7860
 pinned: false
 ---
 
-# BizAssist — API (backend)
+# BizAssist API
 
-This Hugging Face Space runs the **BizAssist FastAPI backend** as a Docker image
-(port 7860). The React frontend is deployed separately (Vercel) and points its
-`VITE_API_URL` at this Space.
+Production runs on Google Cloud Run in `asia-south1`:
+`https://staterbill-api-1076771386585.asia-south1.run.app`.
+Billing is served at `https://staterbill.com`; Field Team and the AI dashboard
+retain their Vercel addresses. `GET /health` must report `status: ok` and
+`db: connected` before traffic moves to a new revision.
 
-The configured Space builds from the repository's root `Dockerfile`, which
-copies this backend and installs `backend/requirements_hf.txt`. The Dockerfile
-inside this folder supports a separately configured backend-only build.
+Deploy from the repository root with `backend/deploy_cloudrun.ps1 -Project
+staterbill -Setup` (first deployment) or `bash backend/deploy_cloudrun.sh
+--setup staterbill`. Later deploys omit Setup. Both scripts preserve unmanaged
+variables and secrets, keep one instance/worker, allow scale-to-zero, check a
+release candidate before moving traffic, and configure external scheduled jobs.
 
-## Required Space secrets / variables
-Set these in **Settings → Variables and secrets**:
+Keep DATABASE_URL, JWT_SECRET, GROQ_API_KEY and BILLING_CRON_SECRET in Secret
+Manager. Field Team must use the same database and signing secret. A constrained
+runtime needs ADMIN_SERVICE_URL for privileged admin operations. Set public
+settings through --update-env-vars. Uploaded diagnostic archives, handoff replay
+records, session revocations, discovery and scheduler state live in PostgreSQL.
+Vector/file storage requires a separately configured durable store.
 
-| Name | Type | Notes |
-|---|---|---|
-| `DATABASE_URL` | secret | PostgreSQL connection; never store a credential-bearing URL as a public variable |
-| `GROQ_API_KEY` | secret | required — LLM tiers + router |
-| `JWT_SECRET` | secret | required — random string |
-| `EMAIL_USER` / `EMAIL_PASS` / `EMAIL_FROM` | secret | optional — real reminder emails |
-| `LLM_ROUTER` | variable | `off` (default) / `shadow` / `on` |
-| `AGENT_MODE` | variable | `pipeline` (default) / `loop` |
-| `INTENT_ROUTER` | variable | `off` / `shadow` / `on` |
-| `ALLOWED_ORIGINS` | variable | comma-separated; add your Vercel URL if it differs from the defaults |
+The old Hugging Face Space becomes the compatibility proxy from
+`ops/hf-forwarder/` so already-installed desktops can sync while users upgrade.
+The Space front matter above remains for compatibility; production VITE_API_URL
+must point to Cloud Run.
 
-Space-local SQLite, vector indexes and uploads are ephemeral unless persistent
-storage is configured. The current cloud deployment uses PostgreSQL for its
-application database; persistent file/vector storage is a separate setting.
+Before release, back up the database and apply `python -m alembic upgrade head`
+with the schema operator's private environment. Current head is
+`h4_auth_admin_runtime_state`. Startup verifies constrained runtime readiness;
+a privileged startup serializes migration work under one advisory lock and
+skips unchanged schemas. Additive control tables permit application rollback
+without dropping data. Field Team owns its separate `ft_*` migration chain.
 
-## Schema upgrades
-
-Current Billing Alembic head is `e70b5d2a4c06`. From this folder, use the schema
-operator's private environment to run `python -m alembic current`, then
-`python -m alembic upgrade head` after a verified backup. The operator needs the
-privileges in [the deployment contract](../docs/audit/2026-10-31/implementation/trust-role-deployment.md).
-Re-running the upgrade is supported. Startup's additive schema checks do not
-replace recording the Alembic revision. Field owns its separate `ft_*` chain.
-
-The [31 October deployment record](../docs/audit/2026-10-31/DEPLOYMENT.md)
-separates applied upgrades from remaining role, credential and data-review work.
-
-The full project (frontend + docs) lives in the main repository.
+Follow [the migration runbook](../docs/runbooks/cloud-run-migration.md) for deploy
+order, environment variables, verification, and rollback.

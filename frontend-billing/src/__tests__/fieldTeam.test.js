@@ -28,9 +28,9 @@ describe('Field Team link', () => {
   beforeEach(() => { post.mockReset(); cfg.IS_LOCAL_APP = false; cfg.base = 'http://localhost:8001'; localStorage.clear() })
   afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
-  it('is hidden until VITE_FIELD_TEAM_URL is set, and ignores a trailing slash', () => {
+  it('defaults to production and ignores a configured trailing slash', () => {
     vi.stubEnv('VITE_FIELD_TEAM_URL', '')
-    expect(getFieldTeamUrl()).toBeNull()
+    expect(getFieldTeamUrl()).toBe(FIELD_TEAM_CLOUD_URL)
     vi.stubEnv('VITE_FIELD_TEAM_URL', `${URL_}/`)
     expect(getFieldTeamUrl()).toBe(URL_)
   })
@@ -49,7 +49,7 @@ describe('Field Team link', () => {
 
     deliver({ ticket: '1761140000.eyJpZCI6MX0.ab12' })
     await done
-    expect(post).toHaveBeenCalledWith('/handoff-ticket')
+    expect(post).toHaveBeenCalledWith('/handoff-ticket', { purpose: 'field_team' }, expect.objectContaining({ signal: expect.anything() }))
     expect(tab.location.href).toContain(`${URL_}/?from_billing=1`); expect(tab.location.href).toContain("sso=1761140000.eyJpZCI6MX0.ab12")
     expect(tab.focus).toHaveBeenCalled()
   })
@@ -93,7 +93,7 @@ describe('Field Team link', () => {
     await openFieldTeam()
     expect(post).not.toHaveBeenCalled()
     expect(fetchMock).toHaveBeenCalledWith('https://cloud.example.app/handoff-ticket',
-      expect.objectContaining({ method: 'POST', headers: { Authorization: 'Bearer cloud-tok' } }))
+      expect.objectContaining({ method: 'POST', headers: expect.objectContaining({ Authorization: 'Bearer cloud-tok' }), body: JSON.stringify({ purpose: 'field_team' }) }))
     expect(tab.location.href).toContain(`${FIELD_TEAM_CLOUD_URL}/?from_billing=1`); expect(tab.location.href).toContain("sso=cloud.ticket.1")
   })
 
@@ -116,7 +116,7 @@ describe('Field Team link', () => {
     vi.spyOn(window, 'open').mockReturnValue(tab)
     post.mockResolvedValue({ ticket: 'local.ticket' })
     await openFieldTeam()
-    expect(post).toHaveBeenCalledWith('/handoff-ticket')
+    expect(post).toHaveBeenCalledWith('/handoff-ticket', { purpose: 'field_team' }, expect.objectContaining({ signal: expect.anything() }))
     expect(tab.location.href).toContain('http://localhost:5176/?from_billing=1'); expect(tab.location.href).toContain('sso=local.ticket')
   })
 
@@ -136,7 +136,7 @@ describe('Field Team link', () => {
     const fetchMock = vi.fn()
     vi.stubGlobal('fetch', fetchMock)
     await openFieldTeam({ user: { public_id: 'BA-ONE', user_id: 1 } })
-    expect(post).toHaveBeenCalledWith('/handoff-ticket')
+    expect(post).toHaveBeenCalledWith('/handoff-ticket', { purpose: 'field_team' }, expect.objectContaining({ signal: expect.anything() }))
     expect(fetchMock).not.toHaveBeenCalled()
   })
 

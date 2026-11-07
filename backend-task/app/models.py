@@ -45,6 +45,14 @@ class TimestampMixin:
     updated_at = Column(DateTime, default=utc_now, onupdate=utc_now, nullable=False)
 
 
+class FieldHandoffTicketUse(Base):
+    """One-way digests only; survives restarts without retaining credentials."""
+    __tablename__ = "ft_handoff_ticket_uses"
+    digest = Column(String(64), primary_key=True)
+    business_id = Column(Integer, nullable=False, index=True)
+    expires_at = Column(Integer, nullable=False, index=True)
+
+
 class FieldSettings(Base, TimestampMixin):
     """One row per business. Created lazily with defaults on first read."""
     __tablename__ = "ft_settings"

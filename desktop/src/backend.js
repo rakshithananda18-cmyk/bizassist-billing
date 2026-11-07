@@ -13,6 +13,8 @@ const fs = require('fs');
 const http = require('http');
 const log = require('electron-log');
 
+const { resolveCloudApiUrl } = require('./cloudEndpoint');
+
 const BACKEND_HOST = '127.0.0.1';
 const BACKEND_PORT = 8001;
 
@@ -89,6 +91,7 @@ async function startBackend(resourcesPath, userDataDir) {
       ...process.env,
       BIZASSIST_DATA_DIR: dataDir,
       BIZASSIST_DESKTOP: '1',
+      CLOUD_API_URL: resolveCloudApiUrl(process.env),
       // Persist a rotating backend log next to the DB so "Settings → Download
       // logs" (GET /diagnostics/logs) has something to package. Backend stdout is
       // still mirrored into the Electron main.log too.

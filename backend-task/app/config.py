@@ -114,10 +114,7 @@ PURGE_LOOP = _bool("TASK_PURGE_LOOP", True)
 CRON_SECRET = os.environ.get("TASK_CRON_SECRET", "")
 
 # Comma-separated extra CORS origins (the Vercel URL, if the PWA is hosted there).
-_default_origins = (
-    "http://localhost:5176,http://127.0.0.1:5176,"
-    "http://localhost:4173,http://127.0.0.1:4173"
-)
+_default_origins = "https://bizassist-task.vercel.app"
 def parse_origins(raw: str) -> list:
     """Browsers send an Origin with no path and no trailing slash, and CORS
     matches it exactly, so `https://x.vercel.app/` (as copied from the address
@@ -125,7 +122,7 @@ def parse_origins(raw: str) -> list:
     return [o.strip().rstrip("/") for o in raw.split(",") if o.strip().rstrip("/")]
 
 
-ALLOWED_ORIGINS = parse_origins(os.environ.get("ALLOWED_ORIGINS", _default_origins))
+ALLOWED_ORIGINS = list(dict.fromkeys(parse_origins(_default_origins) + parse_origins(os.environ.get("ALLOWED_ORIGINS", ""))))
 
 # Optional built PWA to serve at "/" (TASK_STATIC_DIR). The image is API-only:
 # the screens are frontend-task/ on their own Vercel project.

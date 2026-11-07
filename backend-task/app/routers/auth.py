@@ -21,7 +21,7 @@ from app.security import (
     NON_OWNER_ROLES, Principal, burn_password_check, check_login_throttle,
     clear_login_failures, current_principal, decode_billing_token, signed_in_principal,
     generate_bizid, get_settings, hash_password, new_session_id, owner_token,
-    record_login_failure, redeem_billing_ticket, staff_token,
+    record_login_failure, redeem_billing_ticket, consume_billing_ticket, staff_token,
     validate_password_policy, verify_password,
 )
 from app.plan import ensure_pro, plan_out, plan_state
@@ -109,7 +109,7 @@ def exchange_billing_token(req: ExchangeRequest, db: Session = Depends(get_db)):
     """Single sign-on: a BizAssist Billing OWNER session → a task owner session.
     Billing staff (cashier / supply adder) sessions are refused."""
     if req.ticket:
-        claims = redeem_billing_ticket(req.ticket)
+        claims = redeem_billing_ticket(req.ticket, spend=False)
     elif req.billing_token:
         claims = decode_billing_token(req.billing_token)
     else:
@@ -130,6 +130,8 @@ def exchange_billing_token(req: ExchangeRequest, db: Session = Depends(get_db)):
     if int(claims.get("tv", 0) or 0) != int(user.token_version or 0):
         raise HTTPException(status_code=401, detail="Billing session revoked — sign in again")
     ensure_pro(user, "owner")
+    if req.ticket:
+        consume_billing_ticket(db, req.ticket, int(user.id))
     return _owner_payload(user)
 
 

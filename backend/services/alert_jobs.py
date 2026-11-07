@@ -16,6 +16,7 @@ Each job:
 """
 
 import logging
+import time
 from datetime import datetime
 from sqlalchemy import func
 from database.db import SessionLocal
@@ -25,6 +26,28 @@ from services.dates import biz_now
 from database.security import service_owner_ids, bind_tenant
 
 logger = logging.getLogger("bizassist.alerts")
+
+
+
+class _BusinessProgress:
+    """Keep desktop behavior; resume cloud batches after the last business."""
+    def __init__(self, values, after_business_id, deadline, configs=False):
+        key = (lambda value: value["business_id"]) if configs else (lambda value: value)
+        self.items = sorted((v for v in values if after_business_id is None or key(v) > after_business_id), key=key)
+        self.key = key
+        self.deadline = deadline
+        self.cursor = None
+
+    def __iter__(self):
+        for index, value in enumerate(self.items):
+            yield value
+            from services.cron_runner import checkpoint
+            save = checkpoint.get()
+            if save:
+                save(self.key(value))
+            if self.deadline is not None and time.monotonic() >= self.deadline and index + 1 < len(self.items):
+                self.cursor = self.key(value)
+                return
 
 
 # ── Helper ────────────────────────────────────────────────────
@@ -79,7 +102,7 @@ def _load_all_business_ids() -> list:
 # monitoring — a tamper-evident ledger only helps if something actually checks
 # it. Read-only; never mutates books.
 
-def run_books_integrity_audit():
+def run_books_integrity_audit(after_business_id=None, deadline=None):
     from core.accounting.integrity import run_integrity_check
 
     business_ids = _load_all_business_ids()
@@ -89,7 +112,8 @@ def run_books_integrity_audit():
 
     logger.info("[SCHED] Running books integrity audit for %d business(es)...", len(business_ids))
     failures = 0
-    for bid in business_ids:
+    _progress = _BusinessProgress(business_ids, after_business_id, deadline, configs=False)
+    for bid in _progress:
         db = SessionLocal()
         bind_tenant(db, bid)
         try:
@@ -110,22 +134,24 @@ def run_books_integrity_audit():
         finally:
             db.close()
     logger.info("[SCHED] Integrity audit complete — %d business(es) with issues.", failures)
+    return _progress.cursor
 
 
 
 
 # ── Job 1: Overdue Invoices ───────────────────────────────────
 
-def run_overdue_alerts():
+def run_overdue_alerts(after_business_id=None, deadline=None):
     logger.info("[SCHED] Running overdue invoice alerts...")
     configs = [c for c in _load_active_configs() if c["alert_overdue"]]
     if not configs:
         logger.info("[SCHED] No businesses opted into overdue alerts.")
         return
 
+    _progress = _BusinessProgress(configs, after_business_id, deadline, configs=True)
     db = SessionLocal()
     try:
-        for cfg in configs:
+        for cfg in _progress:
             bid = cfg["business_id"]
             bind_tenant(db, bid)
 
@@ -167,11 +193,12 @@ def run_overdue_alerts():
             logger.info(f"[ALERT] Overdue alert dispatched for business_id={bid}")
     finally:
         db.close()
+    return _progress.cursor
 
 
 # ── Job 2: Low Stock ─────────────────────────────────────────
 
-def run_low_stock_alerts():
+def run_low_stock_alerts(after_business_id=None, deadline=None):
     """Email the same list the dashboard KPI and the notification bell show.
 
     This used to run its own query — `inventory.stock <= threshold` — and
@@ -193,9 +220,10 @@ def run_low_stock_alerts():
 
     from services.insights_service import low_stock_products
 
+    _progress = _BusinessProgress(configs, after_business_id, deadline, configs=True)
     db = SessionLocal()
     try:
-        for cfg in configs:
+        for cfg in _progress:
             bid = cfg["business_id"]
             bind_tenant(db, bid)
             low = low_stock_products(db, bid)
@@ -232,11 +260,12 @@ def run_low_stock_alerts():
             logger.info(f"[ALERT] Low stock alert dispatched for business_id={bid}")
     finally:
         db.close()
+    return _progress.cursor
 
 
 # ── Job 3: Expiry Warnings ────────────────────────────────────
 
-def run_expiry_alerts():
+def run_expiry_alerts(after_business_id=None, deadline=None):
     """Email what has gone off, and what is about to.
 
     Was three bugs deep: it read the SERVER clock rather than the merchant's,
@@ -252,9 +281,10 @@ def run_expiry_alerts():
 
     from services.insights_service import expiring_batches
 
+    _progress = _BusinessProgress(configs, after_business_id, deadline, configs=True)
     db = SessionLocal()
     try:
-        for cfg in configs:
+        for cfg in _progress:
             bid  = cfg["business_id"]
             bind_tenant(db, bid)
             days = cfg["expiry_days_threshold"]
@@ -304,17 +334,19 @@ def run_expiry_alerts():
             logger.info(f"[ALERT] Expiry alert dispatched for business_id={bid}")
     finally:
         db.close()
+    return _progress.cursor
 
 
 # ── Job 4: Daily Business Summary ────────────────────────────
 
-def run_daily_summary():
+def run_daily_summary(after_business_id=None, deadline=None):
     logger.info("[SCHED] Running daily business summaries...")
     configs = [c for c in _load_active_configs() if c["alert_daily_summary"]]
     if not configs:
         logger.info("[SCHED] No businesses opted into daily summary.")
         return
 
+    _progress = _BusinessProgress(configs, after_business_id, deadline, configs=True)
     db    = SessionLocal()
     # Only ever used for the date on the email. Still the merchant's clock, not
     # the server's: this job fires early morning, so on a UTC host it was still
@@ -322,7 +354,7 @@ def run_daily_summary():
     today = biz_now()
 
     try:
-        for cfg in configs:
+        for cfg in _progress:
             bid = cfg["business_id"]
             bind_tenant(db, bid)
 
@@ -410,11 +442,12 @@ def run_daily_summary():
             logger.info(f"[ALERT] Daily summary dispatched for business_id={bid}")
     finally:
         db.close()
+    return _progress.cursor
 
 
 # ── Job 5: Weekly Memory Distillation ────────────────────────────────
 
-def run_memory_distillation():
+def run_memory_distillation(after_business_id=None, deadline=None):
     """
     Phase 4 — Proactive Memory.
     Loops over ALL registered users (not just those with alert configs)
@@ -431,8 +464,10 @@ def run_memory_distillation():
     logger.info(f"[SCHED] Memory distillation for {len(business_ids)} user(s): {business_ids}")
     from services.memory_service import distill_memory
 
-    for bid in business_ids:
+    _progress = _BusinessProgress(business_ids, after_business_id, deadline, configs=False)
+    for bid in _progress:
         try:
             distill_memory(bid)
         except Exception as e:
             logger.error(f"[MEMORY] Failed for business_id={bid}: {e}", exc_info=True)
+    return _progress.cursor

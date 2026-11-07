@@ -225,6 +225,27 @@ def install_security(connection, runtime_role=None):
                 connection.exec_driver_sql(f"GRANT EXECUTE ON FUNCTION {signature} TO {role}")
         # Application cannot invent events or alter its acknowledged clocks.
         connection.exec_driver_sql(f"REVOKE INSERT,UPDATE,DELETE ON sync_feed_clock,sync_feed_events FROM {role}")
+    # Private platform state has no tenant-owned public API. Supabase's broad
+    # default grants must not expose ticket digests or support archives.
+    private_tables = ("spent_tickets", "revoked_sessions", "platform_settings", "client_log_archives", "schema_state", "scheduled_job_runs", "discovery_registrations")
+    tables = set(inspect(connection).get_table_names())
+    for table in private_tables:
+        if table not in tables:
+            continue
+        connection.exec_driver_sql(f'ALTER TABLE "{table}" ENABLE ROW LEVEL SECURITY')
+        connection.exec_driver_sql(f'ALTER TABLE "{table}" FORCE ROW LEVEL SECURITY')
+        connection.exec_driver_sql(f'REVOKE ALL ON TABLE "{table}" FROM PUBLIC')
+        for public_role in ("anon", "authenticated"):
+            if connection.execute(text("SELECT 1 FROM pg_roles WHERE rolname=:role"), {"role": public_role}).scalar():
+                connection.exec_driver_sql(f'REVOKE ALL ON TABLE "{table}" FROM "{public_role}"')
+        if runtime_role and table != "client_log_archives":
+            # These are private service tables, with no tenant-owned row API.
+            # The service role alone can access them; public Supabase clients
+            # cannot acquire access through a permissive PUBLIC RLS policy.
+            connection.exec_driver_sql(f'DROP POLICY IF EXISTS app_service_state ON "{table}"')
+            connection.exec_driver_sql(f'CREATE POLICY app_service_state ON "{table}" TO {role} USING (true) WITH CHECK (true)')
+    if runtime_role and "schema_state" in tables:
+        connection.exec_driver_sql(f'REVOKE INSERT,UPDATE,DELETE ON TABLE schema_state FROM {role}')
     trade_role = os.environ.get("BIZASSIST_TRADE_DB_ROLE")
     if trade_role:
         from database.trade_service import install_trade_role

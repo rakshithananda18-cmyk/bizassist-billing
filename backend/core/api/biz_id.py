@@ -20,7 +20,7 @@ def get_my_bizid(current_user: dict = Depends(restrict_cashier), db: Session = D
     """Get the logged-in user's own public BizID."""
     user = db.query(User).filter(User.id == current_user["id"]).first()
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(status_code=404, detail="User not found", headers={"WWW-Authenticate": 'Bearer error="invalid_token"'})
     return {"public_id": user.public_id}
 
 

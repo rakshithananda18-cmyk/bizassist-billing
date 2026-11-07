@@ -177,7 +177,7 @@ bizassist-billing/
 â”‚   â”œâ”€â”€ src/hooks/            # useDocLabels, useConfirm, usePageLifecycle...
 â”‚   â””â”€â”€ src/__tests__/        # 300+ Vitest component & unit tests
 â”œâ”€â”€ frontend-ai/              # AI Assistant & Analytics Dashboard
-â”œâ”€â”€ backend-task/             # Field Team API (own HF Space, shared DB) - see backend-task/README.md
+â”œâ”€â”€ backend-task/             # Field Team API (Cloud Run, shared DB) - see backend-task/README.md
 â”œâ”€â”€ frontend-task/            # Field Team PWA for owners & field staff (own Vercel project)
 â”œâ”€â”€ desktop/                  # Electron desktop wrapper & build scripts
 â”œâ”€â”€ docs/                     # Architecture, user guides & technical decision logs

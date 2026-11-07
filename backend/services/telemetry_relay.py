@@ -33,7 +33,7 @@ from pathlib import Path
 
 logger = logging.getLogger("bizassist.telemetry_relay")
 
-CLOUD_URL = os.getenv("BIZASSIST_CLOUD_URL", "https://rakshit-dev-bizassist.hf.space")
+from core.cloud_endpoint import CLOUD_URL
 _OFFSET_FILE = Path("logs") / ".telemetry_relay_offset"
 _TELEMETRY_FILE = Path("logs") / "telemetry.jsonl"
 _BUSINESS_DIR = Path("logs") / "businesses"
@@ -223,8 +223,22 @@ def _trim_jsonl(path: Path, cutoff_iso: str) -> int:
     return dropped
 
 
-def run_telemetry_retention():
+def run_telemetry_retention(after_business_id=None, deadline=None):
     """Keep telemetry logs to the last TELEMETRY_RETENTION_DAYS days."""
+    # Keep authentication replay/revocation state bounded as revisions restart.
+    # Each pass is bounded so cleanup cannot monopolize the shared database.
+    try:
+        from database.db import SessionLocal
+        from database.models import SpentTicket, RevokedSession
+        from services.dates import utc_now
+        with SessionLocal() as db:
+            for model, key in ((SpentTicket, SpentTicket.digest), (RevokedSession, RevokedSession.sid)):
+                stale = db.query(key).filter(model.expires_at < utc_now() - timedelta(hours=1)).limit(500).all()
+                if stale:
+                    db.query(model).filter(key.in_([row[0] for row in stale])).delete(synchronize_session=False)
+            db.commit()
+    except Exception:
+        logger.warning("Authentication state retention unavailable", exc_info=True)
     try:
         days = int(os.getenv("TELEMETRY_RETENTION_DAYS", "7"))
     except ValueError:

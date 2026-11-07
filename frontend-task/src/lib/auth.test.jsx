@@ -68,7 +68,7 @@ describe('Billing business handoff', () => {
     mocks.token = 'old-business-token'
     mocks.launch = { requested: true, expectedBusiness: 'BA-NEW' }
     await mount()
-    await screen.findByText(/Billing could not hand over/)
+    await screen.findByText(/Sign in with the Billing account for BA-NEW/)
     expect(mocks.token).toBeNull()
     expect(mocks.get).not.toHaveBeenCalled()
     expect(mocks.post).not.toHaveBeenCalled()

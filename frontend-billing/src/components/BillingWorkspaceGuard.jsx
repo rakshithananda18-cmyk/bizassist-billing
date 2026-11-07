@@ -28,8 +28,8 @@ export default function BillingWorkspaceGuard({ children }) {
         <h1 style={{ fontSize: '1.3rem' }}>Choose the same business</h1>
         <p style={{ marginTop: 12 }}>Field Team is open for <strong>{expected}</strong>. Billing is signed in to <strong>{user.business_name || user.public_id}</strong> ({user.public_id}).</p>
         <p style={{ margin: '12px 0 20px', color: 'var(--text-secondary)' }}>Sign in with the matching Billing account to continue.</p>
-        <button type="button" className="btn btn-primary" onClick={() => {
-          logout()
+        <button type="button" className="btn btn-primary" onClick={async () => {
+          await logout()
           navigate(`/login?field_business=${encodeURIComponent(expected)}`, { replace: true })
         }}>Switch Billing account</button>
       </section>

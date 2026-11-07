@@ -10,12 +10,33 @@ Never modify existing entries, never scatter ALTER TABLE code across the file.
 import logging
 import os
 import re
+import hashlib
+from datetime import datetime, timezone
 from sqlalchemy import text
+from sqlalchemy.schema import CreateTable, CreateIndex
 from database.db import engine, SessionLocal
 from database.models import Base, User
 from services.auth import hash_password
 
 logger = logging.getLogger("bizassist.migration")
+MIGRATION_REVISION = "cloud-run-hardening-2026-11-07"
+_BOOT_LOCK_TIMEOUT = "90s"
+_STEP_FAILURES = []
+
+
+def compute_schema_signature(dialect):
+    ddl = [MIGRATION_REVISION, os.getenv("BIZASSIST_BUILD_ID") or os.getenv("K_REVISION", "")]
+    for table in sorted(Base.metadata.tables.values(), key=lambda t: t.name):
+        ddl.append(str(CreateTable(table).compile(dialect=dialect)))
+        ddl.extend(str(CreateIndex(i).compile(dialect=dialect)) for i in sorted(table.indexes, key=lambda i: i.name))
+    return hashlib.sha256("\n".join(ddl).encode()).hexdigest()
+
+
+def _schema_current(connection, signature):
+    if not connection.execute(text("SELECT to_regclass('public.schema_state')")).scalar():
+        return False
+    row = connection.execute(text("SELECT (SELECT signature FROM schema_state WHERE key='runtime'), to_regprocedure('bizassist_feed_emit(integer,text,jsonb,text)')")).first()
+    return bool(row and row[0] == signature and row[1])
 
 
 # ---------------------------------------------------------------------------
@@ -383,6 +404,7 @@ def _rollback_quietly(conn, where: str) -> None:
     is an acceptable swallow under rule 13 — it is cleanup inside an error path
     that has already been reported — but it is logged, never silent.
     """
+    _STEP_FAILURES.append(where)
     try:
         conn.rollback()
     except Exception as rb:
@@ -1652,6 +1674,76 @@ def _backfill_b2b_bizids(conn):
 
 
 def run_migrations_and_seed():
+    """Cheap catalog readiness on warm cloud boots; one serialized slow path.
+
+    Key steps delegated to _run_migration_steps include:
+      _step(conn, _ensure_staff_login_name_unique_index)  -- one staff login name per business (ss9.5)
+    """
+    _STEP_FAILURES.clear()
+    if engine.dialect.name != "postgresql":
+        return _run_migration_steps()
+    signature = compute_schema_signature(engine.dialect)
+    force = os.getenv("BIZASSIST_FORCE_MIGRATIONS") == "1"
+    with engine.connect() as connection:
+        privileged = connection.execute(text("SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname=current_user")).scalar()
+        if not privileged:
+            import core.models  # Register the complete modeled runtime schema.
+            from database.sync_map import MODEL_MAP
+            columns = {}
+            for table_name, column_name in connection.execute(text(
+                "SELECT table_name,column_name FROM information_schema.columns WHERE table_schema='public'"
+            )):
+                columns.setdefault(table_name, set()).add(column_name)
+            missing = sorted(
+                f"{table.name}.{column.name}"
+                for table in Base.metadata.tables.values()
+                for column in table.columns
+                if column.name not in columns.get(table.name, set())
+            )
+            if missing:
+                raise RuntimeError("Database migration required before starting the constrained runtime: missing " + ", ".join(missing[:12]))
+            if not connection.execute(text("SELECT to_regprocedure('bizassist_feed_emit(integer,text,jsonb,text)')")).scalar():
+                raise RuntimeError("Database migration required before starting the constrained runtime: change feed missing")
+            captures = {
+                name for name, function, kind, enabled in connection.execute(text(
+                    "SELECT c.relname,p.proname,t.tgtype,t.tgenabled FROM pg_trigger t "
+                    "JOIN pg_class c ON c.oid=t.tgrelid JOIN pg_namespace n ON n.oid=c.relnamespace "
+                    "JOIN pg_proc p ON p.oid=t.tgfoid "
+                    "WHERE n.nspname='public' AND t.tgname='bizassist_feed_capture' AND NOT t.tgisinternal"
+                ))
+                if function == f"bizassist_feed_{name}" and kind == 31 and enabled in ("O", "A")
+            }
+            absent = sorted(set(MODEL_MAP) - captures)
+            if absent:
+                raise RuntimeError("Database migration required before starting the constrained runtime: capture missing for " + ", ".join(absent))
+            if not _schema_current(connection, signature):
+                logger.warning("[Migration] Runtime signature differs; run release migrations with schema credentials")
+            return
+        if not force and _schema_current(connection, signature):
+            logger.info("[Migration] schema current, skipped")
+            return
+    # Session lock lives on its own connection because the legacy migration
+    # steps deliberately commit independently. It must span every such commit.
+    with engine.connect() as lock_connection:
+        lock_connection.execute(text(f"SET lock_timeout = '{_BOOT_LOCK_TIMEOUT}'"))
+        lock_connection.execute(text("SELECT pg_advisory_lock(724839101)"))
+        lock_connection.commit()
+        try:
+            if not force and _schema_current(lock_connection, signature):
+                logger.info("[Migration] schema current, peer completed")
+                return
+            _run_migration_steps()
+            if _STEP_FAILURES:
+                raise RuntimeError("Database migration steps failed: " + ", ".join(_STEP_FAILURES))
+            lock_connection.execute(text("INSERT INTO schema_state(key,signature,applied_at,applied_by) VALUES('runtime',:s,:at,:by) ON CONFLICT(key) DO UPDATE SET signature=excluded.signature,applied_at=excluded.applied_at,applied_by=excluded.applied_by"), {"s":signature,"at":datetime.now(timezone.utc),"by":os.getenv("BIZASSIST_BUILD_ID") or os.getenv("K_REVISION", "manual")})
+            lock_connection.commit()
+        finally:
+            lock_connection.rollback()
+            lock_connection.execute(text("SELECT pg_advisory_unlock(724839101)"))
+            lock_connection.commit()
+
+
+def _run_migration_steps():
     # Runtime and migration identities are deliberately separate on Postgres.
     # A constrained HTTP role verifies readiness and never executes DDL/seeding.
     if engine.dialect.name == "postgresql":
@@ -1668,6 +1760,12 @@ def run_migrations_and_seed():
     # 1. Create new tables (customers, vendors, products, line items, purchase orders)
     Base.metadata.create_all(bind=engine)
     logger.info("[Migration] create_all done.")
+
+    # create_all does not add an index to a table that already exists. Keep
+    # legacy privileged upgrades efficient before seeding the complete feed.
+    index_sql = "CREATE INDEX " + ("CONCURRENTLY " if engine.dialect.name == "postgresql" else "") + "IF NOT EXISTS ix_sync_feed_events_business_entity_row_uid ON sync_feed_events(business_id,entity,row_uid)"
+    with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as index_connection:
+        index_connection.execute(text(index_sql))
 
     # 2. Add missing columns to existing tables
     with engine.connect() as conn:
@@ -1728,6 +1826,7 @@ def run_migrations_and_seed():
         _backfill_biz_ids(db)
         _seed_users(db)
     except Exception as e:
+        _STEP_FAILURES.append("seed users")
         logger.error(f"[Migration] Seed error: {e}", exc_info=True)
     finally:
         db.close()
@@ -1738,9 +1837,7 @@ def run_migrations_and_seed():
             install_change_feed(feed_connection)
             from database.security import install_security
             install_security(feed_connection)
-    except Exception as e:
-        if "deadlock" in str(e).lower() or "lock" in str(e).lower():
-            logger.warning(f"[Migration] Concurrent boot lock/deadlock in install_change_feed/install_security (peer completed): {e}")
-        else:
-            raise
+    except Exception:
+        logger.exception("[Migration] change feed/security installation failed")
+        raise
     logger.info("[Migration] Done.")

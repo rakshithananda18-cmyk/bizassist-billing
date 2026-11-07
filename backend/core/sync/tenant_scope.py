@@ -93,6 +93,8 @@ ALLOWED: Dict[str, str] = {
         "Admin console: platform-wide merchant feedback. Gated by require_admin().",
     "routes/admin.py::download_feedback_logs::UserFeedback":
         "Admin console: fetches one feedback's log archive by id. Gated by require_admin().",
+    "routes/admin.py::download_feedback_logs::ClientLogArchive":
+        "Admin console: downloads one durable support archive by feedback id. Gated by require_admin().",
     "routes/admin.py::get_admin_table_alterations::TableAlteration":
         "Admin console: platform-wide schema-alteration audit log. Gated by require_admin().",
     "services/admin_service.py::read_audit_log::ActionLog":

@@ -204,6 +204,8 @@ async def submit_merchant_feedback(
         # Save feedback text to user_feedback table
         from database.db import SessionLocal
         db = SessionLocal()
+        from database.security import bind_tenant
+        bind_tenant(db, business_id)
         try:
             log_file_path = None
             if file:
@@ -227,7 +229,16 @@ async def submit_merchant_feedback(
                 created_at=utc_now()
             )
             db.add(feedback_row)
+            db.flush()
+            if log_file_path:
+                from services.client_log_archives import store_archive
+                store_archive(db, business_id=business_id, filename=filename, content=dest_path.read_bytes(), feedback_id=feedback_row.id, kind="daily" if message.startswith("Scheduled") else "feedback")
             db.commit()
+            if log_file_path:
+                try:
+                    dest_path.unlink(missing_ok=True)
+                except OSError:
+                    pass
             return {"ok": True, "message": "Feedback received successfully."}
         except HTTPException:
             db.rollback()

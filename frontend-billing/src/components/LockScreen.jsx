@@ -75,7 +75,7 @@ export default function LockScreen() {
       confirmText: 'Sign out',
     })
     if (ok) {
-      logout()
+      await logout()
       navigate('/login')
       logger.info('[LOCK] User signed out from lock screen')
     }

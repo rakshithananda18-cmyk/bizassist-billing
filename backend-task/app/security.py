@@ -30,6 +30,7 @@ import json
 import logging
 import secrets
 import time
+import threading
 from dataclasses import dataclass
 from datetime import timedelta
 from typing import Optional
@@ -38,17 +39,19 @@ import bcrypt
 import jwt
 from fastapi import Depends, Header, HTTPException
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from app import config
 from app.billing_models import BillingUser
 from app.db import get_db, set_rls_business, utc_now
-from app.models import FieldSettings, FieldStaff
+from app.models import FieldHandoffTicketUse, FieldSettings, FieldStaff
 from app.plan import ensure_pro
 
 logger = logging.getLogger("bizassist.task.auth")
 
 AUDIENCE = "bizassist-task"
 ALGORITHM = "HS256"
+SESSION_REJECTED_HEADERS = {"WWW-Authenticate": 'Bearer error="invalid_token"'}
 _TASK_KEY = hmac.new(config.JWT_SECRET.encode(), b"bizassist-task:v1", hashlib.sha256).hexdigest()
 
 # Billing roles that are NOT business owners. `admin` is the platform
@@ -141,9 +144,9 @@ def decode_task_token(token: str) -> dict:
     try:
         return jwt.decode(token, _TASK_KEY, algorithms=[ALGORITHM], audience=AUDIENCE)
     except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail="Session expired — please sign in again")
+        raise HTTPException(status_code=401, detail="Session expired — please sign in again", headers=SESSION_REJECTED_HEADERS)
     except jwt.InvalidTokenError:
-        raise HTTPException(status_code=401, detail="Invalid session — please sign in again")
+        raise HTTPException(status_code=401, detail="Invalid session — please sign in again", headers=SESSION_REJECTED_HEADERS)
 
 
 def decode_billing_token(token: str) -> dict:
@@ -164,39 +167,94 @@ def decode_billing_token(token: str) -> dict:
 # verified here — no call to the billing Space, which may be asleep. Single use
 # is enforced in-process (this service runs ONE worker).
 
-_TICKET_MAX_LIFETIME_S = 60
+_TICKET_MAX_LIFETIME_S = 120
+_TICKET_LEEWAY_S = 15
 _USED_TICKETS: dict[str, int] = {}
+_TICKET_LOCK = threading.Lock()
 
 
-def redeem_billing_ticket(ticket: str) -> dict:
+class TicketRefused(HTTPException):
+    def __init__(self, reason: str, exp_delta=None):
+        self.reason = reason
+        invalid = "This sign-in link is not valid for Field Team. Open Field Team from BizAssist Billing again."
+        expired = "Sign-in link expired. Open Field Team from BizAssist Billing again."
+        details = {
+            "malformed": invalid, "audience": invalid, "expired": expired, "lifetime": expired,
+            "bad_signature": "Field Team could not verify this sign-in link. Field Team and Billing are not set up with the same sign-in key; ask your administrator to check the deployment.",
+            "already_used": "This sign-in link was already used. Open Field Team from BizAssist Billing again.",
+        }
+        logger.warning("[AUTH] hand-off ticket refused reason=%s exp_delta=%s", reason, exp_delta)
+        super().__init__(status_code=401, detail=details[reason])
+
+
+def redeem_billing_ticket(ticket: str, *, spend: bool = True) -> dict:
     """Verify a billing hand-off ticket, spend it, and return its claims."""
-    refused = HTTPException(status_code=401, detail="Sign-in link expired — open Field Team from BizAssist Billing again")
     try:
-        exp_s, b64, sig = ticket.split(".", 2)
+        if not isinstance(ticket, str) or len(ticket) > 16384:
+            raise ValueError("Invalid ticket shape")
+        exp_s, b64, sig = ticket.split(".")
         exp = int(exp_s)
-    except (ValueError, AttributeError):
-        raise refused
+    except (ValueError, AttributeError, TypeError):
+        raise TicketRefused("malformed")
     now = int(time.time())
-    # Billing mints for 30 s; a ticket valid far longer did not come from
-    # /handoff-ticket.
-    if now > exp or exp - now > _TICKET_MAX_LIFETIME_S:
-        raise refused
     expected = hmac.new(config.JWT_SECRET.encode(), f"sse|{b64}|{exp}".encode(), hashlib.sha256).hexdigest()
     if not hmac.compare_digest(sig, expected):
-        raise refused
-    for spent, spent_exp in list(_USED_TICKETS.items()):
-        if spent_exp < now:
-            del _USED_TICKETS[spent]
-    if ticket in _USED_TICKETS:
-        raise refused
+        raise TicketRefused("bad_signature", exp - now)
     try:
         claims = json.loads(base64.urlsafe_b64decode(b64 + "=" * (-len(b64) % 4)))
-    except (ValueError, binascii.Error):
-        raise refused
+    except (ValueError, binascii.Error, UnicodeError):
+        raise TicketRefused("malformed", exp - now)
     if not isinstance(claims, dict):
-        raise refused
-    _USED_TICKETS[ticket] = exp
+        raise TicketRefused("malformed", exp - now)
+    if now > exp + _TICKET_LEEWAY_S:
+        raise TicketRefused("expired", exp - now)
+    iat = claims.get("iat")
+    if iat is not None and (isinstance(iat, bool) or not isinstance(iat, int)):
+        raise TicketRefused("malformed", exp - now)
+    lifetime = exp - iat if iat is not None else exp - now
+    if lifetime > _TICKET_MAX_LIFETIME_S or (iat is not None and (lifetime <= 0 or iat > now + _TICKET_LEEWAY_S)):
+        raise TicketRefused("lifetime", exp - now)
+    if "aud" in claims and claims["aud"] != "field_team":
+        raise TicketRefused("audience", exp - now)
+    # FastAPI may run exchanges in concurrent request threads even with one worker.
+    if spend:
+        with _TICKET_LOCK:
+            for used, spent_exp in list(_USED_TICKETS.items()):
+                if spent_exp < now:
+                    del _USED_TICKETS[used]
+            if ticket in _USED_TICKETS:
+                raise TicketRefused("already_used", exp - now)
+            _USED_TICKETS[ticket] = exp + _TICKET_LEEWAY_S
+    if "aud" not in claims:
+        logger.info("[AUTH] hand-off ticket accepted reason=legacy_no_aud exp_delta=%s", exp - now)
     return claims
+
+
+def consume_billing_ticket(db: Session, ticket: str, business_id: int) -> None:
+    """The UNIQUE digest insert is the authority across concurrent requests/restarts."""
+    now = int(time.time())
+    exp = int(ticket.split(".", 1)[0])
+    set_rls_business(db, business_id)
+    digest = hashlib.sha256(ticket.encode()).hexdigest()
+    try:
+        # Expired tickets cannot pass verification, so deleting their tombstones
+        # cannot make a spent ticket usable again. Cleanup is tenant-scoped.
+        db.query(FieldHandoffTicketUse).filter(
+            FieldHandoffTicketUse.business_id == business_id,
+            FieldHandoffTicketUse.expires_at < now,
+        ).delete(synchronize_session=False)
+        with db.begin_nested():
+            db.add(FieldHandoffTicketUse(digest=digest, business_id=business_id,
+                                        expires_at=exp + _TICKET_LEEWAY_S))
+            db.flush()
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise TicketRefused("already_used", exp - now)
+    except SQLAlchemyError:
+        db.rollback()
+        logger.warning("[AUTH] hand-off ticket could not be reserved reason=database_unavailable")
+        raise HTTPException(status_code=503, detail="Could not complete sign-in. The server may be starting. Please try again.")
 
 
 # ── Login throttling (in-process; this service runs ONE worker) ─────────────
@@ -251,7 +309,7 @@ class Principal:
 
 def _bearer(authorization: Optional[str]) -> str:
     if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Sign in required")
+        raise HTTPException(status_code=401, detail="Sign in required", headers=SESSION_REJECTED_HEADERS)
     return authorization.split(" ", 1)[1].strip()
 
 
@@ -265,22 +323,22 @@ def signed_in_principal(
     try:
         bid = int(claims["bid"])
     except (KeyError, TypeError, ValueError):
-        raise HTTPException(status_code=401, detail="Invalid session — please sign in again")
+        raise HTTPException(status_code=401, detail="Invalid session — please sign in again", headers=SESSION_REJECTED_HEADERS)
 
     if kind == "owner":
         try:
             uid = int(claims.get("uid", -1))
         except (TypeError, ValueError):
-            raise HTTPException(status_code=401, detail="Invalid session — please sign in again")
+            raise HTTPException(status_code=401, detail="Invalid session — please sign in again", headers=SESSION_REJECTED_HEADERS)
         user = db.query(BillingUser).filter(BillingUser.id == uid).first()
         if (user is None or user.parent_business_id is not None or int(user.id) != bid
                 or (user.role or "").lower() in NON_OWNER_ROLES):
-            raise HTTPException(status_code=401, detail="Account not found — please sign in again")
+            raise HTTPException(status_code=401, detail="Account not found — please sign in again", headers=SESSION_REJECTED_HEADERS)
         if claims.get("public_id") and claims["public_id"] != user.public_id:
-            raise HTTPException(status_code=401, detail="Session belongs to a different business — sign in again")
+            raise HTTPException(status_code=401, detail="Session belongs to a different business — sign in again", headers=SESSION_REJECTED_HEADERS)
         # Billing's "force logout" bumps users.token_version — honour it here too.
         if int(claims.get("tv", 0)) != int(user.token_version or 0):
-            raise HTTPException(status_code=401, detail="Session revoked — please sign in again")
+            raise HTTPException(status_code=401, detail="Session revoked — please sign in again", headers=SESSION_REJECTED_HEADERS)
         set_rls_business(db, bid)
         return Principal(kind="owner", business_id=bid, owner_user_id=int(user.id), public_id=user.public_id,
                          owner=user)
@@ -289,9 +347,9 @@ def signed_in_principal(
         owner = db.query(BillingUser).filter(BillingUser.id == bid).first()
         if (owner is None or owner.parent_business_id is not None
                 or (owner.role or "").lower() in NON_OWNER_ROLES):
-            raise HTTPException(status_code=401, detail="Business account not found — sign in again")
+            raise HTTPException(status_code=401, detail="Business account not found — sign in again", headers=SESSION_REJECTED_HEADERS)
         if claims.get("public_id") and claims["public_id"] != owner.public_id:
-            raise HTTPException(status_code=401, detail="Session belongs to a different business — sign in again")
+            raise HTTPException(status_code=401, detail="Session belongs to a different business — sign in again", headers=SESSION_REJECTED_HEADERS)
         # The signature authenticates the tenant claim. Bind it BEFORE reading
         # ft_staff: FORCE RLS otherwise hides the very row used to authenticate.
         # Session, device and token-version checks below remain authoritative.
@@ -300,17 +358,17 @@ def signed_in_principal(
             FieldStaff.id == int(claims.get("sid", -1)), FieldStaff.business_id == bid,
         ).first()
         if staff is None or not staff.is_active:
-            raise HTTPException(status_code=401, detail="Account disabled — contact the owner")
+            raise HTTPException(status_code=401, detail="Account disabled — contact the owner", headers=SESSION_REJECTED_HEADERS)
         if int(claims.get("tv", 0)) != int(staff.token_version or 0):
-            raise HTTPException(status_code=401, detail="Session revoked — please sign in again")
+            raise HTTPException(status_code=401, detail="Session revoked — please sign in again", headers=SESSION_REJECTED_HEADERS)
         if not staff.active_session_id or claims.get("ses") != staff.active_session_id:
-            raise HTTPException(status_code=401, detail="Signed in on another device — this device was signed out")
+            raise HTTPException(status_code=401, detail="Signed in on another device — this device was signed out", headers=SESSION_REJECTED_HEADERS)
         settings = get_settings(db, bid)
         if settings.device_policy == "bound" and staff.bound_device_id and claims.get("dev") != staff.bound_device_id:
-            raise HTTPException(status_code=401, detail="This account is locked to another device")
+            raise HTTPException(status_code=401, detail="This account is locked to another device", headers=SESSION_REJECTED_HEADERS)
         return Principal(kind="staff", business_id=bid, staff=staff, owner=owner, public_id=owner.public_id)
 
-    raise HTTPException(status_code=401, detail="Invalid session — please sign in again")
+    raise HTTPException(status_code=401, detail="Invalid session — please sign in again", headers=SESSION_REJECTED_HEADERS)
 
 
 def current_principal(p: Principal = Depends(signed_in_principal), db: Session = Depends(get_db)) -> Principal:

@@ -6,7 +6,49 @@ SQLite's single writer gives the same guarantee. No wall clock is a cursor.
 """
 from __future__ import annotations
 import json
+import logging
+import random
+import re
+import time
 from sqlalchemy import text, inspect
+
+logger = logging.getLogger("bizassist.change_feed")
+_FEED_LOCK_TIMEOUT = "5s"
+_sleep = time.sleep
+
+
+def _sqlstate(exc):
+    original = getattr(exc, "orig", exc)
+    return getattr(original, "pgcode", None) or getattr(original, "sqlstate", None)
+
+
+def _change_feed_installed(connection):
+    if not connection.execute(text("SELECT to_regprocedure('bizassist_feed_emit(integer,text,jsonb,text)')")).scalar():
+        return False
+    for name in _sources(connection):
+        if not connection.execute(text("SELECT 1 FROM pg_trigger WHERE tgrelid=to_regclass(:t) AND tgname='bizassist_feed_capture' AND tgfoid=to_regprocedure(:f) AND tgtype=31 AND tgenabled IN ('O','A') AND NOT tgisinternal"), {"t": name, "f": f"bizassist_feed_{name}()"}).first():
+            return False
+        cols = {c["name"] for c in inspect(connection).get_columns(name)}
+        # Existing capture triggers alone are insufficient proof: the failed
+        # attempt may have deadlocked halfway through historical backfill.
+        for expr in dict.fromkeys(_owner_expressions(name, cols)):
+            missing = connection.execute(text(f'''SELECT EXISTS (
+                SELECT 1 FROM (SELECT to_jsonb(t) AS body FROM "{name}" t) s
+                WHERE ({expr}) IS NOT NULL AND NOT EXISTS (
+                    SELECT 1 FROM sync_feed_events e WHERE e.business_id=({expr})
+                    AND e.entity=:entity AND e.row_uid=COALESCE(s.body->>'uid',s.body->>'id'))
+            )'''), {"entity": name}).scalar()
+            if missing:
+                return False
+    return True
+
+
+def _pg_function(connection, name, signature, returns, body):
+    previous = connection.execute(text("SELECT prosrc FROM pg_proc WHERE oid=to_regprocedure(:s)"), {"s": signature}).scalar()
+    if re.sub(r"\s+", " ", previous or "").strip() != re.sub(r"\s+", " ", body).strip():
+        args = "bid integer, ent text, body jsonb, op text" if name == "bizassist_feed_emit" else ""
+        connection.execute(text(f"CREATE OR REPLACE FUNCTION {name}({args}) RETURNS {returns} LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$ {body} $$"))
+    connection.execute(text(f"REVOKE ALL ON FUNCTION {signature} FROM PUBLIC"))
 
 
 def _sources(connection):
@@ -15,7 +57,7 @@ def _sources(connection):
     return {name: model for name, model in MODEL_MAP.items() if name in present}
 
 
-def install_change_feed(connection, **_kw):
+def _install_change_feed(connection):
     """Install/refresh triggers and backfill existing rows exactly once per UID.
 
     Called inside the schema owner's transaction, never by an HTTP app role.
@@ -27,10 +69,8 @@ def install_change_feed(connection, **_kw):
     SyncFeedEvent.__table__.create(connection, checkfirst=True)
     pg = connection.dialect.name == "postgresql"
     if pg:
-        connection.execute(text("SELECT pg_advisory_xact_lock(724839102)"))
-        connection.execute(text("""
-            CREATE OR REPLACE FUNCTION bizassist_feed_emit(bid integer, ent text, body jsonb, op text)
-            RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
+        connection.execute(text(f"SET LOCAL lock_timeout = '{_FEED_LOCK_TIMEOUT}'"))
+        _pg_function(connection, "bizassist_feed_emit", "bizassist_feed_emit(integer,text,jsonb,text)", "void", """
             DECLARE rev bigint;
             BEGIN
               IF bid IS NULL THEN RETURN; END IF;
@@ -39,9 +79,8 @@ def install_change_feed(connection, **_kw):
               RETURNING revision INTO rev;
               INSERT INTO sync_feed_events(business_id,revision,entity,row_uid,operation,payload)
               VALUES(bid,rev,ent,COALESCE(body->>'uid',body->>'id'),op,body::text);
-            END $$;
-            REVOKE ALL ON FUNCTION bizassist_feed_emit(integer,text,jsonb,text) FROM PUBLIC;
-        """))
+            END;
+        """)
     for name, model in sorted(_sources(connection).items(), key=lambda x: x[0]):
         cols = {c["name"] for c in inspect(connection).get_columns(name)}
         owner_sql = _owner_expressions(name, cols)
@@ -49,25 +88,21 @@ def install_change_feed(connection, **_kw):
             raise RuntimeError(f"No change-feed ownership rule for {name}")
         if pg:
             calls = " ".join(f"PERFORM bizassist_feed_emit(({expr}),TG_TABLE_NAME,body,TG_OP);" for expr in owner_sql)
-            try:
-                connection.execute(text(f"""
-                CREATE OR REPLACE FUNCTION bizassist_feed_{name}() RETURNS trigger
-                LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
+            _pg_function(connection, f"bizassist_feed_{name}", f"bizassist_feed_{name}()", "trigger", f"""
                 DECLARE body jsonb;
                 BEGIN
                   body := CASE WHEN TG_OP='DELETE' THEN to_jsonb(OLD) ELSE to_jsonb(NEW) END;
                   {calls}
                   RETURN CASE WHEN TG_OP='DELETE' THEN OLD ELSE NEW END;
-                END $$;
-                DROP TRIGGER IF EXISTS bizassist_feed_capture ON "{name}";
-                CREATE TRIGGER bizassist_feed_capture BEFORE INSERT OR UPDATE OR DELETE ON "{name}"
-                FOR EACH ROW EXECUTE FUNCTION bizassist_feed_{name}();
-            """))
-            except Exception as e:
-                if "deadlock" in str(e).lower() or "lock" in str(e).lower():
-                    logger.warning(f"[change_feed] Concurrent migration on table {name} (peer installed trigger): {e}")
-                else:
-                    raise
+                END;
+            """)
+            correct = connection.execute(text("SELECT 1 FROM pg_trigger WHERE tgrelid=to_regclass(:t) AND tgname='bizassist_feed_capture' AND tgfoid=to_regprocedure(:f) AND tgtype=31 AND tgenabled='O'"), {"t":name,"f":f"bizassist_feed_{name}()"}).first()
+            if not correct:
+                version = int(connection.execute(text("SHOW server_version_num")).scalar())
+                if version < 140000:
+                    connection.execute(text(f'DROP TRIGGER IF EXISTS bizassist_feed_capture ON "{name}"'))
+                replace = "OR REPLACE " if version >= 140000 else ""
+                connection.execute(text(f'CREATE {replace}TRIGGER bizassist_feed_capture BEFORE INSERT OR UPDATE OR DELETE ON "{name}" FOR EACH ROW EXECUTE FUNCTION bizassist_feed_{name}()'))
             # BEFORE INSERT does not see an ORM-generated id when the PK is
             # server-generated? PostgreSQL defaults are assigned before this
             # trigger, while UID defaults are assigned by SQLAlchemy before SQL.
@@ -89,14 +124,29 @@ def install_change_feed(connection, **_kw):
                 connection.exec_driver_sql(f'CREATE TRIGGER "{trigger}" {timing} {op} ON "{name}" BEGIN ' + " ".join(statements) + " END")
         # Seed records absent from the event history; the owner migration holds
         # the global DDL lock and the clock row locks until this transaction ends.
-        rows = connection.execute(text(f'SELECT * FROM "{name}"')).mappings().all()
+        if pg:
+            for expr in dict.fromkeys(owner_sql):
+                connection.execute(text(f'''SELECT bizassist_feed_emit(({expr}), :entity, s.body, 'INSERT')
+                    FROM (SELECT to_jsonb(t) AS body, t.id AS _id FROM "{name}" t) s
+                    WHERE ({expr}) IS NOT NULL AND NOT EXISTS (
+                        SELECT 1 FROM sync_feed_events e WHERE e.business_id=({expr}) AND e.entity=:entity
+                        AND e.row_uid=COALESCE(s.body->>'uid',s.body->>'id')) ORDER BY s._id'''), {"entity":name})
+            continue
+        existing = set(connection.execute(text("SELECT business_id,row_uid FROM sync_feed_events WHERE entity=:e"), {"e":name}).all())
+        parent_rows = {}
+        if name in _CHILD:
+            parent, fk = _CHILD[name]
+            parent_rows = {r['id']: dict(r) for r in connection.execute(text(f'SELECT * FROM "{parent}"')).mappings()}
+        rows = connection.execute(text(f'SELECT * FROM "{name}" ORDER BY id')).mappings().all()
         for row in rows:
             body = dict(row)
             uid = str(body.get("uid") or body.get("id"))
-            for bid in _owners_for_seed(connection, name, body):
-                exists = connection.execute(text("SELECT 1 FROM sync_feed_events WHERE business_id=:b AND entity=:e AND row_uid=:u LIMIT 1"), {"b": bid, "e": name, "u": uid}).first()
-                if exists:
+            owner_body = parent_rows.get(body.get(_CHILD[name][1]), {}) if name in _CHILD else body
+            owners = ([owner_body['business_id']] if owner_body.get('business_id') is not None else sorted({owner_body[k] for k in ('seller_business_id','buyer_business_id') if owner_body.get(k) is not None}))
+            for bid in owners:
+                if (bid, uid) in existing:
                     continue
+                existing.add((bid, uid))
                 encoded = json.dumps(body, default=lambda x: x.isoformat() if hasattr(x, "isoformat") else str(x))
                 if pg:
                     connection.execute(text("SELECT bizassist_feed_emit(:b,:e,CAST(:p AS jsonb),'INSERT')"), {"b": bid, "e": name, "p": encoded})
@@ -104,6 +154,31 @@ def install_change_feed(connection, **_kw):
                     connection.execute(text("INSERT INTO sync_feed_clock(business_id,revision) VALUES(:b,0) ON CONFLICT(business_id) DO NOTHING"), {"b": bid})
                     connection.execute(text("UPDATE sync_feed_clock SET revision=revision+1 WHERE business_id=:b"), {"b": bid})
                     connection.execute(text("INSERT INTO sync_feed_events(business_id,revision,entity,row_uid,operation,payload) SELECT :b,revision,:e,:u,'INSERT',:p FROM sync_feed_clock WHERE business_id=:b"), {"b": bid, "e": name, "u": uid, "p": encoded})
+
+
+def install_change_feed(connection, **_kw):
+    """Retry only genuine PostgreSQL lock conflicts, isolated by savepoints."""
+    if connection.dialect.name != "postgresql":
+        return _install_change_feed(connection)
+    for attempt in range(4):
+        try:
+            with connection.begin_nested():
+                return _install_change_feed(connection)
+        except Exception as exc:
+            code = _sqlstate(exc)
+            if code not in {"40P01", "55P03"}:
+                logger.exception("Change-feed installation failed (SQLSTATE %s)", code)
+                raise
+            if attempt < 3:
+                delay = (2 ** (attempt + 1)) + random.uniform(0, 1)
+                logger.warning("Change-feed lock conflict %s; retrying in %.1fs", code, delay)
+                _sleep(delay)
+                continue
+            with connection.engine.connect() as probe:
+                if _change_feed_installed(probe):
+                    logger.warning("Change-feed peer completed after lock conflict %s", code)
+                    return
+            raise
 
 
 _CHILD = {"invoice_line_items": ("invoices", "invoice_id"), "purchase_invoice_line_items": ("purchase_invoices", "purchase_invoice_id"), "purchase_order_line_items": ("purchase_orders", "purchase_order_id"), "stock_transfer_line_items": ("stock_transfers", "transfer_id"), "b2b_order_line_items": ("b2b_orders", "order_id"), "shift_cash_movements": ("register_shifts", "shift_id")}

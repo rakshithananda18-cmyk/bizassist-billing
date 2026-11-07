@@ -64,7 +64,9 @@ def run_migrations(bind=None) -> bool:
     on the newer schema, and failing here would block every rollback."""
     from alembic import command
     from alembic.config import Config
+    from alembic.migration import MigrationContext
     from alembic.script import ScriptDirectory
+    from app.migration_scope import VERSION_TABLE
 
     cfg = Config(os.path.join(BACKEND_DIR, "alembic.ini"))
     cfg.set_main_option("script_location", os.path.join(BACKEND_DIR, "alembic"))
@@ -79,6 +81,10 @@ def run_migrations(bind=None) -> bool:
                 TAG.BOOT, ", ".join(ahead), script.get_current_head(),
             )
             return False
+        heads = MigrationContext.configure(conn, opts={"version_table": VERSION_TABLE}).get_current_heads()
+        if set(heads) == set(script.get_heads()):
+            logger.info("%s ft schema at head %s, upgrade skipped", TAG.BOOT, ", ".join(heads))
+            return True
         cfg.attributes["connection"] = conn
         command.upgrade(cfg, "head")
     return True
@@ -163,6 +169,7 @@ app.add_middleware(
     allow_credentials=False,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type"],
+    expose_headers=["WWW-Authenticate", "Retry-After"],
 )
 
 

@@ -1,8 +1,25 @@
-import { defineConfig } from 'vite'
+import { execFileSync } from 'node:child_process'
+import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 
-export default defineConfig({
-  plugins: [react()],
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), 'VITE_')
+  const publicUrlKeys = ['VITE_API_URL', 'VITE_FIELD_TEAM_URL', 'VITE_AI_DASHBOARD_URL', 'VITE_PUBLIC_WEB_URL']
+  const buildInfo = {
+    name: 'public-build-info',
+    apply: 'build',
+    generateBundle() {
+      const urls = Object.fromEntries(publicUrlKeys.map(key => [key, env[key] || null]))
+      this.emitFile({ type: 'asset', fileName: 'build-info.json', source: JSON.stringify({
+        app: 'frontend-billing', commit: process.env.VERCEL_GIT_COMMIT_SHA || (() => {
+          try { return execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim() } catch { return null }
+        })(),
+        built_at: new Date().toISOString(), urls,
+      }, null, 2) })
+    },
+  }
+  return {
+  plugins: [react(), buildInfo],
   build: {
     rollupOptions: {
       output: {
@@ -58,5 +75,6 @@ export default defineConfig({
       ['**/*.test.jsx', 'jsdom'],
       ['**/*.test.js', 'node'],
     ],
+  }
   }
 })

@@ -16,6 +16,7 @@ Architecture:
 from __future__ import annotations
 import logging
 import time
+import os
 from typing import Dict, List
 
 import ipaddress
@@ -88,11 +89,33 @@ _TTL_SECONDS = 2 * 60 * 60   # 2 hours
 TTL_SECONDS = _TTL_SECONDS   # Public alias for tests
 
 
+def _persist_enabled():
+    from database.db import engine
+    return engine.dialect.name == "postgresql" or os.getenv("DISCOVERY_PERSIST") == "1"
+
+
+def _persist_entry(biz_id, ip, port, now):
+    from database.db import SessionLocal
+    from sqlalchemy import text
+    with SessionLocal() as db:
+        db.execute(text("INSERT INTO discovery_registrations(biz_id,ip,port,url,registered_at,last_seen) VALUES(:b,:ip,:port,:url,:now,:now) ON CONFLICT(biz_id,ip,port) DO UPDATE SET last_seen=excluded.last_seen,url=excluded.url"), {"b":biz_id,"ip":ip,"port":port,"url":f"http://{ip}:{port}","now":now})
+        db.commit()
+
+
 def _prune(biz_id: str) -> None:
     """Remove expired entries for a business."""
     now = time.time()
     entries = _REGISTRY.get(biz_id, [])
     _REGISTRY[biz_id] = [e for e in entries if now - e["last_seen"] < _TTL_SECONDS]
+    if _persist_enabled():
+        from database.db import SessionLocal
+        from database.runtime_state import DiscoveryRegistration
+        with SessionLocal() as db:
+            db.query(DiscoveryRegistration).filter(DiscoveryRegistration.biz_id == biz_id, DiscoveryRegistration.last_seen <= now - _TTL_SECONDS).delete(synchronize_session=False)
+            if not _REGISTRY[biz_id]:
+                _REGISTRY[biz_id] = [{"ip":r.ip,"port":r.port,"registered_at":r.registered_at,"last_seen":r.last_seen}
+                    for r in db.query(DiscoveryRegistration).filter(DiscoveryRegistration.biz_id == biz_id, DiscoveryRegistration.last_seen > now - _TTL_SECONDS).all()]
+            db.commit()
 
 
 class DiscoverRegisterRequest(BaseModel):
@@ -190,10 +213,14 @@ async def register_local_backend(
     # Update existing entry for this ip:port or add new one
     for entry in entries:
         if entry["ip"] == ip and entry["port"] == req.port:
+            if _persist_enabled():
+                _persist_entry(biz_id, ip, req.port, now)
             entry["last_seen"] = now
             logger.info("[DISCOVER] Renewed registration %s:%d for biz %s", ip, req.port, biz_id)
             return {"status": "renewed", "ip": ip, "port": req.port}
 
+    if _persist_enabled():
+        _persist_entry(biz_id, ip, req.port, now)
     entries.append({"ip": ip, "port": req.port, "registered_at": now, "last_seen": now})
     logger.info("[DISCOVER] Registered %s:%d for biz %s", ip, req.port, biz_id)
     return {"status": "registered", "ip": ip, "port": req.port}
@@ -206,10 +233,17 @@ async def unregister_local_backend(
 ):
     """Called by the local backend on clean shutdown to remove its entry."""
     biz_id = _assert_registration_owner(req, current_user)
+    _prune(biz_id)
     entries = _REGISTRY.get(biz_id, [])
     before = len(entries)
     _REGISTRY[biz_id] = [e for e in entries if not (e["ip"] == req.ip and e["port"] == req.port)]
     removed = before - len(_REGISTRY[biz_id])
+    if _persist_enabled():
+        from database.db import SessionLocal
+        from database.runtime_state import DiscoveryRegistration
+        with SessionLocal() as db:
+            db.query(DiscoveryRegistration).filter_by(biz_id=biz_id, ip=req.ip, port=req.port).delete(synchronize_session=False)
+            db.commit()
     logger.info("[DISCOVER] Unregistered %s:%d for biz %s (removed %d)", req.ip, req.port, biz_id, removed)
     return {"status": "ok", "removed": removed}
 

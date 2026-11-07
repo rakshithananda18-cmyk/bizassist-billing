@@ -55,17 +55,16 @@ export default function AdminBusinessDetail() {
     setLoadError(null)
     try {
       const [bizRes, doctorRes, limitsRes, opsRes] = await Promise.all([
-        authFetch(`${API_BASE}/admin/businesses`),
-        authFetch(`${API_BASE}/admin/sync-doctor`),
+        authFetch(`${API_BASE}/admin/businesses/${id}`),
+        authFetch(`${API_BASE}/admin/sync-doctor?business_id=${encodeURIComponent(id)}`),
         authFetch(`${API_BASE}/admin/rate-limits/${id}`),
         authFetch(`${API_BASE}/admin/business/${id}/ops-health`),
       ])
       if (request !== requestRef.current) return
       if (![bizRes, doctorRes, limitsRes, opsRes].every(response => response.ok)) throw new Error('Business diagnostics are unavailable. Retry when the service is reachable.')
-      const [ops, all, rows, configuredLimits] = await Promise.all([opsRes.json(), bizRes.json(), doctorRes.json(), limitsRes.json()])
+      const [ops, biz, rows, configuredLimits] = await Promise.all([opsRes.json(), bizRes.json(), doctorRes.json(), limitsRes.json()])
       if (request !== requestRef.current) return
-      if (!Array.isArray(all) || !Array.isArray(rows)) throw new Error('Invalid business diagnostics response')
-      const biz = all.find(row => String(row.id) === String(id)) || null
+      if (!biz || String(biz.id) !== String(id) || !Array.isArray(rows)) throw new Error('Invalid business diagnostics response')
       setBusiness(biz)
       setOpsHealth(ops)
       setSyncHealth(rows.find(row => String(row.business_id) === String(id)) || null)

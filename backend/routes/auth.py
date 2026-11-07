@@ -1,13 +1,16 @@
 import logging
 import time
-from typing import Optional
-from fastapi import APIRouter, HTTPException, Request, Depends, Query
+from typing import Optional, Literal
+from uuid import uuid4
+import os
+from fastapi import APIRouter, HTTPException, Request, Depends, Query, Body
 from pydantic import BaseModel
 from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from database.db import get_db, DATABASE_URL
 from database.models import User
-from services.auth import hash_password, verify_password, create_access_token, get_active_user, create_sse_ticket, require_owner, require_business_owner, get_active_user_or_ticket, redeem_sse_ticket
+from services.auth import hash_password, verify_password, create_access_token, get_active_user, create_sse_ticket, require_owner, require_business_owner, get_active_user_or_ticket, redeem_sse_ticket, verify_ticket, _validate_token_version, session_rejected, SESSION_REJECTION_HEADERS
 from services.rate_limiter import check_ip_rate_limit
 from services.registration_policy import TRIAL_DAYS, normalize_phone, phone_key
 
@@ -39,49 +42,27 @@ _SUB_SYNC_FREE_COOLDOWN_SECS = 60
 _sub_sync_next: dict[int, float] = {}  # business_id → earliest next cloud check
 
 
+def _session_claims(user_row: User, *, sid: str, psid=None, owner=None) -> dict:
+    holder = owner or user_row
+    claims = {
+        "id": user_row.parent_business_id or user_row.id,
+        "user_id": user_row.id,
+        "username": user_row.username,
+        "public_id": holder.public_id,
+        "business_name": holder.business_name,
+        "role": user_row.role,
+        "tv": user_row.token_version or 0,
+        "sid": sid,
+    }
+    if psid:
+        claims["psid"] = psid
+    return claims
+
+
 class LoginRequest(BaseModel):
     username: str
     password: str
     otp: Optional[str] = None   # TOTP code — required only for admins with 2FA enabled (§4.1)
-
-
-class IdentityCheckRequest(BaseModel):
-    username: str
-
-
-@router.post("/api/biz_id/check")
-def biz_id_check(req: IdentityCheckRequest, db: Session = Depends(get_db)):
-    """
-    Lightweight, public existence check for registration and login UX.
-    Returns {"exists": bool, "business_name": Optional[str]}
-    """
-    uname = (req.username or "").strip()
-    if not uname:
-        return {"exists": False, "business_name": None}
-    user = (db.query(User)
-              .filter(func.lower(User.username) == uname.lower())
-              .first())
-    if user:
-        b_name = user.business_name or user.username
-        owner_name = user.username
-        if user.parent_business_id:
-            owner = db.query(User).filter(User.id == user.parent_business_id).first()
-            if owner:
-                b_name = owner.business_name or owner.username
-                owner_name = owner.username
-        return {
-            "exists": True,
-            "business_name": b_name,
-            "is_staff": bool(user.parent_business_id),
-            "owner_username": owner_name
-        }
-    return {"exists": False, "business_name": None}
-
-
-@router.get("/api/auth/check-username")
-def check_username_get(username: str = Query(...), db: Session = Depends(get_db)):
-    """Convenience GET endpoint for live debounced input availability check."""
-    return biz_id_check(IdentityCheckRequest(username=username), db)
 
 
 class ReconcilePasswordRequest(BaseModel):
@@ -237,6 +218,7 @@ def reclaim_local(req: ReclaimLocalRequest, request: Request, db: Session = Depe
         "business_name": user.business_name,
         "role": user.role,
         "tv": user.token_version or 0,
+        "sid": uuid4().hex,
     })
     return {
         "token": token,
@@ -322,15 +304,7 @@ def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
                 business_name = owner.business_name
                 owner_public_id = owner.public_id
 
-        token = create_access_token({
-            "id": business_id,
-            "user_id": user.id,
-            "username": user.username,
-            "public_id": owner_public_id,   # BizID — the stable cross-DB identity spine (D9)
-            "business_name": business_name,
-            "role": user.role,
-            "tv": user.token_version or 0,  # session revocation (GAP-1)
-        })
+        token = create_access_token(_session_claims(user, sid=uuid4().hex, psid=None, owner=owner if user.parent_business_id else None))
 
         # Stamp the account as used. This is what lets the owner tell a real
         # counter from one created during testing and forgotten — a NULL
@@ -400,15 +374,7 @@ def staff_login(req: StaffLoginRequest, request: Request, db: Session = Depends(
             raise HTTPException(status_code=401, detail="Invalid credentials")
 
         business_id = owner.id
-        token = create_access_token({
-            "id": business_id,
-            "user_id": staff.id,
-            "username": staff.username,          # internal global-unique → route resolution
-            "public_id": owner.public_id,
-            "business_name": owner.business_name,
-            "role": staff.role,
-            "tv": staff.token_version or 0,      # session revocation (GAP-1)
-        })
+        token = create_access_token(_session_claims(staff, sid=uuid4().hex, psid=None, owner=owner))
         logger.info(f"[AUTH] Staff '{staff.staff_login_name}' logged into business {business_id} (owner {owner.username}).")
         return {
             "token": token,
@@ -617,15 +583,7 @@ def signup(req: SignupRequest, db: Session = Depends(get_db)):
             trial = _start_trial(user, phone, db)
         db.commit()
 
-        token = create_access_token({
-            "id": user.id,
-            "user_id": user.id,
-            "username": user.username,
-            "public_id": user.public_id,   # BizID — stable cross-DB identity spine (D9)
-            "business_name": user.business_name,
-            "role": user.role,
-            "tv": user.token_version or 0,  # session revocation (GAP-1)
-        })
+        token = create_access_token(_session_claims(user, sid=uuid4().hex, psid=None, owner=owner if user.parent_business_id else None))
 
         logger.info(f"[AUTH] User '{req.username}' registered and authenticated.")
         return {
@@ -655,16 +613,23 @@ def signup(req: SignupRequest, db: Session = Depends(get_db)):
 # SSO & HANDOFF TICKETS
 # ---------------------------------------------------------------------------
 
+class HandoffRequest(BaseModel):
+    purpose: Literal["field_team", "ai_dashboard", "admin_console"]
+
+
 @router.post("/handoff-ticket")
-def handoff_ticket(current_user: dict = Depends(require_owner)):
-    """
-    (Phase C) Generate a short-lived (30s), single-use SSO ticket for the owner.
-    This allows them to seamlessly cross origins (e.g. into the AI Admin Console)
-    without logging in again.
-    """
-    logger.info(f"[AUTH] Generating SSO handoff ticket for owner '{current_user.get('username')}'")
-    ticket = create_sse_ticket(current_user, expires_in_seconds=30)
-    return {"ticket": ticket}
+def handoff_ticket(body: Optional[HandoffRequest] = Body(None), current_user: dict = Depends(require_owner)):
+    purpose = body.purpose if body else None
+    ttl = 30 if purpose is None else 60
+    if purpose == "field_team":
+        try:
+            ttl = max(1, min(120, int(os.getenv("HANDOFF_TTL_FIELD_TEAM", "90"))))
+        except ValueError:
+            ttl = 90
+    claims = dict(current_user)
+    if purpose == "ai_dashboard" and current_user.get("sid"):
+        claims["psid"] = current_user["sid"]
+    return {"ticket": create_sse_ticket(claims, expires_in_seconds=ttl, aud=purpose), "expires_in": ttl}
 
 
 class RedeemTicketRequest(BaseModel):
@@ -687,10 +652,12 @@ def redeem_ticket(req: RedeemTicketRequest, request: Request, db: Session = Depe
         # get_active_user_or_ticket uses Query(None) params; calling it directly
         # passes ticket=None, falls through to JWT auth, always raises 401.
         # Stateless verify (BUG-4): survives server restarts and >1 worker.
-        current_user = redeem_sse_ticket(req.ticket)
+        check = verify_ticket(req.ticket, audiences={None, "ai_dashboard", "admin_console"})
+        current_user = check.claims
         if current_user is None:
-            logger.warning("[AUTH] SSO ticket invalid, expired, or already used")
-            raise HTTPException(status_code=401, detail="Invalid or expired ticket")
+            details = {"expired": "Ticket expired. Open the app again from Billing.", "already_used": "Ticket already used. Open the app again from Billing.", "bad_signature": "Ticket signing configuration does not match.", "wrong_audience": "Ticket is intended for another app."}
+            raise HTTPException(status_code=401, detail=details.get(check.reason, "Invalid or expired ticket"))
+        _validate_token_version(current_user)
         logger.info("[AUTH] SSO ticket verified for user '%s'", current_user.get("username"))
 
         
@@ -707,15 +674,7 @@ def redeem_ticket(req: RedeemTicketRequest, request: Request, db: Session = Depe
                 business_name = owner.business_name
                 owner_public_id = owner.public_id
 
-        token = create_access_token({
-            "id": business_id,
-            "user_id": user_row.id,
-            "username": user_row.username,
-            "public_id": owner_public_id,
-            "business_name": business_name,
-            "role": user_row.role,
-            "tv": user_row.token_version or 0,   # session revocation (GAP-1)
-        })
+        token = create_access_token(_session_claims(user_row, sid=uuid4().hex, psid=current_user.get("psid"), owner=owner if user_row.parent_business_id else None))
 
         logger.info(f"[AUTH] Ticket redeemed successfully for user '{user_row.username}'. Issued new session.")
         return {
@@ -748,7 +707,7 @@ def refresh_session(current_user: dict = Depends(get_active_user), db: Session =
         uid = current_user.get("user_id") or current_user.get("id")
         user = db.query(User).filter(User.id == uid).first()
         if not user:
-            raise HTTPException(status_code=401, detail="Account no longer exists")
+            raise session_rejected("Account no longer exists")
 
         business_id = user.parent_business_id or user.id
         business_name = user.business_name
@@ -759,15 +718,7 @@ def refresh_session(current_user: dict = Depends(get_active_user), db: Session =
                 business_name = owner.business_name
                 owner_public_id = owner.public_id
 
-        token = create_access_token({
-            "id": business_id,
-            "user_id": user.id,
-            "username": user.username,
-            "public_id": owner_public_id,
-            "business_name": business_name,
-            "role": user.role,
-            "tv": user.token_version or 0,
-        })
+        token = create_access_token(_session_claims(user, sid=current_user.get("sid") or uuid4().hex, psid=current_user.get("psid"), owner=owner if user.parent_business_id else None))
         logger.info(f"[AUTH] Session refreshed for '{user.username}' (business={business_id}).")
         return {
             "token": token,
@@ -787,6 +738,31 @@ def refresh_session(current_user: dict = Depends(get_active_user), db: Session =
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
+@router.post("/auth/logout")
+def logout_session(current_user: dict = Depends(get_active_user), db: Session = Depends(get_db)):
+    """Revoke dashboard descendants without ending the owner's other devices."""
+    from database.models import RevokedSession
+    from datetime import datetime, timedelta
+    sid = current_user.get("sid")
+    if sid and db.get(RevokedSession, sid) is None:
+        # Descendant refreshes can outlive the original JWT; retain the parent
+        # tombstone for the maximum session age beyond logout.
+        from services.auth import ACCESS_TOKEN_EXPIRE_MINUTES
+        expires = datetime.utcfromtimestamp(current_user.get("exp", time.time())) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        db.add(RevokedSession(sid=sid, expires_at=expires))
+        try:
+            db.commit()
+        except IntegrityError:
+            # Two tabs can sign out the same parent concurrently.
+            db.rollback()
+            if db.get(RevokedSession, sid) is None:
+                raise HTTPException(status_code=503, detail="Sign-out could not be confirmed. Please retry.")
+        except Exception:
+            db.rollback()
+            raise HTTPException(status_code=503, detail="Sign-out could not be confirmed. Please retry.")
+    return {"status": "ok"}
+
+
 class ProfileUpdateRequest(BaseModel):
     business_name: Optional[str] = None
     gstin: Optional[str] = None
@@ -804,7 +780,7 @@ class ProfileUpdateRequest(BaseModel):
 def get_profile(current_user: dict = Depends(get_active_user), db: Session = Depends(get_db)):
     user = db.query(User).filter(User.username == current_user.get("username")).first()
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(status_code=404, detail="User not found", headers=SESSION_REJECTION_HEADERS)
     return {
         "id": user.id,
         "username": user.username,
@@ -830,7 +806,7 @@ def get_profile(current_user: dict = Depends(get_active_user), db: Session = Dep
 def update_profile(req: ProfileUpdateRequest, current_user: dict = Depends(require_business_owner), db: Session = Depends(get_db)):
     user = db.query(User).filter(User.username == current_user.get("username")).first()
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(status_code=404, detail="User not found", headers=SESSION_REJECTION_HEADERS)
     
     if req.business_name is not None:
         user.business_name = req.business_name
@@ -1176,6 +1152,7 @@ def _subscription_view(user: User, db: Session = None, force: bool = False) -> d
             plan_holder = owner
     sub = _settings_dict(plan_holder).get("subscription") or {}
     status = sub.get("status", "none")
+    gated = (user.role or "").lower() != "admin" and effective_plan(plan_holder) != "pro"
     ends = expiry_moment(sub.get("expires_at"))
     return {
         "plan":       effective_plan(plan_holder),
@@ -1192,6 +1169,7 @@ def _subscription_view(user: User, db: Session = None, force: bool = False) -> d
         # Whether the backend actually gates Pro features right now — the client
         # shows PRO badges / blocks only when this is true.
         "enforced":   subscription_enforced(),
+        "gates": {"ai": gated, "field_team": gated, "hybrid_sync": gated and subscription_enforced(), "web_preview": gated},
     }
 
 
@@ -1203,7 +1181,7 @@ def get_settings(force: bool = False, current_user: dict = Depends(get_active_us
     user = db.query(User).filter(User.username == current_user.get("username")).first()
     if not user:
         logger.warning(f"[SETTINGS] User with ID {current_user.get('id')} not found")
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(status_code=404, detail="User not found", headers=SESSION_REJECTION_HEADERS)
     merged = _get_user_settings(user, db)
     merged["subscription"] = _subscription_view(user, db, force=force)
     return merged
@@ -1221,7 +1199,7 @@ def update_settings(
     user = db.query(User).filter(User.username == current_user.get("username")).first()
     if not user:
         logger.warning(f"[SETTINGS] User with ID {current_user.get('id')} not found during update")
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(status_code=404, detail="User not found", headers=SESSION_REJECTION_HEADERS)
 
     current = _get_user_settings(user, db)
 

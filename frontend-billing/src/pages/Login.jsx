@@ -8,7 +8,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { logger } from '../utils/logger'
 import { BuildingMark } from '../components/Logo'
-import { API_BASE } from '../config'
+import { API_BASE, IS_LOCAL_APP } from '../config'
 import CustomSelect from '../components/common/CustomSelect'
 import BootHealthCheck from '../components/BootHealthCheck'
 
@@ -24,6 +24,16 @@ export default function Login() {
   const [error,    setError]    = useState('')
   const [loading,  setLoading]  = useState(false)
   const [rememberMe, setRememberMe] = useState(true)
+  const [waking, setWaking] = useState(false)
+  useEffect(() => {
+    setWaking(false)
+    if (!loading || IS_LOCAL_APP) return
+    const timer = setTimeout(() => setWaking(true), 4000)
+    return () => clearTimeout(timer)
+  }, [loading])
+  useEffect(() => {
+    if (!IS_LOCAL_APP) void fetch(`${API_BASE}/health`, { mode: 'no-cors' }).catch(() => {})
+  }, [])
 
   // Reset root document zoom to prevent browser positioning alignment bugs on logout
   useEffect(() => {
@@ -81,8 +91,6 @@ export default function Login() {
   // Selected owner/business for quick login
   const [selectedOwner, setSelectedOwner] = useState(null)
   const [selectedStaffUser, setSelectedStaffUser] = useState('')
-  const [bizLookup, setBizLookup] = useState(null)
-  const [noBizFound, setNoBizFound] = useState(false)
 
   // Other-Business flow: type the business owner username, then choose owner or
   // staff sign-in. Staff enter their assigned login name; the server verifies
@@ -286,46 +294,11 @@ export default function Login() {
     }
   }
 
-  // Other-Business: never look up a business or its staff before credentials.
-  // Live debounced pre-check of business existence as user types
-  useEffect(() => {
-    const owner = username.trim()
-    if (!owner || owner.length < 2) {
-      setBizLookup(null)
-      setNoBizFound(false)
-      return
-    }
-    const timer = setTimeout(async () => {
-      try {
-        const res = await fetch(`${API_BASE}/api/biz_id/check`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username: owner })
-        })
-        if (res.ok) {
-          const data = await res.json()
-          setBizLookup(data)
-          if (data && data.exists === false) {
-            setNoBizFound(true)
-          } else {
-            setNoBizFound(false)
-          }
-        }
-      } catch {}
-    }, 300)
-    return () => clearTimeout(timer)
-  }, [username])
-
   function handleOwnerContinue(e) {
     e.preventDefault()
     setError('')
     const owner = username.trim()
     if (!owner) { setError('Enter the business owner username.'); return }
-
-    if (noBizFound) {
-      setError(`No business found for "${owner}".`)
-      return
-    }
 
     setPassword('')
     setSelectedStaffUser('')
@@ -440,7 +413,7 @@ export default function Login() {
         <div className="lb-h1" style={{ fontSize: '1.5rem', fontWeight: 700 }}>Home</div>
         
         {/* KPI Grid (4 cards) */}
-        <div className="lb-grid-4" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px' }}>
+        <div className="login-backdrop-grid">
           <div className="lb-card" style={{ height: '80px', borderRadius: '8px', background: 'var(--bg-2)', border: '1px solid var(--border)' }} />
           <div className="lb-card" style={{ height: '80px', borderRadius: '8px', background: 'var(--bg-2)', border: '1px solid var(--border)' }} />
           <div className="lb-card" style={{ height: '80px', borderRadius: '8px', background: 'var(--bg-2)', border: '1px solid var(--border)' }} />
@@ -448,7 +421,7 @@ export default function Login() {
         </div>
 
         {/* Second Row Grid (4 cards) */}
-        <div className="lb-grid-4" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px' }}>
+        <div className="login-backdrop-grid">
           <div className="lb-card" style={{ height: '80px', borderRadius: '8px', background: 'var(--bg-2)', border: '1px solid var(--border)' }} />
           <div className="lb-card" style={{ height: '80px', borderRadius: '8px', background: 'var(--bg-2)', border: '1px solid var(--border)' }} />
           <div className="lb-card" style={{ height: '80px', borderRadius: '8px', background: 'var(--bg-2)', border: '1px solid var(--border)' }} />
@@ -468,8 +441,9 @@ export default function Login() {
       </main>
     </div>
 
-    <div className="login-container" id="login-container" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', overflowY: 'auto', padding: '32px 16px 24px', boxSizing: 'border-box' }}>
-      <div className="login-card" style={{ boxSizing: 'border-box' }}>
+    <div className="login-container" id="login-container">
+      <div className="login-card">
+        {waking && <p role="status" className="login-waking">Waking up the server… this can take up to a minute.</p>}
         <div className="login-glow"></div>
         <div className="login-symbol"><BuildingMark size={42} /></div>
         <h1 className="login-title" style={{ letterSpacing: '0.07em', fontWeight: 900 }}>STATER <span style={{ color: 'var(--accent)', fontWeight: 600, letterSpacing: 'normal' }}>Bill</span></h1>
@@ -1085,46 +1059,7 @@ export default function Login() {
                   <label htmlFor="owner-username">Business Owner Username</label>
                   <input type="text" id="owner-username" placeholder="e.g. store_owner" value={username} onChange={e => setUsername(e.target.value)} required autoFocus autoComplete="username" />
                 </div>
-                {noBizFound ? (
-                  <div style={{
-                    marginTop: 14,
-                    padding: '12px 14px',
-                    borderRadius: 8,
-                    background: 'rgba(194, 113, 79, 0.12)',
-                    border: '1px solid rgba(194, 113, 79, 0.35)',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: 8,
-                    textAlign: 'center'
-                  }}>
-                    <div style={{ fontSize: '0.84rem', color: 'var(--text-primary)', fontWeight: 600 }}>
-                      No business found for "<span style={{ color: 'var(--accent)' }}>{username}</span>"
-                    </div>
-                    <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
-                      Would you like to register this business now?
-                    </div>
-                    <button
-                      type="button"
-                      className="login-submit-btn"
-                      onClick={() => navigate('/register', { state: { prefillUsername: username.trim() } })}
-                      style={{
-                        marginTop: 4,
-                        padding: '8px 16px',
-                        fontSize: '0.84rem',
-                        fontWeight: 700,
-                        background: 'var(--accent)',
-                        color: '#fff',
-                        border: 'none',
-                        borderRadius: 6,
-                        cursor: 'pointer'
-                      }}
-                    >
-                      Register Business &rarr;
-                    </button>
-                  </div>
-                ) : (
-                  error && <div className="login-error" role="alert" style={{ marginTop: 14 }}>{error}</div>
-                )}
+                {error && <div className="login-error" role="alert" style={{ marginTop: 14 }}>{error}</div>}
                 <button type="submit" className="login-submit-btn" disabled={loading} style={{ marginTop: 14 }}>
                   {loading ? 'Checking…' : 'Continue'}
                 </button>
@@ -1155,10 +1090,10 @@ export default function Login() {
                 }}>
                   <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#10b981' }} />
                   <span style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                    {bizLookup?.business_name || username}
+                    {username}
                   </span>
                   <span style={{ fontSize: '0.76rem', color: 'var(--text-muted)' }}>
-                    (@{bizLookup?.owner_username || username})
+                    (@{username})
                   </span>
                 </div>
                 <button type="button" className="login-submit-btn" onClick={() => { setError(''); setPassword(''); setStandardStep('owner') }} style={{ width: '100%' }}>Owner Login</button>
@@ -1215,11 +1150,10 @@ export default function Login() {
           </div>
         )}
       </div>
-      <footer style={{
+      <footer className="login-footer" style={{
         marginTop: 18,
         marginBottom: 8,
         width: '100%',
-        maxWidth: 440,
         display: 'flex',
         flexWrap: 'wrap',
         justifyContent: 'center',
@@ -1240,15 +1174,15 @@ export default function Login() {
         <span>•</span>
         <span>© {new Date().getFullYear()} Stater Bill • ARES Pvt Ltd</span>
       </footer>
-    </div>
     {/* First-run self-test: field installs can check backend/cloud/DB/clock
         and one-click send diagnostics instead of failing silently. */}
-    <details style={{ position: 'fixed', bottom: 12, right: 12, zIndex: 50, maxWidth: 480 }}>
+    <details className="login-system-check">
       <summary style={{ cursor: 'pointer', fontSize: '0.78rem', color: 'var(--text-muted)', userSelect: 'none' }}>⚙ System check</summary>
       <div style={{ marginTop: 8 }}>
         <BootHealthCheck auto={true} />
       </div>
     </details>
+    </div>
     </>
   )
 }

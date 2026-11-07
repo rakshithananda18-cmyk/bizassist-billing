@@ -214,6 +214,9 @@ export default function B2B() {
       case 'connection.rejected':
         connections.reload()
         break
+      case 'sync.reconnect':
+        incoming.reload(); outgoing.reload(); connections.reload()
+        break
       default:
         break
     }
