@@ -33,10 +33,16 @@ def compute_schema_signature(dialect):
 
 
 def _schema_current(connection, signature):
-    if not connection.execute(text("SELECT to_regclass('public.schema_state')")).scalar():
-        return False
-    row = connection.execute(text("SELECT (SELECT signature FROM schema_state WHERE key='runtime'), to_regprocedure('bizassist_feed_emit(integer,text,jsonb,text)')")).first()
-    return bool(row and row[0] == signature and row[1])
+    try:
+        if not connection.execute(text("SELECT to_regclass('public.schema_state')")).scalar():
+            return False
+        row = connection.execute(text("SELECT (SELECT signature FROM schema_state WHERE key='runtime'), to_regprocedure('bizassist_feed_emit(integer,text,jsonb,text)')")).first()
+        return bool(row and row[0] == signature and row[1])
+    finally:
+        try:
+            connection.commit()
+        except Exception:
+            pass
 
 
 # ---------------------------------------------------------------------------
@@ -1732,6 +1738,7 @@ def run_migrations_and_seed():
             if not force and _schema_current(lock_connection, signature):
                 logger.info("[Migration] schema current, peer completed")
                 return
+            lock_connection.commit()
             _run_migration_steps()
             if _STEP_FAILURES:
                 raise RuntimeError("Database migration steps failed: " + ", ".join(_STEP_FAILURES))

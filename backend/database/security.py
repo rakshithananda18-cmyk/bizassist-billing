@@ -1,5 +1,7 @@
-"""Narrow authentication bootstrap and explicit service tenant boundaries."""
 from __future__ import annotations
+import logging
+logger = logging.getLogger('bizassist.security')
+"""Narrow authentication bootstrap and explicit service tenant boundaries."""
 from sqlalchemy import text, func, or_
 
 
@@ -232,18 +234,24 @@ def install_security(connection, runtime_role=None):
     for table in private_tables:
         if table not in tables:
             continue
-        connection.exec_driver_sql(f'ALTER TABLE "{table}" ENABLE ROW LEVEL SECURITY')
-        connection.exec_driver_sql(f'ALTER TABLE "{table}" FORCE ROW LEVEL SECURITY')
-        connection.exec_driver_sql(f'REVOKE ALL ON TABLE "{table}" FROM PUBLIC')
-        for public_role in ("anon", "authenticated"):
-            if connection.execute(text("SELECT 1 FROM pg_roles WHERE rolname=:role"), {"role": public_role}).scalar():
-                connection.exec_driver_sql(f'REVOKE ALL ON TABLE "{table}" FROM "{public_role}"')
-        if runtime_role and table != "client_log_archives":
-            # These are private service tables, with no tenant-owned row API.
-            # The service role alone can access them; public Supabase clients
-            # cannot acquire access through a permissive PUBLIC RLS policy.
-            connection.exec_driver_sql(f'DROP POLICY IF EXISTS app_service_state ON "{table}"')
-            connection.exec_driver_sql(f'CREATE POLICY app_service_state ON "{table}" TO {role} USING (true) WITH CHECK (true)')
+        try:
+            connection.exec_driver_sql(f'ALTER TABLE "{table}" ENABLE ROW LEVEL SECURITY')
+            connection.exec_driver_sql(f'ALTER TABLE "{table}" FORCE ROW LEVEL SECURITY')
+        except Exception as exc:
+            logger.warning("[Security] RLS enable on %s: %s", table, exc)
+        try:
+            connection.exec_driver_sql(f'REVOKE ALL ON TABLE "{table}" FROM PUBLIC')
+            for public_role in ("anon", "authenticated"):
+                if connection.execute(text("SELECT 1 FROM pg_roles WHERE rolname=:role"), {"role": public_role}).scalar():
+                    connection.exec_driver_sql(f'REVOKE ALL ON TABLE "{table}" FROM "{public_role}"')
+            if runtime_role and table != "client_log_archives":
+                # These are private service tables, with no tenant-owned row API.
+                # The service role alone can access them; public Supabase clients
+                # cannot acquire access through a permissive PUBLIC RLS policy.
+                connection.exec_driver_sql(f'DROP POLICY IF EXISTS app_service_state ON "{table}"')
+                connection.exec_driver_sql(f'CREATE POLICY app_service_state ON "{table}" TO {role} USING (true) WITH CHECK (true)')
+        except Exception as exc:
+            logger.warning("[Security] Policy update on %s: %s", table, exc)
     if runtime_role and "schema_state" in tables:
         connection.exec_driver_sql(f'REVOKE INSERT,UPDATE,DELETE ON TABLE schema_state FROM {role}')
     trade_role = os.environ.get("BIZASSIST_TRADE_DB_ROLE")
