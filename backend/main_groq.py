@@ -397,9 +397,35 @@ async def _set_rls_business_id(request: Request, call_next):
     t_uname = current_username_var.set(username)
     t_bizid = current_bizid_var.set(biz_id or "-")
 
+    start_t = time.monotonic()
+    status_code = 500
+    err_msg = None
     try:
-        return await call_next(request)
+        response = await call_next(request)
+        status_code = response.status_code
+        return response
+    except Exception as exc:
+        err_msg = str(exc)
+        raise
     finally:
+        dur_ms = (time.monotonic() - start_t) * 1000
+        client_ip = request.client.host if request.client else "127.0.0.1"
+        user_agent = request.headers.get("user-agent")
+        try:
+            from services.api_tracer import record_request
+            record_request(
+                method=request.method,
+                path=str(request.url.path),
+                status_code=status_code,
+                duration_ms=dur_ms,
+                ip=client_ip,
+                biz_id=biz_id,
+                user_id=user_id,
+                user_agent=user_agent,
+                error=err_msg
+            )
+        except Exception:
+            pass
         current_business_id_var.reset(t_biz)
         current_user_id_var.reset(t_uid)
         current_username_var.reset(t_uname)

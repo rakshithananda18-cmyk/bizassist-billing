@@ -671,3 +671,85 @@ def admin_business(business_id: int, current_user: dict = Depends(get_active_use
     except Exception:
         logger.exception("admin/business")
         raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.get("/admin/bi-dashboard")
+def get_admin_bi_dashboard(
+    days: int = 30,
+    current_user: dict = Depends(get_active_user),
+    db: Session = Depends(get_db)
+):
+    """Dynamic platform Business Intelligence (BI) Dashboard."""
+    try:
+        svc.require_admin(current_user["id"], db)
+        from services.bi_analytics import get_bi_dashboard_metrics
+        return get_bi_dashboard_metrics(db, days=max(1, min(365, days)))
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("admin/bi-dashboard")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.get("/admin/console-metrics")
+def get_admin_console_metrics(
+    current_user: dict = Depends(get_active_user),
+    db: Session = Depends(get_db)
+):
+    """Mini Google Cloud Console observability metrics and cost estimator."""
+    try:
+        svc.require_admin(current_user["id"], db)
+        from services.api_tracer import get_console_metrics
+        return get_console_metrics()
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("admin/console-metrics")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.get("/admin/api-traces")
+def get_admin_api_traces(
+    limit: int = 50,
+    status: str = None,
+    method: str = None,
+    search: str = None,
+    current_user: dict = Depends(get_active_user),
+    db: Session = Depends(get_db)
+):
+    """Retrieve in-memory live API call traces with filtering."""
+    try:
+        svc.require_admin(current_user["id"], db)
+        from services.api_tracer import get_recent_traces
+        return get_recent_traces(
+            limit=max(1, min(500, limit)),
+            status_filter=status,
+            method_filter=method,
+            search=search
+        )
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("admin/api-traces")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.get("/admin/api-traces/{trace_id}")
+def get_admin_api_trace_detail(
+    trace_id: str,
+    current_user: dict = Depends(get_active_user),
+    db: Session = Depends(get_db)
+):
+    """Inspect full details for an individual API call trace."""
+    try:
+        svc.require_admin(current_user["id"], db)
+        from services.api_tracer import get_trace_by_id
+        t = get_trace_by_id(trace_id)
+        if not t:
+            raise HTTPException(status_code=404, detail="Trace not found or expired from ring buffer")
+        return t
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("admin/api-traces/{trace_id}")
+        raise HTTPException(status_code=500, detail="Internal server error")

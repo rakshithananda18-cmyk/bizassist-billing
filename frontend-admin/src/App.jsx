@@ -16,6 +16,7 @@ import AdminCache          from './pages/admin/AdminCache'
 import AdminTelemetry      from './pages/admin/AdminTelemetry'
 import AdminHealth         from './pages/admin/AdminHealth'
 import AdminInfrastructure from './pages/admin/AdminInfrastructure'
+import AdminBIDashboard    from './pages/admin/AdminBIDashboard'
 import AdminSettings       from './pages/admin/AdminSettings'
 
 import { DialogProvider } from './contexts/DialogContext'
@@ -45,6 +46,7 @@ export default function App() {
           <Route element={<AdminProtectedRoute><AdminLayout /></AdminProtectedRoute>}>
             <Route path="/admin"              element={<Navigate to="/admin/dashboard" replace />} />
             <Route path="/admin/dashboard"    element={<AdminDashboard />} />
+            <Route path="/admin/bi"           element={<AdminBIDashboard />} />
             <Route path="/admin/businesses"   element={<AdminBusinesses />} />
             <Route path="/admin/businesses/:id" element={<AdminBusinessDetail />} />
             <Route path="/admin/campaigns"    element={<AdminCampaigns />} />
