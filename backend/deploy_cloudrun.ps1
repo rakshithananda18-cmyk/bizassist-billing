@@ -146,13 +146,13 @@ try {
     } else { Write-Host 'ADMIN_SERVICE_URL is not mounted; a constrained runtime needs it for the admin console.' }
     $existing = Get-GcloudOptional run services describe $Service --project $Project --region $Region --format 'value(status.url)'
     $rolloutFlags = @()
-    if ($existing) { $rolloutFlags = @('--no-traffic', '--tag', 'rc') }
+    if ($existing) { $rolloutFlags = @('--no-traffic', '--tag', 'candidate') }
 
     for ($attempt = 1; ; $attempt++) {
         # --max-instances 1: events/rate limits are process-local; scaling requires shared event delivery.
         & gcloud run deploy $Service --project $Project --region $Region --source backend @rolloutFlags `
             --service-account $runSa `
-            --allow-unauthenticated --min-instances $MinInstances --max-instances 1 --cpu 1 --memory 1Gi `
+            --allow-unauthenticated --min-instances $MinInstances --max-instances 1 --port 8080 --cpu 1 --memory 1Gi `
             --cpu-boost --concurrency 80 --timeout 120 `
             --update-env-vars $envVars `
             --update-secrets $secretsFlag `

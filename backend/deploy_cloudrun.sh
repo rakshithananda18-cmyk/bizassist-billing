@@ -128,7 +128,7 @@ for attempt in 1 2 3; do
     # Fan-out/replay/rate-limit state is process-local; scaling needs shared delivery first.
     if gcloud run deploy "$SERVICE" --project "$PROJECT" --region "$REGION" "${DEPLOY_ARGS[@]}" "${ROLLOUT_FLAGS[@]}" \
         --service-account "$RUN_SA" --allow-unauthenticated --min-instances "$MIN_INSTANCES" --max-instances 1 \
-        --cpu 1 --memory 1Gi --cpu-boost --concurrency 80 --timeout 120 \
+        --port 8080 --cpu 1 --memory 1Gi --cpu-boost --concurrency 80 --timeout 120 \
         --update-env-vars "$ENV_VARS" --update-secrets "$SECRETS_PARAM" --quiet; then break; fi
     if [[ "$attempt" == 3 ]]; then echo 'Cloud Run deployment failed.' >&2; exit 1; fi
     sleep 30

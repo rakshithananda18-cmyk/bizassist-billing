@@ -49,6 +49,6 @@ RUN mkdir -p /app/chroma_db && chown -R user:user /app
 # Switch to non-root user for runtime
 USER user
 
-EXPOSE 7860 8080
+EXPOSE 8080 7860
 
 CMD ["python", "serve.py"]
