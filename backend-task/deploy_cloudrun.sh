@@ -4,7 +4,7 @@ set -euo pipefail
 
 PROJECT="${1:-staterbill}"
 REGION="${CLOUD_RUN_REGION:-asia-south1}"
-SERVICE="bizassist-task"
+SERVICE="staterbill-task"
 ALLOWED_ORIGINS="${ALLOWED_ORIGINS:-https://bizassist-task.vercel.app,https://staterbill.com,https://www.staterbill.com}"
 SETUP=0
 
@@ -31,7 +31,7 @@ if [[ "$SETUP" == 1 ]]; then
         secretmanager.googleapis.com cloudscheduler.googleapis.com iam.googleapis.com compute.googleapis.com --project "$PROJECT"
 
     if ! gcloud iam service-accounts describe "$RUN_SA" --project "$PROJECT" >/dev/null 2>&1; then
-        gcloud iam service-accounts create "${SERVICE}-run" --project "$PROJECT" --display-name "Field Team API (Cloud Run)"
+        gcloud iam service-accounts create "${SERVICE}-run" --project "$PROJECT" --display-name "STATER Bill Field Team API (Cloud Run)"
     fi
 
     PROJECT_NUMBER="$(gcloud projects describe "$PROJECT" --format='value(projectNumber)')"
