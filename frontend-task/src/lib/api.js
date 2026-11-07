@@ -2,7 +2,7 @@
 // billing's src/api/client.js: Bearer token, JSON in/out, ApiError with detail).
 const hostname = typeof window === 'undefined' ? '' : window.location?.hostname || ''
 const localHost = !hostname || ['localhost', '[::1]', '::1'].includes(hostname) || hostname.endsWith('.local') || /^(127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(hostname)
-const BASE = (import.meta.env.VITE_API_URL || (localHost ? '' : 'https://bizassist-task-qyfsbxu27a-el.a.run.app')).replace(/\/$/, '')
+const BASE = (import.meta.env.VITE_API_URL || (localHost ? '' : 'https://staterbill-task-ftkym77vzq-el.a.run.app')).replace(/\/$/, '')
 const TOKEN_KEY = 'task_token'
 const PAGE_STARTED = Date.now()
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms))

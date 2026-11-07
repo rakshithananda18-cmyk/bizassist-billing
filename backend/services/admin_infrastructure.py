@@ -89,7 +89,7 @@ def metrics(db, *, refresh=False):
             except Exception:
                 unavailable.append("supabase.size")
             unavailable.extend(["supabase.connection_pool", "supabase.cache_hit_ratio_pct", "supabase.table_counts"])
-        urls = {"billing": "https://staterbill.com", "field_team": os.getenv("FIELD_TEAM_API_URL", "https://bizassist-task-qyfsbxu27a-el.a.run.app").rstrip("/")+"/api/health"}
+        urls = {"billing": "https://staterbill.com", "field_team": os.getenv("FIELD_TEAM_API_URL", "https://staterbill-task-ftkym77vzq-el.a.run.app").rstrip("/")+"/api/health"}
         hf = os.getenv("HF_STANDBY_URL", "").rstrip("/")
         if hf:
             urls["huggingface"] = hf+"/health"
