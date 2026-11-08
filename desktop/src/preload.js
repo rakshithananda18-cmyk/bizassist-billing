@@ -8,6 +8,9 @@ contextBridge.exposeInMainWorld('bizassistDesktop', {
   isDesktop: true,
   platform: process.platform,
   versions: { electron: process.versions.electron },
+  // Fixed page-print operation only: the renderer cannot select a target URL,
+  // printer, output path or silent mode. Main validates the requesting frame.
+  print: () => ipcRenderer.invoke('billing:print'),
   // Telemetry attribution: the billing app reports the logged-in business's
   // BizID (public_id) so shell diagnostics can be grouped per business.
   // Send-only, sanitized in the main process — exposes nothing back.

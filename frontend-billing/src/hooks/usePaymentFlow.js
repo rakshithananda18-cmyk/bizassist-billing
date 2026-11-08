@@ -8,6 +8,7 @@ import { useConfirm } from '../contexts/ConfirmContext'
 import { playSuccessChime } from '../utils/posAudio'
 import { printInvoicePdf } from '../utils/printInvoicePdf'
 import { requestReceiptPrint } from '../utils/receiptPrintEvents'
+import { triggerPrint } from '../invoice/PrintPortal'
 import { syncManager } from '../sync/syncManager'
 import { readAllPages } from '../utils/readPages'
 
@@ -51,6 +52,7 @@ export default function usePaymentFlow({
   const disposePrintWork = useCallback(work => {
     if (!work) return
     clearTimeout(work.autoTimer)
+    clearTimeout(work.cleanupTimer)
     work.pendingAbort?.abort()
     work.pdfController?.dispose?.()
     if (work.info.pdfUrl) URL.revokeObjectURL(work.info.pdfUrl)
@@ -70,8 +72,26 @@ export default function usePaymentFlow({
   const updatePrintJob = useCallback((work, patch) => {
     if (printWorkRef.current !== work) return
     work.info = { ...work.info, ...patch }
-    setPrintJob(work.info)
+    if (patch.error) { work.recoveryShown = true; work.info.recovery = true }
+    setPrintJob(work.recoveryShown ? work.info : null)
   }, [])
+
+  const completePrint = useCallback(work => {
+    if (printWorkRef.current !== work) return
+    work.recoveryShown = false
+    work.info.recovery = false
+    setPrintJob(null)
+    work.releaseLock()
+    clearTimeout(work.cleanupTimer)
+    // Keep the print document alive while a browser/native preview uses it;
+    // successful printing needs no second application dialog.
+    work.cleanupTimer = setTimeout(() => {
+      if (printWorkRef.current !== work) return
+      printWorkRef.current = null
+      disposePrintWork(work)
+      onReceiptClosed?.()
+    }, 60000)
+  }, [disposePrintWork, onReceiptClosed])
 
   const prepareSavedPdf = useCallback(async (work = printWorkRef.current) => {
     if (!work || work.info.offline || work.info.pdfLoading || work.info.pdfUrl) return
@@ -91,11 +111,13 @@ export default function usePaymentFlow({
       const mime = (blob.type || response.headers?.get?.('content-type') || '').split(';')[0].trim().toLowerCase()
       if (!blob.size || (mime && mime !== 'application/pdf')) throw new Error('PDF_UNAVAILABLE')
       const pdfUrl = URL.createObjectURL(blob)
+      work.pdfBlob = blob
       updatePrintJob(work, { pdfUrl, pdfLoading: false })
       if (work.info.format === 'pdf') {
         const controller = await printInvoicePdf(blob, { signal: pending.signal, retainUntilDisposed: true })
         if (printWorkRef.current !== work) { controller?.dispose?.(); return }
         work.pdfController = controller
+        completePrint(work)
       }
       updatePrintJob(work, { status: 'ready' })
     } catch (error) {
@@ -106,23 +128,30 @@ export default function usePaymentFlow({
           : 'The invoice is saved. The PDF print window could not open. Retry Print, or open/download the PDF if available.' })
       }
     } finally { clearTimeout(timeout) }
-  }, [authFetch, updatePrintJob])
+  }, [authFetch, updatePrintJob, completePrint])
 
-  const printSavedInvoice = useCallback(() => {
+  const printSavedInvoice = useCallback(async () => {
     const work = printWorkRef.current
     if (!work) return
     clearTimeout(work.autoTimer)
     try {
       // Keep this call synchronous with the explicit Print click. A delayed
       // post-save print request can be ignored by browser/embedded policies.
-      if (work.info.format === 'pdf' && work.pdfController) work.pdfController.print()
-      else if (work.info.format === 'pdf' && work.info.pdfUrl) window.open(work.info.pdfUrl, '_blank', 'noopener')
-      else requestReceiptPrint(() => window.print())
-      updatePrintJob(work, { error: null })
+      if (work.info.format === 'pdf' && work.pdfController) await work.pdfController.print()
+      else if (work.info.format === 'pdf' && work.pdfBlob) {
+        updatePrintJob(work, { status: 'preparing', error: null })
+        const pending = new AbortController()
+        work.pendingAbort = pending
+        const controller = await printInvoicePdf(work.pdfBlob, { signal: pending.signal, retainUntilDisposed: true })
+        if (printWorkRef.current !== work) { controller?.dispose?.(); return }
+        work.pdfController = controller
+      } else await requestReceiptPrint(triggerPrint)
+      completePrint(work)
+      updatePrintJob(work, { error: null, status: 'ready' })
     } catch (error) {
-      updatePrintJob(work, { error: 'No print window opened. Open or download the PDF and print it from your browser.' })
+      updatePrintJob(work, { status: 'ready', error: 'No print window opened. Open or download the PDF and print it from your browser.' })
     }
-  }, [updatePrintJob])
+  }, [updatePrintJob, completePrint])
 
   const closePrintJob = useCallback(() => {
     const work = printWorkRef.current
@@ -139,14 +168,16 @@ export default function usePaymentFlow({
     const format = offline || settings?.print?.thermal_printer_mode === true ? 'thermal' : 'pdf'
     const work = { releaseLock, info: { invoiceNo, format, offline, status: format === 'pdf' ? 'preparing' : 'ready', pdfLoading: false, pdfUrl: null, error: null } }
     printWorkRef.current = work
-    setPrintJob(work.info)
+    setPrintJob(null)
     if (format === 'pdf') void prepareSavedPdf(work)
     else work.autoTimer = setTimeout(() => {
       if (printWorkRef.current !== work) return
-      try { requestReceiptPrint(() => window.print()) } catch { updatePrintJob(work, { error: 'Automatic printing did not open. Use Print or open/download the PDF.' }) }
+      Promise.resolve().then(() => requestReceiptPrint(triggerPrint))
+        .then(() => completePrint(work))
+        .catch(() => updatePrintJob(work, { error: 'Automatic printing did not open. Use Print or open/download the PDF.' }))
     }, 800)
     return true
-  }, [disposePrintWork, onReceiptReady, prepareSavedPdf, settings, updatePrintJob])
+  }, [disposePrintWork, onReceiptReady, prepareSavedPdf, settings, updatePrintJob, completePrint])
 
   // Exactly-once save (R7b): one stable X-Client-Request-Id per bill (keyed by the
   // tab's invoice number). A retry after an ambiguous NETWORK failure reuses the
@@ -352,7 +383,7 @@ export default function usePaymentFlow({
 
         const finishReset = (keepPrintLock = false) => {
           // Retire the committed cart immediately. A slow cloud list refresh must
-          // not leave it editable after Done releases the saved-receipt lock.
+          // not leave it editable after printing releases the saved-receipt lock.
           try { closeTab(activeTabId, null, true) } finally { if (!keepPrintLock) releaseLock() }
           if (!IS_LOCAL_APP) {
             // Refresh list/numbering in the background without closing another
@@ -369,8 +400,8 @@ export default function usePaymentFlow({
 
 
         // The saved receipt owns a stable snapshot independent of the next
-        // cart. Keep its print/retry screen until Done, even if print() silently
-        // returns without opening a native dialog.
+        // cart. Request native printing directly; retain recovery controls only
+        // when preparing the document or opening the print dialog fails.
         const keepPrintLock = printAfterSave && beginPrintJob({ invoiceNo: serverInvoiceNo, receiptForm: formForSave, offline: false, releaseLock })
         finishReset(keepPrintLock)
         return true

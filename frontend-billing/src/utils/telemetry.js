@@ -1,7 +1,7 @@
 /**
  * telemetry.js — frontend diagnostics capture (Admin Console plan).
  *
- * Captures unhandled errors, promise rejections, and explicit logEvent()
+ * With optional diagnostics accepted, captures unhandled errors, promise rejections, and logEvent()
  * calls, and ships them (batched, fire-and-forget) to the backend telemetry
  * sink — BOTH the app's own backend (local on desktop, cloud on web) and the
  * cloud backend explicitly, so field issues always reach the Admin Console.
@@ -12,6 +12,7 @@
  * No business data — only app diagnostics.
  */
 import { API_BASE } from '../config'
+import { diagnosticsAllowed, STORAGE_CONSENT_CHANGED, STORAGE_CONSENT_KEY } from './storageConsent'
 
 // Cloud Run Mumbai telemetry endpoint
 const CLOUD_URL = import.meta.env.VITE_CLOUD_TELEMETRY_URL || 'https://staterbill-api-1076771386585.asia-south1.run.app'
@@ -26,7 +27,8 @@ let queue = []
 let timer = null
 let installed = false
 
-function deviceId() {
+function deviceId(persistent = true) {
+  if (!persistent) return 'web-oneoff-' + (globalThis.crypto?.randomUUID?.() || Math.random().toString(36).slice(2))
   try {
     let id = localStorage.getItem('web_device_id')
     if (!id) {
@@ -55,10 +57,10 @@ function truncate(v) {
   return s && s.length > MAX_PAYLOAD ? s.slice(0, MAX_PAYLOAD) + '…' : s
 }
 
-function buildBatch(events) {
+function buildBatch(events, persistentDevice = diagnosticsAllowed()) {
   const batch = {
     source: SOURCE,
-    device_id: deviceId(),
+    device_id: deviceId(persistentDevice),
     app_version: import.meta.env.VITE_APP_VERSION || 'web',
     platform: 'browser',
     events,
@@ -102,6 +104,7 @@ function post(base, body, useBeacon = false) {
 }
 
 function flush(useBeacon = false) {
+  if (!diagnosticsAllowed()) { queue = []; return }
   if (!queue.length) return
   const events = queue.splice(0, MAX_QUEUE)
   const body = buildBatch(events)
@@ -111,6 +114,7 @@ function flush(useBeacon = false) {
 }
 
 function enqueue(event, payload, level = 'info') {
+  if (!diagnosticsAllowed()) return
   queue.push({ event, level, payload, at: new Date().toISOString() })
   if (queue.length >= MAX_QUEUE) flush()
   else if (!timer) timer = setTimeout(() => { timer = null; flush() }, FLUSH_MS)
@@ -125,19 +129,30 @@ export function logEvent(event, payload = {}, level = 'info') {
  *  context and force an immediate flush to the local AND cloud sinks, so the
  *  last N (bizid-tagged) events reach the Admin Console right away. Returns
  *  true once the flush has been kicked off. */
-export function sendDiagnostics(reason = 'manual', extra = {}) {
+export function sendDiagnostics(reason = 'manual', extra = {}, { userInitiated = false } = {}) {
+  // A deliberate Send diagnostics click authorizes this one report. Automatic
+  // startup/error reports require the saved optional-diagnostics preference.
+  if (!diagnosticsAllowed() && !userInitiated && reason !== 'manual') return false
+  let payload
   try {
-    enqueue('diagnostics_report', {
+    payload = {
       reason,
       mode: (typeof localStorage !== 'undefined' && localStorage.getItem('bizassist_hosting_mode')) || 'local',
       app_version: (typeof window !== 'undefined' && window.__APP_VERSION__) || undefined,
       platform: (typeof navigator !== 'undefined' && navigator.platform) || undefined,
       user_agent: (typeof navigator !== 'undefined' && navigator.userAgent) || undefined,
-      url: (typeof location !== 'undefined' && location.href) || undefined,
+      url: (typeof location !== 'undefined' && `${location.origin}${location.pathname}`) || undefined,
       ...extra,
-    }, 'info')
+    }
   } catch { /* diagnostics must never throw */ }
-  flush()  // posts to the active backend, and to cloud when they differ
+  if (diagnosticsAllowed()) {
+    enqueue('diagnostics_report', payload, 'info')
+    flush()
+    return true
+  }
+  const body = buildBatch([{ event: 'diagnostics_report', payload, level: 'info', at: new Date().toISOString() }])
+  post(API_BASE, body)
+  if (!API_BASE.startsWith(CLOUD_URL)) post(CLOUD_URL, body)
   return true
 }
 
@@ -145,6 +160,19 @@ export function sendDiagnostics(reason = 'manual', extra = {}) {
 export function initTelemetry() {
   if (installed || typeof window === 'undefined') return
   installed = true
+
+  const applyConsent = () => {
+    if (diagnosticsAllowed()) return
+    queue = []
+    clearTimeout(timer)
+    timer = null
+    try { localStorage.removeItem('web_device_id') } catch { /* Storage may be blocked. */ }
+  }
+  applyConsent()
+  window.addEventListener(STORAGE_CONSENT_CHANGED, applyConsent)
+  window.addEventListener('storage', event => {
+    if (event.key === STORAGE_CONSENT_KEY || event.key === null) applyConsent()
+  })
 
   window.addEventListener('error', (e) => {
     enqueue('window_error', {

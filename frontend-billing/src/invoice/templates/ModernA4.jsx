@@ -246,7 +246,7 @@ export default function ModernA4({ payload }) {
         {footer.thank_you ? <span>{footer.thank_you} · </span> : null}
         Computer generated invoice
         {seller.biz_id ? <span> · BizID {seller.biz_id}</span> : null}
-        <span> · Powered by BizAssist</span>
+        <span> · Powered by Stater</span>
       </div>
     </div>
   )

@@ -25,7 +25,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-PRODUCTION_ORIGIN = "https://bizassist-task.vercel.app"
+PRODUCTION_ORIGIN = "https://task.staterbill.com"
+LEGACY_ORIGIN = "https://bizassist-task.vercel.app"
 LISTED_ORIGIN = "https://team.staterbill.com"  # adopted later through ALLOWED_ORIGINS (assumption 3)
 BACKEND_TASK_DIR = Path(__file__).resolve().parents[1]
 
@@ -77,12 +78,14 @@ def _assert_preflight_allowed(result, origin):
 
 def test_production_origin_is_allowed_without_allowed_origins(tmp_path):
     """**Validates: Requirements 1.4, 2.4** (no ALLOWED_ORIGINS in the environment)."""
-    result = _probe(tmp_path, [PRODUCTION_ORIGIN])
+    result = _probe(tmp_path, [PRODUCTION_ORIGIN, LEGACY_ORIGIN])
     _assert_preflight_allowed(result, PRODUCTION_ORIGIN)
+    _assert_preflight_allowed(result, LEGACY_ORIGIN)
 
 
 def test_allowed_origins_are_added_to_the_defaults(tmp_path):
     """**Validates: Requirements 1.4, 2.4** (ALLOWED_ORIGINS set: listed origins and defaults both pass)."""
-    result = _probe(tmp_path, [PRODUCTION_ORIGIN, LISTED_ORIGIN], allowed_origins=LISTED_ORIGIN)
+    result = _probe(tmp_path, [PRODUCTION_ORIGIN, LEGACY_ORIGIN, LISTED_ORIGIN], allowed_origins=LISTED_ORIGIN)
     _assert_preflight_allowed(result, LISTED_ORIGIN)
     _assert_preflight_allowed(result, PRODUCTION_ORIGIN)
+    _assert_preflight_allowed(result, LEGACY_ORIGIN)

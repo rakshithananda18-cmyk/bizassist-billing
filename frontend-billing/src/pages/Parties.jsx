@@ -6,6 +6,7 @@
 // ============================================================================
 import React, { useEffect, useState, useCallback, useRef } from 'react'
 import { prepareReturnLines } from '../utils/returnPreview'
+import useInvoiceActions from '../hooks/useInvoiceActions'
 import { useNavigate } from 'react-router-dom'
 import PageShell from '../components/common/PageShell'
 import { useAuth } from '../contexts/AuthContext'
@@ -56,6 +57,7 @@ export default function Parties({ embedded = false, headerTabs = null, inlinePag
   // "embedded", hence the combined flag.
   const inWorkspace = Boolean(headerTabs) || inlinePage
   const { authFetch, user, settings, profile } = useAuth()
+  const { print: handlePrintInvoice } = useInvoiceActions(authFetch)
   const navigate = useNavigate()
   const label = useDocLabels()
   const confirm = useConfirm()
@@ -333,29 +335,6 @@ export default function Parties({ embedded = false, headerTabs = null, inlinePag
       load()
     } catch (e) {
       setAlert({ type: 'danger', msg: e.message })
-    }
-  }
-
-  const handlePrintInvoice = async (invoiceNo) => {
-    if (!invoiceNo) return
-    try {
-      const res = await authFetch(`/sales/${invoiceNo}/pdf`)
-      if (res.ok) {
-        const blob = await res.blob()
-        const url = window.URL.createObjectURL(blob)
-        const iframe = document.createElement('iframe')
-        iframe.style.display = 'none'
-        iframe.src = url
-        document.body.appendChild(iframe)
-        iframe.onload = () => {
-          iframe.contentWindow.print()
-        }
-      } else {
-        setAlert({ type: 'danger', msg: 'Failed to load PDF for printing.' })
-      }
-    } catch (err) {
-      logger.error('[PARTIES] print invoice failed', err)
-      setAlert({ type: 'danger', msg: 'Error printing invoice.' })
     }
   }
 

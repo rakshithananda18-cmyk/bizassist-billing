@@ -10,7 +10,7 @@
 //
 // `onChanged` fires after a return/payment succeeds so the caller can refresh.
 // ============================================================================
-import React, { useCallback, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { logger } from '../utils/logger'
 import { buildUpiUri, buildWhatsAppShareUrl, resolvePaymentVpa } from '../utils/share'
@@ -18,6 +18,7 @@ import InvoiceViewerModal from '../components/invoice/InvoiceViewerModal'
 import SaleReturnModal from '../components/parties/SaleReturnModal'
 import { prepareReturnLines } from '../utils/returnPreview'
 import RecordPaymentModal from '../components/payments/RecordPaymentModal'
+import { printInvoicePdf } from '../utils/printInvoicePdf'
 
 const toast = (type, msg) => window.dispatchEvent(new CustomEvent('show_toast', { detail: { type, msg } }))
 const emptyPay = () => ({ type: 'received', invoice_ref: '', amount: '', method: 'UPI', reference: '', date: new Date().toISOString().slice(0, 10) })
@@ -36,49 +37,42 @@ export default function useInvoiceActions(authFetch, { onChanged } = {}) {
   // Payment
   const [payForm, setPayForm] = useState(null)
   const [submitting, setSubmitting] = useState(false)
+  const printWork = useRef(null)
+
+  useEffect(() => () => {
+    printWork.current?.abort()
+    printWork.current = null
+  }, [])
 
   const view = useCallback((invoiceNo) => setViewingInvoiceNo(invoiceNo), [])
 
   const print = useCallback(async (invoiceNo) => {
     if (!invoiceNo) return
+    printWork.current?.abort()
+    const pending = new AbortController()
+    printWork.current = pending
+    let timedOut = false
+    const timeout = setTimeout(() => {
+      timedOut = true
+      pending.abort()
+    }, 65000)
     try {
-      const res = await authFetch(`/sales/${invoiceNo}/pdf`)
+      const res = await authFetch(`/sales/${encodeURIComponent(invoiceNo)}/pdf`, { signal: pending.signal })
+      if (pending.signal.aborted || printWork.current !== pending) return
       if (!res.ok) { toast('error', 'Failed to load PDF for printing.'); return }
       const blob = await res.blob()
-      const url = window.URL.createObjectURL(blob)
-      const iframe = document.createElement('iframe')
-      iframe.style.display = 'none'
-      iframe.src = url
-      document.body.appendChild(iframe)
-
-      // Cleaned up, and the print call guarded. Previously the iframe and its
-      // object URL were left in the document forever — one of each per print —
-      // and `print()` sat outside the try, so a renderer that refuses it (the
-      // desktop app with the PDF viewer disabled) failed silently with no toast.
-      const cleanup = () => {
-        try { window.URL.revokeObjectURL(url) } catch { /* already gone */ }
-        iframe.remove()
-      }
-      iframe.onload = () => {
-        try {
-          iframe.contentWindow.print()
-          // Give the dialog time to take over; removing the frame under it
-          // cancels the job on some platforms.
-          setTimeout(cleanup, 60000)
-        } catch (err) {
-          logger.error('[INVOICE] print dialog refused', err)
-          toast('error', 'Could not open the print dialog.')
-          cleanup()
-        }
-      }
-      iframe.onerror = () => {
-        logger.error('[INVOICE] print iframe failed to load the PDF')
-        toast('error', 'Could not load the invoice PDF for printing.')
-        cleanup()
-      }
+      if (pending.signal.aborted || printWork.current !== pending) return
+      // Use the same load, validation and cleanup lifecycle as POS printing.
+      // display:none frames may not render Chromium's native PDF viewer.
+      await printInvoicePdf(blob, { signal: pending.signal })
     } catch (err) {
+      if (pending.signal.aborted && !timedOut) return
       logger.error('[INVOICE] print failed', err)
-      toast('error', 'Error printing invoice.')
+      toast('error', timedOut
+        ? 'The invoice PDF did not respond. Try Print / PDF again.'
+        : 'Could not print this invoice PDF. Open the invoice to print its preview or download the PDF.')
+    } finally {
+      clearTimeout(timeout)
     }
   }, [authFetch])
 

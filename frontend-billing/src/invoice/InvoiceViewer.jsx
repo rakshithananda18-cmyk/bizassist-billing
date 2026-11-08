@@ -99,6 +99,8 @@ export default function InvoiceViewer({ invoiceNo: invoiceNoProp = null, embedde
   const [downloadingPdf, setDownloadingPdf] = useState(false)
   const [pdfUrl, setPdfUrl] = useState(null)
   const [pdfError, setPdfError] = useState(null)
+  const [printError, setPrintError] = useState(null)
+  const [printing, setPrinting] = useState(false)
   const pdfAbortRef = useRef(null)
   const pdfUrlRef = useRef(null)
   const fetchInvoiceAccount = useCallback(path => api.raw(path), [])
@@ -165,9 +167,15 @@ export default function InvoiceViewer({ invoiceNo: invoiceNoProp = null, embedde
     })
   }, [invoiceNo, payload])
 
-  const onPrint = useCallback(() => {
+  const onPrint = useCallback(async () => {
+    setPrintError(null)
+    setPrinting(true)
     beacon('print_opened', { invoice_no: invoiceNo, template_type: entry.key })
-    triggerPrint()
+    try { await triggerPrint() }
+    catch (error) {
+      logger.warn('Invoice print dialog failed', error)
+      setPrintError('The print dialog could not open. Try Print again, or use Download PDF.')
+    } finally { setPrinting(false) }
   }, [invoiceNo, entry.key])
 
   const onDownloadPdf = useCallback(async () => {
@@ -420,6 +428,8 @@ export default function InvoiceViewer({ invoiceNo: invoiceNoProp = null, embedde
           className="btn btn-primary btn-sm"
           data-testid="invoice-print-btn"
           onClick={onPrint}
+          disabled={printing}
+          aria-busy={printing}
           style={{
             display: 'inline-flex', alignItems: 'center', gap: 6,
             padding: '6px 16px', borderRadius: 'var(--radius-sm)',
@@ -462,6 +472,7 @@ export default function InvoiceViewer({ invoiceNo: invoiceNoProp = null, embedde
         )}
       </div>
 
+      {printError && <div className="no-print" role="alert" style={{ padding: '10px 14px', color: 'var(--danger)', background: 'var(--danger-dim)' }}>{printError}</div>}
       {pdfError && <div className="no-print" role="alert" style={{ padding: '10px 14px', color: 'var(--danger)', background: 'var(--danger-dim)', borderBottom: '1px solid var(--border)', fontSize: '0.83rem' }}>{pdfError}</div>}
 
       {/* ── Body: preview + side panel ────────────────────────────────────────── */}

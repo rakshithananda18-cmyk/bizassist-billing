@@ -49,6 +49,11 @@ const base = {
 }
 
 describe('ThermalReceipt', () => {
+  it('uses the Stater brand on the printed footer', () => {
+    render(<ThermalReceipt {...base} />)
+    expect(screen.getByText('Powered by Stater')).toBeInTheDocument()
+    expect(screen.queryByText('Powered by BizAssist')).not.toBeInTheDocument()
+  })
   it('renders the header, item rows and per-slab GST table', () => {
     render(<ThermalReceipt {...base} />)
     expect(screen.getByText('MR TRADERS')).toBeInTheDocument()      // name upper-cased

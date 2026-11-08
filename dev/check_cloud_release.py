@@ -26,7 +26,7 @@ from urllib.request import HTTPRedirectHandler, Request, build_opener
 DEFAULT_BILLING_API = "https://staterbill-api-1076771386585.asia-south1.run.app"
 DEFAULT_FIELD_API = "https://bizassist-task-qyfsbxu27a-el.a.run.app"
 DEFAULT_BILLING_WEB = "https://staterbill.com"
-DEFAULT_FIELD_WEB = "https://bizassist-task.vercel.app"
+DEFAULT_FIELD_WEB = "https://task.staterbill.com"
 DEFAULT_WWW_WEB = "https://www.staterbill.com"
 DEFAULT_AI_WEB = "https://bizassist-dev-workspace-ai.vercel.app"
 DEFAULT_ADMIN_WEB = "https://admin.staterbill.com"

@@ -6,7 +6,7 @@ import PrintReceiptModal from '../components/sales/PrintReceiptModal'
 import { requestReceiptPrint } from '../utils/receiptPrintEvents'
 
 afterEach(() => { cleanup(); vi.restoreAllMocks() })
-const ready = { invoiceNo: 'QA-1', format: 'thermal', status: 'ready', error: null, pdfLoading: false, pdfUrl: null, offline: false }
+const ready = { invoiceNo: 'QA-1', format: 'thermal', status: 'ready', recovery: true, error: null, pdfLoading: false, pdfUrl: null, offline: false }
 function show(job = ready) {
   const onPrint = vi.fn(), onPreparePdf = vi.fn(), onDone = vi.fn()
   const view = render(<PrintReceiptModal job={job} onPrint={onPrint} onPreparePdf={onPreparePdf} onDone={onDone} />)
@@ -14,6 +14,13 @@ function show(job = ready) {
 }
 
 describe('Saved receipt print dialog', () => {
+  it('does not add an application dialog or capture shortcuts after successful printing', () => {
+    show({ ...ready, recovery: false })
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    const shortcut = new KeyboardEvent('keydown', { key: 'p', ctrlKey: true, cancelable: true })
+    window.dispatchEvent(shortcut)
+    expect(shortcut.defaultPrevented).toBe(false)
+  })
   it('does not render without a saved print job', () => {
     show(null)
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
@@ -26,7 +33,7 @@ describe('Saved receipt print dialog', () => {
     expect(callbacks.onPrint).toHaveBeenCalledTimes(2)
     expect(callbacks.onDone).not.toHaveBeenCalled()
     expect(callbacks.onPreparePdf).not.toHaveBeenCalled()
-    expect(screen.getByRole('dialog', { name: 'Invoice saved — print receipt' })).toBeInTheDocument()
+    expect(screen.getByRole('dialog', { name: 'Invoice saved — printing needs attention' })).toBeInTheDocument()
     expect(screen.getByText('QA-1')).toBeInTheDocument()
   })
   it('offers independent open and real download links for a prepared PDF', () => {

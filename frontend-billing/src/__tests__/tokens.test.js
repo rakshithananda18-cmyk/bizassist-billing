@@ -4,7 +4,7 @@
 //     hardcoded transition durations crept back in
 //   • type scale, spacing grid, border weights, focus ring tokens exist
 //   • reduced-motion kill-switch and :focus-visible ring are present
-//   • print isolation blocks stay untouched
+//   • invoice/receipt print roots keep separate paper rules
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
@@ -50,9 +50,12 @@ describe('design tokens (Phase 4.1)', () => {
     expect(css).toContain('prefers-reduced-motion: reduce')
   })
 
-  it('print isolation blocks remain intact', () => {
+  it('isolates A4 paper settings from thermal receipts', () => {
     expect(css).toContain('#thermal-receipt')
     expect(css).toContain('#invoice-a4-root')
-    expect(css).toMatch(/@page\s*\{\s*size:\s*A4/)
+    expect(css).toMatch(/@page\s+stater-invoice\s*\{\s*size:\s*A4/)
+    expect(css).toMatch(/#invoice-a4-root\s*\{[^}]*page:\s*stater-invoice\s*;/)
+    expect(css).not.toMatch(/@page\s*\{[^}]*size:\s*A4/)
+    expect(css).toMatch(/@page\s+bizassist-receipt\s*\{\s*size:\s*auto\s*;/)
   })
 })

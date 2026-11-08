@@ -73,7 +73,7 @@ if ($App -eq "billing-ui") {
         $env:VITE_FIELD_TEAM_URL = "http://localhost:5176"
         $env:VITE_FIELD_TEAM_LOCAL_TEST = "1"
     } else {
-        $env:VITE_FIELD_TEAM_URL = "https://bizassist-task.vercel.app"
+        $env:VITE_FIELD_TEAM_URL = "https://task.staterbill.com"
         $env:VITE_FIELD_TEAM_LOCAL_TEST = "0"
     }
 }

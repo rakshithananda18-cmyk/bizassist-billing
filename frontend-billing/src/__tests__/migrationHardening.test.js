@@ -9,7 +9,7 @@ describe('production companion launches', () => {
   beforeEach(() => { post.mockReset(); vi.stubEnv('VITE_FIELD_TEAM_URL', ''); localStorage.clear() })
   afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks() })
   it('has a working business-aware Field Team link without build variables', () => {
-    expect(getFieldTeamUrl()).toBe('https://bizassist-task.vercel.app')
+    expect(getFieldTeamUrl()).toBe('https://task.staterbill.com')
     const target = new URL(fieldTeamLaunchUrl({ public_id: 'BA-ONE' }))
     expect(target.searchParams.get('billing_business')).toBe('BA-ONE')
     expect(target.searchParams.get('from_billing')).toBe('1')

@@ -5,7 +5,7 @@
  * backend (Cloud Run) as well as its own Vercel project. It shares the cloud
  * database and owner accounts with this app.
  *
- * The link points to VITE_FIELD_TEAM_URL (the Field Team Vercel URL). The
+ * The link points to VITE_FIELD_TEAM_URL (a Field Team origin override). The
  * production Field Team (FIELD_TEAM_CLOUD_URL) is the default for every build.
  * Field Team is cloud-only: there is no bundled desktop copy. An explicit
  * development test override can open a local fixture; normal use stays cloud.
@@ -22,7 +22,8 @@ import { CLOUD_URL, IS_LOCAL_APP, getApiBase, isLocalHost } from '../config'
 import { APPEARANCE_EVENT, CUSTOM_PALETTES_EVENT, appearanceTokens, readAppearance } from '../utils/appearance'
 
 const WINDOW_NAME = 'field_team'
-export const FIELD_TEAM_CLOUD_URL = 'https://bizassist-task.vercel.app'
+export const FIELD_TEAM_CLOUD_URL = 'https://task.staterbill.com'
+const LEGACY_FIELD_TEAM_ORIGIN = 'https://bizassist-task.vercel.app'
 let launchVersion = 0
 let stopAppearanceBridge = () => {}
 
@@ -31,15 +32,20 @@ const billingBackendIsCloud = () => {
 }
 
 export function getFieldTeamUrl() {
-  let url = import.meta.env.VITE_FIELD_TEAM_URL || FIELD_TEAM_CLOUD_URL
+  let target
+  try {
+    target = new URL(import.meta.env.VITE_FIELD_TEAM_URL || FIELD_TEAM_CLOUD_URL)
+    if (!['https:', 'http:'].includes(target.protocol) || target.username || target.password) return FIELD_TEAM_CLOUD_URL
+  } catch { return FIELD_TEAM_CLOUD_URL }
+  // Existing Vercel build settings must move to the custom domain too. Keep
+  // only the origin: launch state and credentials are created for this click.
+  if (target.origin === LEGACY_FIELD_TEAM_ORIGIN) return FIELD_TEAM_CLOUD_URL
   // Local development databases are separate fixtures, not the operational
   // Field Team. A stale dev URL must not silently select local billing data.
-  try {
-    const localTest = import.meta.env.DEV && import.meta.env.VITE_FIELD_TEAM_LOCAL_TEST === '1'
-    if (url && isLocalHost(new URL(url).hostname)
-      && (!localTest || billingBackendIsCloud())) url = FIELD_TEAM_CLOUD_URL
-  } catch { /* invalid configuration is handled by the launch below */ }
-  return url ? url.replace(/\/+$/, '') : null
+  const localTest = import.meta.env.DEV && import.meta.env.VITE_FIELD_TEAM_LOCAL_TEST === '1'
+  const local = isLocalHost(target.hostname)
+  if ((local && (!localTest || billingBackendIsCloud())) || (!local && target.protocol !== 'https:')) return FIELD_TEAM_CLOUD_URL
+  return target.origin
 }
 
 /** True when the link opens the cloud Field Team (not a local dev copy). */

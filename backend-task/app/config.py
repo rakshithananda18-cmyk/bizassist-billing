@@ -113,8 +113,8 @@ PURGE_LOOP = _bool("TASK_PURGE_LOOP", True)
 # Unset = the endpoint does not exist (404).
 CRON_SECRET = os.environ.get("TASK_CRON_SECRET", "")
 
-# Comma-separated extra CORS origins (the Vercel URL, if the PWA is hosted there).
-_default_origins = "https://bizassist-task.vercel.app"
+# The custom domain is canonical; keep the Vercel origin for older clients.
+_default_origins = "https://task.staterbill.com,https://bizassist-task.vercel.app"
 def parse_origins(raw: str) -> list:
     """Browsers send an Origin with no path and no trailing slash, and CORS
     matches it exactly, so `https://x.vercel.app/` (as copied from the address

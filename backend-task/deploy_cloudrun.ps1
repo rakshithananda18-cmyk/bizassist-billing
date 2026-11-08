@@ -35,7 +35,7 @@ param(
     [Parameter(Mandatory = $true)][string]$Project,
     [string]$Region = "asia-south1",
     [string]$Service = "bizassist-task",
-    [string]$AllowedOrigins = "https://bizassist-task.vercel.app",
+    [string]$AllowedOrigins = "https://task.staterbill.com,https://bizassist-task.vercel.app",
     [int]$MinInstances = 0,
     [ValidateSet("", "on", "off")][string]$ProGate = "",
     [switch]$Setup,

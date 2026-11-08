@@ -229,7 +229,7 @@ uses its production default; the build records configured URLs in
 | Project | Variable | Value |
 |---|---|---|
 | frontend-billing | VITE_API_URL | https://staterbill-api-1076771386585.asia-south1.run.app |
-| frontend-billing | VITE_FIELD_TEAM_URL | https://bizassist-task.vercel.app |
+| frontend-billing | VITE_FIELD_TEAM_URL | https://task.staterbill.com |
 | frontend-billing | VITE_AI_DASHBOARD_URL | https://bizassist-dev-workspace-ai.vercel.app |
 | frontend-billing | VITE_PUBLIC_WEB_URL | https://staterbill.com |
 | frontend-task | VITE_API_URL | https://bizassist-task-qyfsbxu27a-el.a.run.app |
@@ -240,8 +240,11 @@ uses its production default; the build records configured URLs in
 | frontend-admin | VITE_BILLING_URL | https://staterbill.com,https://www.staterbill.com |
 
 Billing uses `staterbill.com`, `www.staterbill.com` redirects to it with a valid
-certificate, and Admin uses `admin.staterbill.com`. Field Team and AI keep the
-Vercel addresses above. Disable Vercel Authentication on AI's production
+certificate, and Admin uses `admin.staterbill.com`. Add `task.staterbill.com`
+to the same Vercel project whose Root Directory is `frontend-task`, with the
+DNS record Vercel provides and a valid production certificate. Field Team uses
+that custom domain; `bizassist-task.vercel.app` remains accepted during the
+transition. AI keeps its Vercel address above. Disable Vercel Authentication on AI's production
 deployment so owners can reach Dashboard BIZASSIST. The owner has reported
 these console changes completed; verify them against the deployed builds.
 

@@ -161,9 +161,9 @@ describe('Billing origins after the move to staterbill.com (1.2)', () => {
     expect(theme.sanitizeBillingUrl('https://staterbill.com')).toBe('https://staterbill.com')
   })
 
-  it('points Back to Billing and Register at https://staterbill.com when the opening origin is unknown', async () => {
+  it.each(['task.staterbill.com', 'bizassist-task.vercel.app'])('points Back to Billing and Register at staterbill.com when opened on %s without a Billing origin', async hostname => {
     vi.stubGlobal('window', {
-      location: { hostname: 'bizassist-task.vercel.app', protocol: 'https:' },
+      location: { hostname, protocol: 'https:' },
       matchMedia: () => media, dispatchEvent: vi.fn(), addEventListener: vi.fn(),
     })
     await reload()

@@ -5,6 +5,7 @@ import './printReceiptModal.css'
 import { RECEIPT_PRINT_START, RECEIPT_PRINT_END } from '../../utils/receiptPrintEvents'
 
 export default function PrintReceiptModal({ job, onPrint, onPreparePdf, onDone }) {
+  const visible = Boolean(job && (job.error || job.recovery))
   const dialogRef = useRef(null)
   const printRef = useRef(null)
   const callbacks = useRef({ onPrint, onDone })
@@ -17,7 +18,7 @@ export default function PrintReceiptModal({ job, onPrint, onPreparePdf, onDone }
   disabledRef.current = printDisabled
 
   useEffect(() => {
-    if (!job) return undefined
+    if (!visible) return undefined
     const previousFocus = document.activeElement
     const focusPrint = () => {
       const target = printRef.current?.disabled ? dialogRef.current : printRef.current
@@ -83,9 +84,9 @@ export default function PrintReceiptModal({ job, onPrint, onPreparePdf, onDone }
       document.removeEventListener('focusin', keepFocus, true)
       if (previousFocus?.isConnected) previousFocus.focus?.()
     }
-  }, [Boolean(job), job?.invoiceNo, job?.format])
+  }, [visible, job?.invoiceNo, job?.format])
 
-  if (!job) return null
+  if (!visible) return null
 
   return createPortal(
     <div className="pos-receipt-print-overlay no-print">
@@ -95,7 +96,7 @@ export default function PrintReceiptModal({ job, onPrint, onPreparePdf, onDone }
           <span className="pos-receipt-print-icon"><PrinterIcon size={23} /></span>
           <div>
             <span className="pos-receipt-print-saved">{job.offline ? 'Saved on this device' : 'Invoice saved'}</span>
-            <h2 id={headingId}>Invoice saved — print receipt</h2>
+            <h2 id={headingId}>Invoice saved — printing needs attention</h2>
           </div>
         </div>
         <div className="pos-receipt-print-document">

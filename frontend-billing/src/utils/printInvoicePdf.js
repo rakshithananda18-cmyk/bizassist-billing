@@ -3,6 +3,10 @@ import { requestReceiptPrint } from './receiptPrintEvents'
 /** Load a PDF for printing, retaining its frame until explicit disposal/expiry. */
 export function printInvoicePdf(blob, { timeoutMs = 15000, signal, retainUntilDisposed = false } = {}) {
   return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new DOMException('Print preparation cancelled', 'AbortError'))
+      return
+    }
     const mime = (blob.type || '').split(';')[0].trim().toLowerCase()
     if (!blob.size || (mime && mime !== 'application/pdf')) {
       reject(new Error('Invoice PDF is unavailable: the server returned an empty or non-PDF document'))

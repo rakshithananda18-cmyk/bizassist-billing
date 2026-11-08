@@ -525,7 +525,7 @@ export default function AdminInfrastructure() {
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', color: '#8e8e93' }}>
                   <span>Field Team Portal:</span>
-                  <strong style={{ color: '#fff' }}>bizassist-task.vercel.app</strong>
+                  <strong style={{ color: '#fff' }}>task.staterbill.com</strong>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', color: '#8e8e93' }}>
                   <span>Edge Roundtrip:</span>

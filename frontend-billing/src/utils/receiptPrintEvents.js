@@ -5,6 +5,11 @@ export const RECEIPT_PRINT_END = 'billing:receipt-print-end'
 // screen for both frame and page printing, including native cancellation.
 export function requestReceiptPrint(print) {
   window.dispatchEvent(new Event(RECEIPT_PRINT_START))
-  try { return print() }
-  finally { window.dispatchEvent(new Event(RECEIPT_PRINT_END)) }
+  const ended = () => window.dispatchEvent(new Event(RECEIPT_PRINT_END))
+  try {
+    const result = print()
+    if (result?.then) return Promise.resolve(result).finally(ended)
+    ended()
+    return result
+  } catch (error) { ended(); throw error }
 }

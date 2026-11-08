@@ -1,5 +1,6 @@
 import React from 'react'
 import LegalLayout from '../layouts/LegalLayout'
+import { openStoragePreferences } from '../utils/storageConsent'
 
 export default function Privacy() {
   return (
@@ -101,13 +102,17 @@ export default function Privacy() {
             6. Cookies and Local Browser Storage
           </h2>
           <p>
-            Stater Bill does not use third-party behavioral tracking cookies or advertising pixels. We utilize standard browser `localStorage` and `sessionStorage` strictly for:
+            Stater Bill does not set sign-in cookies or use advertising and behavioral tracking cookies. Essential browser storage (localStorage, sessionStorage and the offline database) supports:
           </p>
           <ul style={{ paddingLeft: 20, margin: '8px 0', display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <li>Maintaining authenticated login sessions (`auth_token`, `refresh_token`).</li>
+            <li>Maintaining your signed-in session and linked cloud session.</li>
             <li>Remembering your UI preferences (light / dark mode, zoom scale, default receipt roll width).</li>
             <li>Tracking offline sync queues and outbox counts.</li>
           </ul>
+          <p>
+            On first use, choose Essential only or Accept all in the browser-storage notice. Optional error diagnostics and their browser device identifier stay off until you accept them. You can change your choice below; declining diagnostics does not disable billing or sign-in. A report you explicitly choose to send is sent only for that request.
+          </p>
+          <button type="button" className="btn btn-secondary" onClick={openStoragePreferences}>Manage storage preferences</button>
         </section>
 
         <section>

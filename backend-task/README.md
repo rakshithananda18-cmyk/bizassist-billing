@@ -76,11 +76,11 @@ Service shape: **max 1 instance** (login throttling is in-memory, one process li
 
 Then, as in [docs/FIELD_TEAM_MASTER_PLAN.md §8.1](../docs/FIELD_TEAM_MASTER_PLAN.md):
 
-4. **Vercel:** import **bizassist-billing** again → Root Directory `frontend-task` → Vite → env `VITE_API_URL=<Cloud Run service URL>` → Deploy.
-5. **CORS:** `.\backend-task\deploy_cloudrun.ps1 -Project <id> -AllowedOrigins https://<vercel-url>` (kept on later deploys).
-6. **Billing:** `VITE_FIELD_TEAM_URL=https://<vercel-url>` on billing's `frontend-billing` Vercel project → redeploy → owners get the **Field Team** link.
+4. **Vercel:** import **bizassist-billing** again → Root Directory `frontend-task` → Vite → env `VITE_API_URL=<Cloud Run service URL>` → Deploy. Add `task.staterbill.com` to this same project and configure the DNS record Vercel provides, with a valid production certificate.
+5. **CORS:** the API and deploy scripts allow `https://task.staterbill.com` and the legacy `https://bizassist-task.vercel.app` by default. Additional origins can be passed with `-AllowedOrigins`.
+6. **Billing:** `VITE_FIELD_TEAM_URL=https://task.staterbill.com` on billing's `frontend-billing` Vercel project → redeploy → owners get the **Field Team** link. Unset or legacy Vercel URL values also resolve to the custom domain.
 6a. **Pro plan:** Field Team is part of BizAssist Pro. Grant Pro to each business that uses it in billing's admin console (your own first), then `.\backend-task\deploy_cloudrun.ps1 -Project <id> -ProGate on` (kept on later deploys; deployed Field Team always enforces Pro (a disabled gate is only a development/test option)). Businesses not on Pro are refused with a clear message; an expired paid plan keeps working for `TASK_PRO_GRACE_DAYS` (7) days while the owner sees a renewal warning; billing's free trial has no grace and stops on its last day. Same rule as billing's `effective_plan` (checked in CI).
-7. Give staff the BizID and **the Vercel URL** (device ids are per address, so it must not change later; the API behind it can move freely).
+7. Give staff the BizID and **https://task.staterbill.com**. Browser sessions, stored appearance and staff device ids are scoped to the address, so staff opening the custom domain for the first time must sign in; a bound staff account may need the owner to release its previous device. Existing Vercel clients remain accepted during the transition.
 
 ### Release preflight
 

@@ -362,7 +362,7 @@ export default function ThermalReceipt({
       <div className="dashed" />
       <div className="receipt-footer">
         <p>Thank you for shopping with us!</p>
-        <p>Powered by BizAssist</p>
+        <p>Powered by Stater</p>
       </div>
     </div>,
     document.body

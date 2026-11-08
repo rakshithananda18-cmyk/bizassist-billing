@@ -283,6 +283,7 @@ _default_origins = (
     "https://staterbill.com,"
     "https://www.staterbill.com,"
     "https://admin.staterbill.com,"
+    "https://task.staterbill.com,"
     "https://bizassist-task.vercel.app,"
     "https://bizassist-dev-workspace-ai.vercel.app"
 )

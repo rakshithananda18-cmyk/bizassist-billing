@@ -153,6 +153,7 @@ def run_default(**kwargs):
 def test_production_defaults_keep_only_the_forwarder_on_hugging_face():
     assert check.DEFAULT_BILLING_API == 'https://staterbill-api-1076771386585.asia-south1.run.app'
     assert check.DEFAULT_BILLING_WEB == 'https://staterbill.com'
+    assert check.DEFAULT_FIELD_WEB == 'https://task.staterbill.com'
     for name in ('DEFAULT_BILLING_API', 'DEFAULT_FIELD_API', 'DEFAULT_BILLING_WEB',
                  'DEFAULT_FIELD_WEB', 'DEFAULT_WWW_WEB', 'DEFAULT_AI_WEB', 'DEFAULT_ADMIN_WEB'):
         assert 'hf.space' not in getattr(check, name)

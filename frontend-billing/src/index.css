@@ -3918,6 +3918,22 @@ input[type="checkbox"] {
 
 /* ── POS Thermal Receipt Print Styles ─────────────────── */
 @media print {
+  /* Print portals live beside the app. Release viewport/zoom constraints and
+     exclude other body portals (dialogs, notices and overlays) from the page. */
+  html:has(#invoice-a4-root), html:has(#thermal-receipt),
+  body:has(#invoice-a4-root), body:has(#thermal-receipt) {
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow: visible !important;
+    zoom: 1 !important;
+    transform: none !important;
+    background: #fff !important;
+  }
+  body:has(#thermal-receipt):not(:has(#invoice-a4-root, #shift-print-root, #labels-print-root)) > :not(#thermal-receipt),
+  body:has(#invoice-a4-root):not(:has(#shift-print-root, #labels-print-root)) > :not(#invoice-a4-root) {
+    display: none !important;
+  }
   /* Hide dashboard/POS controls when printing thermal receipt */
   body:has(#thermal-receipt) #root,
   body:has(#thermal-receipt) .app-container,
@@ -5486,6 +5502,7 @@ input[type="checkbox"] {
     display: none !important;
   }
   #invoice-a4-root {
+    page: stater-invoice;
     display: block !important;
     width: 100%;
     background: #fff;
@@ -5494,7 +5511,7 @@ input[type="checkbox"] {
   body:has(#invoice-a4-root) {
     background: #fff !important;
   }
-  @page {
+  @page stater-invoice {
     size: A4 portrait;
     margin: 8mm;
   }

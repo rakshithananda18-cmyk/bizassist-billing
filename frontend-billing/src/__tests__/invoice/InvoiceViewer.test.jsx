@@ -55,6 +55,7 @@ afterEach(() => {
   const node = document.getElementById('invoice-a4-root')
   if (node) node.remove()
   vi.restoreAllMocks()
+  delete window.bizassistDesktop
 })
 
 describe('InvoiceViewer', () => {
@@ -119,6 +120,28 @@ describe('InvoiceViewer', () => {
     expect(window.print).toHaveBeenCalledTimes(1)
     const actions = apiPost.mock.calls.map(([, body]) => body?.action)
     expect(actions).toContain('print_opened')
+  })
+  it('requests the desktop native print dialog directly without opening a popup', async () => {
+    const nativePrint = vi.fn().mockResolvedValue({ success: true, cancelled: false })
+    window.bizassistDesktop = { print: nativePrint }
+    mount()
+    await waitFor(() => screen.getAllByTestId('invoice-classic'))
+    await userEvent.click(screen.getByTestId('invoice-print-btn'))
+    expect(nativePrint).toHaveBeenCalledOnce()
+    expect(window.print).not.toHaveBeenCalled()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+  it('shows print recovery only for a native failure and keeps cancellation quiet', async () => {
+    const nativePrint = vi.fn().mockResolvedValueOnce({ success: false, cancelled: true })
+      .mockResolvedValueOnce({ success: false, cancelled: false, reason: 'failed' })
+    window.bizassistDesktop = { print: nativePrint }
+    mount()
+    await waitFor(() => screen.getAllByTestId('invoice-classic'))
+    await userEvent.click(screen.getByTestId('invoice-print-btn'))
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    await userEvent.click(screen.getByTestId('invoice-print-btn'))
+    expect(await screen.findByRole('alert')).toHaveTextContent('print dialog could not open')
+    expect(screen.getByTestId('invoice-print-btn')).not.toBeDisabled()
   })
 
   it('downloads a real PDF without invoking native printing and leaves a retry link', async () => {

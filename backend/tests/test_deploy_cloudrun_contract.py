@@ -1,11 +1,20 @@
 """Release scripts must agree on runtime isolation and verify before rollout."""
 import json
+import ast
 from pathlib import Path
 import re
 
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
+
+
+def test_billing_default_cors_allows_custom_field_domain_and_transition_origin():
+    tree = ast.parse((ROOT / "backend/main_groq.py").read_text(encoding="utf-8"))
+    origins = next(ast.literal_eval(node.value) for node in tree.body
+                   if isinstance(node, ast.Assign)
+                   and any(isinstance(target, ast.Name) and target.id == "_default_origins" for target in node.targets))
+    assert {"https://task.staterbill.com", "https://bizassist-task.vercel.app"} <= set(origins.split(","))
 
 
 @pytest.mark.parametrize("filename", ["deploy_cloudrun.sh","deploy_cloudrun.ps1"])
@@ -25,6 +34,8 @@ def test_cloud_release_preserves_unmanaged_configuration_and_single_instance(fil
     assert "--time-zone" in script and "Asia/Kolkata" in script
     assert "--attempt-deadline" in script and "120s" in script
     assert "--max-retry-attempts" in script
+    assert "https://task.staterbill.com" in script
+    assert "https://bizassist-task.vercel.app" in script  # Transition clients remain allowed.
     for retired_origin in ("https://team.staterbill.com","https://ai.staterbill.com"):
         assert retired_origin not in script
 

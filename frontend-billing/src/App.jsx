@@ -14,6 +14,7 @@ import { IS_LOCAL_APP } from './config'
 import { useAppearance } from './hooks/useAppearance'
 import RouteBoundary from './components/RouteBoundary'
 import BillingWorkspaceGuard from './components/BillingWorkspaceGuard'
+import StorageConsentNotice from './components/StorageConsentNotice'
 
 // Keep the landing/sign-in screens and the offline counter in the initial
 // download. The web counter must remain reachable if the connection drops
@@ -323,6 +324,7 @@ export default function App() {
 
   return (
     <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <StorageConsentNotice />
       <AuthProvider>
         <AppearanceSync />
         <LockProvider>

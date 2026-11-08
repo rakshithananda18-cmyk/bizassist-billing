@@ -19,7 +19,7 @@ vi.mock('../config', async (importOriginal) => ({
   getApiBase: () => cfg.base,
 }))
 
-import { FIELD_TEAM_CLOUD_URL, fieldTeamNeedsCloudData, getFieldTeamUrl, openFieldTeam } from '../config/fieldTeam'
+import { FIELD_TEAM_CLOUD_URL, fieldTeamLaunchUrl, fieldTeamNeedsCloudData, getFieldTeamUrl, openFieldTeam } from '../config/fieldTeam'
 
 const URL_ = 'https://field.example.app'
 const fakeTab = () => ({ location: { href: '' }, focus: vi.fn(), postMessage: vi.fn() })
@@ -33,6 +33,47 @@ describe('Field Team link', () => {
     expect(getFieldTeamUrl()).toBe(FIELD_TEAM_CLOUD_URL)
     vi.stubEnv('VITE_FIELD_TEAM_URL', `${URL_}/`)
     expect(getFieldTeamUrl()).toBe(URL_)
+  })
+
+  it.each(['', 'https://bizassist-task.vercel.app', 'https://bizassist-task.vercel.app/', 'https://bizassist-task.vercel.app/old?sso=stale#fragment'])('uses the custom production domain with an unset or legacy setting: %s', value => {
+    vi.stubEnv('VITE_FIELD_TEAM_URL', value)
+    expect(getFieldTeamUrl()).toBe('https://task.staterbill.com')
+    const target = new URL(fieldTeamLaunchUrl({ public_id: 'BA-ONE' }))
+    expect(target.origin).toBe('https://task.staterbill.com')
+    expect(target.pathname).toBe('/')
+    expect(target.hash).toBe('')
+    expect([...target.searchParams.keys()].sort()).toEqual(['billing_business', 'billing_origin', 'from_billing'])
+    expect(target.searchParams.get('billing_business')).toBe('BA-ONE')
+  })
+
+  it('uses another configured origin without carrying its path, query or fragment into the launch', () => {
+    vi.stubEnv('VITE_FIELD_TEAM_URL', `${URL_}/old?token=stale#fragment`)
+    expect(getFieldTeamUrl()).toBe(URL_)
+    expect(fieldTeamLaunchUrl({ public_id: 'BA-ONE' })).not.toMatch(/old|token=|stale|fragment/)
+  })
+
+  it.each(['https://user:password@field.example.app', 'http://field.example.app', 'javascript:alert(1)', 'not a URL'])('uses the production origin instead of an unsafe setting: %s', value => {
+    vi.stubEnv('VITE_FIELD_TEAM_URL', value)
+    expect(getFieldTeamUrl()).toBe('https://task.staterbill.com')
+  })
+
+  it('hands the ticket and appearance only to the new origin when an old build variable is still configured', async () => {
+    vi.stubEnv('VITE_FIELD_TEAM_URL', 'https://bizassist-task.vercel.app/?sso=stale')
+    const tab = fakeTab()
+    vi.spyOn(window, 'open').mockReturnValue(tab)
+    post.mockResolvedValue({ ticket: 'fresh.one-use.ticket' })
+    await openFieldTeam({ user: { public_id: 'BA-ONE', user_id: 1 } })
+    const target = new URL(tab.location.href)
+    expect(target.origin).toBe('https://task.staterbill.com')
+    expect(target.pathname).toBe('/')
+    expect(target.searchParams.get('sso')).toBe('fresh.one-use.ticket')
+    const ready = origin => window.dispatchEvent(Object.assign(new Event('message'), {
+      source: tab, origin, data: { type: 'BIZASSIST_FIELD_READY', launchId: target.searchParams.get('billing_launch'), businessId: 'BA-ONE' },
+    }))
+    ready('https://bizassist-task.vercel.app')
+    expect(tab.postMessage).not.toHaveBeenCalled()
+    ready('https://task.staterbill.com')
+    expect(tab.postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'BIZASSIST_FIELD_APPEARANCE' }), 'https://task.staterbill.com')
   })
 
   it('opens the tab inside the click, then signs in with the ticket as ?sso=', async () => {

@@ -9,6 +9,13 @@ beforeEach(() => {
 afterEach(() => { document.querySelectorAll('iframe[data-invoice-print]').forEach(el => el.remove()); vi.clearAllTimers(); vi.useRealTimers(); vi.restoreAllMocks() })
 
 describe('PDF receipt print lifecycle', () => {
+  it('does not allocate a document when the caller has already cancelled', async () => {
+    const controller = new AbortController()
+    controller.abort()
+    await expect(printInvoicePdf(new Blob(['%PDF-test']), { signal: controller.signal })).rejects.toThrow('cancelled')
+    expect(URL.createObjectURL).not.toHaveBeenCalled()
+    expect(document.querySelector('iframe[data-invoice-print]')).toBeNull()
+  })
   it.each([
     ['HTML', new Blob(['<html>PDF unavailable</html>'], { type: 'text/html' })],
     ['empty PDF', new Blob([], { type: 'application/pdf' })],
