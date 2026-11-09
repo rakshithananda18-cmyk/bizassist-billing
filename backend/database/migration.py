@@ -362,6 +362,8 @@ _COLUMN_MIGRATIONS = [
     {"table": "sync_control_outbox", "column": "source_revision", "ddl": "ALTER TABLE sync_control_outbox ADD COLUMN source_revision INTEGER"},
     {"table": "sync_control_outbox", "column": "lease_id", "ddl": "ALTER TABLE sync_control_outbox ADD COLUMN lease_id VARCHAR"},
     {"table": "sync_control_outbox", "column": "lease_until", "ddl": "ALTER TABLE sync_control_outbox ADD COLUMN lease_until TIMESTAMP"},
+    # users additions — Google OAuth ID
+    {"table": "users", "column": "google_id", "ddl": "ALTER TABLE users ADD COLUMN google_id VARCHAR"},
 ]
 
 

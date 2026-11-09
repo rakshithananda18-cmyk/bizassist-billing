@@ -236,6 +236,7 @@ class SignupRequest(BaseModel):
     username: str
     password: str
     business_name: str
+    email: Optional[str] = None
     phone: Optional[str] = None  # required for fresh signup; legacy local mirrors may omit it
     # Optional cloud-issued BizID. When the downloaded app registers, it creates
     # the account on the cloud first (the single authority), then mirrors it
@@ -509,6 +510,14 @@ def signup(req: SignupRequest, db: Session = Depends(get_db)):
         if username_exists(db, req.username):
             logger.warning(f"[AUTH] Failed signup: username '{req.username}' already exists.")
             raise HTTPException(status_code=400, detail="Username already exists")
+
+        email = None
+        if req.email and req.email.strip():
+            clean_email = req.email.strip().lower()
+            existing_email = db.query(User).filter(func.lower(User.email) == clean_email).first()
+            if existing_email:
+                raise HTTPException(status_code=400, detail="An account with this email already exists.")
+            email = clean_email
         
         # Test User Policy (leakage prevention):
         # 1. Test usernames (legacy fixture prefixes + 'biz_test_') are ONLY allowed
@@ -544,6 +553,7 @@ def signup(req: SignupRequest, db: Session = Depends(get_db)):
         user = User(
             id=owner_pk,
             username=req.username,
+            email=email,
             password=hash_password(req.password),
             business_name=req.business_name,
             role="enterprise",
@@ -562,6 +572,7 @@ def signup(req: SignupRequest, db: Session = Depends(get_db)):
                     db.execute(text("SELECT setval(pg_get_serial_sequence('users', 'id'), COALESCE((SELECT MAX(id) FROM users), 0) + 1, false);"))
                     user = User(
                         username=req.username,
+                        email=email,
                         password=hash_password(req.password),
                         business_name=req.business_name,
                         role="enterprise",
@@ -583,7 +594,20 @@ def signup(req: SignupRequest, db: Session = Depends(get_db)):
             trial = _start_trial(user, phone, db)
         db.commit()
 
-        token = create_access_token(_session_claims(user, sid=uuid4().hex, psid=None, owner=owner if user.parent_business_id else None))
+        if email:
+            try:
+                from services.brevo_service import brevo_service
+                brevo_service.send_welcome_email(email, user.business_name or user.username, user.username)
+                brevo_service.sync_contact_to_brevo(
+                    email=email,
+                    name=user.business_name or user.username,
+                    phone=user.phone,
+                    attributes={"STORE_NAME": user.business_name or "", "CATEGORY": "general"}
+                )
+            except Exception as be:
+                logger.warning(f"[AUTH] Brevo welcome sync skipped on signup: {be}")
+
+        token = create_access_token(_session_claims(user, sid=uuid4().hex, psid=None, owner=None))
 
         logger.info(f"[AUTH] User '{req.username}' registered and authenticated.")
         return {
@@ -1309,4 +1333,386 @@ def update_settings(
     resp.pop("totp", None)
     resp["subscription"] = _subscription_view(user, db)
     return resp
+
+
+# ── Username Availability ───────────────────────────────────────────────────
+
+@router.get("/api/auth/check-username")
+def check_username(username: str = Query(..., min_length=1), db: Session = Depends(get_db)):
+    """Real-time availability check for merchant's desired store username."""
+    from database.security import username_exists
+    uname = (username or "").strip()
+    if len(uname) < 3:
+        return {"available": False, "username": uname, "reason": "too_short"}
+    taken = username_exists(db, uname)
+    return {"available": not taken, "username": uname}
+
+
+# ── Password Reset via OTP (Brevo Mail) ─────────────────────────────────────
+
+class ForgotPasswordRequest(BaseModel):
+    identifier: str  # username, phone, or email
+
+
+class VerifyAndResetPasswordRequest(BaseModel):
+    identifier: str
+    otp: str
+    new_password: str
+
+
+@router.post("/api/auth/forgot-password/request-otp")
+def forgot_password_request_otp(req: ForgotPasswordRequest, request: Request, db: Session = Depends(get_db)):
+    """Initiates an OTP-based password reset. Generates a secure 6-digit code,
+    persists its hash, and dispatches via Brevo email (and server log for SMS)."""
+    ip = request.client.host if request.client else "unknown"
+    rl = check_ip_rate_limit(ip)
+    if not rl["allowed"]:
+        raise HTTPException(status_code=429, detail=rl["reason"])
+
+    ident = (req.identifier or "").strip()
+    if not ident:
+        raise HTTPException(status_code=400, detail="Identifier (username, email, or phone) is required.")
+
+    from database.security import find_user_by_identifier
+    from database.models import PasswordResetOTP
+    from services.auth import hash_password
+    from services.brevo_service import send_otp_email
+    import secrets
+    from datetime import datetime, timezone, timedelta
+
+    user = find_user_by_identifier(db, ident)
+    if not user or (user.role or "").lower() in {"deleted", "retired"}:
+        # Return generic success to prevent account enumeration
+        return {
+            "status": "ok",
+            "message": "If an account matches, a 6-digit verification code has been sent.",
+            "destination": "registered email/phone",
+        }
+
+    otp_code = f"{secrets.randbelow(900000) + 100000:06d}"
+    otp_hash = hash_password(otp_code)
+    now = datetime.now(timezone.utc)
+    expires = now + timedelta(minutes=10)
+
+    # Invalidate existing unused OTPs for this user
+    db.query(PasswordResetOTP).filter(
+        PasswordResetOTP.user_id == user.id,
+        PasswordResetOTP.used.is_(False)
+    ).update({"used": True})
+
+    otp_row = PasswordResetOTP(
+        user_id=user.id,
+        identifier=ident,
+        otp_hash=otp_hash,
+        purpose="password_reset",
+        expires_at=expires,
+        attempts=0,
+        used=False,
+    )
+    db.add(otp_row)
+    db.commit()
+
+    masked_email = ""
+    if user.email and "@" in user.email:
+        parts = user.email.split("@")
+        masked_email = f"{parts[0][:2]}***@{parts[1]}"
+
+    masked_phone = ""
+    if user.phone and len(user.phone) >= 6:
+        masked_phone = f"***{user.phone[-4:]}"
+
+    destination_hint = masked_email or masked_phone or "your registered account"
+
+    if user.email:
+        send_otp_email(user.email, user.business_name or user.username, otp_code, user.username)
+    else:
+        logger.info("[AUTH] User '%s' has no email; OTP %s logged for phone %s", user.username, otp_code, user.phone)
+
+    logger.info("[AUTH] Generated password reset OTP for '%s' (User ID %s)", user.username, user.id)
+    return {
+        "status": "ok",
+        "message": f"Verification code sent to {destination_hint}.",
+        "destination": destination_hint,
+        "has_email": bool(user.email),
+        "username_hint": user.username[:2] + "***" if len(user.username) > 2 else "***",
+    }
+
+
+@router.post("/api/auth/forgot-password/verify-and-reset")
+def forgot_password_verify_and_reset(req: VerifyAndResetPasswordRequest, request: Request, db: Session = Depends(get_db)):
+    """Verifies the 6-digit OTP, updates the password, bumps token_version to revoke
+    all stale device sessions, and returns an authenticated JWT session."""
+    ip = request.client.host if request.client else "unknown"
+    rl = check_ip_rate_limit(ip)
+    if not rl["allowed"]:
+        raise HTTPException(status_code=429, detail=rl["reason"])
+
+    ident = (req.identifier or "").strip()
+    from database.security import find_user_by_identifier
+    from database.models import PasswordResetOTP
+    from services.auth import verify_password, hash_password, create_access_token, bump_token_version
+    from datetime import datetime, timezone
+
+    user = find_user_by_identifier(db, ident)
+    if not user or (user.role or "").lower() in {"deleted", "retired"}:
+        raise HTTPException(status_code=400, detail="Invalid verification request.")
+
+    now = datetime.now(timezone.utc)
+    otp_record = (
+        db.query(PasswordResetOTP)
+        .filter(PasswordResetOTP.user_id == user.id, PasswordResetOTP.used.is_(False))
+        .order_by(PasswordResetOTP.id.desc())
+        .first()
+    )
+
+    if not otp_record or otp_record.expires_at.replace(tzinfo=timezone.utc) < now:
+        raise HTTPException(status_code=400, detail="Verification code has expired. Please request a new one.")
+
+    if otp_record.attempts >= 3:
+        otp_record.used = True
+        db.commit()
+        raise HTTPException(status_code=400, detail="Too many invalid attempts. Please request a new code.")
+
+    if not verify_password(req.otp.strip(), otp_record.otp_hash):
+        otp_record.attempts += 1
+        db.commit()
+        remaining = 3 - otp_record.attempts
+        raise HTTPException(status_code=400, detail=f"Invalid verification code. {remaining} attempt(s) remaining.")
+
+    # Validate password rules
+    password = req.new_password
+    if len(password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters long.")
+    if not any(c.isupper() for c in password):
+        raise HTTPException(status_code=400, detail="Password must contain at least one uppercase letter.")
+    if not any(c.islower() for c in password):
+        raise HTTPException(status_code=400, detail="Password must contain at least one lowercase letter.")
+    if not any(c.isdigit() for c in password):
+        raise HTTPException(status_code=400, detail="Password must contain at least one number.")
+
+    user.password = hash_password(password)
+    bump_token_version(db, user)
+    otp_record.used = True
+    db.commit()
+    db.refresh(user)
+
+    logger.info("[AUTH] Password reset succeeded for '%s' (User ID %s)", user.username, user.id)
+
+    business_id = user.parent_business_id or user.id
+    token = create_access_token(_session_claims(user, sid=uuid4().hex))
+    return {
+        "status": "ok",
+        "message": "Password updated successfully.",
+        "token": token,
+        "id": business_id,
+        "user_id": user.id,
+        "username": user.username,
+        "public_id": user.public_id,
+        "business_name": user.business_name,
+        "role": user.role,
+        "counter_prefix": user.counter_prefix,
+        "db_mode": _DB_MODE,
+    }
+
+
+# ── Google Sign-In & Onboarding ──────────────────────────────────────────────
+
+def _verify_google_credential(credential: str) -> dict:
+    """Verifies a Google OAuth ID token with Google's public tokeninfo endpoint."""
+    if not credential:
+        raise HTTPException(status_code=400, detail="Missing Google credential token.")
+    import httpx
+    try:
+        r = httpx.get("https://oauth2.googleapis.com/tokeninfo", params={"id_token": credential}, timeout=10.0)
+    except Exception as exc:
+        logger.error("[GOOGLE_AUTH] Token verification network error: %s", exc)
+        raise HTTPException(status_code=503, detail="Unable to verify Google credentials. Please try again.")
+
+    if r.status_code != 200:
+        logger.warning("[GOOGLE_AUTH] Invalid Google token (HTTP %s): %s", r.status_code, r.text)
+        raise HTTPException(status_code=401, detail="Invalid Google authentication token.")
+
+    data = r.json()
+    email_verified = data.get("email_verified")
+    if email_verified not in (True, "true", "True", 1, "1"):
+        raise HTTPException(status_code=400, detail="Your Google email is not verified.")
+
+    return {
+        "sub": data.get("sub"),
+        "email": data.get("email", "").lower().strip(),
+        "name": data.get("name", "").strip(),
+        "picture": data.get("picture", ""),
+    }
+
+
+class GoogleVerifyRequest(BaseModel):
+    credential: str
+
+
+class GoogleRegisterRequest(BaseModel):
+    credential: str
+    username: str
+    business_name: str
+    category: Optional[str] = "general"
+    phone: str
+
+
+@router.post("/api/auth/google/verify")
+def google_verify(req: GoogleVerifyRequest, request: Request, db: Session = Depends(get_db)):
+    """Verifies a Google ID token. If user exists, signs them in immediately;
+    if brand new, returns prefilled onboarding data for store setup."""
+    ip = request.client.host if request.client else "unknown"
+    rl = check_ip_rate_limit(ip)
+    if not rl["allowed"]:
+        raise HTTPException(status_code=429, detail=rl["reason"])
+
+    import re
+    from sqlalchemy import or_, func
+
+    google_data = _verify_google_credential(req.credential)
+    sub = google_data["sub"]
+    email = google_data["email"]
+
+    # Check if this Google user or verified email is already registered as an owner
+    user = (
+        db.query(User)
+        .filter(
+            or_(User.google_id == sub, func.lower(User.email) == email),
+            User.parent_business_id.is_(None),
+        )
+        .first()
+    )
+
+    if user and (user.role or "").lower() not in {"deleted", "retired"}:
+        if not user.google_id:
+            user.google_id = sub
+            db.commit()
+
+        business_id = user.parent_business_id or user.id
+        token = create_access_token(_session_claims(user, sid=uuid4().hex))
+        logger.info("[GOOGLE_AUTH] Existing user '%s' logged in via Google.", user.username)
+        return {
+            "status": "ok",
+            "action": "login",
+            "token": token,
+            "id": business_id,
+            "user_id": user.id,
+            "username": user.username,
+            "public_id": user.public_id,
+            "business_name": user.business_name,
+            "role": user.role,
+            "counter_prefix": user.counter_prefix,
+            "db_mode": _DB_MODE,
+        }
+
+    # Brand new user: return onboarding metadata so they can choose their username
+    raw_name = google_data["name"] or "Store"
+    suggested_username = re.sub(r"[^a-zA-Z0-9_]", "", raw_name.lower().replace(" ", "_"))[:18]
+    return {
+        "status": "needs_onboarding",
+        "email": email,
+        "name": google_data["name"],
+        "picture": google_data["picture"],
+        "suggested_business_name": f"{raw_name}'s Store",
+        "suggested_username": suggested_username,
+    }
+
+
+@router.post("/api/auth/google/register")
+def google_register(req: GoogleRegisterRequest, request: Request, db: Session = Depends(get_db)):
+    """Registers a new store using Google credentials with the user's chosen username,
+    mandatory phone, business name, and store category."""
+    ip = request.client.host if request.client else "unknown"
+    rl = check_ip_rate_limit(ip)
+    if not rl["allowed"]:
+        raise HTTPException(status_code=429, detail=rl["reason"])
+
+    from database.security import username_exists, allocate_owner_id
+    from core.connection.utils import generate_bizid
+    from services.auth import hash_password, create_access_token
+    from services.brevo_service import send_welcome_email, sync_contact_to_brevo
+
+    google_data = _verify_google_credential(req.credential)
+    sub = google_data["sub"]
+    email = google_data["email"]
+
+    # Validate user's chosen username
+    uname = (req.username or "").strip()
+    if len(uname) < 3:
+        raise HTTPException(status_code=400, detail="Username must be at least 3 characters long.")
+    if username_exists(db, uname):
+        raise HTTPException(status_code=400, detail="This username is already taken. Please choose another.")
+
+    # Validate mandatory phone
+    try:
+        phone = normalize_phone(req.phone)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+    existing_phone = db.query(User).filter(User.phone == phone, User.parent_business_id.is_(None)).first()
+    if existing_phone:
+        raise HTTPException(status_code=400, detail="This mobile number is already registered to a business account.")
+
+    # Allocate identity and mint BizID
+    owner_pk = allocate_owner_id(db)
+    bizid = generate_bizid(db)
+    business_name = (req.business_name or "").strip() or f"{uname}'s Store"
+
+    user = User(
+        id=owner_pk,
+        username=uname,
+        password=hash_password(uuid4().hex),  # Random password; authenticates via Google
+        business_name=business_name,
+        role="enterprise",
+        public_id=bizid,
+        phone=phone,
+        email=email,
+        google_id=sub,
+    )
+    db.add(user)
+    db.flush()
+
+    # Provision 14-day Pro trial and default store settings
+    _start_trial(user, phone, db)
+
+    # Save selected store category in business_settings
+    try:
+        from database.models import BusinessSettings
+        cat = (req.category or "general").strip()
+        settings_row = db.query(BusinessSettings).filter(BusinessSettings.business_id == user.id).first()
+        if not settings_row:
+            settings_row = BusinessSettings(business_id=user.id, template_key=cat)
+            db.add(settings_row)
+        else:
+            settings_row.template_key = cat
+    except Exception as e:
+        logger.warning("[GOOGLE_AUTH] Could not set business template category: %s", e)
+
+    db.commit()
+    db.refresh(user)
+
+    logger.info("[GOOGLE_AUTH] New store registered via Google: '%s' (BizID %s, Phone %s)", uname, bizid, phone)
+
+    # Asynchronously notify via Brevo
+    try:
+        send_welcome_email(email, business_name, uname, business_name)
+        sync_contact_to_brevo(email, business_name, phone, plan="Trial")
+    except Exception as exc:
+        logger.warning("[BREVO] Failed to dispatch welcome/sync: %s", exc)
+
+    token = create_access_token(_session_claims(user, sid=uuid4().hex))
+    return {
+        "status": "ok",
+        "action": "registered",
+        "token": token,
+        "id": user.id,
+        "user_id": user.id,
+        "username": user.username,
+        "public_id": user.public_id,
+        "business_name": user.business_name,
+        "role": user.role,
+        "counter_prefix": user.counter_prefix,
+        "db_mode": _DB_MODE,
+    }
+
 

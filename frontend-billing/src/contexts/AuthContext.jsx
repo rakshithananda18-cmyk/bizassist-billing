@@ -588,7 +588,7 @@ export function AuthProvider({ children }) {
     return res.json()
   }, [])
 
-  const signup = useCallback(async ({ username, password, business_name, template_key, hosting = 'local', phone = null }) => {
+  const signup = useCallback(async ({ username, password, business_name, template_key, hosting = 'local', phone = null, email = null }) => {
     logger.info('Attempting signup for username:', username, 'business:', business_name, 'template:', template_key, 'hosting:', hosting)
 
     // Cloud-authoritative identity (D9): on the downloaded app we register on the
@@ -603,7 +603,7 @@ export function AuthProvider({ children }) {
       // 1. Create the cloud account → mints the BizID.
       let cloudData
       try {
-        cloudData = await _doSignup(CLOUD_URL, { username, password, business_name, phone })
+        cloudData = await _doSignup(CLOUD_URL, { username, password, business_name, phone, email })
       } catch (err) {
         if (err.status === 400 && /username|already (?:exists|registered|taken)/i.test(err.message)) {
           // Username already taken on the cloud — most likely the same person.
@@ -628,7 +628,7 @@ export function AuthProvider({ children }) {
       let localData
       let didReclaim = false
       try {
-        localData = await _doSignup(LOCAL_URL, { username, password, business_name, public_id: bizId, phone })
+        localData = await _doSignup(LOCAL_URL, { username, password, business_name, public_id: bizId, phone, email })
       } catch (err) {
         // Local orphan: the cloud accepted this username (so its old cloud account
         // was deleted → username free on the cloud), but a stale LOCAL mirror still
@@ -692,7 +692,7 @@ export function AuthProvider({ children }) {
     }
 
     // Web: register on the cloud backend (API_BASE = cloud here).
-    const data = await _doSignup(API_BASE, { username, password, business_name, phone })
+    const data = await _doSignup(API_BASE, { username, password, business_name, phone, email })
     await _applyTemplate(API_BASE, data.token || data.access_token, template_key)
     logger.info('Signup successful (web/cloud) for user:', data.username)
     _saveSession(data)

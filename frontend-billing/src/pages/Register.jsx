@@ -21,6 +21,8 @@ import CustomSelect from '../components/common/CustomSelect'
 import { DESKTOP_DOWNLOAD_URL } from '../config/downloadApp'
 import './registration.css'
 import { normalizeRegistrationPhone } from '../utils/registrationPhone'
+import GoogleOnboardingModal from '../components/auth/GoogleOnboardingModal'
+import { renderGoogleButton } from '../utils/googleAuth'
 
 export default function Register() {
   const { signup } = useAuth()
@@ -30,6 +32,7 @@ export default function Register() {
   const [form, setForm] = useState({
     businessName: '',
     username: '',
+    email: '',
     password: '',
     confirmPassword: '',
     country: 'India',
@@ -40,6 +43,87 @@ export default function Register() {
   const errorRef = useRef(null)
   const [loading, setLoading] = useState(false)
   const [waking, setWaking] = useState(false)
+
+  // Real-time username availability
+  const [checkingUname, setCheckingUname] = useState(false)
+  const [unameAvailable, setUnameAvailable] = useState(null)
+
+  // Google Sign-In / OAuth state
+  const [showGoogleModal, setShowGoogleModal] = useState(false)
+  const [googleCredential, setGoogleCredential] = useState('')
+  const [googleOnboardingData, setGoogleOnboardingData] = useState(null)
+  const googleBtnRef = useRef(null)
+
+  const handleGoogleCredential = async (credential) => {
+    setError('')
+    setLoading(true)
+    try {
+      const res = await fetch(`${API_BASE}/api/auth/google/verify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ credential }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data?.detail || 'Google sign-in failed.')
+
+      if (data.action === 'login' && data.token) {
+        localStorage.setItem('billing_token', data.token)
+        localStorage.setItem('billing_user', JSON.stringify(data))
+        localStorage.setItem('billing_role', data.role || 'enterprise')
+        localStorage.setItem('bizassist_auth_version', '1')
+        navigate('/', { replace: true })
+      } else if (data.status === 'needs_onboarding') {
+        setGoogleCredential(credential)
+        setGoogleOnboardingData(data)
+        setShowGoogleModal(true)
+      }
+    } catch (err) {
+      setError(err?.message || 'Google authentication error')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleGoogleRegisterSuccess = (data) => {
+    if (data?.token) {
+      localStorage.setItem('billing_token', data.token)
+      localStorage.setItem('billing_user', JSON.stringify(data))
+      localStorage.setItem('billing_role', data.role || 'enterprise')
+      localStorage.setItem('bizassist_auth_version', '1')
+      navigate('/', { replace: true })
+    }
+  }
+
+  useEffect(() => {
+    if (googleBtnRef.current) {
+      renderGoogleButton(googleBtnRef.current, {
+        onCredential: handleGoogleCredential,
+        text: 'signup_with',
+      })
+    }
+  }, [])
+
+  // Live username availability check
+  useEffect(() => {
+    if (!form.username || form.username.trim().length < 3) {
+      setUnameAvailable(null)
+      return
+    }
+    const clean = form.username.trim()
+    const timer = setTimeout(async () => {
+      setCheckingUname(true)
+      try {
+        const res = await fetch(`${API_BASE}/api/auth/check-username?username=${encodeURIComponent(clean)}`)
+        const data = await res.json()
+        setUnameAvailable(data?.available ?? null)
+      } catch {
+        setUnameAvailable(null)
+      } finally {
+        setCheckingUname(false)
+      }
+    }, 350)
+    return () => clearTimeout(timer)
+  }, [form.username])
   useEffect(() => {
     setWaking(false)
     if (!loading || IS_LOCAL_APP) return
@@ -138,6 +222,10 @@ export default function Register() {
       agreeTerms: form.agreeTerms
     })
 
+    if (unameAvailable === false) {
+      setError('This username is already taken. Please choose another username.')
+      return
+    }
     if (!isPasswordValid) {
       logger.warn('Registration failed client validation: Password strength criteria not met.')
       setError('Password does not meet all strength requirements.')
@@ -169,6 +257,7 @@ export default function Register() {
         template_key: selectedTemplate,
         hosting: IS_LOCAL_APP ? hostingChoice : 'cloud',
         phone,
+        email: form.email?.trim() || null,
       })
       logger.info('Registration completed successfully!')
       if (result?.fellBackToLocal) {
@@ -284,12 +373,29 @@ export default function Register() {
             </div>
           ) : (
           <form className="login-form" id="register-form" onSubmit={handleSubmit} style={{ gap: 10 }}>
+            {/* Google Quick Sign-Up */}
+            <div style={{ marginBottom: 12 }}>
+              <div ref={googleBtnRef} style={{ display: 'flex', justifyContent: 'center', minHeight: 44 }} />
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                margin: '14px 0 10px',
+                gap: 12
+              }}>
+                <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+                <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  or register manually
+                </span>
+                <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+              </div>
+            </div>
+
             <div className="form-group">
-              <label htmlFor="businessName">Business / Organization Name</label>
+              <label htmlFor="businessName">Store / Business Name</label>
               <input
                 id="businessName"
                 type="text"
-                placeholder="e.g. Acme Corporation"
+                placeholder="e.g. Acme Supermarket"
                 value={form.businessName}
                 onChange={e => setForm(f => ({ ...f, businessName: e.target.value }))}
                 required
@@ -319,65 +425,126 @@ export default function Register() {
                   </option>
                 ))}
               </CustomSelect>
-
             </div>
-
-            <fieldset className="registration-storage">
-              <legend>Where should your data live?</legend>
-              <div data-testid="hosting-choice" className="registration-storage-grid">
-                {[
-                  { key: 'local',  title: 'Local only',     desc: 'Fast & offline on this PC.' },
-                  { key: 'hybrid', title: 'Local + Cloud',  desc: IS_LOCAL_APP
-                    ? 'Local speed + automatic cloud sync, backup & multi-device.'
-                    : 'Use cloud in browser + desktop app sync.' },
-                ].map(opt => (
-                  <div key={opt.key} className="registration-storage-choice">
-                  <button
-                    type="button"
-                    className={`registration-storage-option ${hostingChoice === opt.key ? 'is-selected' : ''}`}
-                    aria-pressed={hostingChoice === opt.key}
-                    disabled={!IS_LOCAL_APP && opt.key === 'local'}
-                    aria-describedby={!IS_LOCAL_APP ? 'cloud-storage-help' : undefined}
-                    onClick={() => setHostingChoice(opt.key)}
-                  >
-                    <div style={{ fontWeight: 700, fontSize: '0.86rem' }}>
-                      {opt.title}
-                      {opt.key === 'hybrid' && trialDays > 0 && (
-                        <span style={{ marginLeft: 6, fontSize: '0.62rem', fontWeight: 800, letterSpacing: '0.04em', padding: '1px 6px', borderRadius: 6, background: 'var(--accent-solid, var(--accent))', color: 'var(--accent-foreground, #fff)', verticalAlign: 'middle' }}>
-                          14 DAYS FREE
-                        </span>
-                      )}
-                    </div>
-                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 3, lineHeight: 1.3 }}>{opt.desc}</div>
-                  </button>
-                  {!IS_LOCAL_APP && opt.key === 'local' && (
-                    <a className="registration-local-download" href={DESKTOP_DOWNLOAD_URL} target="_blank" rel="noopener noreferrer">Download app for Local</a>
-                  )}
-                  </div>
-                ))}
-              </div>
-              {IS_LOCAL_APP && hostingChoice === 'hybrid' && (
-                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 6 }}>
-                  {trialDays > 0
-                    ? `Included in your ${trialDays}-day Pro trial and set up automatically: billing stays fast and offline while your data syncs to the cloud. When the trial ends, cloud sync stops unless you upgrade to Pro. Everything stays on this computer and keeps working offline.`
-                    : 'Set up automatically — no extra steps. Billing stays fast and offline while your data syncs to the cloud in the background.'}
-                </div>
-              )}
-            </fieldset>
 
             <div className="form-group" style={{ marginTop: '4px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <label htmlFor="username">Username or Email</label>
+                <label htmlFor="username">Choose Store Username</label>
+                {checkingUname && <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Checking…</span>}
+                {!checkingUname && unameAvailable === true && (
+                  <span style={{ fontSize: '0.72rem', color: 'var(--success, #10b981)', fontWeight: 600 }}>✓ Available</span>
+                )}
+                {!checkingUname && unameAvailable === false && (
+                  <span style={{ fontSize: '0.72rem', color: 'var(--error, #ef4444)', fontWeight: 600 }}>✕ Already taken</span>
+                )}
               </div>
               <input
                 id="username"
                 type="text"
-                placeholder="e.g. store"
+                placeholder="e.g. acme_store"
                 value={form.username}
-                onChange={e => setForm(f => ({ ...f, username: e.target.value }))}
+                onChange={e => setForm(f => ({ ...f, username: e.target.value.toLowerCase().replace(/\s+/g, '_') }))}
                 required
+                autoComplete="username"
               />
+              <small style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: 2 }}>
+                Used by cashiers to sign in at physical billing counters.
+              </small>
             </div>
+
+            {/* Row with Country & Mandatory Phone */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: '4px' }}>
+              <div className="form-group">
+                <label htmlFor="country">Country</label>
+                <CustomSelect
+                  id="country"
+                  value={form.country}
+                  onChange={e => setForm(f => ({ ...f, country: e.target.value }))}
+                  style={{
+                    width: '100%',
+                    padding: '9px 12px',
+                    borderRadius: '10px',
+                    border: '1.5px solid var(--border)',
+                    background: 'var(--bg-2)',
+                    fontSize: '13px',
+                    color: 'var(--text-primary)',
+                    outline: 'none'
+                  }}
+                >
+                  <option value="India">India</option>
+                  <option value="United States">United States</option>
+                  <option value="United Kingdom">United Kingdom</option>
+                  <option value="Singapore">Singapore</option>
+                  <option value="UAE">UAE</option>
+                </CustomSelect>
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="phone">Mobile Phone (Mandatory)</label>
+                <input
+                  id="phone"
+                  type="tel"
+                  required
+                  autoComplete="tel"
+                  maxLength={30}
+                  aria-describedby="registration-phone-help"
+                  placeholder="+91 9999999999"
+                  value={form.phone}
+                  onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
+                />
+                <small id="registration-phone-help" style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>Required for recovery &amp; 14-day trial.</small>
+              </div>
+            </div>
+
+            {/* Email Address */}
+            <div className="form-group" style={{ marginTop: '4px' }}>
+              <label htmlFor="email">Email Address</label>
+              <input
+                id="email"
+                type="email"
+                placeholder="e.g. owner@acmestore.com"
+                value={form.email}
+                onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
+                autoComplete="email"
+              />
+              <small style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>Used for account recovery OTPs, welcome emails, and invoices.</small>
+            </div>
+
+            {IS_LOCAL_APP && (
+              <fieldset className="registration-storage">
+                <legend>Where should your data live?</legend>
+                <div data-testid="hosting-choice" className="registration-storage-grid">
+                  {[
+                    { key: 'local',  title: 'Local only',     desc: 'Fast & offline on this PC.' },
+                    { key: 'hybrid', title: 'Local + Cloud',  desc: 'Local speed + automatic cloud sync, backup & multi-device.' },
+                  ].map(opt => (
+                    <div key={opt.key} className="registration-storage-choice">
+                    <button
+                      type="button"
+                      className={`registration-storage-option ${hostingChoice === opt.key ? 'is-selected' : ''}`}
+                      aria-pressed={hostingChoice === opt.key}
+                      onClick={() => setHostingChoice(opt.key)}
+                    >
+                      <div style={{ fontWeight: 700, fontSize: '0.86rem' }}>
+                        {opt.title}
+                        {opt.key === 'hybrid' && trialDays > 0 && (
+                          <span style={{ marginLeft: 6, fontSize: '0.62rem', fontWeight: 800, letterSpacing: '0.04em', padding: '1px 6px', borderRadius: 6, background: 'var(--accent-solid, var(--accent))', color: 'var(--accent-foreground, #fff)', verticalAlign: 'middle' }}>
+                            14 DAYS FREE
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 3, lineHeight: 1.3 }}>{opt.desc}</div>
+                    </button>
+                    </div>
+                  ))}
+                </div>
+                {hostingChoice === 'hybrid' && (
+                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 6 }}>
+                    Included in your {trialDays}-day Pro trial and set up automatically: billing stays fast and offline while your data syncs to the cloud.
+                  </div>
+                )}
+              </fieldset>
+            )}
 
             <div className="form-group" style={{ marginTop: '4px' }}>
               <label htmlFor="password">Password</label>
@@ -457,50 +624,6 @@ export default function Register() {
               </div>
             )}
 
-            {/* Row with Country & Phone */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: '4px' }}>
-              <div className="form-group">
-                <label htmlFor="country">Country</label>
-                <CustomSelect
-                  id="country"
-                  value={form.country}
-                  onChange={e => setForm(f => ({ ...f, country: e.target.value }))}
-                  style={{
-                    width: '100%',
-                    padding: '9px 12px',
-                    borderRadius: '10px',
-                    border: '1.5px solid var(--border)',
-                    background: 'var(--bg-2)',
-                    fontSize: '13px',
-                    color: 'var(--text-primary)',
-                    outline: 'none'
-                  }}
-                >
-                  <option value="India">India</option>
-                  <option value="United States">United States</option>
-                  <option value="United Kingdom">United Kingdom</option>
-                  <option value="Singapore">Singapore</option>
-                  <option value="UAE">UAE</option>
-                </CustomSelect>
-              </div>
-
-              <div className="form-group">
-                <label htmlFor="phone">Phone</label>
-                <input
-                  id="phone"
-                  type="tel"
-                  required
-                  autoComplete="tel"
-                  maxLength={30}
-                  aria-describedby="registration-phone-help"
-                  placeholder="+91 9999999999"
-                  value={form.phone}
-                  onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
-                />
-                <small id="registration-phone-help" style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>Required. One first-time trial per phone number.</small>
-              </div>
-            </div>
-
             <fieldset style={{ border: 0, padding: 0, margin: '8px 0 6px 0', minWidth: 0 }}>
               <legend style={{ position: 'absolute', width: 1, height: 1, padding: 0, margin: -1, overflow: 'hidden', clip: 'rect(0, 0, 0, 0)', whiteSpace: 'nowrap', border: 0 }}>Terms agreement</legend>
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
@@ -534,7 +657,7 @@ export default function Register() {
               disabled={loading}
               style={{ marginTop: '4px', padding: '10px' }}
             >
-              {loading ? 'Registering…' : 'Get Started'}
+              {loading ? 'Creating Account…' : 'Create Account & Start 14-Day Free Pro Trial'}
             </button>
           </form>
           )}
@@ -676,6 +799,15 @@ export default function Register() {
         </div>
       </div>
     </div>
+
+    {/* Google Onboarding Modal (for first-time Google sign-ups) */}
+    <GoogleOnboardingModal
+      isOpen={showGoogleModal}
+      credential={googleCredential}
+      initialData={googleOnboardingData}
+      onClose={() => setShowGoogleModal(false)}
+      onSuccess={handleGoogleRegisterSuccess}
+    />
     </>
   )
 }

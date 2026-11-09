@@ -18,23 +18,71 @@ def service_owner_ids(db):
     return [r[0] for r in db.query(User.id).filter(User.parent_business_id.is_(None), or_(User.role.is_(None), func.lower(User.role).notin_(["deleted", "retired"]))).all()]
 
 
+def find_user_by_identifier(db, identifier: str):
+    """Find an owner or user by username, email, or normalized phone number."""
+    if not identifier:
+        return None
+    from database.models import User
+    from sqlalchemy import or_, func
+    from services.registration_policy import phone_key
+    clean = identifier.strip()
+    clean_phone = phone_key(clean)
+    query = db.query(User).filter(
+        or_(
+            User.username == clean,
+            func.lower(User.email) == clean.lower(),
+            User.phone == clean_phone if clean_phone else False
+        )
+    )
+    return query.filter(User.parent_business_id.is_(None)).first() or query.first()
+
+
 def authenticate_identity(db, login, password, owner_login=None):
     from database.models import User
     from services.auth import verify_password
+    from sqlalchemy import or_, func
+    from services.registration_policy import phone_key
+
+    row = None
     if db.bind.dialect.name == "postgresql":
-        row = db.execute(text("SELECT * FROM bizassist_auth_subject(:u,:o)"), {"u": login, "o": owner_login}).first()
-    else:
+        try:
+            row = db.execute(text("SELECT * FROM bizassist_auth_subject(:u,:o)"), {"u": login, "o": owner_login}).first()
+        except Exception:
+            row = None
+
+    if row is None:
+        login_clean = (login or "").strip()
+        login_phone = phone_key(login_clean)
         query = db.query(User)
         if owner_login is not None:
-            owner = db.query(User).filter(User.username == owner_login, User.parent_business_id.is_(None)).first()
+            owner_clean = (owner_login or "").strip()
+            owner_phone = phone_key(owner_clean)
+            owner = db.query(User).filter(
+                or_(
+                    User.username == owner_clean,
+                    func.lower(User.email) == owner_clean.lower(),
+                    User.phone == owner_phone if owner_phone else False
+                ),
+                User.parent_business_id.is_(None)
+            ).first()
             if owner and (owner.role or "").lower() in {"deleted", "retired"}:
                 owner = None
-            query = query.filter(User.parent_business_id == (owner.id if owner else -1), func.lower(User.staff_login_name) == login.strip().lower())
+            query = query.filter(
+                User.parent_business_id == (owner.id if owner else -1),
+                func.lower(User.staff_login_name) == login_clean.lower()
+            )
         else:
-            query = query.filter(User.username == login)
+            query = query.filter(
+                or_(
+                    User.username == login_clean,
+                    func.lower(User.email) == login_clean.lower(),
+                    User.phone == login_phone if login_phone else False
+                )
+            )
         subject = query.first()
         owner = db.get(User, subject.parent_business_id) if subject and subject.parent_business_id else subject
         row = (subject.id, subject.parent_business_id or subject.id, subject.password, subject.role) if subject and owner and (owner.role or "").lower() not in {"deleted", "retired"} else None
+
     if row is None or (row[3] or "").lower() in {"deleted", "retired"} or not verify_password(password, row[2]):
         return None
     bind_tenant(db, row[1])
@@ -116,7 +164,7 @@ def install_security(connection, runtime_role=None):
     # new owner, even though this NOLOGIN role never creates arbitrary objects.
     # Revoke it below in the same migration transaction after ownership moves.
     connection.exec_driver_sql("GRANT USAGE,CREATE ON SCHEMA public TO bizassist_bootstrap")
-    connection.exec_driver_sql("""
+    connection.exec_driver_sql(r"""
       GRANT SELECT ON users,invoices TO bizassist_bootstrap;
       GRANT UPDATE(id) ON users TO bizassist_bootstrap;
       GRANT SELECT ON business_settings TO bizassist_bootstrap;
@@ -126,8 +174,8 @@ def install_security(connection, runtime_role=None):
         SELECT u.id,COALESCE(u.parent_business_id,u.id),u.password,u.role
         FROM users u JOIN users o ON o.id=COALESCE(u.parent_business_id,u.id)
         WHERE lower(COALESCE(u.role,'')) NOT IN ('deleted','retired') AND lower(COALESCE(o.role,'')) NOT IN ('deleted','retired') AND
-         ((owner_login IS NULL AND u.username=login) OR
-          (owner_login IS NOT NULL AND o.username=owner_login AND u.parent_business_id=o.id AND lower(u.staff_login_name)=lower(trim(login)))) LIMIT 1
+         ((owner_login IS NULL AND (u.username=login OR lower(COALESCE(u.email,''))=lower(trim(login)) OR regexp_replace(COALESCE(u.phone,''), '\D', '', 'g')=regexp_replace(login, '\D', '', 'g'))) OR
+          (owner_login IS NOT NULL AND (o.username=owner_login OR lower(COALESCE(o.email,''))=lower(trim(owner_login)) OR regexp_replace(COALESCE(o.phone,''), '\D', '', 'g')=regexp_replace(owner_login, '\D', '', 'g')) AND u.parent_business_id=o.id AND lower(u.staff_login_name)=lower(trim(login)))) LIMIT 1
       $$;
       CREATE OR REPLACE FUNCTION bizassist_live_subject(subject integer)
       RETURNS TABLE(token_version integer) LANGUAGE sql SECURITY DEFINER SET search_path=public,pg_temp AS $$

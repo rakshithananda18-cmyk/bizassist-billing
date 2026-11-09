@@ -125,6 +125,22 @@ class User(Base, TimestampMixin):
     # Staff Management screen showed a name, a role and nothing else, so 22
     # abandoned accounts sat indistinguishable from the 2 real ones.
     last_login    = Column(DateTime, nullable=True)
+    # Google OAuth subject identifier (sub claim)
+    google_id     = Column(String, unique=True, index=True, nullable=True)
+
+
+class PasswordResetOTP(Base, TimestampMixin):
+    """Temporary 6-digit OTP tokens for forgot-password and account recovery."""
+    __tablename__ = "password_reset_otps"
+
+    id         = Column(Integer, primary_key=True, index=True)
+    user_id    = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    identifier = Column(String, index=True, nullable=False)  # Phone, email, or username typed
+    otp_hash   = Column(String, nullable=False)
+    purpose    = Column(String, default="password_reset", nullable=False)
+    expires_at = Column(DateTime, nullable=False)
+    attempts   = Column(Integer, default=0, nullable=False)
+    used       = Column(Boolean, default=False, nullable=False)
 
 
 class DeletedBusiness(Base):

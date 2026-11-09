@@ -3,7 +3,7 @@
 // Description: User session authentication page. Supports merchant owner credentials
 //              as well as cashier staff login credentials, storing tokens in localStorage.
 // ============================================================================
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { logger } from '../utils/logger'
@@ -11,6 +11,9 @@ import { BuildingMark } from '../components/Logo'
 import { API_BASE, IS_LOCAL_APP } from '../config'
 import CustomSelect from '../components/common/CustomSelect'
 import BootHealthCheck from '../components/BootHealthCheck'
+import ForgotPasswordModal from '../components/auth/ForgotPasswordModal'
+import GoogleOnboardingModal from '../components/auth/GoogleOnboardingModal'
+import { renderGoogleButton } from '../utils/googleAuth'
 
 const RECENT_STAFF_TIMEOUT_MS = 1500
 
@@ -25,6 +28,63 @@ export default function Login() {
   const [loading,  setLoading]  = useState(false)
   const [rememberMe, setRememberMe] = useState(true)
   const [waking, setWaking] = useState(false)
+
+  // Auth Enhancements: Forgot Password & Google Sign-In state
+  const [showForgotModal, setShowForgotModal] = useState(false)
+  const [showGoogleModal, setShowGoogleModal] = useState(false)
+  const [googleCredential, setGoogleCredential] = useState('')
+  const [googleOnboardingData, setGoogleOnboardingData] = useState(null)
+  const googleBtnRef = useRef(null)
+
+  const handleGoogleCredential = async (credential) => {
+    setError('')
+    setLoading(true)
+    try {
+      const res = await fetch(`${API_BASE}/api/auth/google/verify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ credential }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data?.detail || 'Google sign-in failed.')
+
+      if (data.action === 'login' && data.token) {
+        localStorage.setItem('billing_token', data.token)
+        localStorage.setItem('billing_user', JSON.stringify(data))
+        localStorage.setItem('billing_role', data.role || 'enterprise')
+        localStorage.setItem('bizassist_auth_version', '1')
+        navigate('/', { replace: true })
+      } else if (data.status === 'needs_onboarding') {
+        setGoogleCredential(credential)
+        setGoogleOnboardingData(data)
+        setShowGoogleModal(true)
+      }
+    } catch (err) {
+      setError(err?.message || 'Google authentication error')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleGoogleRegisterSuccess = (data) => {
+    if (data?.token) {
+      localStorage.setItem('billing_token', data.token)
+      localStorage.setItem('billing_user', JSON.stringify(data))
+      localStorage.setItem('billing_role', data.role || 'enterprise')
+      localStorage.setItem('bizassist_auth_version', '1')
+      navigate('/', { replace: true })
+    }
+  }
+
+  const handleForgotSuccess = (data) => {
+    if (data?.token) {
+      localStorage.setItem('billing_token', data.token)
+      localStorage.setItem('billing_user', JSON.stringify(data))
+      localStorage.setItem('billing_role', data.role || 'enterprise')
+      localStorage.setItem('bizassist_auth_version', '1')
+      navigate('/', { replace: true })
+    }
+  }
   useEffect(() => {
     setWaking(false)
     if (!loading || IS_LOCAL_APP) return
@@ -96,6 +156,15 @@ export default function Login() {
   // staff sign-in. Staff enter their assigned login name; the server verifies
   // it with the owner and password without exposing a public staff directory.
   const [standardStep, setStandardStep] = useState('username')  // username | choose | owner | staff
+
+  useEffect(() => {
+    if (view === 'standard' && standardStep === 'username' && googleBtnRef.current) {
+      renderGoogleButton(googleBtnRef.current, {
+        onCredential: handleGoogleCredential,
+        text: 'signin_with',
+      })
+    }
+  }, [view, standardStep])
 
   // A saved-login shortcut must never hold up a successful sign-in.  The staff
   // list is only convenience metadata; authentication and navigation do not
@@ -298,7 +367,7 @@ export default function Login() {
     e.preventDefault()
     setError('')
     const owner = username.trim()
-    if (!owner) { setError('Enter the business owner username.'); return }
+    if (!owner) { setError('Enter your business username, email, or phone number.'); return }
 
     setPassword('')
     setSelectedStaffUser('')
@@ -805,6 +874,24 @@ export default function Login() {
               </div>
             </div>
 
+            <div style={{ textAlign: 'right', marginTop: 4 }}>
+              <button
+                type="button"
+                onClick={() => setShowForgotModal(true)}
+                style={{
+                  fontSize: '0.78rem',
+                  color: 'var(--accent)',
+                  fontWeight: 500,
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  padding: 0
+                }}
+              >
+                Forgot password?
+              </button>
+            </div>
+
             {error && <div className="login-error" style={{ marginTop: '10px' }}>{error}</div>}
 
             <button type="submit" className="login-submit-btn" disabled={loading} style={{ marginTop: 10 }}>
@@ -1055,17 +1142,60 @@ export default function Login() {
             {/* STEP 1 — owner username */}
             {standardStep === 'username' && (
               <form onSubmit={handleOwnerContinue} style={{ width: '100%' }}>
+                {/* Google Sign In Container */}
+                <div style={{ marginBottom: 16 }}>
+                  <div ref={googleBtnRef} style={{ display: 'flex', justifyContent: 'center', minHeight: 44 }} />
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    margin: '14px 0 10px',
+                    gap: 12
+                  }}>
+                    <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+                    <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                      or with store credentials
+                    </span>
+                    <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+                  </div>
+                </div>
+
                 <div className="form-group" style={{ width: '100%', boxSizing: 'border-box' }}>
-                  <label htmlFor="owner-username">Business Owner Username</label>
-                  <input type="text" id="owner-username" placeholder="e.g. store_owner" value={username} onChange={e => setUsername(e.target.value)} required autoFocus autoComplete="username" />
+                  <label htmlFor="owner-username">Business Owner Username, Email, or Phone</label>
+                  <input
+                    type="text"
+                    id="owner-username"
+                    placeholder="e.g. store_owner, store@email.com, 9876543210"
+                    value={username}
+                    onChange={e => setUsername(e.target.value)}
+                    required
+                    autoFocus
+                    autoComplete="username"
+                  />
                 </div>
                 {error && <div className="login-error" role="alert" style={{ marginTop: 14 }}>{error}</div>}
                 <button type="submit" className="login-submit-btn" disabled={loading} style={{ marginTop: 14 }}>
                   {loading ? 'Checking…' : 'Continue'}
                 </button>
-                <div style={{ textAlign: 'center', marginTop: 10 }}>
-                  <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginRight: 6 }}>Don't have an account?</span>
-                  <button type="button" onClick={() => navigate('/register')} style={{ fontSize: '0.8rem', color: 'var(--accent)', fontWeight: 600, padding: 0, border: 'none', background: 'none', cursor: 'pointer' }}>Register</button>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
+                  <div>
+                    <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginRight: 6 }}>Don't have an account?</span>
+                    <button type="button" onClick={() => navigate('/register')} style={{ fontSize: '0.8rem', color: 'var(--accent)', fontWeight: 600, padding: 0, border: 'none', background: 'none', cursor: 'pointer' }}>Register</button>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowForgotModal(true)}
+                    style={{
+                      fontSize: '0.8rem',
+                      color: 'var(--accent)',
+                      fontWeight: 600,
+                      padding: 0,
+                      border: 'none',
+                      background: 'none',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Forgot password?
+                  </button>
                 </div>
                 <p className="login-reassurance">
                   <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
@@ -1093,7 +1223,7 @@ export default function Login() {
                     {username}
                   </span>
                   <span style={{ fontSize: '0.76rem', color: 'var(--text-muted)' }}>
-                    (@{username})
+                    ({username})
                   </span>
                 </div>
                 <button type="button" className="login-submit-btn" onClick={() => { setError(''); setPassword(''); setStandardStep('owner') }} style={{ width: '100%' }}>Owner Login</button>
@@ -1112,9 +1242,26 @@ export default function Login() {
                     {pwToggleBtn}
                   </div>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12, userSelect: 'none' }}>
-                  <input type="checkbox" id="remember-me" checked={rememberMe} onChange={e => setRememberMe(e.target.checked)} style={{ width: 'auto', margin: 0, cursor: 'pointer' }} />
-                  <label htmlFor="remember-me" style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', cursor: 'pointer', margin: 0, textTransform: 'none', fontWeight: 500, letterSpacing: 'normal' }}>Remember me</label>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 12, userSelect: 'none' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <input type="checkbox" id="remember-me" checked={rememberMe} onChange={e => setRememberMe(e.target.checked)} style={{ width: 'auto', margin: 0, cursor: 'pointer' }} />
+                    <label htmlFor="remember-me" style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', cursor: 'pointer', margin: 0, textTransform: 'none', fontWeight: 500, letterSpacing: 'normal' }}>Remember me</label>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowForgotModal(true)}
+                    style={{
+                      fontSize: '0.78rem',
+                      color: 'var(--accent)',
+                      fontWeight: 500,
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      padding: 0
+                    }}
+                  >
+                    Forgot password?
+                  </button>
                 </div>
                 {error && <div className="login-error" style={{ marginTop: 14 }}>{error}</div>}
                 <button type="submit" className="login-submit-btn" disabled={loading} style={{ marginTop: 14 }}>{loading ? 'Signing in…' : 'Sign In as Owner'}</button>
@@ -1182,6 +1329,22 @@ export default function Login() {
         <BootHealthCheck auto={true} />
       </div>
     </details>
+
+    {/* Forgot Password OTP Modal */}
+    <ForgotPasswordModal
+      isOpen={showForgotModal}
+      onClose={() => setShowForgotModal(false)}
+      onSuccess={handleForgotSuccess}
+    />
+
+    {/* Google Onboarding Modal (for first-time Google sign-ins) */}
+    <GoogleOnboardingModal
+      isOpen={showGoogleModal}
+      credential={googleCredential}
+      initialData={googleOnboardingData}
+      onClose={() => setShowGoogleModal(false)}
+      onSuccess={handleGoogleRegisterSuccess}
+    />
     </div>
     </>
   )
