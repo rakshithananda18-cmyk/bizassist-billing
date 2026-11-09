@@ -53,7 +53,7 @@ if [[ "$SETUP" == 1 ]]; then
         python3 -c 'import secrets; print(secrets.token_hex(32), end="")' | \
             gcloud secrets create BILLING_CRON_SECRET --project "$PROJECT" --replication-policy automatic --data-file=- --quiet >/dev/null
     fi
-    for secret_name in DATABASE_URL JWT_SECRET GROQ_API_KEY BILLING_CRON_SECRET ADMIN_SERVICE_URL; do
+    for secret_name in DATABASE_URL JWT_SECRET GROQ_API_KEY BILLING_CRON_SECRET ADMIN_SERVICE_URL BREVO_API_KEY BREVO_SENDER_EMAIL GOOGLE_CLIENT_ID; do
         if secret_exists "$secret_name"; then
             gcloud secrets add-iam-policy-binding "$secret_name" --project "$PROJECT" --member="serviceAccount:${RUN_SA}" \
                 --role roles/secretmanager.secretAccessor --quiet >/dev/null
@@ -64,7 +64,7 @@ for secret_name in DATABASE_URL JWT_SECRET BILLING_CRON_SECRET; do
     secret_exists "$secret_name" || { echo "${secret_name} is missing; run with --setup first." >&2; exit 1; }
 done
 SECRETS_PARAM='DATABASE_URL=DATABASE_URL:latest,JWT_SECRET=JWT_SECRET:latest,BILLING_CRON_SECRET=BILLING_CRON_SECRET:latest'
-for secret_name in GROQ_API_KEY ADMIN_SERVICE_URL; do
+for secret_name in GROQ_API_KEY ADMIN_SERVICE_URL BREVO_API_KEY BREVO_SENDER_EMAIL GOOGLE_CLIENT_ID; do
     if secret_exists "$secret_name"; then SECRETS_PARAM+=",${secret_name}=${secret_name}:latest"; fi
 done
 if ! secret_exists ADMIN_SERVICE_URL; then echo 'ADMIN_SERVICE_URL is not mounted; a constrained runtime needs it for the admin console.'; fi

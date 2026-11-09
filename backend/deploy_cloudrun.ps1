@@ -124,7 +124,7 @@ try {
             [Array]::Clear($bytes, 0, $bytes.Length)
         }
 
-        foreach ($s in @("DATABASE_URL", "JWT_SECRET", "GROQ_API_KEY", "BILLING_CRON_SECRET", "ADMIN_SERVICE_URL")) {
+        foreach ($s in @("DATABASE_URL", "JWT_SECRET", "GROQ_API_KEY", "BILLING_CRON_SECRET", "ADMIN_SERVICE_URL", "BREVO_API_KEY", "BREVO_SENDER_EMAIL", "GOOGLE_CLIENT_ID")) {
             if (Test-Secret $s) {
                 Invoke-Gcloud secrets add-iam-policy-binding $s --project $Project `
                     --member "serviceAccount:$runSa" --role roles/secretmanager.secretAccessor --quiet | Out-Null
@@ -138,12 +138,11 @@ try {
     $envVars = "^;^ADMIN_API_ENABLED=1;TZ=Asia/Kolkata;BIZ_TIMEZONE=Asia/Kolkata;WEB_CONCURRENCY=1;SUBSCRIPTION_ENFORCED=$SubscriptionEnforced;CLOUD_RUN_REGION=$Region;SSE_MAX_STREAM_SECONDS=100;ALLOWED_ORIGINS=$AllowedOrigins"
 
     $secretsFlag = "DATABASE_URL=DATABASE_URL:latest,JWT_SECRET=JWT_SECRET:latest,BILLING_CRON_SECRET=BILLING_CRON_SECRET:latest"
-    if (Test-Secret "GROQ_API_KEY") {
-        $secretsFlag += ",GROQ_API_KEY=GROQ_API_KEY:latest"
+    foreach ($optSec in @("GROQ_API_KEY", "ADMIN_SERVICE_URL", "BREVO_API_KEY", "BREVO_SENDER_EMAIL", "GOOGLE_CLIENT_ID")) {
+        if (Test-Secret $optSec) {
+            $secretsFlag += ",$optSec=${optSec}:latest"
+        }
     }
-    if (Test-Secret 'ADMIN_SERVICE_URL') {
-        $secretsFlag += ',ADMIN_SERVICE_URL=ADMIN_SERVICE_URL:latest'
-    } else { Write-Host 'ADMIN_SERVICE_URL is not mounted; a constrained runtime needs it for the admin console.' }
     $existing = Get-GcloudOptional run services describe $Service --project $Project --region $Region --format 'value(status.url)'
     $rolloutFlags = @()
     if ($existing) { $rolloutFlags = @('--no-traffic', '--tag', 'candidate') }

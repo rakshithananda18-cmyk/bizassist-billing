@@ -19,7 +19,7 @@ logger = logging.getLogger("bizassist.brevo")
 
 BREVO_API_URL = "https://api.brevo.com/v3"
 BREVO_API_KEY = os.environ.get("BREVO_API_KEY", "").strip()
-BREVO_SENDER_EMAIL = os.environ.get("BREVO_SENDER_EMAIL", "noreply@staterbill.com").strip()
+BREVO_SENDER_EMAIL = os.environ.get("BREVO_SENDER_EMAIL", "support@staterbill.com").strip()
 BREVO_SENDER_NAME = os.environ.get("BREVO_SENDER_NAME", "STATER Bill").strip()
 
 
