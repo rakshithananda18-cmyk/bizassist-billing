@@ -65,7 +65,7 @@ export function AppRoutes() {
     <Routes>
       <Route path="/login"    element={user ? <Navigate to="/" replace /> : <Login />} />
       <Route path="/register" element={user ? <Navigate to="/" replace /> : <Register />} />
-      <Route path="/demo" element={<Navigate to="/sales?demo=1" replace />} />
+      <Route path="/demo" element={<Navigate to="/?demo=1" replace />} />
       <Route path="/public/invoice/:uid" element={<PublicInvoiceViewer />} />
       <Route path="/terms" element={<Terms />} />
       <Route path="/privacy" element={<Privacy />} />

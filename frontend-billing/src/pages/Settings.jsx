@@ -6,6 +6,8 @@
 // ============================================================================
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
+import { isDemoMode } from '../demo/demoEngine'
+import DemoGate from '../components/demo/DemoGate'
 import AppLayout from '../layouts/AppLayout'
 import { useAuth, useBusinessConfig } from '../contexts/AuthContext'
 import { formatIST } from '../utils/format'
@@ -2236,8 +2238,15 @@ export default function Settings() {
 
 
           {/* ════════════════════ NETWORK & DISCOVERY ════════════════════════ */}
-          {activeTab === 'network' && !isCashier && (
-            <NetworkDiscoverySection networkMode={networkMode} navigate={navigate} />
+          {activeTab === 'network' && (
+            isDemoMode() ? (
+              <DemoGate
+                label="LAN Peer-to-Peer Network & Discovery"
+                description="Connect multiple counters, kitchen printers, and warehouse scanners over local WiFi with zero cloud lag and automatic leader election. Start your 14-day Pro trial to configure LAN mesh."
+              />
+            ) : (
+              !isCashier && <NetworkDiscoverySection networkMode={networkMode} navigate={navigate} />
+            )
           )}
 
           {/* ═══════════════════════════ ADVANCED ═════════════════════════════ */}
@@ -2415,8 +2424,15 @@ export default function Settings() {
           )}
 
           {/* ═══════════════════════════ DATA MIGRATION ═════════════════════════ */}
-          {activeTab === 'migration' && !isCashier && (
-            <DataMigrationSection />
+          {activeTab === 'migration' && (
+            isDemoMode() ? (
+              <DemoGate
+                label="Data Migration & Backup Engine"
+                description="One-click full store migration, encrypted cloud backups, and CSV/Excel product imports. Start your 14-day Pro trial to export or migrate your database."
+              />
+            ) : (
+              !isCashier && <DataMigrationSection />
+            )
           )}
 
           {/* ═══════════════════════════ BUSINESS ACTIVITY ══════════════════════ */}

@@ -38,6 +38,8 @@ import RegisterView from '../components/reports/RegisterView'
 import CustomSelect from '../components/common/CustomSelect'
 import { reportPeriod } from '../utils/reportPeriods'
 import './reports-shell.css'
+import { isDemoMode } from '../demo/demoEngine'
+import DemoGate from '../components/demo/DemoGate'
 
 export const REPORTS = [
   // ── GST & Compliance ──
@@ -291,6 +293,16 @@ function ReportPlaceholder({ report, onGenerate, generating }) {
 }
 
 export default function Reports() {
+  if (isDemoMode()) {
+    return (
+      <AppLayout title="Reports & Financials">
+        <DemoGate
+          label="Automated GST Filings & Day-Book Reports"
+          description="Access tamper-evident day books, GSTR-1, GSTR-3B tax offset calculations, and profit margin analytics. Start your free 14-day trial to generate real-time tax reports."
+        />
+      </AppLayout>
+    )
+  }
   const { authFetch } = useAuth()
   const [searchParams, setSearchParams] = useSearchParams()
   const reportRequestRef = useRef(0)

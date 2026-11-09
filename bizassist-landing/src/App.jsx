@@ -247,18 +247,154 @@ function BrandLogo({ size = 28, showTagline = true }) {
   )
 }
 
+/* ────────────────────────── Demo Lead Gate ─────────────────────── */
+function DemoLeadGate({ onUnlock }) {
+  const [name, setName] = useState('')
+  const [phone, setPhone] = useState('')
+  const [business, setBusiness] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [err, setErr] = useState('')
+
+  function handleSubmit(e) {
+    e.preventDefault()
+    if (!name.trim() || !phone.trim()) { setErr('Please enter your name and phone number.'); return }
+    if (!/^\+?[0-9]{7,15}$/.test(phone.replace(/\s/g, ''))) { setErr('Enter a valid phone number.'); return }
+    setSubmitting(true)
+    try {
+      localStorage.setItem('stater_demo_lead', JSON.stringify({ name: name.trim(), phone: phone.trim(), business: business.trim(), ts: Date.now() }))
+    } catch {}
+    setTimeout(() => { setSubmitting(false); onUnlock() }, 600)
+  }
+
+  return (
+    <div className="relative mx-auto w-full max-w-6xl rounded-3xl overflow-hidden border border-stone-300 dark:border-white/10 shadow-2xl bg-white dark:bg-obsidian-950">
+      {/* Window Titlebar */}
+      <div className="flex items-center justify-between px-4 py-3 bg-stone-100 dark:bg-obsidian-900 border-b border-stone-200 dark:border-white/10 text-xs">
+        <div className="flex items-center gap-2.5">
+          <span className="h-3 w-3 rounded-full bg-rose-500/80" />
+          <span className="h-3 w-3 rounded-full bg-amber-500/80" />
+          <span className="h-3 w-3 rounded-full bg-emerald-500/80" />
+          <span className="font-bold text-slate-800 dark:text-white ml-2 flex items-center gap-2">
+            <BuildingMark size={14} accent="#c15f3c" />
+            <span>STATER Bill — Live Demo Access</span>
+            <span className="hidden sm:inline-block text-[10px] px-2 py-0.5 rounded-full bg-terracotta-500/10 text-terracotta-600 dark:text-terracotta-400 font-mono font-bold">
+              100% REAL APP · ZERO LOGIN
+            </span>
+          </span>
+        </div>
+        <a
+          href="https://app.staterbill.com/register"
+          className="px-3 py-1.5 rounded-xl bg-terracotta-500 hover:bg-terracotta-600 text-white font-bold text-xs shadow flex items-center gap-1.5 transition"
+        >
+          <span>Start Free Trial ↗</span>
+        </a>
+      </div>
+
+      {/* Lead Capture Form */}
+      <div className="flex flex-col md:flex-row min-h-[400px]">
+        {/* Left — Value Prop */}
+        <div className="flex-1 p-8 md:p-12 flex flex-col justify-center bg-gradient-to-br from-terracotta-500/5 via-transparent to-gold-500/5">
+          <div className="inline-flex items-center gap-2 rounded-full border border-terracotta-500/30 bg-terracotta-500/10 px-3 py-1 text-xs font-bold text-terracotta-600 dark:text-terracotta-400 mb-6 w-fit">
+            <span>🔓</span>
+            <span>Instant Access · No Credit Card · No Installation</span>
+          </div>
+          <h3 className="text-2xl md:text-3xl font-black text-slate-900 dark:text-white leading-tight mb-4">
+            Try the real STATER Bill<br />
+            <span className="text-gradient">live production app.</span>
+          </h3>
+          <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed mb-6">
+            Experience the actual POS — scan barcodes, generate invoices, check stock, and see the GST dashboard. No demo accounts, no fake data screens. This is the same app 1000+ retailers use daily.
+          </p>
+          <ul className="space-y-2 text-sm text-slate-700 dark:text-slate-300">
+            {[
+              'Full billing counter with 8 sample products',
+              'Live inventory & godown management',
+              'GST dashboard & day-book preview',
+              'WhatsApp invoice & UPI QR simulation',
+            ].map((f, i) => (
+              <li key={i} className="flex items-center gap-2">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 text-terracotta-500 shrink-0"><polyline points="20 6 9 17 4 12" /></svg>
+                <span>{f}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        {/* Right — Form */}
+        <div className="flex-1 p-8 md:p-12 flex flex-col justify-center border-t md:border-t-0 md:border-l border-stone-200 dark:border-white/10">
+          <h4 className="text-lg font-bold text-slate-900 dark:text-white mb-1">Get Instant Demo Access</h4>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mb-6">Share your contact — we'll reach out only if you want a walkthrough.</p>
+          <form onSubmit={handleSubmit} className="space-y-3">
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Your Name *</label>
+              <input
+                type="text"
+                value={name}
+                onChange={e => setName(e.target.value)}
+                placeholder="Ramesh Kumar"
+                className="w-full px-3 py-2.5 rounded-xl border border-stone-300 dark:border-white/15 bg-white dark:bg-white/5 text-slate-900 dark:text-white text-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-terracotta-500/50 transition"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Phone Number *</label>
+              <input
+                type="tel"
+                value={phone}
+                onChange={e => setPhone(e.target.value)}
+                placeholder="+91 98765 43210"
+                className="w-full px-3 py-2.5 rounded-xl border border-stone-300 dark:border-white/15 bg-white dark:bg-white/5 text-slate-900 dark:text-white text-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-terracotta-500/50 transition"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Business Name <span className="text-slate-400 font-normal">(optional)</span></label>
+              <input
+                type="text"
+                value={business}
+                onChange={e => setBusiness(e.target.value)}
+                placeholder="Your shop or company name"
+                className="w-full px-3 py-2.5 rounded-xl border border-stone-300 dark:border-white/15 bg-white dark:bg-white/5 text-slate-900 dark:text-white text-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-terracotta-500/50 transition"
+              />
+            </div>
+            {err && <p className="text-xs text-rose-500 font-medium">{err}</p>}
+            <button
+              type="submit"
+              disabled={submitting}
+              className="w-full py-3 rounded-xl bg-gradient-to-r from-terracotta-500 to-gold-600 text-white font-bold text-sm shadow-lg shadow-terracotta-500/30 hover:brightness-110 transition disabled:opacity-70 flex items-center justify-center gap-2"
+            >
+              {submitting ? (
+                <><span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /><span>Connecting...</span></>
+              ) : (
+                <><span>Launch Live Demo</span><span>→</span></>
+              )}
+            </button>
+            <p className="text-[10px] text-slate-400 text-center leading-relaxed">
+              By proceeding you agree to our{' '}
+              <a href="https://app.staterbill.com/terms" className="underline hover:text-slate-600" target="_blank" rel="noopener noreferrer">Terms</a>{' '}
+              &amp;{' '}
+              <a href="https://app.staterbill.com/privacy" className="underline hover:text-slate-600" target="_blank" rel="noopener noreferrer">Privacy Policy</a>.
+              We do not sell your data.
+            </p>
+          </form>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 /* ────────────────────────── Real Production App Demo Unit ───────────────────────── */
 function RealAppDemoUnit() {
   const [embedLoaded, setEmbedLoaded] = useState(false)
   const [timedOut, setTimedOut] = useState(false)
   const isLocal = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-  const demoUrl = isLocal ? 'http://localhost:5174/sales?demo=1&embed=1' : 'https://app.staterbill.com/sales?demo=1&embed=1'
-  const fullDemoUrl = isLocal ? 'http://localhost:5174/sales?demo=1' : 'https://app.staterbill.com/sales?demo=1'
+  const demoUrl = isLocal ? 'http://localhost:5174/?demo=1&embed=1' : 'https://app.staterbill.com/?demo=1&embed=1'
+  const fullDemoUrl = isLocal ? 'http://localhost:5174/?demo=1' : 'https://app.staterbill.com/?demo=1'
 
   useEffect(() => {
     const timer = setTimeout(() => {
       if (!embedLoaded) setTimedOut(true)
-    }, 6000)
+    }, 12000)
     return () => clearTimeout(timer)
   }, [embedLoaded])
 
@@ -350,6 +486,10 @@ function Navbar({ theme, onToggleTheme }) {
         <div className="hidden md:flex items-center gap-7 text-sm font-semibold text-slate-600 dark:text-slate-300">
           <a href="#workspaces" className="transition hover:text-terracotta-500">Live Demo</a>
           <a href="#features" className="transition hover:text-terracotta-500">Features</a>
+          <a href="#b2b" className="transition hover:text-terracotta-500 flex items-center gap-1.5">
+            <span>B2B Network</span>
+            <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-full bg-gold-500/20 text-gold-600 dark:text-gold-400 font-bold">PRO</span>
+          </a>
           <a href="#offline" className="transition hover:text-terracotta-500">Why Offline?</a>
           <a href="#downloads" className="transition hover:text-terracotta-500">Downloads</a>
         </div>
@@ -382,6 +522,15 @@ function Navbar({ theme, onToggleTheme }) {
       </nav>
     </header>
   )
+}
+
+/* ────────────────────────── Demo Gateway (Lead Gate + Demo Unit) ─────────────────────── */
+function DemoGateway() {
+  const [unlocked, setUnlocked] = useState(() => {
+    try { return !!localStorage.getItem('stater_demo_lead') } catch { return false }
+  })
+  if (unlocked) return <RealAppDemoUnit />
+  return <DemoLeadGate onUnlock={() => setUnlocked(true)} />
 }
 
 /* ────────────────────────── Hero Section ───────────────────────── */
@@ -434,7 +583,7 @@ function Hero() {
 
         {/* Interactive App Visuals & Hands-On Sandbox Studio */}
         <Reveal delay={350} className="mt-12" id="workspaces">
-          <RealAppDemoUnit />
+          <DemoGateway />
         </Reveal>
       </div>
     </section>
@@ -550,6 +699,109 @@ function Features() {
     </section>
   )
 }
+
+
+/* ────────────────────────── Dedicated B2B Supply Network Showcase ───────────────────────── */
+function B2BNetworkSection() {
+  const b2bFeatures = [
+    {
+      title: 'Direct Digital Purchase Orders',
+      desc: 'Browse connected distributors’ real-time catalogues. Send POs straight from your billing till — eliminating WhatsApp screenshots and phone errors.',
+      tag: '0 Re-Typing',
+    },
+    {
+      title: 'Automated Inward Stock Reconcile',
+      desc: 'When the supplier dispatches, their invoice flows straight into your godown. Batch numbers, HSN, tax rates, and expiry dates auto-populate.',
+      tag: '10x Faster Inflow',
+    },
+    {
+      title: 'Two-Way Credit & Ledger Tally',
+      desc: 'Real-time ledger transparency between retailer and distributor. Track pending dues, credit limits, and dispatch WhatsApp payment confirmations.',
+      tag: '100% Trust',
+    },
+  ]
+
+  return (
+    <section id="b2b" className="relative py-24 border-t border-stone-200 dark:border-white/5 overflow-hidden">
+      <div className="pointer-events-none absolute top-10 right-10 h-96 w-96 rounded-full bg-gold-500/10 blur-[130px]" />
+      <div className="pointer-events-none absolute bottom-10 left-10 h-96 w-96 rounded-full bg-terracotta-500/10 blur-[130px]" />
+
+      <div className="mx-auto max-w-6xl px-4 md:px-6 relative">
+        <Reveal className="text-center">
+          <div className="inline-flex items-center gap-2 rounded-full border border-gold-500/30 bg-gold-500/10 px-4 py-1.5 text-xs font-bold text-gold-600 dark:text-gold-400 mb-4 shadow-sm">
+            <Icons.handshake className="w-3.5 h-3.5 text-gold-500 shrink-0" />
+            <span>ENTERPRISE B2B NETWORK · BUILT FOR INDIAN SUPPLY CHAINS</span>
+          </div>
+          <h2 className="text-3xl md:text-5xl font-black text-slate-900 dark:text-white tracking-tight">
+            Connect Retail Counters Directly to <br />
+            <span className="text-gradient">Verified Distributors &amp; Brands</span>
+          </h2>
+          <p className="mx-auto mt-4 max-w-2xl text-slate-600 dark:text-slate-400 text-sm md:text-base leading-relaxed">
+            Paper supplier invoices and frantic phone orders are a thing of the past. STATER Bill bridges retail counters and wholesale distributors into a seamless, automated digital network.
+          </p>
+        </Reveal>
+
+        {/* Visual Workflow Cards */}
+        <div className="mt-14 grid gap-6 md:grid-cols-3">
+          {b2bFeatures.map((f, i) => (
+            <Reveal key={f.title} delay={i * 100}>
+              <div className="glass-card h-full rounded-2xl p-7 border border-stone-200 dark:border-white/10 hover:border-gold-500/40 relative flex flex-col justify-between group transition duration-300">
+                <div>
+                  <div className="flex items-center justify-between mb-4">
+                    <span className="text-xs font-mono font-bold text-gold-600 dark:text-gold-400 bg-gold-500/10 px-2.5 py-1 rounded-full border border-gold-500/20">
+                      STEP 0{i + 1}
+                    </span>
+                    <span className="text-[11px] font-mono text-terracotta-600 dark:text-terracotta-400 font-bold">
+                      {f.tag}
+                    </span>
+                  </div>
+                  <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2 group-hover:text-gold-600 dark:group-hover:text-gold-400 transition">
+                    {f.title}
+                  </h3>
+                  <p className="text-xs md:text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
+                    {f.desc}
+                  </p>
+                </div>
+
+                <div className="mt-6 pt-4 border-t border-stone-100 dark:border-white/5 flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-300">
+                  <Icons.check className="w-4 h-4 text-emerald-500" />
+                  <span>Integrated with 14-Day Free Trial</span>
+                </div>
+              </div>
+            </Reveal>
+          ))}
+        </div>
+
+        {/* B2B Live Simulation Strip */}
+        <Reveal delay={300} className="mt-10">
+          <div className="glass-strong rounded-2xl p-6 md:p-8 border border-stone-200 dark:border-white/10 flex flex-col md:flex-row items-center justify-between gap-6">
+            <div className="flex items-center gap-4">
+              <div className="p-3.5 rounded-2xl bg-terracotta-500/10 border border-terracotta-500/20 text-terracotta-500 shrink-0">
+                <Icons.handshake className="w-8 h-8" />
+              </div>
+              <div>
+                <h4 className="text-base font-bold text-slate-900 dark:text-white">
+                  Are you a Distributor, Super-Stockist, or FMCG Brand?
+                </h4>
+                <p className="text-xs text-slate-600 dark:text-slate-400 mt-1 max-w-xl">
+                  Connect your entire retail distribution network onto STATER Bill B2B. Broadcast digital price lists, receive real-time purchase orders, and track counter-level sell-through.
+                </p>
+              </div>
+            </div>
+            <a
+              href="https://app.staterbill.com/register"
+              className="btn-sheen shrink-0 px-6 py-3 rounded-xl bg-gradient-to-r from-gold-600 to-terracotta-500 text-white font-bold text-xs md:text-sm shadow-lg shadow-gold-500/20 hover:brightness-110 transition flex items-center gap-2"
+            >
+              <span>Onboard Your Distribution Network</span>
+              <span>→</span>
+            </a>
+          </div>
+        </Reveal>
+      </div>
+    </section>
+  )
+}
+
 
 /* ────────────────────────── Comparison: Traditional POS vs STATER Bill ───────────────────────── */
 function ComparisonSection() {
@@ -840,6 +1092,7 @@ export default function App() {
       <Navbar theme={theme} onToggleTheme={toggleTheme} />
       <Hero />
       <Features />
+      <B2BNetworkSection />
       <ComparisonSection />
       <CategoriesSection />
       <DownloadsSection />

@@ -19,6 +19,8 @@
 // ============================================================================
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
+import { isDemoMode } from '../demo/demoEngine'
+import DemoGate from '../components/demo/DemoGate'
 import AppLayout from '../layouts/AppLayout'
 import { useAuth } from '../contexts/AuthContext'
 import { useConfirm } from '../contexts/ConfirmContext'
@@ -50,6 +52,16 @@ const TABS = [
 ]
 
 export default function B2B() {
+  if (isDemoMode()) {
+    return (
+      <AppLayout title="B2B Network">
+        <DemoGate
+          label="B2B Digital Supply Network"
+          description="Directly connect your store with verified distributors and FMCG suppliers. Transmit digital POs and auto-reconcile inward inventory without manual data entry. Start your 14-day trial to connect."
+        />
+      </AppLayout>
+    )
+  }
   const { authFetch, token, user, settings } = useAuth()
   const confirm = useConfirm()
 

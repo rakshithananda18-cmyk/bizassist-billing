@@ -406,3 +406,7 @@ export function handleDemoRequest(path, opts = {}) {
   // Fallback benign mock response for any unhandled internal endpoint
   return makeMockResponse({ ok: true, message: 'Demo response', items: [] })
 }
+
+export function isDemoMode() {
+  return isDemoRequested()
+}
