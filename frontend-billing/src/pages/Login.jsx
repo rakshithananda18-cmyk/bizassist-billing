@@ -86,6 +86,13 @@ export default function Login() {
     if (!IS_LOCAL_APP) void fetch(`${API_BASE}/health`, { mode: 'no-cors' }).catch(() => {})
   }, [])
 
+  // Ensure Login page is always rendered in crisp Light mode
+  useEffect(() => {
+    document.documentElement.classList.remove('dark-mode')
+    document.documentElement.dataset.appearance = 'light'
+    document.documentElement.style.colorScheme = 'light'
+  }, [])
+
   // Reset root document zoom to prevent browser positioning alignment bugs on logout
   useEffect(() => {
     const originalZoom = document.documentElement.style.zoom

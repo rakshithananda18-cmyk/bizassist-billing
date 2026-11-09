@@ -4,19 +4,40 @@ export default {
   theme: {
     extend: {
       colors: {
-        ink: {
-          950: '#060913',
-          900: '#0b1020',
-          800: '#111831',
+        terracotta: {
+          300: '#e08660',
+          400: '#d4714a',
+          500: '#c15f3c',
+          600: '#a84e2e',
+          700: '#8f3d22',
         },
-        electric: {
-          400: '#60a5fa',
-          500: '#3b82f6',
-          600: '#2563eb',
+        gold: {
+          300: '#fcd34d',
+          400: '#fbbf24',
+          500: '#f59e0b',
+          600: '#d97706',
+          700: '#b45309',
+        },
+        obsidian: {
+          950: '#090a0d',
+          900: '#0f1116',
+          850: '#14171f',
+          800: '#1b1f2b',
+          700: '#252a3a',
+          600: '#32394c',
+        },
+        pampas: {
+          50: '#fdfdfc',
+          100: '#f4f4f1',
+          200: '#eceae4',
+          300: '#e5e3dd',
+          400: '#c8c5be',
         },
       },
       fontFamily: {
-        sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        sans: ['DM Sans', 'Inter', 'system-ui', 'sans-serif'],
+        mono: ['JetBrains Mono', 'monospace'],
+        serif: ['Crimson Pro', 'serif'],
       },
       animation: {
         'float-slow': 'float 9s ease-in-out infinite',
@@ -27,14 +48,14 @@ export default {
       keyframes: {
         float: {
           '0%, 100%': { transform: 'translateY(0) translateX(0)' },
-          '50%': { transform: 'translateY(-24px) translateX(14px)' },
+          '50%': { transform: 'translateY(-20px) translateX(10px)' },
         },
         shimmer: {
           '0%': { backgroundPosition: '-200% 0' },
           '100%': { backgroundPosition: '200% 0' },
         },
         pulseSoft: {
-          '0%, 100%': { opacity: '0.55' },
+          '0%, 100%': { opacity: '0.5' },
           '50%': { opacity: '1' },
         },
       },

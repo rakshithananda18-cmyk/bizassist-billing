@@ -97,6 +97,13 @@ export default function Register() {
     }
   }, [])
 
+  // Ensure Register page is always rendered in crisp Light mode
+  useEffect(() => {
+    document.documentElement.classList.remove('dark-mode')
+    document.documentElement.dataset.appearance = 'light'
+    document.documentElement.style.colorScheme = 'light'
+  }, [])
+
   // Live username availability check
   useEffect(() => {
     if (!form.username || form.username.trim().length < 3) {
