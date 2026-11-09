@@ -73,7 +73,7 @@ export function getAlternateCloudUrl(current = activeCloudUrl) {
 // must ALWAYS use this: on the desktop app `window.location.origin` is
 // localhost/LAN, which is unreachable for the customer receiving the link.
 export const PUBLIC_WEB_URL = (import.meta.env.VITE_PUBLIC_WEB_URL || 'https://staterbill.com').replace(/\/$/, '');
-export const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '1076771386585-placeholder.apps.googleusercontent.com';
+export const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '1076771386585-lt9gotlje2s5nrq509rokjngpufukuf0.apps.googleusercontent.com';
 export const LOCAL_URL =
   typeof window !== 'undefined' && isLocalHost(window.location.hostname)
     ? `http://${window.location.hostname}:8001`
