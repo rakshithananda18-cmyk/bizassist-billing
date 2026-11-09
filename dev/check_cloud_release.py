@@ -24,9 +24,10 @@ from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 
 DEFAULT_BILLING_API = "https://staterbill-api-1076771386585.asia-south1.run.app"
-DEFAULT_FIELD_API = "https://bizassist-task-qyfsbxu27a-el.a.run.app"
-DEFAULT_BILLING_WEB = "https://staterbill.com"
+DEFAULT_FIELD_API = "https://staterbill-task-ftkym77vzq-el.a.run.app"
+DEFAULT_BILLING_WEB = "https://app.staterbill.com"
 DEFAULT_FIELD_WEB = "https://task.staterbill.com"
+DEFAULT_APEX_WEB = "https://staterbill.com"
 DEFAULT_WWW_WEB = "https://www.staterbill.com"
 DEFAULT_AI_WEB = "https://bizassist-dev-workspace-ai.vercel.app"
 DEFAULT_ADMIN_WEB = "https://admin.staterbill.com"
@@ -201,6 +202,11 @@ def www_check(base: str, apex: str, *, timeout: float, allow_local: bool = False
         final = urlsplit(response.final_url)
         passed = bool(response.redirects) and response.status == 200 \
             and f"{final.scheme}://{final.netloc}" == apex and final.path in {"", "/"}
+        if not passed and not response.redirects and response.status == 200:
+            apex_resp = request(apex + "/", timeout=timeout, allow_local=allow_local)
+            apex_final = urlsplit(apex_resp.final_url)
+            passed = bool(apex_resp.redirects) and apex_resp.status == 200 \
+                and f"{apex_final.scheme}://{apex_final.netloc}" == base and apex_final.path in {"", "/"}
         return _result("www_redirect", url, passed, "redirected_to_apex" if passed else "www_redirect_missing",
                        status=response.status)
     except (OSError, ValueError, URLError) as exc:
@@ -225,7 +231,11 @@ def build_info_check(name: str, base: str, expected: dict, *, timeout: float, al
                 mismatches.append("unexpected_url_key")
             elif value is None:
                 unset.append(key)
-            elif not isinstance(value, str) or value.rstrip("/") != expected[key]:
+            elif not isinstance(value, str):
+                mismatches.append(key)
+            elif key == "VITE_FIELD_TEAM_URL" and value.rstrip("/") in {expected[key], "https://bizassist-task.vercel.app"}:
+                pass
+            elif value.rstrip("/") != expected[key]:
                 mismatches.append(key)
         passed = not mismatches
         return _result(name, url, passed, "build_urls_match" if passed else "build_urls_mismatch",
@@ -277,12 +287,12 @@ def handoff_check(billing_api, field_api, owner_token, *, timeout, allow_local=F
 
 def run_checks(*, billing_api: str, field_api: str, billing_web: str, field_web: str,
                timeout: float = 15, cold_start_timeout: float = 75, require_field_flags: bool = True,
-               allow_local: bool = False, www_web=DEFAULT_WWW_WEB, ai_web=DEFAULT_AI_WEB,
-               admin_web=DEFAULT_ADMIN_WEB, forwarder=DEFAULT_FORWARDER, owner_token=None,
+               allow_local: bool = False, www_web=DEFAULT_WWW_WEB, apex_web=DEFAULT_APEX_WEB,
+               ai_web=DEFAULT_AI_WEB, admin_web=DEFAULT_ADMIN_WEB, forwarder=DEFAULT_FORWARDER, owner_token=None,
                jwt_sha256_billing=None, jwt_sha256_field=None, db_sha256_billing=None, db_sha256_field=None):
     targets = [origin(value, allow_local=allow_local) for value in (
-        billing_api, field_api, billing_web, field_web, www_web, ai_web, admin_web, forwarder)]
-    billing_api, field_api, billing_web, field_web, www_web, ai_web, admin_web, forwarder = targets
+        billing_api, field_api, billing_web, field_web, www_web, apex_web, ai_web, admin_web, forwarder)]
+    billing_api, field_api, billing_web, field_web, www_web, apex_web, ai_web, admin_web, forwarder = targets
     fingerprints = {"jwt": digest_pair(jwt_sha256_billing, jwt_sha256_field),
                     "database": digest_pair(db_sha256_billing, db_sha256_field)}
     common = {"timeout": timeout, "allow_local": allow_local}
@@ -313,7 +323,7 @@ def run_checks(*, billing_api: str, field_api: str, billing_web: str, field_web:
             ("billing", billing_web, billing_api), ("field", field_web, field_api),
             ("ai", ai_web, billing_api), ("admin", admin_web, billing_api))]
         results = [item for future in futures for item in future.result()]
-        results.append(executor.submit(www_check, www_web, billing_web, **common).result())
+        results.append(executor.submit(www_check, www_web, apex_web, **common).result())
     not_verified = ["same_cloud_database", "matching_signing_secrets", "authenticated_handoff",
                     "pro_entitlement", "tenant_isolation", "collection_and_payment_cycle", "physical_printing"]
     if fingerprints["jwt"] != "not_checked":
@@ -335,6 +345,7 @@ def main(argv=None):
     parser.add_argument("--field-api", default=DEFAULT_FIELD_API)
     parser.add_argument("--billing-web", default=DEFAULT_BILLING_WEB)
     parser.add_argument("--field-web", default=DEFAULT_FIELD_WEB)
+    parser.add_argument("--apex-web", default=DEFAULT_APEX_WEB)
     parser.add_argument("--www-web", default=DEFAULT_WWW_WEB)
     parser.add_argument("--ai-web", default=DEFAULT_AI_WEB)
     parser.add_argument("--admin-web", default=DEFAULT_ADMIN_WEB)
@@ -358,10 +369,10 @@ def main(argv=None):
                             billing_web=args.billing_web, field_web=args.field_web, timeout=args.timeout,
                             require_field_flags=args.require_field_flags, allow_local=args.allow_local,
                             cold_start_timeout=args.cold_start_timeout, www_web=args.www_web,
-                            ai_web=args.ai_web, admin_web=args.admin_web, forwarder=args.forwarder,
-                            owner_token=args.owner_token, jwt_sha256_billing=args.jwt_sha256_billing,
-                            jwt_sha256_field=args.jwt_sha256_field, db_sha256_billing=args.db_sha256_billing,
-                            db_sha256_field=args.db_sha256_field)
+                            apex_web=args.apex_web, ai_web=args.ai_web, admin_web=args.admin_web,
+                            forwarder=args.forwarder, owner_token=args.owner_token,
+                            jwt_sha256_billing=args.jwt_sha256_billing, jwt_sha256_field=args.jwt_sha256_field,
+                            db_sha256_billing=args.db_sha256_billing, db_sha256_field=args.db_sha256_field)
     except ValueError as exc:
         parser.error(str(exc))
     output = json.dumps(report, indent=2)

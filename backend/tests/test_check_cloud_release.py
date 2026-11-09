@@ -101,7 +101,7 @@ class CloudReleaseCheckTests(unittest.TestCase):
                 return response({"forwarder": True})
             if url.startswith(check.DEFAULT_WWW_WEB):
                 return check.Response(200, {"content-type": "text/html"}, b"<!DOCTYPE html><html></html>",
-                                      "https://billing.example.com/", ("https://billing.example.com/",))
+                                      check.DEFAULT_APEX_WEB + "/", (check.DEFAULT_APEX_WEB + "/",))
             return check.Response(200, {"content-type": "text/html"}, b"<!DOCTYPE html><html></html>")
 
         with patch.object(check, "request", side_effect=fake_request):
@@ -141,7 +141,7 @@ def healthy_request(url, **kwargs):
         return response({'forwarder': True})
     if url.startswith(check.DEFAULT_WWW_WEB):
         return check.Response(200, {'content-type': 'text/html'}, b'<!doctype html>',
-                              check.DEFAULT_BILLING_WEB + '/', (check.DEFAULT_BILLING_WEB + '/',))
+                              check.DEFAULT_APEX_WEB + '/', (check.DEFAULT_APEX_WEB + '/',))
     return check.Response(200, {'content-type': 'text/html'}, b'<!doctype html>')
 
 
@@ -152,10 +152,11 @@ def run_default(**kwargs):
 
 def test_production_defaults_keep_only_the_forwarder_on_hugging_face():
     assert check.DEFAULT_BILLING_API == 'https://staterbill-api-1076771386585.asia-south1.run.app'
-    assert check.DEFAULT_BILLING_WEB == 'https://staterbill.com'
+    assert check.DEFAULT_BILLING_WEB == 'https://app.staterbill.com'
     assert check.DEFAULT_FIELD_WEB == 'https://task.staterbill.com'
+    assert check.DEFAULT_APEX_WEB == 'https://staterbill.com'
     for name in ('DEFAULT_BILLING_API', 'DEFAULT_FIELD_API', 'DEFAULT_BILLING_WEB',
-                 'DEFAULT_FIELD_WEB', 'DEFAULT_WWW_WEB', 'DEFAULT_AI_WEB', 'DEFAULT_ADMIN_WEB'):
+                 'DEFAULT_FIELD_WEB', 'DEFAULT_APEX_WEB', 'DEFAULT_WWW_WEB', 'DEFAULT_AI_WEB', 'DEFAULT_ADMIN_WEB'):
         assert 'hf.space' not in getattr(check, name)
         assert 'bizassist-billing.vercel.app' not in getattr(check, name)
 
@@ -201,7 +202,7 @@ def test_tls_failures_have_a_safe_specific_reason(exc, monkeypatch):
 ])
 def test_www_requires_a_redirect_to_the_apex(redirects, final, passed, monkeypatch):
     monkeypatch.setattr(check, 'request', lambda *args, **kwargs: check.Response(200, {}, b'', final, redirects))
-    assert check.www_check(check.DEFAULT_WWW_WEB, check.DEFAULT_BILLING_WEB, timeout=1)['passed'] is passed
+    assert check.www_check(check.DEFAULT_WWW_WEB, check.DEFAULT_APEX_WEB, timeout=1)['passed'] is passed
 
 
 @pytest.mark.parametrize('status,body,passed', [
