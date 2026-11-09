@@ -158,11 +158,12 @@ export function AuthProvider({ children }) {
     const message = readableError(response.status, response.headers?.get?.('content-type'), await response.clone().text())
     window.dispatchEvent(new CustomEvent('show_toast', { detail: { type: 'warning', msg: message } }))
   }
-  const [user, setUser]   = useState(null)
-  const [token, setToken] = useState(() => tokenStorage.getItem('billing_token') || null)
-  const [loading, setLoading] = useState(true)
-  const [isDemoMode, setIsDemoMode] = useState(() => isDemoRequested())
-  const [businessConfig, setBusinessConfig] = useState(null)
+  const demoReq = isDemoRequested()
+  const [user, setUser]   = useState(() => demoReq ? DEMO_USER : null)
+  const [token, setToken] = useState(() => demoReq ? DEMO_TOKEN : (tokenStorage.getItem('billing_token') || null))
+  const [loading, setLoading] = useState(() => !demoReq)
+  const [isDemoMode, setIsDemoMode] = useState(() => demoReq)
+  const [businessConfig, setBusinessConfig] = useState(() => demoReq ? { demo: true } : null)
   const [attributesSchema, setAttributesSchema] = useState([])
   const [appReady, setAppReady] = useState(false)
   // 'local' — connected to owner's backend on same LAN (fast, offline capable)
@@ -925,7 +926,7 @@ export function AuthProvider({ children }) {
   const [profile, setProfile] = useState(null)
 
   const fetchProfile = useCallback(async () => {
-    if (!token) return
+    if (!token || isDemoMode || isDemoRequested() || token === DEMO_TOKEN || user?.is_demo) return
     const backend = API_BASE, generation = authGeneration.current
     const current = () => generation === authGeneration.current && tokenStorage.getItem('billing_token') === token && isSameBackendOrCloudFailover(API_BASE, backend)
     try {
@@ -947,10 +948,10 @@ export function AuthProvider({ children }) {
     }
   }, [token, logout])
 
-  const [settings, setSettings] = useState(null)
+  const [settings, setSettings] = useState(() => isDemoRequested() ? DEMO_SETTINGS : null)
 
   const fetchSettings = useCallback(async (force = false) => {
-    if (!token) return
+    if (!token || isDemoMode || isDemoRequested() || token === DEMO_TOKEN || user?.is_demo) return
     const backend = API_BASE, generation = authGeneration.current
     const current = () => generation === authGeneration.current && tokenStorage.getItem('billing_token') === token && isSameBackendOrCloudFailover(API_BASE, backend)
     try {
@@ -1079,7 +1080,7 @@ export function AuthProvider({ children }) {
   }, [token, settings, fetchSettings])
 
   const fetchBusinessConfig = useCallback(async () => {
-    if (!token) return
+    if (!token || isDemoMode || isDemoRequested() || token === DEMO_TOKEN || user?.is_demo) return
     const backend = API_BASE, generation = authGeneration.current
     const current = () => generation === authGeneration.current && tokenStorage.getItem('billing_token') === token && isSameBackendOrCloudFailover(API_BASE, backend)
     try {
@@ -1105,6 +1106,9 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     if (token) {
+      if (isDemoMode || isDemoRequested() || token === DEMO_TOKEN || user?.is_demo) {
+        return
+      }
       fetchProfile()
       fetchBusinessConfig()
       fetchSettings()
@@ -1176,6 +1180,10 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     const handleUnauthorized = () => {
+      if (isDemoMode || isDemoRequested() || token === DEMO_TOKEN || user?.is_demo) {
+        logger.info('[DEMO] Suppressed unauthorized signal in demo sandbox.')
+        return
+      }
       logger.warn('[AuthContext] auth_unauthorized event triggered. Auto-logging out.')
       logout(false)
       window.dispatchEvent(new CustomEvent('show_toast', {

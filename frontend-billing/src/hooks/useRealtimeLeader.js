@@ -33,8 +33,8 @@ export function useRealtimeLeader(token, settings, user) {
     : settings?.general?.realtime_sync_global !== false
 
   useEffect(() => {
-    if (!token || !user) {
-      const detail = { status: 'disconnected', error: null, lastSyncTime: null, lastEntity: null, isOnline: navigator.onLine }
+    if (!token || !user || user?.is_demo || token === 'demo-guest-jwt-token-staterbill') {
+      const detail = { status: 'connected', error: null, lastSyncTime: Date.now(), lastEntity: null, isOnline: true }
       window.__syncStatus = detail
       window.dispatchEvent(new CustomEvent('sync-status-change', { detail }))
       return

@@ -244,13 +244,15 @@ export const DEMO_SUMMARY = {
 export function isDemoRequested() {
   try {
     if (typeof window === 'undefined') return false
-    const search = new URLSearchParams(window.location.search)
-    return (
-      window.location.pathname.startsWith('/demo') ||
-      search.get('demo') === '1' ||
-      search.get('demo') === 'true' ||
-      sessionStorage.getItem('stater_demo_active') === '1'
-    )
+    const path = (window.location.pathname || '').toLowerCase()
+    const search = (window.location.search || '').toLowerCase()
+    if (path.startsWith('/demo') || search.includes('demo=1') || search.includes('demo=true')) {
+      return true
+    }
+    try {
+      if (sessionStorage.getItem('stater_demo_active') === '1') return true
+    } catch {}
+    return false
   } catch {
     return false
   }
@@ -343,6 +345,38 @@ export function handleDemoRequest(path, opts = {}) {
 
   if (cleanPath === 'dashboard-summary') {
     return makeMockResponse(DEMO_SUMMARY)
+  }
+
+  if (cleanPath === 'profile') {
+    return makeMockResponse({
+      id: DEMO_USER.id,
+      user_id: DEMO_USER.user_id,
+      username: DEMO_USER.username,
+      business_name: DEMO_USER.business_name,
+      role: DEMO_USER.role,
+      plan: 'pro',
+      is_premium: true,
+      is_demo: true,
+    })
+  }
+
+  if (cleanPath === 'business/config') {
+    return makeMockResponse({
+      config: {
+        business_name: DEMO_USER.business_name,
+        currency: 'INR',
+        demo: true,
+      },
+      attributes_schema: [],
+    })
+  }
+
+  if (cleanPath === 'auth/refresh') {
+    return makeMockResponse({ token: DEMO_TOKEN })
+  }
+
+  if (cleanPath === 'health') {
+    return makeMockResponse({ status: 'healthy', demo: true })
   }
 
   if (cleanPath === 'staff') {
