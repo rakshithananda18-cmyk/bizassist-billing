@@ -2,6 +2,150 @@ import React, { useState } from 'react'
 import Reveal from './Reveal'
 import { useLatestRelease, detectOS, RELEASES_PAGE } from './useLatestRelease'
 
+/* ────────────────────────── Crisp Outlined Vector Icons ───────────────────────── */
+const Icons = {
+  bolt: ({ className = 'w-6 h-6', ...props }) => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}>
+      <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+    </svg>
+  ),
+  offline: ({ className = 'w-6 h-6', ...props }) => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}>
+      <path d="M1 1l22 22" />
+      <path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55" />
+      <path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39" />
+      <path d="M10.71 5.05A16 16 0 0 1 22.58 9" />
+      <path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88" />
+      <path d="M8.53 16.11a6 6 0 0 1 6.95 0" />
+      <line x1="12" y1="20" x2="12.01" y2="20" strokeWidth="2.5" />
+    </svg>
+  ),
+  qrScan: ({ className = 'w-6 h-6', ...props }) => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}>
+      <path d="M3 7V5a2 2 0 0 1 2-2h2" />
+      <path d="M17 3h2a2 2 0 0 1 2 2v2" />
+      <path d="M21 17v2a2 2 0 0 1-2 2h-2" />
+      <path d="M7 21H5a2 2 0 0 1-2-2v-2" />
+      <rect x="7" y="7" width="3" height="3" />
+      <rect x="14" y="7" width="3" height="3" />
+      <rect x="7" y="14" width="3" height="3" />
+      <line x1="14" y1="14" x2="17" y2="14" />
+      <line x1="14" y1="17" x2="17" y2="17" />
+    </svg>
+  ),
+  pillars: ({ className = 'w-6 h-6', ...props }) => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}>
+      <path d="M3 21h18" />
+      <path d="M3 7h18" />
+      <path d="M12 2L3 7h18L12 2z" />
+      <line x1="6" y1="7" x2="6" y2="21" />
+      <line x1="10" y1="7" x2="10" y2="21" />
+      <line x1="14" y1="7" x2="14" y2="21" />
+      <line x1="18" y1="7" x2="18" y2="21" />
+    </svg>
+  ),
+  chart: ({ className = 'w-6 h-6', ...props }) => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}>
+      <line x1="18" y1="20" x2="18" y2="10" />
+      <line x1="12" y1="20" x2="12" y2="4" />
+      <line x1="6" y1="20" x2="6" y2="14" />
+      <path d="M3 20h18" />
+    </svg>
+  ),
+  chat: ({ className = 'w-6 h-6', ...props }) => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}>
+      <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+    </svg>
+  ),
+  box: ({ className = 'w-6 h-6', ...props }) => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}>
+      <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+      <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
+      <line x1="12" y1="22.08" x2="12" y2="12" />
+    </svg>
+  ),
+  handshake: ({ className = 'w-6 h-6', ...props }) => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}>
+      <path d="M19 14l2-2a2.83 2.83 0 0 0 0-4l-1-1a2.83 2.83 0 0 0-4 0l-2 2" />
+      <path d="M14 9l-2-2a2.83 2.83 0 0 0-4 0l-1 1a2.83 2.83 0 0 0 0 4l2 2" />
+      <path d="M8 15l-3 3a2 2 0 0 0 0 2.83l.17.17a2 2 0 0 0 2.83 0l3-3" />
+      <path d="M16 11l3 3a2 2 0 0 1 0 2.83l-.17.17a2 2 0 0 1-2.83 0l-3-3" />
+      <line x1="11" y1="12" x2="13" y2="14" />
+    </svg>
+  ),
+  cloudSync: ({ className = 'w-6 h-6', ...props }) => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}>
+      <path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242" />
+      <path d="M12 12v9" />
+      <path d="m8 17 4 4 4-4" />
+    </svg>
+  ),
+  search: ({ className = 'w-4 h-4', ...props }) => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}>
+      <circle cx="11" cy="11" r="8" />
+      <line x1="21" y1="21" x2="16.65" y2="16.65" />
+    </svg>
+  ),
+  printer: ({ className = 'w-4 h-4', ...props }) => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}>
+      <polyline points="6 9 6 2 18 2 18 9" />
+      <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+      <rect x="6" y="14" width="12" height="8" />
+    </svg>
+  ),
+  sun: ({ className = 'w-3.5 h-3.5', ...props }) => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}>
+      <circle cx="12" cy="12" r="5" />
+      <line x1="12" y1="1" x2="12" y2="3" />
+      <line x1="12" y1="21" x2="12" y2="23" />
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
+      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+      <line x1="1" y1="12" x2="3" y2="12" />
+      <line x1="21" y1="12" x2="23" y2="12" />
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
+      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+    </svg>
+  ),
+  moon: ({ className = 'w-3.5 h-3.5', ...props }) => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}>
+      <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+    </svg>
+  ),
+  sparkle: ({ className = 'w-4 h-4', ...props }) => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}>
+      <path d="M12 2l2.4 6.6L21 11l-6.6 2.4L12 20l-2.4-6.6L3 11l6.6-2.4L12 2z" />
+    </svg>
+  ),
+  check: ({ className = 'w-4 h-4', ...props }) => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}>
+      <polyline points="20 6 9 17 4 12" />
+    </svg>
+  ),
+  cross: ({ className = 'w-4 h-4', ...props }) => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}>
+      <line x1="18" y1="6" x2="6" y2="18" />
+      <line x1="6" y1="6" x2="18" y2="18" />
+    </svg>
+  ),
+  alert: ({ className = 'w-4 h-4', ...props }) => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}>
+      <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+      <line x1="12" y1="9" x2="12" y2="13" />
+      <line x1="12" y1="17" x2="12.01" y2="17" />
+    </svg>
+  ),
+  windows: ({ className = 'w-4 h-4', ...props }) => (
+    <svg viewBox="0 0 24 24" fill="currentColor" className={className} {...props}>
+      <path d="M3 5.5 10.5 4.4v7.1H3V5.5zm0 13 7.5 1.1v-7H3v5.9zM11.5 4.2 21 3v8.5h-9.5V4.2zm0 15.6L21 21v-8.5h-9.5v7.3z" />
+    </svg>
+  ),
+  apple: ({ className = 'w-4 h-4', ...props }) => (
+    <svg viewBox="0 0 24 24" fill="currentColor" className={className} {...props}>
+      <path d="M16.7 12.9c0-2.4 2-3.6 2-3.6-1.1-1.6-2.9-1.8-3.5-1.9-1.5-.1-2.9.9-3.6.9-.8 0-1.9-.9-3.2-.8-1.6 0-3.1 1-4 2.4-1.7 2.9-.4 7.3 1.2 9.7.8 1.2 1.8 2.5 3 2.4 1.2 0 1.7-.8 3.2-.8s1.9.8 3.2.8 2.2-1.2 3-2.3c.9-1.4 1.3-2.7 1.3-2.8-.1 0-2.6-1-2.6-4zM14.4 5.6c.7-.8 1.1-2 1-3.1-1 0-2.2.7-2.9 1.5-.6.7-1.2 1.9-1 3 1.1.1 2.2-.6 2.9-1.4z" />
+    </svg>
+  ),
+}
+
 /* ────────────────────────── Classical Building Brand Mark ───────────────────────── */
 function BuildingMark({ size = 26, accent = '#c15f3c', strokeWidth = 1.8 }) {
   const WINDOWS = [
@@ -67,8 +211,8 @@ function DownloadButtons({ large = false }) {
 
   const primary =
     os === 'mac'
-      ? { label: rel.macRequiresChoice ? 'Download for macOS' : 'Download for macOS', href: rel.mac || '#downloads', icon: '' }
-      : { label: 'Download for Windows', href: rel.windows || '#downloads', icon: '⊞' }
+      ? { label: 'Download for macOS', href: rel.mac || '#downloads', icon: <Icons.apple className="w-5 h-5" /> }
+      : { label: 'Download for Windows', href: rel.windows || '#downloads', icon: <Icons.windows className="w-5 h-5" /> }
 
   return (
     <div className={`flex flex-col gap-2.5 ${large ? 'items-center' : 'items-start'}`}>
@@ -89,7 +233,7 @@ function DownloadButtons({ large = false }) {
             large ? 'text-base' : 'text-sm py-3'
           }`}
         >
-          <span className="text-base text-terracotta-400 font-bold">{primary.icon}</span>
+          <span className="text-terracotta-400 shrink-0">{primary.icon}</span>
           <span>{primary.label}</span>
           {rel.version && (
             <span className="rounded-full bg-white/10 px-2 py-0.5 text-xs text-slate-300 font-mono">
@@ -99,7 +243,9 @@ function DownloadButtons({ large = false }) {
         </a>
       </div>
       <div className="flex items-center gap-2 text-xs text-slate-400">
-        <span>⚡ 100% Offline Engine</span>
+        <span className="inline-flex items-center gap-1.5">
+          <Icons.check className="w-3.5 h-3.5 text-emerald-400" /> 100% Offline Engine
+        </span>
         <span>•</span>
         <span>No Credit Card Required</span>
         <span>•</span>
@@ -161,7 +307,7 @@ function InteractiveAppStudio() {
               }`}
               title="Preview light warm pampas theme"
             >
-              <span>☀️</span> Light
+              <Icons.sun className="w-3.5 h-3.5 text-amber-500" /> Light
             </button>
             <button
               onClick={() => setThemeMode('dark')}
@@ -170,7 +316,7 @@ function InteractiveAppStudio() {
               }`}
               title="Preview dark obsidian theme"
             >
-              <span>🌙</span> Dark
+              <Icons.moon className="w-3.5 h-3.5 text-gold-300" /> Dark
             </button>
           </div>
         </div>
@@ -227,7 +373,7 @@ function InteractiveAppStudio() {
               isDark ? 'bg-[#181b24] border-white/10' : 'bg-white border-[#d8d5cc]'
             }`}>
               <div className="flex items-center gap-2.5 flex-1 min-w-[240px]">
-                <span className="text-terracotta-500 text-sm font-bold">🔍</span>
+                <Icons.search className="w-4 h-4 text-terracotta-500 shrink-0" />
                 <input
                   readOnly
                   value="8901030921445 (Tata Tea Gold 500g)"
@@ -316,8 +462,8 @@ function InteractiveAppStudio() {
                   <div className="text-3xl font-black text-terracotta-400 tracking-tight">
                     ₹1,592.00
                   </div>
-                  <div className="text-[11px] text-emerald-400 font-medium mt-1">
-                    ✓ All GST & Rounding Applied
+                  <div className="text-[11px] text-emerald-400 font-medium mt-1 flex items-center gap-1.5">
+                    <Icons.check className="w-3.5 h-3.5" /> All GST & Rounding Applied
                   </div>
 
                   {/* Dynamic UPI QR Code Box */}
@@ -365,7 +511,7 @@ function InteractiveAppStudio() {
 
                   {/* Print Receipt Action */}
                   <button className="mt-2.5 w-full py-2.5 rounded-xl bg-gradient-to-r from-terracotta-600 to-gold-600 text-white font-bold text-xs shadow-lg transition hover:brightness-110 flex items-center justify-center gap-2">
-                    <span>🖨️</span>
+                    <Icons.printer className="w-4 h-4" />
                     <span>Print Thermal Receipt [Enter]</span>
                   </button>
                 </div>
@@ -383,12 +529,14 @@ function InteractiveAppStudio() {
                 { title: 'Morning Opening Cash', val: '₹5,000.00', status: 'Reconciled', color: 'text-slate-200' },
                 { title: "Today's Cash Inflow", val: '₹48,650.00', status: '34 Transactions', color: 'text-emerald-400' },
                 { title: 'Daily Expenses / Outflow', val: '₹4,200.00', status: 'Milk & Packaging', color: 'text-amber-400' },
-                { title: 'Drawer Cash Balance', val: '₹49,450.00', status: 'Tally Verified ✓', color: 'text-terracotta-400' },
+                { title: 'Drawer Cash Balance', val: '₹49,450.00', status: 'Tally Verified', color: 'text-terracotta-400' },
               ].map((k, i) => (
                 <div key={i} className={`p-3 rounded-xl border ${isDark ? 'bg-[#181b24] border-white/10' : 'bg-white border-[#d8d5cc]'}`}>
                   <div className="text-[10px] uppercase font-bold text-slate-400">{k.title}</div>
                   <div className={`text-xl font-extrabold mt-1 ${k.color}`}>{k.val}</div>
-                  <div className="text-[10px] text-slate-400 mt-1 font-mono">{k.status}</div>
+                  <div className="text-[10px] text-slate-400 mt-1 font-mono flex items-center gap-1">
+                    <Icons.check className="w-3 h-3 text-emerald-400" /> {k.status}
+                  </div>
                 </div>
               ))}
             </div>
@@ -449,7 +597,7 @@ function InteractiveAppStudio() {
                       </div>
                       <div className="text-[10px] text-amber-400 font-mono mt-0.5">{p.days}</div>
                       <button className="mt-2 w-full py-1.5 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px] flex items-center justify-center gap-1.5 transition">
-                        <span>💬</span>
+                        <Icons.chat className="w-3.5 h-3.5" />
                         <span>Send WhatsApp Reminder & UPI Link</span>
                       </button>
                     </div>
@@ -475,8 +623,9 @@ function InteractiveAppStudio() {
                   </span>
                 ))}
               </div>
-              <div className="text-xs font-mono text-amber-400">
-                ⚠️ 5 SKUs Below Reorder Level
+              <div className="text-xs font-mono text-amber-400 flex items-center gap-1.5">
+                <Icons.alert className="w-3.5 h-3.5 text-amber-400" />
+                <span>5 SKUs Below Reorder Level</span>
               </div>
             </div>
 
@@ -576,7 +725,9 @@ function InteractiveAppStudio() {
               <div className={`p-3.5 rounded-xl border ${isDark ? 'bg-[#161821] border-white/10' : 'bg-white border-[#d8d5cc]'}`}>
                 <div className="flex justify-between items-center mb-2">
                   <span className="font-bold text-slate-200">Metro Cash & Carry Wholesale</span>
-                  <span className="text-[10px] text-emerald-400 font-mono">Connected ✓</span>
+                  <span className="text-[10px] text-emerald-400 font-mono flex items-center gap-1">
+                    <Icons.check className="w-3 h-3 text-emerald-400" /> Connected
+                  </span>
                 </div>
                 <div className="text-slate-400 text-[11px]">
                   Recent PO #B2B-849: 45 FMCG SKUs dispatched. Ready for stock intake.
@@ -589,7 +740,9 @@ function InteractiveAppStudio() {
               <div className={`p-3.5 rounded-xl border ${isDark ? 'bg-[#161821] border-white/10' : 'bg-white border-[#d8d5cc]'}`}>
                 <div className="flex justify-between items-center mb-2">
                   <span className="font-bold text-slate-200">Apex Pharma Distributors</span>
-                  <span className="text-[10px] text-emerald-400 font-mono">Connected ✓</span>
+                  <span className="text-[10px] text-emerald-400 font-mono flex items-center gap-1">
+                    <Icons.check className="w-3 h-3 text-emerald-400" /> Connected
+                  </span>
                 </div>
                 <div className="text-slate-400 text-[11px]">
                   Catalog synced: 1,200 Medical SKUs with real-time wholesale pricing.
@@ -656,8 +809,8 @@ function Hero() {
       <div className="mx-auto max-w-6xl px-4 md:px-6 text-center">
         <Reveal>
           <div className="inline-flex items-center gap-2 rounded-full border border-terracotta-500/30 bg-terracotta-500/10 px-4 py-1.5 text-xs font-bold text-terracotta-300 shadow-sm">
-            <span className="h-2 w-2 rounded-full bg-terracotta-400 animate-pulse-soft" />
-            <span>🏛️ Named after the Stater (στατήρ) — The Ancient Gold Standard of Honest Trade</span>
+            <Icons.pillars className="w-3.5 h-3.5 text-terracotta-400 shrink-0" />
+            <span>Named after the Ancient Stater (στατήρ) — The Gold Standard of Honest Trade</span>
           </div>
         </Reveal>
 
@@ -691,58 +844,67 @@ function Hero() {
 /* ────────────────────────── Core Features ───────────────────────── */
 const CORE_PILLARS = [
   {
-    icon: '⚡',
+    icon: (props) => <Icons.bolt {...props} />,
     title: 'Sub-Second Native Speed',
     desc: 'Local SQLite engine means instant price lookups, zero barcode scan latency, and invoice generation in 15 milliseconds — even with 100,000+ products.',
     badge: '0ms Network Lag',
+    accentColor: 'text-terracotta-400 bg-terracotta-500/10 border-terracotta-500/20',
   },
   {
-    icon: '📶',
+    icon: (props) => <Icons.offline {...props} />,
     title: '100% Offline Resilience',
     desc: 'Power cut the internet? Your counter never misses a beat. Keep billing, scanning barcodes, adjusting stock, and issuing thermal receipts without a web connection.',
     badge: 'Zero Downtime',
+    accentColor: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20',
   },
   {
-    icon: '📲',
+    icon: (props) => <Icons.qrScan {...props} />,
     title: 'Dynamic Counter UPI QR',
     desc: 'Generates an exact bill-specific UPI QR on the counter screen. Customer scans, pays, and the invoice auto-reconciles without manual typing or EDC device rental.',
     badge: 'Instant Tally',
+    accentColor: 'text-gold-400 bg-gold-500/10 border-gold-500/20',
   },
   {
-    icon: '🏛️',
+    icon: (props) => <Icons.pillars {...props} />,
     title: 'Tamper-Evident Day Book',
     desc: 'Morning float, drawer cash count, daily payouts, and night closing tally all logged in an immutable, tamper-evident accounting journal.',
     badge: 'Cash Integrity',
+    accentColor: 'text-terracotta-400 bg-terracotta-500/10 border-terracotta-500/20',
   },
   {
-    icon: '📊',
+    icon: (props) => <Icons.chart {...props} />,
     title: '1-Click GST & Tax Filing',
     desc: 'GSTR-1 (B2B, B2C Large, B2C Small, Table 12 HSN) and GSTR-3B tax offset generated in seconds. Direct JSON export ready for the official GST Portal.',
     badge: 'Tax Compliant',
+    accentColor: 'text-gold-400 bg-gold-500/10 border-gold-500/20',
   },
   {
-    icon: '💬',
+    icon: (props) => <Icons.chat {...props} />,
     title: 'WhatsApp Dues Reminders',
     desc: 'Dispatch professional PDF invoices and automated payment reminders with live UPI pay links directly to your customer’s WhatsApp with one click.',
     badge: 'Fast Recovery',
+    accentColor: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20',
   },
   {
-    icon: '📦',
+    icon: (props) => <Icons.box {...props} />,
     title: 'Multi-Godown & Expiry Alerts',
     desc: 'Track batch numbers, manufacturing dates, and expiration alerts across multiple godowns and retail shop floors with automated reorder levels.',
     badge: 'Stock Protection',
+    accentColor: 'text-terracotta-400 bg-terracotta-500/10 border-terracotta-500/20',
   },
   {
-    icon: '🤝',
+    icon: (props) => <Icons.handshake {...props} />,
     title: 'B2B Digital Supply Network',
     desc: 'Connect your store directly with verified distributors. Supplier invoices flow into your inventory without typing items by hand.',
     badge: 'Automated Inflow',
+    accentColor: 'text-gold-400 bg-gold-500/10 border-gold-500/20',
   },
   {
-    icon: '☁️',
+    icon: (props) => <Icons.cloudSync {...props} />,
     title: 'Encrypted Hybrid Cloud Sync',
     desc: 'Silent background replication to Google Cloud Run and Cloud SQL. Switch laptops or restore your entire store in 60 seconds after a hardware crash.',
     badge: 'Disaster Recovery',
+    accentColor: 'text-terracotta-400 bg-terracotta-500/10 border-terracotta-500/20',
   },
 ]
 
@@ -767,9 +929,9 @@ function Features() {
             <Reveal key={p.title} delay={i * 60}>
               <div className="glass-card h-full rounded-2xl p-6 relative group overflow-hidden">
                 <div className="flex items-center justify-between mb-4">
-                  <span className="text-3xl p-2.5 rounded-xl bg-white/[0.04] border border-white/10 group-hover:scale-110 transition duration-300">
-                    {p.icon}
-                  </span>
+                  <div className={`p-3 rounded-xl border ${p.accentColor} group-hover:scale-110 transition duration-300 shrink-0`}>
+                    {p.icon({ className: 'w-6 h-6' })}
+                  </div>
                   <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-terracotta-500/10 text-terracotta-400 border border-terracotta-500/20 font-bold">
                     {p.badge}
                   </span>
@@ -828,10 +990,12 @@ function ComparisonSection() {
                 <div key={i} className="grid grid-cols-12 items-center p-4 hover:bg-white/[0.02] transition">
                   <div className="col-span-4 font-bold text-white">{r.feature}</div>
                   <div className="col-span-4 text-rose-300/80 pr-2 flex items-center gap-1.5 text-xs">
-                    <span>✕</span> {r.legacy}
+                    <Icons.cross className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                    <span>{r.legacy}</span>
                   </div>
                   <div className="col-span-4 text-emerald-400 font-semibold flex items-center gap-1.5 text-xs">
-                    <span>✓</span> {r.stater}
+                    <Icons.check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                    <span>{r.stater}</span>
                   </div>
                 </div>
               ))}
@@ -890,7 +1054,8 @@ function DownloadsSection() {
       <div className="mx-auto max-w-5xl px-4 md:px-6 text-center">
         <Reveal>
           <div className="inline-flex items-center gap-2 rounded-full border border-gold-500/30 bg-gold-500/10 px-4 py-1.5 text-xs font-bold text-gold-300 mb-4">
-            <span>✨ Native Desktop Apps for Windows & Mac</span>
+            <Icons.sparkle className="w-3.5 h-3.5 text-gold-400 shrink-0" />
+            <span>Native Desktop Apps for Windows & Mac</span>
           </div>
           <h2 className="text-3xl md:text-5xl font-black text-white">
             Download STATER Bill for Desktop
@@ -906,7 +1071,9 @@ function DownloadsSection() {
             <div className="glass-card rounded-2xl p-6 border border-white/10 flex flex-col justify-between h-full">
               <div>
                 <div className="flex items-center justify-between mb-4">
-                  <span className="text-3xl">⊞</span>
+                  <div className="p-3 rounded-xl bg-white/5 border border-white/10 text-terracotta-400">
+                    <Icons.windows className="w-6 h-6" />
+                  </div>
                   <span className="text-xs font-mono text-terracotta-400 font-bold">Windows 10 / 11</span>
                 </div>
                 <h3 className="text-xl font-bold text-white">Windows Installer</h3>
@@ -920,6 +1087,7 @@ function DownloadsSection() {
                   href={rel.windows || rel.fallback}
                   className="btn-sheen w-full inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-terracotta-500 to-gold-600 py-3.5 text-sm font-bold text-white shadow-lg shadow-terracotta-500/20 hover:brightness-110 transition"
                 >
+                  <Icons.windows className="w-4 h-4" />
                   <span>Download for Windows (.exe)</span>
                   {rel.version && <span className="text-xs font-mono text-gold-200">v{rel.version}</span>}
                 </a>
@@ -932,7 +1100,9 @@ function DownloadsSection() {
             <div className="glass-card rounded-2xl p-6 border border-white/10 flex flex-col justify-between h-full">
               <div>
                 <div className="flex items-center justify-between mb-4">
-                  <span className="text-3xl"></span>
+                  <div className="p-3 rounded-xl bg-white/5 border border-white/10 text-terracotta-400">
+                    <Icons.apple className="w-6 h-6" />
+                  </div>
                   <span className="text-xs font-mono text-terracotta-400 font-bold">macOS 12+</span>
                 </div>
                 <h3 className="text-xl font-bold text-white">macOS Universal</h3>
@@ -946,6 +1116,7 @@ function DownloadsSection() {
                   href={rel.mac || rel.fallback}
                   className="glass w-full inline-flex items-center justify-center gap-2 rounded-xl border-white/20 py-3.5 text-sm font-bold text-white hover:bg-white/10 transition"
                 >
+                  <Icons.apple className="w-4 h-4" />
                   <span>Download for Mac (.dmg)</span>
                   {rel.version && <span className="text-xs font-mono text-slate-300">v{rel.version}</span>}
                 </a>
