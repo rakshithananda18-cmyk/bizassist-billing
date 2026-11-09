@@ -1,0 +1,30 @@
+.guided-tour-focus {
+  position: fixed;
+  pointer-events: none;
+  z-index: 2147483000;
+  border: 1.5px solid rgba(193, 95, 60, .65);
+  border-radius: 7px;
+}
+
+.guided-tour-cursor {
+  position: fixed;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+  z-index: 2147483001;
+  will-change: transform;
+}
+
+.guided-tour-cursor svg {
+  width: 24px;
+  height: 28px;
+  display: block;
+  transform-origin: 3px 2px;
+  transition: transform 140ms ease-in-out;
+}
+
+.guided-tour-cursor.is-clicking svg { transform: scale(.9); }
+
+@media (prefers-reduced-motion: reduce) {
+  .guided-tour-cursor svg { transition: none; }
+}

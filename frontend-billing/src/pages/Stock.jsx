@@ -130,6 +130,8 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
   // StockWorkspace.jsx passes it. Remove the prop and the branches with
   // StockPurchases.jsx once the new page is signed off.
   const { authFetch, settings, user } = useAuth()
+  // Sample intake stays separate from the owner's saved working draft.
+  const intakeDraftPrefix = user?.is_demo ? 'stater_demo_' : ''
   const confirm = useConfirm()
   const { attributesSchema } = useBusinessConfig()
   const settingsRef = useRef(settings)
@@ -529,7 +531,7 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
   const [ctxMenu, setCtxMenu] = useState(null)  // { x, y, items } for right-click context menu
   const [intakeRows, setIntakeRows] = useState(() => {
     try {
-      const saved = localStorage.getItem('bizassist_intake_rows')
+      const saved = localStorage.getItem(`${intakeDraftPrefix}bizassist_intake_rows`)
       return saved ? JSON.parse(saved) : []
     } catch (e) {
       return []
@@ -539,7 +541,7 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
 
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
     try {
-      const saved = localStorage.getItem('bizassist_intake_sidebar_collapsed')
+      const saved = localStorage.getItem(`${intakeDraftPrefix}bizassist_intake_sidebar_collapsed`)
       return saved ? JSON.parse(saved) : false
     } catch (e) {
       return false
@@ -547,13 +549,13 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
   })
 
   useEffect(() => {
-    localStorage.setItem('bizassist_intake_sidebar_collapsed', JSON.stringify(isSidebarCollapsed))
-  }, [isSidebarCollapsed])
+    localStorage.setItem(`${intakeDraftPrefix}bizassist_intake_sidebar_collapsed`, JSON.stringify(isSidebarCollapsed))
+  }, [intakeDraftPrefix, isSidebarCollapsed])
 
   const [intakeDistributor, setIntakeDistributor] = useState(() => {
     const todayISO = new Date().toISOString().slice(0, 10)
     try {
-      const saved = localStorage.getItem('bizassist_intake_distributor')
+      const saved = localStorage.getItem(`${intakeDraftPrefix}bizassist_intake_distributor`)
       return saved ? JSON.parse(saved) : { vendor_id: null, name: '', gstin: '', pan: '', fssai: '', phone: '', address: '', invoice_no: '', invoice_date: todayISO }
     } catch (e) {
       return { vendor_id: null, name: '', gstin: '', pan: '', fssai: '', phone: '', address: '', invoice_no: '', invoice_date: todayISO }
@@ -562,7 +564,7 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
 
   const [intakeAdjustments, setIntakeAdjustments] = useState(() => {
     try {
-      const saved = localStorage.getItem('bizassist_intake_adjustments')
+      const saved = localStorage.getItem(`${intakeDraftPrefix}bizassist_intake_adjustments`)
       return saved ? JSON.parse(saved) : { item_disc: '', cess: '', cash_disc: '' }
     } catch (e) {
       return { item_disc: '', cess: '', cash_disc: '' }
@@ -571,7 +573,7 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
 
   const [intakePayment, setIntakePayment] = useState(() => {
     try {
-      const saved = localStorage.getItem('bizassist_intake_payment')
+      const saved = localStorage.getItem(`${intakeDraftPrefix}bizassist_intake_payment`)
       return saved ? JSON.parse(saved) : { mode: 'Credit', due_date: '' }
     } catch (e) {
       return { mode: 'Credit', due_date: '' }
@@ -580,20 +582,20 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
 
   // Persist drafts to localStorage
   useEffect(() => {
-    localStorage.setItem('bizassist_intake_rows', JSON.stringify(intakeRows))
-  }, [intakeRows])
+    localStorage.setItem(`${intakeDraftPrefix}bizassist_intake_rows`, JSON.stringify(intakeRows))
+  }, [intakeDraftPrefix, intakeRows])
 
   useEffect(() => {
-    localStorage.setItem('bizassist_intake_distributor', JSON.stringify(intakeDistributor))
-  }, [intakeDistributor])
+    localStorage.setItem(`${intakeDraftPrefix}bizassist_intake_distributor`, JSON.stringify(intakeDistributor))
+  }, [intakeDraftPrefix, intakeDistributor])
 
   useEffect(() => {
-    localStorage.setItem('bizassist_intake_adjustments', JSON.stringify(intakeAdjustments))
-  }, [intakeAdjustments])
+    localStorage.setItem(`${intakeDraftPrefix}bizassist_intake_adjustments`, JSON.stringify(intakeAdjustments))
+  }, [intakeDraftPrefix, intakeAdjustments])
 
   useEffect(() => {
-    localStorage.setItem('bizassist_intake_payment', JSON.stringify(intakePayment))
-  }, [intakePayment])
+    localStorage.setItem(`${intakeDraftPrefix}bizassist_intake_payment`, JSON.stringify(intakePayment))
+  }, [intakeDraftPrefix, intakePayment])
 
   const lowStockItems = products.filter(p => getStatus(p) !== 'In Stock').slice(0, 10)
 
@@ -609,12 +611,12 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
     setIntakeDistributor({ vendor_id: null, name: '', gstin: '', pan: '', fssai: '', phone: '', address: '', invoice_no: '', invoice_date: getTodayDateStr() })
     setIntakeAdjustments({ item_disc: '', cess: '', cash_disc: '' })
     setIntakePayment({ mode: 'Credit', due_date: '' })
-    localStorage.removeItem('bizassist_intake_rows')
-    localStorage.removeItem('bizassist_intake_distributor')
-    localStorage.removeItem('bizassist_intake_adjustments')
-    localStorage.removeItem('bizassist_intake_payment')
+    localStorage.removeItem(`${intakeDraftPrefix}bizassist_intake_rows`)
+    localStorage.removeItem(`${intakeDraftPrefix}bizassist_intake_distributor`)
+    localStorage.removeItem(`${intakeDraftPrefix}bizassist_intake_adjustments`)
+    localStorage.removeItem(`${intakeDraftPrefix}bizassist_intake_payment`)
     setPrefillProduct(null)
-  }, [])
+  }, [intakeDraftPrefix])
 
   // Close button callback: warns if unsaved intake items exist, clears intake state, and exits to home
   const handleCloseStockPage = useCallback(() => {
@@ -1067,6 +1069,7 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
           {TABS.map(tab => (
             <button
               key={tab.key}
+              data-tour={`stock-tab-${tab.key}`}
               className={`ws-tab ${activeView === tab.key ? 'active' : ''}`}
               onClick={() => setActiveView(tab.key)}
             >

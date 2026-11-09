@@ -2,6 +2,8 @@
 
 Standalone marketing site for BizAssist. **Completely independent of the app code** — deploy this folder alone to Vercel or Cloudflare Pages.
 
+The guided tour embeds the billing app itself with disposable sample data, so its screens stay aligned with the product. Deploy the updated `frontend-billing` app before this landing page; the player needs its trusted tour-message controller.
+
 ## Run locally
 
 ```bash
@@ -9,6 +11,10 @@ npm install
 npm run dev        # http://localhost:5173
 npm run build      # → dist/
 ```
+
+Run `frontend-billing` alongside this site (port 5174 by default). Set `VITE_BILLING_APP_URL` in the landing environment to use another app URL or port. Production defaults to `https://app.staterbill.com`. For a landing preview on a different origin, set the app's `VITE_LANDING_URL` to that exact origin and allow it in the app's `frame-ancestors` hosting policy.
+
+The six chapters use real Home, Dashboard, Billing Counter, Stock & Items, Purchases and Contacts screens. Playback pauses offscreen or in a hidden tab. Visitors can pause, replay or select a chapter; taking control asks for their name and phone using the existing browser-local details flow. These details are not submitted to a lead service. App Settings, B2B and POS Live stay locked in demo mode.
 
 ## Deploy
 

@@ -15,6 +15,8 @@ import { useAppearance } from './hooks/useAppearance'
 import RouteBoundary from './components/RouteBoundary'
 import BillingWorkspaceGuard from './components/BillingWorkspaceGuard'
 import StorageConsentNotice from './components/StorageConsentNotice'
+import GuidedTour from './demo/GuidedTour'
+import { isEmbeddedGuidedTour } from './demo/guidedTourRuntime'
 
 // Keep the landing/sign-in screens and the offline counter in the initial
 // download. The web counter must remain reachable if the connection drops
@@ -59,9 +61,16 @@ function ProtectedRoute({ children }) {
 export function AppRoutes() {
   const { user } = useAuth()
   const location = useLocation()
+  const [tourPageVersion, setTourPageVersion] = useState(0)
+  useEffect(() => {
+    if (!isEmbeddedGuidedTour()) return
+    const resetPage = () => setTourPageVersion(version => version + 1)
+    window.addEventListener('stater-tour:reset-page', resetPage)
+    return () => window.removeEventListener('stater-tour:reset-page', resetPage)
+  }, [])
   return (
     <BillingWorkspaceGuard>
-    <RouteBoundary resetKey={location.pathname}>
+    <RouteBoundary key={tourPageVersion} resetKey={location.pathname}>
     <Routes>
       <Route path="/login"    element={user ? <Navigate to="/" replace /> : <Login />} />
       <Route path="/register" element={user ? <Navigate to="/" replace /> : <Register />} />
@@ -319,6 +328,13 @@ function RealtimeSyncListener() {
 }
 
 export default function App() {
+  const [tourPlayback, setTourPlayback] = useState(() => isEmbeddedGuidedTour())
+  useEffect(() => {
+    if (!isEmbeddedGuidedTour()) return
+    const playback = event => setTourPlayback(event.detail?.active === true)
+    window.addEventListener('stater-tour:playback', playback)
+    return () => window.removeEventListener('stater-tour:playback', playback)
+  }, [])
   useEffect(() => {
     const unsubscribe = syncManager.start()
     return unsubscribe
@@ -326,7 +342,7 @@ export default function App() {
 
   return (
     <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-      <StorageConsentNotice />
+      {!tourPlayback && <StorageConsentNotice />}
       <AuthProvider>
         <AppearanceSync />
         <LockProvider>
@@ -337,6 +353,7 @@ export default function App() {
             {/* Slide-in banner: offline bills pending sync + same-user multi-device warning */}
             <SyncPromptBanner />
             <AppRoutes />
+            <GuidedTour />
           </ConfirmProvider>
         </LockProvider>
       </AuthProvider>

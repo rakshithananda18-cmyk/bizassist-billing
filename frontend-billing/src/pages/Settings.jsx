@@ -94,6 +94,22 @@ const SETTINGS_CATEGORIES = [
 // ── 3. MAIN SETTINGS STATE INITIALIZATION ──
 // ============================================================================
 export default function Settings() {
+  if (isDemoMode()) {
+    return (
+      <AppLayout title="Store Settings">
+        <DemoGate
+          label="Store Settings & Configuration"
+          description="Manage store configurations, tax settings, thermal printer drivers, LAN mesh discovery, and encrypted cloud backups. Start your free 14-day Pro trial to configure store settings."
+        />
+      </AppLayout>
+    )
+  }
+  return <SettingsWorkspace />
+}
+
+// Keep the workspace unmounted in demos: configuration effects and hooks only
+// run for a real session, and changing demo mode cannot change hook order.
+function SettingsWorkspace() {
   const { authFetch, user, token, fetchSettings, switchMode, setHostingMode, networkMode } = useAuth()
   const navigate = useNavigate()
   const { config, refreshConfig } = useBusinessConfig()

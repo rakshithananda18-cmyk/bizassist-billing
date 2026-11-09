@@ -50,7 +50,7 @@ beforeEach(() => {
 afterEach(cleanup)
 
 describe('Sidebar Sub-Nav Tree (Accordion)', () => {
-  it('displays sub-pages tree when active on /stock/inventory and highlights the active sub-page', () => {
+  it('starts Stock in a rail, then shows active sub-pages when the sidebar is expanded', async () => {
     renderApp('/stock/inventory')
     const sidebar = document.querySelector('.sidebar-nav')
 
@@ -58,7 +58,11 @@ describe('Sidebar Sub-Nav Tree (Accordion)', () => {
     const stockNavLink = within(sidebar).getByRole('link', { name: /^Stock & Purchases$/i })
     expect(stockNavLink).toHaveClass('active')
 
-    // Sub-items are rendered
+    // Stock workspaces open in a rail to leave room for the inventory table.
+    expect(within(sidebar).queryByRole('link', { name: /^Stock & Items$/i })).not.toBeInTheDocument()
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Expand sidebar' }))
+
+    // Expanding restores the nested navigation and its active-page highlight.
     const itemsLink = within(sidebar).getByRole('link', { name: /^Stock & Items$/i })
     const purchaseLink = within(sidebar).getByRole('link', { name: /Purchase Bills/i })
     expect(itemsLink).toBeInTheDocument()
@@ -81,21 +85,26 @@ describe('Sidebar Sub-Nav Tree (Accordion)', () => {
     expect(within(sidebar).getByRole('link', { name: /^Dashboard$/i })).toHaveClass('active')
   })
 
-  it('navigates to sub-page and updates selection without separate collapse buttons', async () => {
+  it('navigates between Stock sub-pages and highlights the destination', async () => {
     renderApp('/stock/inventory')
     const sidebar = document.querySelector('.sidebar-nav')
     const user = userEvent.setup()
 
+    await user.click(screen.getByRole('button', { name: 'Expand sidebar' }))
     const purchaseLink = within(sidebar).getByRole('link', { name: /Purchase Bills/i })
     await user.click(purchaseLink)
 
     expect(screen.getByText('Purchases Workspace')).toBeInTheDocument()
-    expect(purchaseLink).toHaveClass('active')
+    // The destination opens in a rail too; inspect its current links after
+    // expanding, rather than retaining a link from the previous page.
+    await user.click(screen.getByRole('button', { name: 'Expand sidebar' }))
+    expect(within(sidebar).getByRole('link', { name: /Purchase Bills/i })).toHaveClass('active')
   })
 
-  it('hides owner-only sub-pages like Purchases from cashier role', () => {
+  it('hides owner-only sub-pages like Purchases from cashier role', async () => {
     renderApp('/stock/inventory', 'cashier')
     const sidebar = document.querySelector('.sidebar-nav')
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Expand sidebar' }))
 
     // Cashier sees Stock & Items, but NOT Purchases
     expect(within(sidebar).getByRole('link', { name: /^Stock & Items$/i })).toBeInTheDocument()

@@ -701,7 +701,7 @@ export default function Purchases({ embedded = false, headerTabs = null, inlineP
             </div>
           ) : null
           const tableContent = (
-            <table className="data-table">
+            <table className="data-table" data-tour="purchase-table">
               <thead><tr>
                 <th className="sortable" onClick={() => handleSort('id_number')}>
                   Bill / Return #
@@ -770,7 +770,7 @@ export default function Purchases({ embedded = false, headerTabs = null, inlineP
                     </td>
                     <td style={{ textAlign: 'right' }}>
                       <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
-                        <button className="btn btn-secondary btn-sm" onClick={() => handleViewDetail(b)}>View</button>
+                        <button data-tour="purchase-view" className="btn btn-secondary btn-sm" onClick={() => handleViewDetail(b)}>View</button>
                       </div>
                     </td>
                   </tr>

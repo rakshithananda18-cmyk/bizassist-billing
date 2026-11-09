@@ -493,7 +493,7 @@ export default function Parties({ embedded = false, headerTabs = null, inlinePag
           {/* Search — always first */}
           <div className="search-bar" style={{ margin: 0, height: 34, boxSizing: 'border-box', display: 'flex', alignItems: 'center', flex: '1 1 200px', maxWidth: 320 }}>
             <span style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}><SearchIcon size={16} /></span>
-            <input value={search} onChange={e => setSearch(e.target.value)} placeholder={`Search ${activeTab.toLowerCase()}…`} style={{ fontSize: '0.82rem' }} />
+            <input data-tour="contacts-search" value={search} onChange={e => setSearch(e.target.value)} placeholder={`Search ${activeTab.toLowerCase()}…`} style={{ fontSize: '0.82rem' }} />
           </div>
 
           {activeTab !== 'Other Invoices' && (
@@ -612,7 +612,7 @@ export default function Parties({ embedded = false, headerTabs = null, inlinePag
         {/* Table */}
         {(() => {
           const tableContent = (
-            <table className="data-table" style={{ width: '100%', fontSize: '0.82rem' }}>
+            <table data-tour="contacts-table" className="data-table" style={{ width: '100%', fontSize: '0.82rem' }}>
               <thead>
                 {activeTab === 'Customers' && (
                   <tr>

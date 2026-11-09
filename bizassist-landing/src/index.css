@@ -41,6 +41,7 @@ html.dark body {
 .reveal.is-visible {
   opacity: 1;
   transform: none;
+  will-change: auto;
 }
 
 /* ── Gradient headline text with Stater Gold/Terracotta shine ── */

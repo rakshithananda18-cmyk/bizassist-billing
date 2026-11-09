@@ -87,7 +87,7 @@ vi.mock('../layouts/AppLayout', () => ({
   ),
 }))
 
-beforeEach(() => { localStorage.clear(); mockUser.role = 'owner'; mockAuthFetch.mockReset().mockImplementation(mockAuthFetchImpl) })
+beforeEach(() => { localStorage.clear(); mockUser.role = 'owner'; delete mockUser.is_demo; mockAuthFetch.mockReset().mockImplementation(mockAuthFetchImpl) })
 afterEach(() => { cleanup(); vi.restoreAllMocks() })
 
 describe('Data Migration in Settings', () => {
@@ -170,6 +170,20 @@ describe('Purchases contextual actions and smart alignment', () => {
 })
 
 describe('Stock contextual actions per view', () => {
+  it('keeps demo intake separate from the owner’s saved supplier and product draft', async () => {
+    const ownerDraft = JSON.stringify([{ row_key: 'owner-private', product_name: 'Private owner draft', qty: 3 }])
+    const ownerSupplier = JSON.stringify({ name: 'Private owner supplier', invoice_no: 'OWNER-123' })
+    localStorage.setItem('bizassist_intake_rows', ownerDraft)
+    localStorage.setItem('bizassist_intake_distributor', ownerSupplier)
+    mockUser.is_demo = true
+    render(<MemoryRouter><Stock embedded inlinePage /></MemoryRouter>)
+    await waitFor(() => expect(localStorage.getItem('stater_demo_bizassist_intake_rows')).toBe('[]'))
+    expect(localStorage.getItem('bizassist_intake_rows')).toBe(ownerDraft)
+    expect(localStorage.getItem('bizassist_intake_distributor')).toBe(ownerSupplier)
+    expect(screen.queryByDisplayValue('Private owner supplier')).not.toBeInTheDocument()
+    expect(screen.queryByDisplayValue('Private owner draft')).not.toBeInTheDocument()
+  })
+
   it('renders New Product as primary on Catalogue view', async () => {
     render(
       <MemoryRouter>

@@ -163,9 +163,11 @@ export function AuthProvider({ children }) {
   const [token, setToken] = useState(() => demoReq ? DEMO_TOKEN : (tokenStorage.getItem('billing_token') || null))
   const [loading, setLoading] = useState(() => !demoReq)
   const [isDemoMode, setIsDemoMode] = useState(() => demoReq)
+  const demoSessionRef = useRef(demoReq)
+  demoSessionRef.current = Boolean(isDemoMode || user?.is_demo || token === DEMO_TOKEN)
   const [businessConfig, setBusinessConfig] = useState(() => demoReq ? { demo: true } : null)
   const [attributesSchema, setAttributesSchema] = useState([])
-  const [appReady, setAppReady] = useState(false)
+  const [appReady, setAppReady] = useState(() => isDemoRequested())
   // 'local' — connected to owner's backend on same LAN (fast, offline capable)
   // 'cloud' — connected via cloud (different network or cloud-only mode)
   const [networkMode, setNetworkMode] = useState(() => getNetworkMode())
@@ -181,6 +183,7 @@ export function AuthProvider({ children }) {
         setIsDemoMode(true)
         setBizId(DEMO_USER.public_id)
         setSettings(DEMO_SETTINGS)
+        setAppReady(true)
         setLoading(false)
         logger.info('[DEMO] Activated instant real app demo unit session.')
         return
@@ -724,6 +727,33 @@ export function AuthProvider({ children }) {
   }, [_saveSession, _applyTemplate, _doSignup, _provisionCloudSyncToken])
 
   const logout = useCallback(async (announce = true) => {
+    // A demo can run beside an owner's saved session. Leaving the sample store
+    // must never revoke that token, erase its credentials, or sign out its tabs.
+    if (demoSessionRef.current || isDemoRequested()) {
+      authGeneration.current++
+      reportedLoadErrors.current.clear()
+      clearDemoSession()
+      demoSessionRef.current = false
+      try {
+        const url = new URL(window.location.href)
+        url.searchParams.delete('demo')
+        url.searchParams.delete('embed')
+        url.searchParams.delete('tour')
+        if (url.pathname.startsWith('/demo')) url.pathname = '/login'
+        window.history.replaceState(window.history.state, '', url.pathname + url.search + url.hash)
+      } catch { /* session state still exits when browser history is unavailable */ }
+      clearBillingProfileCache()
+      setIsDemoMode(false)
+      setToken(null)
+      setUser(null)
+      setSettings(null)
+      setProfile(null)
+      setBusinessConfig(null)
+      setAttributesSchema([])
+      setAppReady(false)
+      setBizId(null)
+      return
+    }
     authGeneration.current++
     invalidateSessionRefresh()
     reportedLoadErrors.current.clear()
@@ -793,6 +823,7 @@ export function AuthProvider({ children }) {
   }, [])
 
   useEffect(() => {
+    if (isDemoMode || user?.is_demo || token === DEMO_TOKEN) return
     const changed = event => {
       if (token && (event.key === 'billing_token' || event.key === 'billing_user') && !event.newValue) logout(false)
       else if (event.key === 'billing_token' && event.newValue) {
@@ -812,7 +843,7 @@ export function AuthProvider({ children }) {
       }
     } catch { /* storage events remain available */ }
     return () => { window.removeEventListener('storage', changed); channel?.close() }
-  }, [token, user?.public_id, logout])
+  }, [isDemoMode, token, user?.is_demo, user?.public_id, logout])
 
   /**
    * switchMode — change hosting mode and force re-login.
@@ -916,12 +947,13 @@ export function AuthProvider({ children }) {
     logger.info(`[MODE] Done. API_BASE is now: ${API_BASE}`)
   }, [token])
 
-  useSessionRefresh(token)
+  useSessionRefresh(isDemoMode || user?.is_demo || token === DEMO_TOKEN ? null : token)
   useEffect(() => {
+    if (isDemoMode || user?.is_demo || token === DEMO_TOKEN) return
     const changed = event => { if (event.detail?.token) setToken(event.detail.token) }
     window.addEventListener('auth_token_refreshed', changed)
     return () => window.removeEventListener('auth_token_refreshed', changed)
-  }, [])
+  }, [isDemoMode, token, user?.is_demo])
 
   const [profile, setProfile] = useState(null)
 

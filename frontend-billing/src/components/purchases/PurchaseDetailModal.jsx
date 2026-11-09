@@ -15,7 +15,7 @@ export default function PurchaseDetailModal({ selectedDetail, setShowDetailModal
   const label = useDocLabels()
   return (
         <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowDetailModal(false)}>
-          <div className="modal" style={{ maxWidth: '750px', width: '95%' }}>
+          <div data-tour="purchase-detail" className="modal" style={{ maxWidth: '750px', width: '95%' }}>
             <div className="modal-header">
               <span className="modal-title">
                 {selectedDetail.invoice_type === 'debit_note' ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><SyncIcon size={14} /> {label('purchase_return')} Details</span> : <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><BillsIcon size={14} /> {label('purchase')} Details</span>}

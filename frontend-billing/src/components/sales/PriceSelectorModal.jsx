@@ -57,6 +57,7 @@ export default function PriceSelectorModal({ productName, options, selectedIndex
                   return (
                     <tr
                       key={oIdx}
+                      data-tour={opt.label === 'Standard Price' ? 'pos-standard-price' : undefined}
                       style={{
                         background: isSelected ? 'var(--accent-glow)' : 'transparent',
                         borderBottom: '1px solid var(--border)',

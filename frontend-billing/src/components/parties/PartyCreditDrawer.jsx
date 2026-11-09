@@ -97,6 +97,7 @@ export default function PartyCreditDrawer({
     >
       <div
         className="credit-drawer"
+        data-tour="party-credit-drawer"
         style={{
           width: '100%',
           maxWidth: 680,

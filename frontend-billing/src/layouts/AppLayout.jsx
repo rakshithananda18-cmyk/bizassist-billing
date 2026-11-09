@@ -24,7 +24,6 @@ import SyncNudgeModal from '../components/hosting/SyncNudgeModal'
 import WebLocalOnlyNotice from '../components/hosting/WebLocalOnlyNotice'
 import SidebarContextMenu from '../components/layout/SidebarContextMenu'
 import ToastContainer from '../components/layout/ToastContainer'
-import DemoBanner from '../components/demo/DemoBanner'
 import GlobalShortcutsModal from '../components/layout/GlobalShortcutsModal'
 import SmartHelpCenterModal from '../components/help/SmartHelpCenterModal'
 import WorkspaceSwitcher from '../components/layout/WorkspaceSwitcher'
@@ -141,12 +140,13 @@ const PAGE_TITLES = {
 // Settings and Reports have their own section navigation. Open the main
 // sidebar as a rail to leave room for those workspaces, restoring the saved
 // preference when the user leaves.
-const AUTO_COLLAPSE_ROUTES = ['/settings', '/reports']
+const AUTO_COLLAPSE_ROUTES = ['/settings', '/reports', '/stock', '/purchases']
 
 const BOTTOM_BAR_ROUTES = ['/', '/sales', '/stock', '/parties', '/reports']
 
 export default function AppLayout({ children, title }) {
   const { user, logout, profile, token, businessConfig, appReady, setAppReady, settings, fetchSettings, isDemoMode } = useAuth()
+  const isDemoSession = Boolean(user?.is_demo || isDemoMode)
   const { hasLock, lock, resetInactivityTimer } = useLock()
   const confirm = useConfirm()
   const navigate = useNavigate()
@@ -230,6 +230,14 @@ export default function AppLayout({ children, title }) {
 
   const handleOpenExternal = async (external, navLabel) => {
     if (['cashier', 'supply_adder'].includes(user?.role)) return
+    if (user?.is_demo || isDemoMode) {
+      confirm({
+        mode: 'alert',
+        title: `${navLabel} — Pro Feature`,
+        message: `${navLabel} is a proprietary Pro feature. Start your free 14-day Pro trial to connect external field teams and AI dashboards!`,
+      })
+      return
+    }
     const app = EXTERNAL_APPS[external]
     if (!app?.getUrl()) return
     if (gate(app.gate)) {
@@ -321,7 +329,7 @@ export default function AppLayout({ children, title }) {
   })
   const [cloudStatus, setCloudStatus] = React.useState(null)
   React.useEffect(() => {
-    if (!token || !IS_LOCAL_APP || ['cashier', 'supply_adder'].includes(user?.role)) return
+    if (isDemoSession || !token || !IS_LOCAL_APP || ['cashier', 'supply_adder'].includes(user?.role)) return
     let stopped = false
     const load = async () => {
       try {
@@ -332,7 +340,7 @@ export default function AppLayout({ children, title }) {
     load()
     const timer = setInterval(load, 30000)
     return () => { stopped = true; clearInterval(timer) }
-  }, [token, user?.role])
+  }, [isDemoSession, token, user?.role])
   const accountUpdates = queueDepth.control_outbox
   const totalPendingSync = Number(queueDepth.pending_count || 0) + Number(accountUpdates?.pending || 0) + Number(accountUpdates?.failed || 0)
 
@@ -381,7 +389,7 @@ export default function AppLayout({ children, title }) {
   // owner to pick a direction asked them to know which side was stale — which
   // is the app's job, not theirs.
   const handleSyncNow = React.useCallback(async () => {
-    if (!token || syncing) return
+    if (isDemoSession || !token || syncing) return
     setSyncing(true)
     try {
       // ?pull=true is REQUIRED — without it the backend only flushes the outbox
@@ -407,10 +415,10 @@ export default function AppLayout({ children, title }) {
       logger.error('Pull from cloud failed:', err)
       setSyncing(false)
     }
-  }, [token, syncing, pullIntervalSec])
+  }, [isDemoSession, token, syncing, pullIntervalSec])
 
   React.useEffect(() => {
-    if (effectiveMode !== 'hybrid' || !token) return
+    if (isDemoSession || effectiveMode !== 'hybrid' || !token) return
 
     const fetchQueueDepth = async () => {
       try {
@@ -457,13 +465,13 @@ export default function AppLayout({ children, title }) {
       window.removeEventListener('sync-flushed', handleSyncFlushed)
       window.removeEventListener('sync-event', handleDataChanged)
     }
-  }, [effectiveMode, token])
+  }, [isDemoSession, effectiveMode, token])
 
   // ── Pull countdown tick ───────────────────────────────────────────────────
   // Counts down to the next periodic pull cycle based on pullIntervalSec (default 120s).
   // Resets cleanly when manual pull/flush is triggered.
   React.useEffect(() => {
-    if (effectiveMode !== 'hybrid') return
+    if (isDemoSession || effectiveMode !== 'hybrid') return
     const tick = () => {
       if (syncing) {
         setNextPullIn(0)
@@ -480,7 +488,7 @@ export default function AppLayout({ children, title }) {
     tick()
     const t = setInterval(tick, 1000)
     return () => clearInterval(t)
-  }, [effectiveMode, queueDepth.last_sync_time, pullIntervalSec, syncing])
+  }, [isDemoSession, effectiveMode, queueDepth.last_sync_time, pullIntervalSec, syncing])
 
   const userId = user?.id || 'default'
 
@@ -626,7 +634,7 @@ export default function AppLayout({ children, title }) {
     let maxElapsed = false
 
     const checkReady = () => {
-      const dataLoaded = token ? (profile !== null && businessConfig !== null) : true
+      const dataLoaded = token ? ((user?.is_demo || isDemoMode) ? true : (profile !== null && businessConfig !== null)) : true
       if ((dataLoaded && minElapsed) || maxElapsed) {
         setAppReady(true)
       }
@@ -2814,8 +2822,6 @@ export default function AppLayout({ children, title }) {
 
       {/* ── Main area ── */}
       <div className="main-area">
-        {(user?.is_demo || isDemoMode) && <DemoBanner />}
-
         {/* ── Page content ── */}
         <main ref={pageContentRef} className="page-content" style={{ position: 'relative' }}>
           {/* ⓘ page help — one mount point, per-route content (config/helpContent.js) */}
