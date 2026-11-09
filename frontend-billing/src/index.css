@@ -3291,8 +3291,80 @@ body,
   padding: 24px;
 }
 
+.login-container,
 .dark-mode .login-container {
-  background: rgba(18, 18, 18, 0.75);   /* --bg #121212 at 75% (was the warm #1a1915) */
+  background: rgba(253, 251, 247, 0.92) !important;
+  color-scheme: light !important;
+}
+
+.login-card,
+.dark-mode .login-card {
+  background: #ffffff !important;
+  border: 1.5px solid #e2e8f0 !important;
+  box-shadow: 0 20px 45px -10px rgba(15, 23, 42, 0.08), 0 1px 3px rgba(15, 23, 42, 0.04) !important;
+  color: #0f172a !important;
+}
+
+.login-title,
+.dark-mode .login-title {
+  color: #0f172a !important;
+}
+
+.login-subtitle,
+.dark-mode .login-subtitle {
+  color: #64748b !important;
+}
+
+.dark-mode .auth-flow-header {
+  background: #f8fafc !important;
+  border-color: #e2e8f0 !important;
+}
+
+.dark-mode .auth-flow-icon {
+  background: #ffffff !important;
+  border-color: #e2e8f0 !important;
+  color: #c15f3c !important;
+}
+
+.dark-mode .auth-flow-title {
+  color: #0f172a !important;
+}
+
+.dark-mode .auth-flow-description {
+  color: #64748b !important;
+}
+
+.dark-mode .login-card input {
+  background: #f8fafc !important;
+  border-color: #cbd5e1 !important;
+  color: #0f172a !important;
+}
+
+.dark-mode .login-card label {
+  color: #475569 !important;
+}
+
+.dark-mode .login-backdrop {
+  background: #f8f6f0 !important;
+}
+
+.dark-mode .lb-sidebar {
+  background: #f1ede6 !important;
+  border-color: #e2e8f0 !important;
+  color: #383531 !important;
+}
+
+.dark-mode .lb-navitem {
+  color: #64748b !important;
+}
+
+.dark-mode .lb-main {
+  background: #f8f6f0 !important;
+}
+
+.dark-mode .lb-card {
+  background: #ffffff !important;
+  border-color: #e2e8f0 !important;
 }
 
 .login-card {

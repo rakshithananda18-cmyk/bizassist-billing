@@ -415,10 +415,21 @@ export function appearanceTokens(preference, systemDark = false, user, storage =
   }
 }
 
+export function isPublicOrAuthPath(pathname) {
+  const p = (pathname || '').toLowerCase()
+  return /^\/(login|register|forgot-password|privacy|terms|refund-policy|contact|public)(\/|$)/.test(p)
+}
+
 export function applyAppearance(preference, systemDark = false, root = globalThis.document?.documentElement, user, storage = browserStorage()) {
   if (!root) return
-  const appearance = normalizeAppearance(preference, user, storage)
-  const { mode, tokens } = appearanceTokens(appearance, systemDark, user, storage)
+  const currentPath = typeof window !== 'undefined' ? (window.location.pathname || '') : ''
+  const isAuthPage = isPublicOrAuthPath(currentPath)
+
+  const rawAppearance = normalizeAppearance(preference, user, storage)
+  const appearance = isAuthPage ? { ...rawAppearance, theme: 'light' } : rawAppearance
+  const effectiveSystemDark = isAuthPage ? false : systemDark
+
+  const { mode, tokens } = appearanceTokens(appearance, effectiveSystemDark, user, storage)
   root.classList.toggle('dark-mode', mode === 'dark')
   root.dataset.appearance = mode
   root.dataset.accent = appearance.accent

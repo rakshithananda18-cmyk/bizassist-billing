@@ -45,7 +45,8 @@ const RefundPolicy = lazy(() => import('./pages/RefundPolicy'))
 
 
 function AppearanceSync() {
-  useAppearance()
+  const location = useLocation()
+  useAppearance(location.pathname)
   return null
 }
 

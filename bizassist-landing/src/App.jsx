@@ -250,9 +250,17 @@ function BrandLogo({ size = 28, showTagline = true }) {
 /* ────────────────────────── Real Production App Demo Unit ───────────────────────── */
 function RealAppDemoUnit() {
   const [embedLoaded, setEmbedLoaded] = useState(false)
+  const [timedOut, setTimedOut] = useState(false)
   const isLocal = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
   const demoUrl = isLocal ? 'http://localhost:5174/sales?demo=1&embed=1' : 'https://app.staterbill.com/sales?demo=1&embed=1'
   const fullDemoUrl = isLocal ? 'http://localhost:5174/sales?demo=1' : 'https://app.staterbill.com/sales?demo=1'
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (!embedLoaded) setTimedOut(true)
+    }, 6000)
+    return () => clearTimeout(timer)
+  }, [embedLoaded])
 
   return (
     <div className="relative mx-auto w-full max-w-6xl rounded-3xl overflow-hidden border border-stone-300 dark:border-white/10 shadow-2xl bg-white dark:bg-obsidian-950">
@@ -289,18 +297,36 @@ function RealAppDemoUnit() {
 
       {/* Real App Iframe Container */}
       <div className="relative w-full h-[760px] bg-slate-900">
-        {!embedLoaded && (
+        {!embedLoaded && !timedOut && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-stone-50 dark:bg-obsidian-950 text-slate-500">
             <div className="w-8 h-8 border-3 border-terracotta-500 border-t-transparent rounded-full animate-spin" />
             <div className="text-xs font-mono">Connecting to real STATER Bill production till...</div>
           </div>
         )}
+        {timedOut && !embedLoaded && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-stone-900/95 text-white p-6 text-center z-10">
+            <BuildingMark size={40} accent="#c15f3c" />
+            <h3 className="text-lg font-bold">Ready to explore the real STATER Bill app?</h3>
+            <p className="text-xs text-slate-300 max-w-md">
+              Your browser or privacy shields may restrict cross-domain iframes. Launch the instant live sandbox directly in a full window — zero login required, free hands-on access.
+            </p>
+            <a
+              href={fullDemoUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-6 py-3 rounded-2xl bg-terracotta-500 hover:bg-terracotta-600 font-bold text-sm shadow-xl flex items-center gap-2 text-white transition"
+            >
+              <span>Launch Instant Live Demo Sandbox ↗</span>
+            </a>
+          </div>
+        )}
         <iframe
           src={demoUrl}
           title="STATER Bill Live Production Demo Unit"
-          onLoad={() => setEmbedLoaded(true)}
+          onLoad={() => { setEmbedLoaded(true); setTimedOut(false); }}
           className="w-full h-full border-0"
           allow="clipboard-write; fullscreen"
+          loading="eager"
         />
       </div>
 

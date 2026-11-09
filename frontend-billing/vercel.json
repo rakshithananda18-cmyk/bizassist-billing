@@ -15,7 +15,7 @@
         },
         {
           "key": "Content-Security-Policy",
-          "value": "frame-ancestors 'self' https://staterbill.com https://www.staterbill.com https://*.staterbill.com http://localhost:* http://127.0.0.1:*;"
+          "value": "frame-ancestors 'self' https://staterbill.com https://www.staterbill.com https://*.staterbill.com https://*.vercel.app http://localhost:* http://127.0.0.1:*;"
         },
         {
           "key": "X-XSS-Protection",

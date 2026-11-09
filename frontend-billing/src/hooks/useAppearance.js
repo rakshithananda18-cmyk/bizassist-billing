@@ -9,7 +9,7 @@ const systemIsDark = () => typeof window !== 'undefined' && window.matchMedia('(
 
 // AppLayout and Settings share the same preference without introducing a
 // second settings request or making personal colours part of store-wide data.
-export function useAppearance() {
+export function useAppearance(currentPath = typeof window !== 'undefined' ? (window.location.pathname || '') : '') {
   const { user } = useAuth() || {}
   const preferenceKey = appearanceStorageKey(user)
   const paletteLibraryKey = customPalettesStorageKey(user)
@@ -62,7 +62,7 @@ export function useAppearance() {
   useLayoutEffect(() => {
     applyAppearance(preference, systemDark, undefined, user)
     saveAppearance(user, preference)
-  }, [preferenceKey, signature, systemDark, libraryRevision])
+  }, [preferenceKey, signature, systemDark, libraryRevision, currentPath])
 
   const update = useCallback(patch => {
     const appearance = saveAppearance(user, { ...preference, ...patch })
