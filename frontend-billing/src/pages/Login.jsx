@@ -18,7 +18,7 @@ import { renderGoogleButton } from '../utils/googleAuth'
 const RECENT_STAFF_TIMEOUT_MS = 1500
 
 export default function Login() {
-  const { login, staffLogin } = useAuth()
+  const { login, staffLogin, setSession } = useAuth()
   const navigate  = useNavigate()
 
   const [username, setUsername] = useState('')
@@ -49,10 +49,7 @@ export default function Login() {
       if (!res.ok) throw new Error(data?.detail || 'Google sign-in failed.')
 
       if (data.action === 'login' && data.token) {
-        localStorage.setItem('billing_token', data.token)
-        localStorage.setItem('billing_user', JSON.stringify(data))
-        localStorage.setItem('billing_role', data.role || 'enterprise')
-        localStorage.setItem('bizassist_auth_version', '1')
+        setSession(data)
         navigate('/', { replace: true })
       } else if (data.status === 'needs_onboarding') {
         setGoogleCredential(credential)
@@ -68,20 +65,14 @@ export default function Login() {
 
   const handleGoogleRegisterSuccess = (data) => {
     if (data?.token) {
-      localStorage.setItem('billing_token', data.token)
-      localStorage.setItem('billing_user', JSON.stringify(data))
-      localStorage.setItem('billing_role', data.role || 'enterprise')
-      localStorage.setItem('bizassist_auth_version', '1')
+      setSession(data)
       navigate('/', { replace: true })
     }
   }
 
   const handleForgotSuccess = (data) => {
     if (data?.token) {
-      localStorage.setItem('billing_token', data.token)
-      localStorage.setItem('billing_user', JSON.stringify(data))
-      localStorage.setItem('billing_role', data.role || 'enterprise')
-      localStorage.setItem('bizassist_auth_version', '1')
+      setSession(data)
       navigate('/', { replace: true })
     }
   }
@@ -1164,6 +1155,7 @@ export default function Login() {
                   <input
                     type="text"
                     id="owner-username"
+                    aria-label="Business Owner Username"
                     placeholder="e.g. store_owner, store@email.com, 9876543210"
                     value={username}
                     onChange={e => setUsername(e.target.value)}

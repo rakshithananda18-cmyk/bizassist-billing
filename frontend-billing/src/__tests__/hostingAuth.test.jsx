@@ -550,6 +550,7 @@ describe('Register two options (T4)', () => {
     // Select Confirm Password by id since it has no placeholder
     const confirmPasswordInput = container.querySelector('#confirmPassword')
     fireEvent.change(confirmPasswordInput, { target: { value: 'Password123!' } })
+    fireEvent.change(screen.getByLabelText('Phone'), { target: { value: '9876543210' } })
     
     fireEvent.click(screen.getByLabelText(/I agree to/i))
 

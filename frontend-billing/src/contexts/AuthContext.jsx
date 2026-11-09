@@ -1227,6 +1227,7 @@ export function AuthProvider({ children }) {
       businessConfig, attributesSchema, fetchBusinessConfig, appReady, setAppReady,
       settings, fetchSettings,
       networkMode,   // 'local' | 'cloud' — whether this device is on the same LAN as the owner's backend
+      setSession: _saveSession,
     }}>
       {children}
     </AuthContext.Provider>

@@ -25,7 +25,7 @@ import GoogleOnboardingModal from '../components/auth/GoogleOnboardingModal'
 import { renderGoogleButton } from '../utils/googleAuth'
 
 export default function Register() {
-  const { signup } = useAuth()
+  const { signup, setSession } = useAuth()
   const navigate  = useNavigate()
   const location  = useLocation()
 
@@ -67,10 +67,7 @@ export default function Register() {
       if (!res.ok) throw new Error(data?.detail || 'Google sign-in failed.')
 
       if (data.action === 'login' && data.token) {
-        localStorage.setItem('billing_token', data.token)
-        localStorage.setItem('billing_user', JSON.stringify(data))
-        localStorage.setItem('billing_role', data.role || 'enterprise')
-        localStorage.setItem('bizassist_auth_version', '1')
+        setSession(data)
         navigate('/', { replace: true })
       } else if (data.status === 'needs_onboarding') {
         setGoogleCredential(credential)
@@ -86,10 +83,7 @@ export default function Register() {
 
   const handleGoogleRegisterSuccess = (data) => {
     if (data?.token) {
-      localStorage.setItem('billing_token', data.token)
-      localStorage.setItem('billing_user', JSON.stringify(data))
-      localStorage.setItem('billing_role', data.role || 'enterprise')
-      localStorage.setItem('bizassist_auth_version', '1')
+      setSession(data)
       navigate('/', { replace: true })
     }
   }
@@ -395,7 +389,7 @@ export default function Register() {
               <input
                 id="businessName"
                 type="text"
-                placeholder="e.g. Acme Supermarket"
+                placeholder="e.g. Acme Corporation"
                 value={form.businessName}
                 onChange={e => setForm(f => ({ ...f, businessName: e.target.value }))}
                 required
@@ -440,8 +434,9 @@ export default function Register() {
               </div>
               <input
                 id="username"
+                aria-label="Store Username"
                 type="text"
-                placeholder="e.g. acme_store"
+                placeholder="e.g. store"
                 value={form.username}
                 onChange={e => setForm(f => ({ ...f, username: e.target.value.toLowerCase().replace(/\s+/g, '_') }))}
                 required
@@ -483,6 +478,7 @@ export default function Register() {
                 <label htmlFor="phone">Mobile Phone (Mandatory)</label>
                 <input
                   id="phone"
+                  aria-label="Phone"
                   type="tel"
                   required
                   autoComplete="tel"
@@ -510,7 +506,6 @@ export default function Register() {
               <small style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>Used for account recovery OTPs, welcome emails, and invoices.</small>
             </div>
 
-            {IS_LOCAL_APP && (
               <fieldset className="registration-storage">
                 <legend>Where should your data live?</legend>
                 <div data-testid="hosting-choice" className="registration-storage-grid">
@@ -521,6 +516,7 @@ export default function Register() {
                     <div key={opt.key} className="registration-storage-choice">
                     <button
                       type="button"
+                      disabled={!IS_LOCAL_APP && opt.key === 'local'}
                       className={`registration-storage-option ${hostingChoice === opt.key ? 'is-selected' : ''}`}
                       aria-pressed={hostingChoice === opt.key}
                       onClick={() => setHostingChoice(opt.key)}
@@ -535,16 +531,25 @@ export default function Register() {
                       </div>
                       <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 3, lineHeight: 1.3 }}>{opt.desc}</div>
                     </button>
+                    {!IS_LOCAL_APP && opt.key === 'local' && (
+                      <a className="registration-local-download" href={DESKTOP_DOWNLOAD_URL} target="_blank" rel="noopener noreferrer">Download app for Local</a>
+                    )}
                     </div>
                   ))}
                 </div>
-                {hostingChoice === 'hybrid' && (
+                {!IS_LOCAL_APP && (
+                  <div className="registration-storage-help" id="cloud-storage-help">
+                    <p>Local + Cloud includes browser access. This browser uses the cloud database; offline Local billing runs in the downloaded app.</p>
+                    <p>Sign in with the same account in the desktop app to add Local billing. Automatic Local + Cloud sync requires Pro or an eligible trial.</p>
+                    <p>Your first registration with a phone number includes 14 days of Pro access, including Local + Cloud and Field Team.</p>
+                  </div>
+                )}
+                {IS_LOCAL_APP && hostingChoice === 'hybrid' && (
                   <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 6 }}>
-                    Included in your {trialDays}-day Pro trial and set up automatically: billing stays fast and offline while your data syncs to the cloud.
+                    Included in your {trialDays}-day Pro trial and set up automatically: billing stays fast and offline while your data syncs to the cloud. When the trial ends, cloud sync stops unless you upgrade to Pro. Everything stays on this computer and keeps working offline.
                   </div>
                 )}
               </fieldset>
-            )}
 
             <div className="form-group" style={{ marginTop: '4px' }}>
               <label htmlFor="password">Password</label>
@@ -723,30 +728,7 @@ export default function Register() {
             </div>
           )}
 
-          {/* Storage & Hosting Explanation in Right Panel */}
-          <div className="registration-storage-help" id="cloud-storage-help" style={{
-            background: 'var(--bg-3)',
-            border: '1px solid var(--border)',
-            borderRadius: 12,
-            padding: '14px 16px',
-            marginBottom: 24,
-            marginTop: 0
-          }}>
-            <div style={{ fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', marginBottom: 8 }}>
-              Where should your data live?
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: '0.8rem', lineHeight: 1.45, color: 'var(--text-secondary)' }}>
-              <p style={{ margin: 0 }}>
-                <strong style={{ color: 'var(--text-primary)' }}>• Local only:</strong> Billing records stay on this computer. Works offline without internet. Ideal for isolated single-counter setups.
-              </p>
-              <p style={{ margin: 0 }}>
-                <strong style={{ color: 'var(--text-primary)' }}>• Local + Cloud:</strong> This browser uses the cloud database; offline Local billing runs in the downloaded app. Sign in with the same account in the desktop app to add Local billing.
-              </p>
-              <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-muted)', borderTop: '1px solid var(--border)', paddingTop: 6 }}>
-                Your first registration with a phone number includes 14 days of Pro access, including Local + Cloud and Field Team.
-              </p>
-            </div>
-          </div>
+
 
           <h2 style={{ fontSize: '1.45rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: 12, lineHeight: 1.25 }}>
             Manage all your businesses from one unified platform.

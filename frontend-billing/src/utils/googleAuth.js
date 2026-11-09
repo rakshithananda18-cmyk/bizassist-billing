@@ -5,6 +5,8 @@
 import { GOOGLE_CLIENT_ID } from '../config'
 
 let scriptLoadingPromise = null
+let isGoogleInitialized = false
+let activeCredentialCallback = null
 
 export function loadGoogleScript() {
   if (typeof window === 'undefined') return Promise.reject(new Error('Window not available'))
@@ -35,14 +37,19 @@ export async function renderGoogleButton(container, { onCredential, text = 'cont
     const google = await loadGoogleScript()
     if (!google?.accounts?.id || !container) return false
 
-    google.accounts.id.initialize({
-      client_id: GOOGLE_CLIENT_ID,
-      callback: (res) => {
-        if (res?.credential && onCredential) {
-          onCredential(res.credential)
-        }
-      },
-    })
+    activeCredentialCallback = onCredential
+
+    if (!isGoogleInitialized) {
+      google.accounts.id.initialize({
+        client_id: GOOGLE_CLIENT_ID,
+        callback: (res) => {
+          if (res?.credential && activeCredentialCallback) {
+            activeCredentialCallback(res.credential)
+          }
+        },
+      })
+      isGoogleInitialized = true
+    }
 
     container.innerHTML = ''
     google.accounts.id.renderButton(container, {
