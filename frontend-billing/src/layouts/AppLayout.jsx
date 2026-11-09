@@ -24,6 +24,7 @@ import SyncNudgeModal from '../components/hosting/SyncNudgeModal'
 import WebLocalOnlyNotice from '../components/hosting/WebLocalOnlyNotice'
 import SidebarContextMenu from '../components/layout/SidebarContextMenu'
 import ToastContainer from '../components/layout/ToastContainer'
+import DemoBanner from '../components/demo/DemoBanner'
 import GlobalShortcutsModal from '../components/layout/GlobalShortcutsModal'
 import SmartHelpCenterModal from '../components/help/SmartHelpCenterModal'
 import WorkspaceSwitcher from '../components/layout/WorkspaceSwitcher'
@@ -145,7 +146,7 @@ const AUTO_COLLAPSE_ROUTES = ['/settings', '/reports']
 const BOTTOM_BAR_ROUTES = ['/', '/sales', '/stock', '/parties', '/reports']
 
 export default function AppLayout({ children, title }) {
-  const { user, logout, profile, token, businessConfig, appReady, setAppReady, settings, fetchSettings } = useAuth()
+  const { user, logout, profile, token, businessConfig, appReady, setAppReady, settings, fetchSettings, isDemoMode } = useAuth()
   const { hasLock, lock, resetInactivityTimer } = useLock()
   const confirm = useConfirm()
   const navigate = useNavigate()
@@ -2813,6 +2814,7 @@ export default function AppLayout({ children, title }) {
 
       {/* ── Main area ── */}
       <div className="main-area">
+        {(user?.is_demo || isDemoMode) && <DemoBanner />}
 
         {/* ── Page content ── */}
         <main ref={pageContentRef} className="page-content" style={{ position: 'relative' }}>

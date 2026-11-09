@@ -1200,6 +1200,29 @@ export default function Login() {
                   <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
                   Your business data stays private until you sign in.
                 </p>
+                <div style={{ marginTop: 16, borderTop: '1px solid rgba(0,0,0,0.08)', paddingTop: 14, textAlign: 'center' }}>
+                  <a
+                    href="/sales?demo=1"
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 6,
+                      width: '100%',
+                      padding: '9px 14px',
+                      borderRadius: 10,
+                      background: 'rgba(193, 95, 60, 0.08)',
+                      color: '#c15f3c',
+                      border: '1px solid rgba(193, 95, 60, 0.25)',
+                      fontSize: '0.8rem',
+                      fontWeight: 700,
+                      textDecoration: 'none',
+                    }}
+                  >
+                    <span>⚡ Test Drive Real App (Instant Demo, No Login Required)</span>
+                    <span>→</span>
+                  </a>
+                </div>
               </form>
             )}
 

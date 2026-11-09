@@ -24,6 +24,15 @@ import { notifyAiLogout, getAiDashboardUrl } from '../config/aiDashboard'
 import { sessionFetch, resilientSessionFetch, invalidateSessionRefresh } from '../api/session'
 import { readableError } from '../api/httpErrors'
 import { useSessionRefresh } from '../hooks/useSessionRefresh'
+import {
+  isDemoRequested,
+  activateDemoSession,
+  clearDemoSession,
+  handleDemoRequest,
+  DEMO_USER,
+  DEMO_TOKEN,
+  DEMO_SETTINGS,
+} from '../demo/demoEngine'
 
 const AUTH_REQUEST_TIMEOUT_MS = 8000
 export const WEB_AUTH_BUDGET_MS = 65000
@@ -152,6 +161,7 @@ export function AuthProvider({ children }) {
   const [user, setUser]   = useState(null)
   const [token, setToken] = useState(() => tokenStorage.getItem('billing_token') || null)
   const [loading, setLoading] = useState(true)
+  const [isDemoMode, setIsDemoMode] = useState(() => isDemoRequested())
   const [businessConfig, setBusinessConfig] = useState(null)
   const [attributesSchema, setAttributesSchema] = useState([])
   const [appReady, setAppReady] = useState(false)
@@ -163,6 +173,18 @@ export function AuthProvider({ children }) {
   // Restore session from localStorage/tokenStorage on mount
   useEffect(() => {
     try {
+      if (isDemoRequested()) {
+        activateDemoSession()
+        setUser(DEMO_USER)
+        setToken(DEMO_TOKEN)
+        setIsDemoMode(true)
+        setBizId(DEMO_USER.public_id)
+        setSettings(DEMO_SETTINGS)
+        setLoading(false)
+        logger.info('[DEMO] Activated instant real app demo unit session.')
+        return
+      }
+
       const savedUser = localStorage.getItem('billing_user')
       const savedToken = tokenStorage.getItem('billing_token')
       if (savedUser) {
@@ -756,6 +778,8 @@ export function AuthProvider({ children }) {
     tokenStorage.removeItem('billing_token')
     localStorage.removeItem('billing_user')
     tokenStorage.removeItem('bizassist_cloud_token')
+    clearDemoSession()
+    setIsDemoMode(false)
     syncManager.clearScope()
     localStorage.removeItem('bizassist_user_home_mode')  // clear home mode — next user gets their own
     localStorage.removeItem('pos_upi_vpa')  // clear device payment handle so next business doesn't inherit it
@@ -1185,6 +1209,11 @@ export function AuthProvider({ children }) {
       apiPath = '/' + apiPath.slice('billing/'.length)
     }
 
+    if (user?.is_demo || isDemoMode || isDemoRequested()) {
+      const mockRes = handleDemoRequest(apiPath, opts)
+      if (mockRes) return mockRes
+    }
+
     logger.debug(`authFetch request started for path: ${path} (mapped to ${apiPath}), method: ${opts.method || 'GET'}`)
 
     const headers = {
@@ -1221,6 +1250,16 @@ export function AuthProvider({ children }) {
     return res
   }, [token, logout])
 
+  const enterDemoMode = useCallback(() => {
+    activateDemoSession()
+    setUser(DEMO_USER)
+    setToken(DEMO_TOKEN)
+    setIsDemoMode(true)
+    setBizId(DEMO_USER.public_id)
+    setSettings(DEMO_SETTINGS)
+    setLoading(false)
+  }, [])
+
   return (
     <AuthContext.Provider value={{
       user, token, loading, login, staffLogin, logout, signup, switchMode, setHostingMode, authFetch, profile, fetchProfile, setProfile,
@@ -1228,6 +1267,8 @@ export function AuthProvider({ children }) {
       settings, fetchSettings,
       networkMode,   // 'local' | 'cloud' — whether this device is on the same LAN as the owner's backend
       setSession: _saveSession,
+      isDemoMode,
+      enterDemoMode,
     }}>
       {children}
     </AuthContext.Provider>
