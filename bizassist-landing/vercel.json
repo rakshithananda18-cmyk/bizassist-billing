@@ -1,5 +1,6 @@
 {
   "redirects": [
+    { "source": "/demo", "destination": "https://app.staterbill.com/demo", "permanent": false },
     { "source": "/privacy", "destination": "https://app.staterbill.com/privacy", "permanent": true },
     { "source": "/terms", "destination": "https://app.staterbill.com/terms", "permanent": true },
     { "source": "/refund-policy", "destination": "https://app.staterbill.com/refund-policy", "permanent": true },
