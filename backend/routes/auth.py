@@ -427,7 +427,7 @@ def trial_offer():
     return {"days": _trial_days() if _DB_MODE == "cloud" else 0}
 
 
-def _start_trial(user: User, phone: Optional[str], db: Session) -> Optional[dict]:
+def _start_trial(user: User, phone: Optional[str], db: Session, force: bool = False) -> Optional[dict]:
     """Put a brand-new business on the Pro trial. Returns the subscription it
     wrote, or None when no trial was given."""
     import json
@@ -438,9 +438,9 @@ def _start_trial(user: User, phone: Optional[str], db: Session) -> Optional[dict
     if days <= 0:
         return None
     key = _phone_key(phone)
-    if not key:
+    if not key and not force:
         raise ValueError("A valid phone number is required for the first-time trial.")
-    if key:
+    if not force and key:
         from database.models import TrialPhoneClaim
         from sqlalchemy.exc import IntegrityError
         if db.get(TrialPhoneClaim, key) is not None:
@@ -449,6 +449,7 @@ def _start_trial(user: User, phone: Optional[str], db: Session) -> Optional[dict
             User.id != user.id,
             User.parent_business_id.is_(None),
             User.phone.isnot(None),
+            User.role != "deleted",
         ).all()
         if any(_phone_key(p) == key for (p,) in others):
             logger.info(f"[TRIAL] No trial for '{user.username}': phone already registered to another business.")
@@ -463,6 +464,15 @@ def _start_trial(user: User, phone: Optional[str], db: Session) -> Optional[dict
             if db.get(TrialPhoneClaim, key) is not None:
                 return None
             raise
+    elif force and key:
+        from database.models import TrialPhoneClaim
+        try:
+            with db.begin_nested():
+                if db.get(TrialPhoneClaim, key) is None:
+                    db.add(TrialPhoneClaim(phone_hash=key))
+                    db.flush()
+        except Exception:
+            pass
 
     now = utc_now()
     sub = {
@@ -1175,6 +1185,18 @@ def _subscription_view(user: User, db: Session = None, force: bool = False) -> d
         if owner:
             plan_holder = owner
     sub = _settings_dict(plan_holder).get("subscription") or {}
+
+    # Auto-heal Google-registered owners missing active trial or subscription
+    if _DB_MODE == "cloud" and db and getattr(plan_holder, "google_id", None) and not plan_holder.parent_business_id:
+        if not sub or (sub.get("plan") == "free" and not sub.get("granted_at")):
+            try:
+                sub = _start_trial(plan_holder, plan_holder.phone, db, force=True) or {}
+                db.commit()
+                db.refresh(plan_holder)
+                logger.info("[TRIAL] Auto-healed 14-day Pro trial for Google owner '%s'", plan_holder.username)
+            except Exception as ex:
+                logger.warning("[TRIAL] Failed to auto-heal Google trial for '%s': %s", plan_holder.username, ex)
+
     status = sub.get("status", "none")
     gated = (user.role or "").lower() != "admin" and effective_plan(plan_holder) != "pro"
     ends = expiry_moment(sub.get("expires_at"))
@@ -1588,6 +1610,18 @@ def google_verify(req: GoogleVerifyRequest, request: Request, db: Session = Depe
             user.google_id = sub
             db.commit()
 
+        # Auto-heal: Ensure existing Google owner has 14-day Pro trial if never granted
+        from services.admin_service import _settings_dict
+        curr_sub = _settings_dict(user).get("subscription") or {}
+        if not curr_sub or (curr_sub.get("plan") == "free" and not curr_sub.get("granted_at")):
+            try:
+                _start_trial(user, user.phone, db, force=True)
+                db.commit()
+                db.refresh(user)
+                logger.info("[GOOGLE_AUTH] Auto-healed trial on Google sign-in for '%s'", user.username)
+            except Exception as err:
+                logger.warning("[GOOGLE_AUTH] Could not auto-heal trial for '%s': %s", user.username, err)
+
         business_id = user.parent_business_id or user.id
         token = create_access_token(_session_claims(user, sid=uuid4().hex))
         logger.info("[GOOGLE_AUTH] Existing user '%s' logged in via Google.", user.username)
@@ -1673,7 +1707,23 @@ def google_register(req: GoogleRegisterRequest, request: Request, db: Session = 
     db.flush()
 
     # Provision 14-day Pro trial and default store settings
-    _start_trial(user, phone, db)
+    trial_sub = _start_trial(user, phone, db, force=True)
+    if not trial_sub:
+        from datetime import timedelta
+        from services.dates import utc_now
+        import json
+        now = utc_now()
+        trial_sub = {
+            "plan": "pro",
+            "status": "trial",
+            "expires_at": (now.date() + timedelta(days=_trial_days())).isoformat(),
+            "granted_by": "trial",
+            "granted_at": now.isoformat(),
+            "note": f"{_trial_days()}-day Pro trial at Google signup",
+        }
+        s = json.loads(user.settings) if user.settings else {}
+        s["subscription"] = trial_sub
+        user.settings = json.dumps(s)
 
     # Save selected store category in business_settings
     try:
@@ -1713,6 +1763,7 @@ def google_register(req: GoogleRegisterRequest, request: Request, db: Session = 
         "role": user.role,
         "counter_prefix": user.counter_prefix,
         "db_mode": _DB_MODE,
+        "trial": {"days": _trial_days(), "expires_at": trial_sub["expires_at"]} if trial_sub else None,
     }
 
 

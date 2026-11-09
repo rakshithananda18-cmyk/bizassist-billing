@@ -142,7 +142,11 @@ def test_forgot_password_otp_flow():
         assert new_login.status_code == 200
 
 
-def test_google_verify_and_onboarding_flow():
+def test_google_verify_and_onboarding_flow(monkeypatch):
+    import routes.auth as auth_routes
+    monkeypatch.setattr(auth_routes, "_trial_days", lambda: 14)
+    monkeypatch.setattr(auth_routes, "_DB_MODE", "cloud")
+
     fake_google_user = {
         "sub": "google-uid-123456789",
         "email": "test_google_user@gmail.com",
@@ -169,6 +173,23 @@ def test_google_verify_and_onboarding_flow():
         assert reg_res.json()["action"] == "registered"
         assert reg_res.json()["username"] == "new_chosen_store"
         assert "token" in reg_res.json()
+        assert reg_res.json()["trial"] is not None
+        assert reg_res.json()["trial"]["days"] == 14
+
+        # Verify Google user gets 14-day Pro subscription in settings & profile
+        tok = reg_res.json()["token"]
+        headers = {"Authorization": f"Bearer {tok}"}
+        s_res = client.get("/settings", headers=headers)
+        assert s_res.status_code == 200
+        sub = s_res.json()["subscription"]
+        assert sub["plan"] == "pro"
+        assert sub["status"] == "trial"
+        assert sub["trial"] is True
+        assert sub["days_remaining"] == 14
+
+        p_res = client.get("/profile", headers=headers)
+        assert p_res.status_code == 200
+        assert p_res.json()["is_premium"] is True
 
         # 3. Second time Google verify -> existing user logs in immediately!
         v2 = client.post("/api/auth/google/verify", json={"credential": "fake_token"})
