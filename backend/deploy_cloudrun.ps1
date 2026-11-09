@@ -10,7 +10,7 @@ param(
     [Parameter(Mandatory = $false)][string]$Project = "staterbill",
     [string]$Region = "asia-south1",
     [string]$Service = "staterbill-api",
-    [string]$AllowedOrigins = "https://staterbill.com,https://www.staterbill.com,https://admin.staterbill.com,https://task.staterbill.com,https://bizassist-billing.vercel.app,https://bizassist-task.vercel.app,https://bizassist-dev-workspace-ai.vercel.app",
+    [string]$AllowedOrigins = "https://staterbill.com,https://www.staterbill.com,https://app.staterbill.com,https://admin.staterbill.com,https://task.staterbill.com,https://bizassist-billing.vercel.app,https://bizassist-task.vercel.app,https://bizassist-dev-workspace-ai.vercel.app",
     [int]$MinInstances = 0,
     [ValidateSet('0','1')][string]$SubscriptionEnforced = '0',
     [switch]$Setup,

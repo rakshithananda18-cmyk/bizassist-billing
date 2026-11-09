@@ -8,7 +8,7 @@ REGION="${CLOUD_RUN_REGION:-asia-south1}"
 SERVICE="staterbill-api"
 MIN_INSTANCES="${MIN_INSTANCES:-0}"
 SUBSCRIPTION_ENFORCED="${SUBSCRIPTION_ENFORCED:-0}"
-ALLOWED_ORIGINS="${ALLOWED_ORIGINS:-https://staterbill.com,https://www.staterbill.com,https://admin.staterbill.com,https://task.staterbill.com,https://bizassist-billing.vercel.app,https://bizassist-task.vercel.app,https://bizassist-dev-workspace-ai.vercel.app}"
+ALLOWED_ORIGINS="${ALLOWED_ORIGINS:-https://staterbill.com,https://www.staterbill.com,https://app.staterbill.com,https://admin.staterbill.com,https://task.staterbill.com,https://bizassist-billing.vercel.app,https://bizassist-task.vercel.app,https://bizassist-dev-workspace-ai.vercel.app}"
 SETUP=0
 for argument in "$@"; do
     case "$argument" in

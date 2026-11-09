@@ -233,14 +233,22 @@ function Navbar() {
         <div className="ml-auto hidden items-center gap-7 text-sm font-medium text-slate-300 md:flex">
           <a href="#features" className="transition hover:text-white">Features</a>
           <a href="#how" className="transition hover:text-white">How it works</a>
-          <a href={RELEASES_PAGE} className="transition hover:text-white">Releases</a>
+          <a href="#download" className="transition hover:text-white">Download Desktop</a>
         </div>
-        <a
-          href="#download"
-          className="ml-auto rounded-xl bg-gradient-to-r from-electric-500 to-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-electric-600/25 transition hover:brightness-110 md:ml-0"
-        >
-          Download
-        </a>
+        <div className="ml-auto flex items-center gap-3 md:ml-0">
+          <a
+            href="https://app.staterbill.com/login"
+            className="rounded-xl px-4 py-2 text-sm font-medium text-slate-200 transition hover:text-white hover:bg-white/5"
+          >
+            Sign In
+          </a>
+          <a
+            href="https://app.staterbill.com/register"
+            className="rounded-xl bg-gradient-to-r from-electric-500 to-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-electric-600/25 transition hover:brightness-110"
+          >
+            Start Free Trial
+          </a>
+        </div>
       </nav>
     </header>
   )
@@ -277,10 +285,17 @@ function Hero() {
         </Reveal>
 
         <Reveal delay={300} className="mt-10">
-          <div id="download" className="flex justify-center">
+          <div id="download" className="flex flex-wrap justify-center items-center gap-4">
             <DownloadButtons large />
+            <a
+              href="https://app.staterbill.com"
+              className="glass inline-flex items-center gap-2 rounded-2xl px-7 py-4 font-semibold text-white shadow-lg transition-all duration-300 hover:-translate-y-0.5 hover:border-white/25 hover:bg-white/10"
+            >
+              <span>Launch Cloud App</span>
+              <span className="text-electric-400">→</span>
+            </a>
           </div>
-          <p className="mt-4 text-xs text-slate-500">Free download · Windows 10/11 & macOS · Auto-updates forever</p>
+          <p className="mt-4 text-xs text-slate-500">Free 14-day trial · Windows, macOS & Web Cloud · No credit card required</p>
         </Reveal>
 
         <Reveal delay={450} className="mt-16">
@@ -403,8 +418,15 @@ function FinalCta() {
             <p className="mx-auto mt-4 max-w-xl text-slate-400">
               Join shops running STATER Bill all day, every day — with the timeless endurance of the ancient Stater.
             </p>
-            <div className="mt-8 flex justify-center">
+            <div className="mt-8 flex flex-wrap justify-center items-center gap-4">
               <DownloadButtons large />
+              <a
+                href="https://app.staterbill.com/register"
+                className="glass inline-flex items-center gap-2 rounded-2xl px-7 py-4 font-semibold text-white shadow-lg transition-all duration-300 hover:-translate-y-0.5 hover:border-white/25 hover:bg-white/10"
+              >
+                <span>Try Web App Free</span>
+                <span className="text-electric-400">→</span>
+              </a>
             </div>
           </div>
         </Reveal>
@@ -426,11 +448,11 @@ function Footer() {
         <div className="flex flex-wrap items-center gap-5 text-sm text-slate-400 md:ml-auto">
           <a href="#features" className="transition hover:text-white">Features</a>
           <a href="#how" className="transition hover:text-white">How it works</a>
-          <a href={RELEASES_PAGE} className="transition hover:text-white">Releases</a>
-          <a href="https://staterbill.com/terms" target="_blank" rel="noopener noreferrer" className="transition hover:text-white">Terms</a>
-          <a href="https://staterbill.com/privacy" target="_blank" rel="noopener noreferrer" className="transition hover:text-white">Privacy</a>
-          <a href="https://staterbill.com/refund-policy" target="_blank" rel="noopener noreferrer" className="transition hover:text-white">Refunds</a>
-          <a href="https://staterbill.com/contact" target="_blank" rel="noopener noreferrer" className="transition hover:text-white">Contact</a>
+          <a href="#download" className="transition hover:text-white">Download</a>
+          <a href="https://app.staterbill.com/terms" target="_blank" rel="noopener noreferrer" className="transition hover:text-white">Terms</a>
+          <a href="https://app.staterbill.com/privacy" target="_blank" rel="noopener noreferrer" className="transition hover:text-white">Privacy</a>
+          <a href="https://app.staterbill.com/refund-policy" target="_blank" rel="noopener noreferrer" className="transition hover:text-white">Refunds</a>
+          <a href="https://app.staterbill.com/contact" target="_blank" rel="noopener noreferrer" className="transition hover:text-white">Contact</a>
         </div>
         <p className="text-xs text-slate-600 md:ml-6">© {new Date().getFullYear()} STATER Bill — A product of A. Rakshit Enterprise Solutions Pvt Ltd (ARES). Inspired by the Stater (στατήρ).</p>
       </div>

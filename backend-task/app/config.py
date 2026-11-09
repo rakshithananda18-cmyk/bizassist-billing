@@ -114,7 +114,7 @@ PURGE_LOOP = _bool("TASK_PURGE_LOOP", True)
 CRON_SECRET = os.environ.get("TASK_CRON_SECRET", "")
 
 # The custom domain is canonical; keep the Vercel origin for older clients.
-_default_origins = "https://task.staterbill.com,https://bizassist-task.vercel.app"
+_default_origins = "https://task.staterbill.com,https://bizassist-task.vercel.app,https://app.staterbill.com,https://staterbill.com"
 def parse_origins(raw: str) -> list:
     """Browsers send an Origin with no path and no trailing slash, and CORS
     matches it exactly, so `https://x.vercel.app/` (as copied from the address

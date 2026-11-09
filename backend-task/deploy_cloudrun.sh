@@ -5,7 +5,7 @@ set -euo pipefail
 PROJECT="${1:-staterbill}"
 REGION="${CLOUD_RUN_REGION:-asia-south1}"
 SERVICE="staterbill-task"
-ALLOWED_ORIGINS="${ALLOWED_ORIGINS:-https://task.staterbill.com,https://bizassist-task.vercel.app,https://staterbill.com,https://www.staterbill.com}"
+ALLOWED_ORIGINS="${ALLOWED_ORIGINS:-https://task.staterbill.com,https://bizassist-task.vercel.app,https://staterbill.com,https://www.staterbill.com,https://app.staterbill.com}"
 SETUP=0
 
 for arg in "$@"; do
