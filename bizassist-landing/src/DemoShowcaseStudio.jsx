@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
 import './demoShowcase.css'
 
 const CHAPTERS = [
@@ -17,80 +16,19 @@ function getAppBase() {
   return new URL(configured || (local ? `${window.location.protocol}//${window.location.hostname}:5174` : 'https://app.staterbill.com'))
 }
 
-function LeadModal({ onClose, onUnlock }) {
-  const formRef = useRef(null)
-  const [error, setError] = useState('')
-  useEffect(() => {
-    const previousFocus = document.activeElement
-    const previousOverflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    formRef.current?.querySelector('input')?.focus()
-    const keydown = event => {
-      if (event.key === 'Escape') onClose()
-      if (event.key !== 'Tab') return
-      const controls = [...formRef.current.querySelectorAll('button, input')]
-      const first = controls[0]
-      const last = controls[controls.length - 1]
-      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus() }
-      if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus() }
-    }
-    document.addEventListener('keydown', keydown)
-    return () => {
-      document.body.style.overflow = previousOverflow
-      document.removeEventListener('keydown', keydown)
-      previousFocus?.focus()
-    }
-  }, [onClose])
-
-  const submit = event => {
-    event.preventDefault()
-    const values = new FormData(event.currentTarget)
-    const name = values.get('name').trim()
-    const phone = values.get('phone').trim()
-    if (!name || !/^\+?[0-9]{7,15}$/.test(phone.replace(/[\s()-]/g, ''))) {
-      setError('Enter your name and a valid phone number to continue.')
-      return
-    }
-    try { localStorage.setItem('stater_demo_lead', JSON.stringify({ name, phone, business: values.get('business').trim(), ts: Date.now() })) } catch {}
-    onUnlock()
-  }
-
-  return createPortal(<div className="demo-studio demo-lead-backdrop" onClick={event => { if (event.target === event.currentTarget) onClose() }}>
-    <form ref={formRef} className="demo-lead-dialog" role="dialog" aria-modal="true" aria-labelledby="demo-lead-title" aria-describedby="demo-lead-description" onSubmit={submit}>
-      <button type="button" className="demo-icon-button demo-lead-close" aria-label="Close details form" onClick={onClose}>×</button>
-      <span className="demo-eyebrow">YOUR TURN AT THE COUNTER</span>
-      <h3 id="demo-lead-title">Try the app yourself.</h3>
-      <p id="demo-lead-description">Add your details to explore STATER Bill with sample data. No account needed.</p>
-      <label htmlFor="demo-lead-name">Your name <span>*</span></label>
-      <input id="demo-lead-name" name="name" autoComplete="name" placeholder="Your name" required maxLength={100} />
-      <label htmlFor="demo-lead-phone">Phone number <span>*</span></label>
-      <input id="demo-lead-phone" name="phone" type="tel" autoComplete="tel" placeholder="+91 98765 43210" required maxLength={24} />
-      <label htmlFor="demo-lead-business">Business name <small>Optional</small></label>
-      <input id="demo-lead-business" name="business" autoComplete="organization" placeholder="Your shop or company" maxLength={150} />
-      {error && <p className="demo-form-error" role="alert">{error}</p>}
-      <button type="submit" className="demo-primary-button demo-lead-submit">Explore the demo app <span>→</span></button>
-      <p className="demo-lead-note">Your details are remembered in this browser. All activity in the demo uses sample data.</p>
-    </form>
-  </div>, document.body)
-}
-
 export default function DemoShowcaseStudio() {
   const appBase = useMemo(getAppBase, [])
+  const registerUrl = useMemo(() => new URL('/register', appBase).href, [appBase])
+  const loginUrl = useMemo(() => new URL('/login', appBase).href, [appBase])
   const iframeUrl = useMemo(() => {
     const url = new URL(appBase)
     url.search = 'demo=1&embed=1&tour=1'
     return url.href
   }, [appBase])
   const frameRef = useRef(null)
-  const studioRef = useRef(null)
   const viewportRef = useRef(null)
-  const pendingAction = useRef('sandbox')
-  const pendingChapter = useRef(null)
-  const modeRef = useRef('tour')
-  const [mode, setMode] = useState('tour')
   const [ready, setReady] = useState(false)
   const [loadError, setLoadError] = useState(false)
-  const [showLead, setShowLead] = useState(false)
   const [expanded, setExpanded] = useState(false)
   const [visible, setVisible] = useState(false)
   const [pageVisible, setPageVisible] = useState(!document.hidden)
@@ -98,7 +36,7 @@ export default function DemoShowcaseStudio() {
   const [tour, setTour] = useState({ chapter: 'home', caption: 'A guided look around your sample store.', progress: 0, playing: false })
   const [frameWidth, setFrameWidth] = useState(1120)
   const [frameKey, setFrameKey] = useState(0)
-  const playing = wantsPlay && visible && pageVisible && !showLead && mode === 'tour'
+  const playing = wantsPlay && visible && pageVisible
   const chapterIndex = Math.max(0, CHAPTERS.findIndex(chapter => chapter.id === tour.chapter))
   const chapter = CHAPTERS[chapterIndex]
 
@@ -114,8 +52,10 @@ export default function DemoShowcaseStudio() {
       if (data?.type === 'stater-tour:state' && CHAPTERS.some(item => item.id === data.chapter)) {
         setReady(true)
         setTour({ ...data, progress: Math.max(0, Math.min(1, Number(data.progress) || 0)) })
-        if (data.error) setWantsPlay(false)
-        if (data.complete) setWantsPlay(false)
+        if (data.error || data.complete) {
+          setWantsPlay(false)
+          setExpanded(false)
+        }
       }
     }
     window.addEventListener('message', receive)
@@ -133,13 +73,8 @@ export default function DemoShowcaseStudio() {
   }, [])
 
   useEffect(() => {
-    if (!ready) return
-    if (mode === 'tour' && pendingChapter.current) {
-      send('chapter', { chapter: pendingChapter.current })
-      pendingChapter.current = null
-    }
-    send(mode === 'sandbox' ? 'sandbox' : playing ? 'play' : 'pause')
-  }, [ready, mode, playing, send])
+    if (ready) send(playing ? 'play' : 'pause')
+  }, [ready, playing, send])
 
   useEffect(() => {
     if (ready) return
@@ -156,80 +91,57 @@ export default function DemoShowcaseStudio() {
     return () => { document.body.style.overflow = previousOverflow; window.removeEventListener('keydown', escape) }
   }, [expanded])
 
-  const unlock = useCallback(() => {
-    setShowLead(false)
-    if (pendingAction.current === 'open') {
-      const url = new URL(appBase)
-      url.search = 'demo=1'
-      window.open(url.href, '_blank', 'noopener,noreferrer')
-    } else {
-      modeRef.current = 'sandbox'
-      setMode('sandbox')
-      send('sandbox')
-    }
-  }, [appBase, send])
-  const closeLead = useCallback(() => setShowLead(false), [])
-  const takeControl = (action = 'sandbox') => {
-    pendingAction.current = action
-    let lead
-    try { lead = JSON.parse(localStorage.getItem('stater_demo_lead') || 'null') } catch {}
-    if (lead?.name && lead?.phone) unlock()
-    else { send('pause'); setShowLead(true) }
+  const pause = () => {
+    // Return to the document flow before releasing the body's scroll lock.
+    // A fixed expanded panel would keep catching the wheel even if unlocked.
+    send('pause')
+    setWantsPlay(false)
+    setExpanded(false)
   }
   const replay = () => {
-    const wasSandbox = modeRef.current === 'sandbox'
-    modeRef.current = 'tour'
-    setMode('tour')
     setWantsPlay(true)
-    if (wasSandbox) {
-      setReady(false)
-      setTour({ chapter: 'home', caption: 'A guided look around your sample store.', progress: 0, playing: false })
-      setFrameKey(key => key + 1)
-      return
-    }
     send('restart')
     send(visible && pageVisible ? 'play' : 'pause')
   }
+  const togglePlayback = () => {
+    if (tour.complete) replay()
+    else if (wantsPlay) pause()
+    else setWantsPlay(true)
+  }
   const chooseChapter = id => {
     if (!ready) return
-    if (modeRef.current === 'sandbox') {
-      pendingChapter.current = id
-      replay()
-      return
-    }
     setTour(previous => ({ ...previous, chapter: id, progress: 0, complete: false, error: null }))
     setWantsPlay(true)
     send('chapter', { chapter: id })
     send(visible && pageVisible ? 'play' : 'pause')
   }
-  const appWidth = mode === 'sandbox' ? frameWidth : 1280
-  const appHeight = mode === 'sandbox' ? 760 : 820
-  const scale = mode === 'sandbox' ? 1 : Math.min(1, frameWidth / appWidth)
+  const scale = Math.min(1, frameWidth / 1280)
 
-  return <section ref={studioRef} className={`demo-studio ${expanded ? 'demo-studio-expanded' : ''}`} aria-label="STATER Bill app tour">
-    {showLead && <LeadModal onClose={closeLead} onUnlock={unlock} />}
+  return <section className={`demo-studio ${expanded ? 'demo-studio-expanded' : ''}`} aria-label="STATER Bill app tour">
     <div className="demo-studio-heading">
-      <div className="demo-studio-heading-copy"><span className="demo-eyebrow"><span className="demo-live-dot" /> THE ACTUAL APP. A SAMPLE STORE.</span>
+      <div className="demo-studio-heading-copy"><span className="demo-eyebrow"><span className="demo-live-dot" /> THE ACTUAL APP. A PROTECTED PREVIEW.</span>
         <h2>See how a working day flows.</h2>
-        <p>Six short chapters. Real screens. Follow the cursor, then try it yourself.</p>
+        <p>Six short chapters. Real screens. Selected advanced workflows are hidden in this preview.</p>
       </div>
-      <button className="demo-primary-button" onClick={() => takeControl()}>Try it yourself <span>↗</span></button>
+      <div className="demo-auth-actions">
+        <a className="demo-primary-button" href={registerUrl}>Create your account <span>↗</span></a>
+        <a className="demo-text-button" href={loginUrl}>Already use STATER Bill? Sign in →</a>
+      </div>
     </div>
     <div className="demo-player">
       <div className="demo-window-bar">
         <div className="demo-window-dots" aria-hidden="true"><i /><i /><i /></div>
-        <span className="demo-window-title">STATER Bill <span>/ {mode === 'tour' ? 'Guided app tour' : 'Your demo workspace'}</span></span>
+        <span className="demo-window-title">STATER Bill <span>/ Guided app tour</span></span>
         <div className="demo-window-actions">
-          <span className="demo-sample-label">SAMPLE DATA</span>
+          <span className="demo-sample-label">PROTECTED PREVIEW</span>
           <button className="demo-icon-button" aria-label={expanded ? 'Collapse app preview' : 'Expand app preview'} onClick={() => setExpanded(value => !value)}>{expanded ? '↙' : '⛶'}</button>
-          {mode === 'sandbox' && <button className="demo-icon-button" aria-label="Open demo in a new tab" onClick={() => takeControl('open')}>↗</button>}
         </div>
       </div>
-      <div ref={viewportRef} className="demo-app-viewport" style={{ height: `${appHeight * scale}px` }}>
-        <iframe key={frameKey} ref={frameRef} src={iframeUrl} title="STATER Bill real app with sample data" className="demo-app-frame" style={{ width: appWidth, height: appHeight, transform: `scale(${scale})` }}
-          loading="eager" tabIndex={mode === 'tour' ? -1 : 0} inert={mode === 'tour' ? '' : undefined}
-          onLoad={() => { setLoadError(false); send(modeRef.current === 'sandbox' ? 'sandbox' : playing ? 'play' : 'pause') }} />
-        {mode === 'tour' && ready && <button className="demo-takeover-surface" onClick={() => takeControl()} aria-label="Take control of the demo app; enter your details to continue" />}
+      <div ref={viewportRef} className="demo-app-viewport" style={{ height: `${820 * scale}px` }}>
+        <iframe key={frameKey} ref={frameRef} src={iframeUrl} title="STATER Bill protected app tour with sample data" className="demo-app-frame" style={{ width: 1280, height: 820, transform: `scale(${scale})` }}
+          loading="eager" tabIndex={-1} inert=""
+          onLoad={() => { setLoadError(false); send(playing ? 'play' : 'pause') }} />
+        {ready && <a className="demo-takeover-surface" href={registerUrl} aria-label="Create your STATER Bill account to explore the full app" />}
         {!ready && <div className="demo-loading" role="status">
           <span className="demo-loading-mark">S<span>•</span></span>
           <strong>{loadError ? 'The app preview is taking a little longer.' : 'Opening your sample store…'}</strong>
@@ -239,21 +151,21 @@ export default function DemoShowcaseStudio() {
       </div>
       <div className="demo-playback-bar">
         <div className="demo-playback-controls">
-          <button className="demo-play-button" disabled={!ready} onClick={() => mode === 'sandbox' || tour.complete ? replay() : setWantsPlay(value => !value)} aria-label={mode === 'sandbox' || tour.complete ? 'Replay guided tour' : wantsPlay ? 'Pause guided tour' : 'Play guided tour'}>{mode === 'sandbox' || tour.complete || !wantsPlay ? '▶' : 'Ⅱ'}</button>
+          <button className="demo-play-button" disabled={!ready} onClick={togglePlayback} aria-label={tour.complete ? 'Replay guided tour' : wantsPlay ? 'Pause guided tour' : 'Play guided tour'}>{tour.complete || !wantsPlay ? '▶' : 'Ⅱ'}</button>
           <button className="demo-icon-button" disabled={!ready} onClick={replay} aria-label="Restart tour from Home">↺</button>
           <span className="demo-chapter-count">{String(chapterIndex + 1).padStart(2, '0')} / 06</span>
         </div>
-        <div className="demo-caption" aria-live="polite" aria-atomic="true"><strong>{mode === 'sandbox' ? 'You’re in control.' : chapter.title}</strong><span>{mode === 'sandbox' ? 'Explore the app with sample data. Return to the tour whenever you like.' : tour.error ? 'This step could not load. Replay the chapter to try again.' : tour.complete ? 'Tour complete. Replay a chapter or try the app yourself.' : tour.caption}</span></div>
-        <button className="demo-text-button" onClick={() => mode === 'tour' ? takeControl() : replay()}>{mode === 'tour' ? 'Take control →' : 'Back to tour →'}</button>
+        <div className="demo-caption" aria-live="polite" aria-atomic="true"><strong>{chapter.title}</strong><span>{tour.error ? 'This step could not load. Replay the chapter to try again.' : tour.complete ? 'Tour complete. Create an account or sign in to explore the full app.' : tour.caption}</span></div>
+        <div className="demo-playback-auth"><a className="demo-text-button" href={registerUrl}>Get started →</a><a className="demo-text-button" href={loginUrl}>Sign in</a></div>
       </div>
       <div className="demo-progress-track" role="progressbar" aria-label={`${chapter.title} chapter progress`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(tour.progress * 100)}><div style={{ width: `${tour.progress * 100}%` }} /></div>
     </div>
     <div className="demo-chapter-grid" aria-label="Choose a tour chapter">
-      {CHAPTERS.map((item, index) => <button key={item.id} disabled={!ready} aria-current={chapter.id === item.id ? 'step' : undefined} onClick={() => chooseChapter(item.id)} className={`demo-chapter-card ${chapter.id === item.id && mode === 'tour' ? 'is-active' : ''}`}>
+      {CHAPTERS.map((item, index) => <button key={item.id} disabled={!ready} aria-current={chapter.id === item.id ? 'step' : undefined} onClick={() => chooseChapter(item.id)} className={`demo-chapter-card ${chapter.id === item.id ? 'is-active' : ''}`}>
         <span className="demo-chapter-number">{String(index + 1).padStart(2, '0')}<span aria-hidden="true">↗</span></span>
         <strong>{item.title}</strong><span>{item.detail}</span>
       </button>)}
     </div>
-    <div className="demo-chapter-description"><p>{chapter.description}</p><span>App Settings, B2B &amp; POS Live are locked in the demo.</span></div>
+    <div className="demo-chapter-description"><p>{chapter.description}</p><span>Advanced pricing, analytics and inventory calculations are hidden. App Settings, B2B &amp; POS Live remain locked.</span></div>
   </section>
 }

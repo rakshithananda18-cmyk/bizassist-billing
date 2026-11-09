@@ -606,13 +606,13 @@ def signup(req: SignupRequest, db: Session = Depends(get_db)):
 
         if email:
             try:
-                from services.brevo_service import brevo_service
-                brevo_service.send_welcome_email(email, user.business_name or user.username, user.username)
-                brevo_service.sync_contact_to_brevo(
+                from services.brevo_service import send_welcome_email, sync_contact_to_brevo
+                send_welcome_email(email, user.business_name or user.username, user.username, user.business_name or user.username)
+                sync_contact_to_brevo(
                     email=email,
-                    name=user.business_name or user.username,
-                    phone=user.phone,
-                    attributes={"STORE_NAME": user.business_name or "", "CATEGORY": "general"}
+                    business_name=user.business_name or user.username,
+                    phone=user.phone or "",
+                    plan="Trial"
                 )
             except Exception as be:
                 logger.warning(f"[AUTH] Brevo welcome sync skipped on signup: {be}")

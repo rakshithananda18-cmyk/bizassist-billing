@@ -52,6 +52,7 @@ import { DEFAULT_FUNC_KEYS as defaultFuncKeys, loadFuncKeys, matchesKey } from '
 import { getPriceOptions as buildPriceOptions, withQty as withQtyFor } from '../lib/priceOptions'
 import { nextInvoiceNo, syncTabNames as syncTabNamesFor } from '../lib/posInvoiceNumbers'
 import { playScanBeep, playErrorTone } from '../utils/posAudio'
+import { isProtectedTourPreview } from '../demo/tourPrivacy'
 
 // ============================================================================
 // ── 2. GLOBAL DEFAULTS & VALUE SCHEMAS ──
@@ -2476,6 +2477,7 @@ export default function Sales(props = {}) {
 
               {priceSelectorIndex !== null && (
                 <PriceSelectorModal
+                  protectTour={isProtectedTourPreview(user)}
                   productName={form.items[priceSelectorIndex]?.product}
                   options={getPriceOptions(form.items[priceSelectorIndex])}
                   selectedIndex={selectedPriceOptIndex}

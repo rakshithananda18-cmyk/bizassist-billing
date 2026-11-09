@@ -361,11 +361,17 @@ export function resetDemoData() {
   replayed.clear()
 }
 
+/** Authentication entry routes always leave the public demo session. */
+export function isAuthEntryPath(pathname) {
+  return /^\/(?:login|register)\/?$/i.test(String(pathname || ''))
+}
+
 /** Check if demo mode is requested via URL or active in sessionStorage */
 export function isDemoRequested() {
   try {
     if (typeof window === 'undefined') return false
     const path = (window.location.pathname || '').toLowerCase()
+    if (isAuthEntryPath(path)) return false
     const demo = new URLSearchParams(window.location.search || '').get('demo')?.toLowerCase()
     if (path === '/demo' || path.startsWith('/demo/') || demo === '1' || demo === 'true') {
       return true

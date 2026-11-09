@@ -113,6 +113,17 @@ def admin_businesses(current_user: dict = Depends(get_active_user), db: Session 
         logger.error("admin/businesses: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
 
+@router.get("/admin/deleted-businesses")
+def admin_deleted_businesses(current_user: dict = Depends(get_active_user), db: Session = Depends(get_db)):
+    """Tombstone monitor: list all deleted / wiped businesses for audit trail."""
+    try:
+        svc.require_admin(current_user["id"], db)
+        return svc.list_deleted_businesses(db)
+    except HTTPException: raise
+    except Exception as e:
+        logger.error("admin/deleted-businesses: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
 @router.delete("/admin/wipe-all-data")
 def wipe_all_data(current_user: dict = Depends(get_active_user), db: Session = Depends(get_db)):
     try:

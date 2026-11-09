@@ -25,6 +25,7 @@ import { sessionFetch, resilientSessionFetch, invalidateSessionRefresh } from '.
 import { readableError } from '../api/httpErrors'
 import { useSessionRefresh } from '../hooks/useSessionRefresh'
 import {
+  isAuthEntryPath,
   isDemoRequested,
   activateDemoSession,
   clearDemoSession,
@@ -176,6 +177,9 @@ export function AuthProvider({ children }) {
   // Restore session from localStorage/tokenStorage on mount
   useEffect(() => {
     try {
+      // A visitor who follows the marketing tour's sign-in/trial links must
+      // enter real authentication, even when this tab previously ran a demo.
+      if (isAuthEntryPath(window.location.pathname)) clearDemoSession()
       if (isDemoRequested()) {
         activateDemoSession()
         setUser(DEMO_USER)

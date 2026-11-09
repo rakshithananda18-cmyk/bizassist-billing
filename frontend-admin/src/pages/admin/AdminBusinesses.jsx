@@ -48,6 +48,8 @@ export default function AdminBusinesses() {
   // Type-the-name wipe confirmation (danger guard)
   const [wipeTarget, setWipeTarget] = useState(null)   // { id, name }
   const [wipeTyped, setWipeTyped] = useState('')
+  const [viewTab, setViewTab] = useState('active') // 'active' | 'deleted'
+  const [deletedBusinesses, setDeletedBusinesses] = useState([])
 
   // Search & Copy BizID
   const [search, setSearch] = useState('')
@@ -78,6 +80,15 @@ export default function AdminBusinesses() {
       if (requestId !== listRequest.current) return
       setBusinesses(data.map(b => ({ ...b, total_revenue: Number(b.total_revenue) })))
       setHasLoaded(true)
+      try {
+        const delRes = await authFetch(`${API_BASE}/admin/deleted-businesses`)
+        if (delRes.ok) {
+          const delData = await delRes.json()
+          if (Array.isArray(delData)) setDeletedBusinesses(delData)
+        }
+      } catch (e) {
+        logger.debug('Could not load deleted businesses:', e)
+      }
     } catch (err) {
       if (requestId !== listRequest.current) return
       logger.error(err)
@@ -344,7 +355,21 @@ export default function AdminBusinesses() {
     return (
       (b.business_name && b.business_name.toLowerCase().includes(q)) ||
       (b.username && b.username.toLowerCase().includes(q)) ||
-      (b.bizid && b.bizid.toLowerCase().includes(q))
+      (b.bizid && b.bizid.toLowerCase().includes(q)) ||
+      (b.email && b.email.toLowerCase().includes(q)) ||
+      (b.phone && b.phone.toLowerCase().includes(q)) ||
+      (b.login_method && b.login_method.toLowerCase().includes(q))
+    )
+  })
+
+  const filteredDeletedBusinesses = deletedBusinesses.filter(d => {
+    if (!search.trim()) return true
+    const q = search.trim().toLowerCase()
+    return (
+      (d.business_name && d.business_name.toLowerCase().includes(q)) ||
+      (d.username && d.username.toLowerCase().includes(q)) ||
+      (d.bizid && d.bizid.toLowerCase().includes(q)) ||
+      (d.reason && d.reason.toLowerCase().includes(q))
     )
   })
 
@@ -383,6 +408,52 @@ export default function AdminBusinesses() {
         noPad
         style={{ marginTop: 20 }}
       >
+        {/* Active vs Deleted Tabs */}
+        <div style={{ display: 'flex', gap: 6, padding: '12px 18px 0', background: 'var(--bg-1)', borderBottom: '1px solid var(--border)' }}>
+          <button
+            type="button"
+            onClick={() => setViewTab('active')}
+            style={{
+              padding: '8px 16px',
+              border: 'none',
+              borderBottom: viewTab === 'active' ? '2px solid var(--accent)' : '2px solid transparent',
+              background: 'transparent',
+              color: viewTab === 'active' ? 'var(--text-primary)' : 'var(--text-muted)',
+              fontWeight: viewTab === 'active' ? 700 : 500,
+              fontSize: 13,
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+            }}
+          >
+            <span>Active Stores</span>
+            <span className="tag" style={{ fontSize: 11, padding: '1px 6px' }}>{businesses.length}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setViewTab('deleted')}
+            style={{
+              padding: '8px 16px',
+              border: 'none',
+              borderBottom: viewTab === 'deleted' ? '2px solid var(--danger)' : '2px solid transparent',
+              background: 'transparent',
+              color: viewTab === 'deleted' ? 'var(--danger)' : 'var(--text-muted)',
+              fontWeight: viewTab === 'deleted' ? 700 : 500,
+              fontSize: 13,
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+            }}
+          >
+            <span>Deleted / Wiped Stores</span>
+            <span className="tag" style={{ fontSize: 11, padding: '1px 6px', background: 'var(--danger-dim)', color: 'var(--danger)' }}>
+              {deletedBusinesses.length}
+            </span>
+          </button>
+        </div>
+
         {/* Search & Filter Toolbar */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 18px', borderBottom: '1px solid var(--border)', background: 'var(--bg-1)', flexWrap: 'wrap' }}>
           <div style={{ position: 'relative', flex: 1, minWidth: 260, maxWidth: 420 }}>
@@ -413,6 +484,71 @@ export default function AdminBusinesses() {
 
         {loading && !hasLoaded ? (
           <div className="vskel" style={{ padding: 20 }}></div>
+        ) : hasLoaded && viewTab === 'deleted' ? (
+          <div className="admin-table-wrap" style={{ overflowX: 'auto', width: '100%', padding: '12px 18px 24px' }}>
+            <div style={{ margin: '4px 0 14px', padding: '10px 14px', borderRadius: 8, background: 'var(--bg-2)', border: '1px solid var(--border)', fontSize: 12.5, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Icon name="shield" size={15} style={{ color: 'var(--accent)' }} />
+              <span><b>Tombstone Audit Ledger:</b> Permanently wiped stores. All private operational data (invoices, inventory, journal ledgers, credentials, session tokens) has been destroyed. BizID and basic store metadata are preserved to prevent identity recycling.</span>
+            </div>
+            <table className="admin-table" style={{ width: '100%' }}>
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>BizID</th>
+                  <th>Store Name</th>
+                  <th>Username</th>
+                  <th>Status</th>
+                  <th>Wiped On</th>
+                  <th>Reason</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredDeletedBusinesses.length === 0 ? (
+                  <tr>
+                    <td colSpan="7" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 36 }}>
+                      {search ? 'No deleted stores match the search filter.' : 'No stores have been wiped yet.'}
+                    </td>
+                  </tr>
+                ) : (
+                  filteredDeletedBusinesses.map(d => (
+                    <tr key={d.id || d.bizid}>
+                      <td style={{ fontFamily: "var(--font-mono, monospace)", fontSize: 12, color: 'var(--text-muted)' }}>{d.id}</td>
+                      <td style={{ fontFamily: "var(--font-mono, monospace)", fontSize: 12 }}>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                          <span>{d.bizid || '—'}</span>
+                          {d.bizid && (
+                            <button
+                              type="button"
+                              onClick={() => copyBusinessId(d.bizid)}
+                              style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: copiedId === d.bizid ? 'var(--success)' : 'var(--text-muted)' }}
+                              title="Copy BizID"
+                            >
+                              <Icon name={copiedId === d.bizid ? 'check' : 'copy'} size={12} />
+                            </button>
+                          )}
+                        </span>
+                      </td>
+                      <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{d.business_name}</td>
+                      <td style={{ color: 'var(--text-secondary)' }}>@{d.username || '—'}</td>
+                      <td>
+                        <span className="tag" style={{ background: 'var(--danger-dim)', color: 'var(--danger)', border: '1px solid rgba(197,48,48,0.3)', fontWeight: 700 }}>
+                          DELETED
+                        </span>
+                      </td>
+                      <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                        {d.deleted_at ? new Date(d.deleted_at).toLocaleString() : '—'}
+                      </td>
+                      <td>
+                        <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                          {d.reason === 'admin_wipe' ? 'Admin Wipe (Data & Sessions Purged)' : d.reason}
+                        </span>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         ) : hasLoaded ? (
           <div className="admin-table-wrap" style={{ overflowX: 'auto', width: '100%' }}>
             {(() => {
@@ -439,21 +575,22 @@ export default function AdminBusinesses() {
                   <th>ID</th>
                   <th>BizID</th>
                   <th>Business Name</th>
-                  <th>Username</th>
+                  <th>Login Method</th>
+                  <th>Email & Phone</th>
+                  <th>Mails Sent</th>
                   <th>Mode</th>
                   <th>Sync</th>
                   <th>Plan</th>
                   <th>Invoices</th>
                   <th>Revenue</th>
                   <th>Stock Items</th>
-                  <th>Uploads</th>
                   <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredBusinesses.length === 0 ? (
                   <tr>
-                    <td colSpan="12" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 36 }}>
+                    <td colSpan="13" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 36 }}>
                       {search ? 'No businesses match the search query.' : 'No enterprise businesses registered yet.'}
                     </td>
                   </tr>
@@ -504,7 +641,52 @@ export default function AdminBusinesses() {
                           </span>
                         )}
                       </td>
-                      <td style={{ color: 'var(--text-secondary)' }}>@{b.username}</td>
+                      <td>
+                        {b.login_method === 'google' ? (
+                          <span className="tag" style={{ background: 'rgba(66, 133, 244, 0.12)', color: '#60a5fa', border: '1px solid rgba(66, 133, 244, 0.25)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                            <Icon name="google" size={11} /> Google
+                          </span>
+                        ) : (
+                          <span className="tag" style={{ background: 'var(--bg-1)', border: '1px solid var(--border)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                            <Icon name="key" size={11} /> Password
+                          </span>
+                        )}
+                        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>@{b.username}</div>
+                      </td>
+                      <td>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 2, fontSize: 12 }}>
+                          {b.email ? (
+                            <span style={{ color: 'var(--text-primary)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                              <Icon name="mail" size={11} style={{ color: 'var(--text-muted)' }} />
+                              <span>{b.email}</span>
+                            </span>
+                          ) : (
+                            <span style={{ color: 'var(--text-muted)' }}>No email</span>
+                          )}
+                          {b.phone && (
+                            <span style={{ color: 'var(--text-secondary)', display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11.5 }}>
+                              <Icon name="phone" size={11} style={{ color: 'var(--text-muted)' }} />
+                              <span>{b.phone}</span>
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td>
+                        <span
+                          className="tag"
+                          title={b.mails_sent_count > 0 ? `${b.mails_sent_count} system email(s) sent (welcome, OTPs)` : 'No emails dispatched'}
+                          style={{
+                            background: b.mails_sent_count > 0 ? 'rgba(52, 168, 83, 0.12)' : 'var(--bg-1)',
+                            color: b.mails_sent_count > 0 ? 'var(--success)' : 'var(--text-muted)',
+                            border: `1px solid ${b.mails_sent_count > 0 ? 'rgba(52, 168, 83, 0.25)' : 'var(--border)'}`,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 4
+                          }}
+                        >
+                          <Icon name="mail" size={11} /> {b.mails_sent_count || 0} sent
+                        </span>
+                      </td>
                       <td><span className="tag" style={{ background: 'var(--bg-1)', border: '1px solid var(--border)' }}>{b.hosting_mode || 'local'}</span></td>
                       <td>
                         <span title={b.last_sync_at ? `Last sync ${b.last_sync_at}${b.sync_queue_depth ? ` · ${b.sync_queue_depth} queued` : ''}` : 'Never synced'} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12 }}>
@@ -525,7 +707,6 @@ export default function AdminBusinesses() {
                         ₹{b.total_revenue.toLocaleString('en-IN')}
                       </td>
                       <td>{b.inventory_count} items</td>
-                      <td>{b.upload_count} datasets</td>
                       <td>
                         <div className="admin-business-actions">
                           <Link to={`/admin/businesses/${b.id}`} className="btn-flush" style={{ textDecoration: 'none', padding: '5px 10px', fontSize: 12 }}>Open</Link>
@@ -814,7 +995,7 @@ export default function AdminBusinesses() {
                   <Icon name="search" size={20} /> Inspect: {inspectDetails?.business_name || 'Loading...'}
                 </div>
                 <div style={{ fontSize: 12, color: 'var(--secondary-text)', marginTop: 4 }}>
-                  User ID: {inspectDetails?.id} | Username: {inspectDetails?.username}
+                  User ID: {inspectDetails?.id} | BizID: {inspectDetails?.bizid || '—'} | Username: @{inspectDetails?.username}
                 </div>
               </div>
               <button
@@ -830,6 +1011,49 @@ export default function AdminBusinesses() {
               <div className="vskel" style={{ marginTop: 24 }}></div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 16, marginTop: 24 }}>
+                {/* Merchant Account Details Strip */}
+                <div style={{ background: 'var(--bg-1, #1a1d24)', border: '1px solid var(--border, #2d3343)', borderRadius: 10, padding: 14, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 12 }}>
+                  <div>
+                    <div style={{ fontSize: 11, textTransform: 'uppercase', color: 'var(--text-muted)' }}>Login Method</div>
+                    <div style={{ fontSize: 13, fontWeight: 600, marginTop: 3, display: 'flex', alignItems: 'center', gap: 6 }}>
+                      {inspectDetails.login_method === 'google' ? (
+                        <span style={{ color: '#60a5fa', display: 'inline-flex', alignItems: 'center', gap: 4 }}><Icon name="google" size={13} /> Google SSO</span>
+                      ) : (
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Icon name="key" size={13} /> Password</span>
+                      )}
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 11, textTransform: 'uppercase', color: 'var(--text-muted)' }}>Google / Account Email</div>
+                    <div style={{ fontSize: 13, fontWeight: 600, marginTop: 3, wordBreak: 'break-all' }}>
+                      {inspectDetails.email || '—'}
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 11, textTransform: 'uppercase', color: 'var(--text-muted)' }}>Phone Number</div>
+                    <div style={{ fontSize: 13, fontWeight: 600, marginTop: 3 }}>
+                      {inspectDetails.phone || '—'}
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 11, textTransform: 'uppercase', color: 'var(--text-muted)' }}>Staff Accounts</div>
+                    <div style={{ fontSize: 13, fontWeight: 600, marginTop: 3 }}>
+                      {inspectDetails.staff_count ?? 0} counter(s)
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 11, textTransform: 'uppercase', color: 'var(--text-muted)' }}>Joined Platform</div>
+                    <div style={{ fontSize: 12, marginTop: 3 }}>
+                      {inspectDetails.created_at ? new Date(inspectDetails.created_at).toLocaleDateString() : '—'}
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 11, textTransform: 'uppercase', color: 'var(--text-muted)' }}>Last Authentication</div>
+                    <div style={{ fontSize: 12, marginTop: 3 }}>
+                      {inspectDetails.last_login ? new Date(inspectDetails.last_login).toLocaleString() : 'Never logged in'}
+                    </div>
+                  </div>
+                </div>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   {Object.entries(inspectDetails.pagination?.sections || {}).filter(([, more]) => more).map(([section]) => (
                     <button type="button" key={section} onClick={() => loadMoreDetails(section)} disabled={Boolean(inspectMoreLoading)}>
@@ -1057,6 +1281,56 @@ export default function AdminBusinesses() {
                         )
                       })
                     })()}
+                  </div>
+                </details>
+
+                {/* Mails & Communications Sent */}
+                <details className="tree-node" open>
+                  <summary className="tree-summary" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <Icon name="mail" size={14} /> Mails & Communications Sent ({inspectDetails.emails?.length || 0})
+                  </summary>
+                  <div className="tree-content">
+                    {!inspectDetails.emails || inspectDetails.emails.length === 0 ? (
+                      <div style={{ color: 'var(--secondary-text)', padding: '10px 0' }}>No emails recorded for this merchant.</div>
+                    ) : (
+                      <table className="admin-table" style={{ width: '100%', marginTop: 8 }}>
+                        <thead>
+                          <tr>
+                            <th>Date & Time</th>
+                            <th>Template</th>
+                            <th>Recipient</th>
+                            <th>Subject</th>
+                            <th>Status</th>
+                            <th>Details</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {inspectDetails.emails.map((m, idx) => (
+                            <tr key={m.id || idx}>
+                              <td style={{ fontSize: 12, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                                {m.sent_at ? new Date(m.sent_at).toLocaleString() : '—'}
+                              </td>
+                              <td>
+                                <span className="tag" style={{ textTransform: 'capitalize' }}>
+                                  {m.template || 'email'}
+                                </span>
+                              </td>
+                              <td style={{ fontSize: 12 }}>{m.recipient}</td>
+                              <td style={{ fontWeight: 600, fontSize: 12.5 }}>{m.subject}</td>
+                              <td>
+                                <span className="tag" style={{
+                                  background: m.status === 'sent' ? 'var(--success-dim)' : 'var(--accent-dim)',
+                                  color: m.status === 'sent' ? 'var(--success)' : 'var(--text-secondary)'
+                                }}>
+                                  {m.status}
+                                </span>
+                              </td>
+                              <td style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>{m.details || '—'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
                   </div>
                 </details>
               </div>

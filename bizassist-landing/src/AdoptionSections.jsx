@@ -35,8 +35,8 @@ const FAQS = [
     answer: 'Prepare GST invoices and GSTR-1 and GSTR-3B reports from your recorded transactions. Review the figures and exports with your accountant before filing. Report preparation and export are available in the app; submitting a return to the GST portal is a separate step.',
   },
   {
-    question: 'What can I try in the public demo?',
-    answer: 'The guided tour and hands-on demo use a disposable sample store. Explore billing, items, stock, purchases and contacts with sample data. B2B, App Settings and POS Live are locked in the public demo. Start a trial to set up your own store and explore those workflows.',
+    question: 'What can I see in the public tour?',
+    answer: 'Watch the real app move through billing, items, stock, purchases and contacts using a sample store. Selected advanced pricing and analytics details are protected in this preview, and B2B, App Settings and POS Live stay locked. Click the preview to create an account, or use Sign in if you already have one.',
   },
   {
     question: 'Can I bring my existing items and contacts?',
@@ -58,14 +58,14 @@ export default function AdoptionSections() {
               <p className="adoption__eyebrow"><span /> A comfortable first step</p>
               <h2 id="adoption-start-title">From a look around<br />to your first bill.</h2>
             </div>
-            <p className="adoption__intro">Get to know the workspace with a sample shop. Then make it your own, one step at a time.</p>
+            <p className="adoption__intro">Get to know the workspace with a guided preview. Then sign in or start a trial to make it your own.</p>
           </div>
 
           <ol className="adoption-steps">
             <li>
               <div className="adoption-steps__top"><span className="adoption-steps__number">01</span><span className="adoption-steps__label">Look around</span><Arrow /></div>
-              <h3>Explore the sample shop.</h3>
-              <p>Follow the guided tour from Home to Contacts, or take control and try the real app with demo items.</p>
+              <h3>Watch the sample shop.</h3>
+              <p>Follow the real app from Home to Contacts with sample items. Selected advanced workflows are protected in the public preview.</p>
               <a className="adoption__text-link" href="#workspaces">Watch the product tour <Arrow diagonal /></a>
             </li>
             <li>
@@ -76,9 +76,9 @@ export default function AdoptionSections() {
             </li>
             <li>
               <div className="adoption-steps__top"><span className="adoption-steps__number">03</span><span className="adoption-steps__label">Make it yours</span><span className="adoption-steps__finish" aria-hidden="true">✓</span></div>
-              <h3>Start with what you sell.</h3>
-              <p>Add or import your items and contacts, check your opening stock, then create your first bill at the counter.</p>
-              <span className="adoption-steps__note">Your catalogue. Your customers. Your store.</span>
+              <h3>Start with your own store.</h3>
+              <p>Create your account, add or import your items and contacts, check opening stock, then create your first bill at the counter.</p>
+              <a className="adoption__text-link" href="https://app.staterbill.com/register">Create your store <Arrow diagonal /></a>
             </li>
           </ol>
         </div>

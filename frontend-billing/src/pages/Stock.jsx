@@ -31,6 +31,8 @@ import { useConfirm } from '../contexts/ConfirmContext'
 import ColumnResizer from '../components/common/ColumnResizer'
 import BulkActionBar from '../components/common/BulkActionBar'
 import BulkPreviewModal from '../components/common/BulkPreviewModal'
+import { isProtectedTourPreview, PRIVATE_STOCK_COLUMNS } from '../demo/tourPrivacy'
+import { TourPrivateValue } from '../demo/TourPrivatePreview'
 
 const fmt = (n) =>
   n != null ? `₹${Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '—'
@@ -130,6 +132,7 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
   // StockWorkspace.jsx passes it. Remove the prop and the branches with
   // StockPurchases.jsx once the new page is signed off.
   const { authFetch, settings, user } = useAuth()
+  const protectTour = isProtectedTourPreview(user)
   // Sample intake stays separate from the owner's saved working draft.
   const intakeDraftPrefix = user?.is_demo ? 'stater_demo_' : ''
   const confirm = useConfirm()
@@ -1249,6 +1252,7 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
                       background: var(--bg-2);
                     }
                   `}</style>
+                  {protectTour && <p className="tour-private-stock-note">Some pricing and margin details are protected in this preview. Full workflow available after sign-in.</p>}
                   {loading ? (
                     <div className="page-loader"><span className="spinner" /> Loading…</div>
                   ) : loadError ? (
@@ -1275,11 +1279,11 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
                             key={c.key}
                             {...invCols.headerProps(c.key, {
                               style: { textAlign: c.align || 'center', ...(c.width && !invCols.widths[c.key] ? { width: c.width } : {}) },
-                              title: c.title,
+                              title: protectTour && PRIVATE_STOCK_COLUMNS.has(c.key) ? undefined : c.title,
                             })}
                           >
-                            {c.label}
-                            <ColumnResizer {...invCols.resizerProps(c.key)} />
+                            {protectTour && PRIVATE_STOCK_COLUMNS.has(c.key) ? <TourPrivateValue label="Protected pricing or margin column" /> : c.label}
+                            {!(protectTour && PRIVATE_STOCK_COLUMNS.has(c.key)) && <ColumnResizer {...invCols.resizerProps(c.key)} />}
                           </th>
                         ))}
                       </tr></thead>
@@ -1382,23 +1386,23 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
                               </td>
                               <td style={{ color: 'var(--text-muted)' }}>{p.unit || 'pcs'}</td>
                               <td style={{ textAlign: 'right' }}>{num(d.mrp || null)}</td>
-                              <td style={{ textAlign: 'right' }}>{num(d.cost || null)}</td>
+                              <td data-tour-private={protectTour ? 'stock-cost' : undefined} style={{ textAlign: 'right' }}>{protectTour ? <TourPrivateValue /> : num(d.cost || null)}</td>
                               <td style={{ textAlign: 'right', fontWeight: 600 }}>{num(d.sell || null)}</td>
                               {/* A tier left at 0 is not "free" — it is unset, and
                                   getPriceOptions drops it, so POS never offers it.
                                   Show that as an em dash rather than ₹0. */}
                               <td style={{ textAlign: 'right', color: p.wholesale_price > 0 ? 'inherit' : 'var(--text-muted)' }}>
-                                {p.wholesale_price > 0 ? num(p.wholesale_price) : '—'}
+                                {protectTour ? <TourPrivateValue /> : p.wholesale_price > 0 ? num(p.wholesale_price) : '—'}
                               </td>
                               <td style={{ textAlign: 'right', color: p.distributor_price > 0 ? 'inherit' : 'var(--text-muted)' }}>
-                                {p.distributor_price > 0 ? num(p.distributor_price) : '—'}
+                                {protectTour ? <TourPrivateValue /> : p.distributor_price > 0 ? num(p.distributor_price) : '—'}
                               </td>
                               <td style={{ textAlign: 'right', color: 'var(--text-muted)' }}>{d.gst ? `${d.gst.toFixed(0)}%` : '—'}</td>
                               <td style={{ textAlign: 'right', color: 'var(--text-muted)' }}>{pct(d.discPct)}</td>
-                              <td style={{ textAlign: 'right', color: d.roi == null ? 'var(--text-muted)' : d.roi >= 0 ? good : 'var(--danger)' }}>{pct(d.roi)}</td>
-                              <td style={{ textAlign: 'right', color: d.profit == null ? 'var(--text-muted)' : d.profit >= 0 ? good : 'var(--danger)' }}>{pct(d.profit)}</td>
-                              <td style={{ textAlign: 'right' }}>{num(d.netCost)}</td>
-                              <td style={{ textAlign: 'right' }}>{num(d.netMrp)}</td>
+                              <td style={{ textAlign: 'right', color: protectTour || d.roi == null ? 'var(--text-muted)' : d.roi >= 0 ? good : 'var(--danger)' }}>{protectTour ? <TourPrivateValue /> : pct(d.roi)}</td>
+                              <td style={{ textAlign: 'right', color: protectTour || d.profit == null ? 'var(--text-muted)' : d.profit >= 0 ? good : 'var(--danger)' }}>{protectTour ? <TourPrivateValue /> : pct(d.profit)}</td>
+                              <td style={{ textAlign: 'right' }}>{protectTour ? <TourPrivateValue /> : num(d.netCost)}</td>
+                              <td style={{ textAlign: 'right' }}>{protectTour ? <TourPrivateValue /> : num(d.netMrp)}</td>
                               <td><span className={`badge ${status === 'In Stock' ? 'badge-success' : status === 'Low' ? 'badge-warning' : 'badge-danger'}`} style={{ fontWeight: 700 }}>{status === 'Out' ? 'Out of Stock' : status === 'Low' ? 'Low Stock' : 'In Stock'}</span></td>
                               <td>
                                 <div style={{ display: 'flex', gap: 4 }}>

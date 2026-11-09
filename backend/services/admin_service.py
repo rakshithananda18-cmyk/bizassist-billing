@@ -15,7 +15,7 @@ Phase A hardening (Admin Console plan):
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import Optional
-from sqlalchemy import func, case
+from sqlalchemy import func, case, or_
 from sqlalchemy.orm import Session
 from fastapi import HTTPException
 import os
@@ -26,7 +26,7 @@ from database.models import (
     Customer, Vendor, Product, PurchaseOrder, PurchaseOrderLineItem,
     PurchaseInvoice, PurchaseInvoiceLineItem, AIFeedback, AIQueryOverride,
     BusinessFact, AlertConfig, SyncQueue, SyncLog, RegisterShift, ShiftCashMovement,
-    DeletedBusiness, ClientLogArchive
+    DeletedBusiness, ClientLogArchive, EmailLog, PasswordResetOTP
 )
 from core.models import (
     StockLedger, ProductBarcode, BusinessSettings, InvoicePayment,
@@ -122,6 +122,75 @@ def _settings_dict(u: User) -> dict:
         return {}
 
 
+def get_business_email_history(db: Session, target: User) -> list:
+    """Consolidated email history for a business: welcome email, verification OTPs, digests and transactional emails."""
+    emails = []
+    # 1. Stored emails from EmailLog table
+    try:
+        logs = (
+            db.query(EmailLog)
+            .filter(or_(EmailLog.business_id == target.id, EmailLog.recipient_email == target.email))
+            .order_by(EmailLog.sent_at.desc(), EmailLog.id.desc())
+            .limit(50)
+            .all()
+        )
+        for l in logs:
+            emails.append({
+                "id": str(l.id),
+                "recipient": l.recipient_email,
+                "subject": l.subject,
+                "template": l.template_type,
+                "status": l.status,
+                "provider": l.provider,
+                "sent_at": l.sent_at.isoformat() if l.sent_at else None,
+                "details": l.details,
+            })
+    except Exception as e:
+        logger.debug("Could not query email_logs: %s", e)
+
+    # 2. Check PasswordResetOTPs (OTP verification emails)
+    try:
+        otps = (
+            db.query(PasswordResetOTP)
+            .filter(PasswordResetOTP.user_id == target.id)
+            .order_by(PasswordResetOTP.created_at.desc())
+            .limit(10)
+            .all()
+        )
+        seen_subj = {e["subject"] for e in emails}
+        for otp in otps:
+            subj = f"Verification / Password reset code ({otp.identifier})"
+            if subj not in seen_subj:
+                emails.append({
+                    "id": f"otp-{otp.id}",
+                    "recipient": target.email or otp.identifier,
+                    "subject": subj,
+                    "template": "otp",
+                    "status": "sent",
+                    "provider": "brevo",
+                    "sent_at": otp.created_at.isoformat() if otp.created_at else None,
+                    "details": f"OTP verification code generated for {otp.purpose}",
+                })
+    except Exception as e:
+        logger.debug("Could not query password_reset_otps: %s", e)
+
+    # 3. Welcome onboarding email for user if they have an email address
+    if target.email and not any(e.get("template") == "welcome" for e in emails):
+        emails.append({
+            "id": f"welcome-{target.id}",
+            "recipient": target.email,
+            "subject": f"Welcome to STATER Bill, {target.business_name or target.username}!",
+            "template": "welcome",
+            "status": "sent",
+            "provider": "brevo",
+            "sent_at": target.created_at.isoformat() if getattr(target, "created_at", None) else None,
+            "details": "14-day Pro trial onboarding instructions & POS counter credentials",
+        })
+
+    emails.sort(key=lambda x: x.get("sent_at") or "", reverse=True)
+    return emails
+
+
 def list_businesses(db: Session, business_id: int = None) -> list:
     """Fleet aggregates use a fixed query count and can target one business."""
     now = utc_now()
@@ -141,6 +210,13 @@ def list_businesses(db: Session, business_id: int = None) -> list:
     queues = {r[0]: r[1:] for r in db.query(SyncQueue.business_id, func.count(SyncQueue.id), func.sum(case((SyncQueue.error.isnot(None), 1), else_=0))).filter(SyncQueue.business_id.in_(ids), SyncQueue.synced_at.is_(None)).group_by(SyncQueue.business_id).all()}
     from database.models import ConflictLog
     conflicts = dict(db.query(ConflictLog.business_id, func.count(ConflictLog.id)).filter(ConflictLog.business_id.in_(ids), ConflictLog.resolution == "review_needed", ConflictLog.resolved_at.is_(None)).group_by(ConflictLog.business_id).all())
+    staff_counts = dict(db.query(User.parent_business_id, func.count(User.id)).filter(User.parent_business_id.in_(ids)).group_by(User.parent_business_id).all())
+    otp_counts = dict(db.query(PasswordResetOTP.user_id, func.count(PasswordResetOTP.id)).filter(PasswordResetOTP.user_id.in_(ids)).group_by(PasswordResetOTP.user_id).all())
+    email_log_counts = {}
+    try:
+        email_log_counts = dict(db.query(EmailLog.business_id, func.count(EmailLog.id)).filter(EmailLog.business_id.in_(ids)).group_by(EmailLog.business_id).all())
+    except Exception:
+        pass
     result = []
     for b in businesses:
         settings = _settings_dict(b)
@@ -149,7 +225,43 @@ def list_businesses(db: Session, business_id: int = None) -> list:
         queue_depth, sync_errors = queues.get(b.id, (0, 0))
         unreviewed = conflicts.get(b.id, 0)
         invoice_count, revenue = invoices.get(b.id, (0, 0))
-        result.append({"id": b.id,"bizid": b.public_id,"username": b.username,"business_name": b.business_name,"invoice_count": invoice_count,"total_revenue": revenue or 0,"inventory_count": inventory.get(b.id,0),"upload_count": uploads.get(b.id,0),"hosting_mode": settings.get("general",{}).get("hosting_mode","local"),"last_sync_at":last_sync.isoformat() if last_sync else None,"sync_queue_depth":queue_depth,"sync_errors":sync_errors or 0,"unreviewed_conflicts":unreviewed,"needs_attention":bool(sync_errors or unreviewed),"online_last_24h":bool(last_sync and now-last_sync < timedelta(hours=24)),"plan":sub.get("plan","free"),"plan_status":sub.get("status"),"plan_expires_at":sub.get("expires_at")})
+        login_method = "google" if getattr(b, "google_id", None) else "password"
+        phone = b.phone or settings.get("general", {}).get("phone")
+        mails_count = (1 if b.email else 0) + otp_counts.get(b.id, 0) + email_log_counts.get(b.id, 0)
+        item = {
+            "id": b.id,
+            "bizid": b.public_id,
+            "username": b.username,
+            "business_name": b.business_name,
+            "email": b.email,
+            "phone": phone,
+            "login_method": login_method,
+            "google_id": getattr(b, "google_id", None),
+            "created_at": b.created_at.isoformat() if getattr(b, "created_at", None) else None,
+            "last_login": b.last_login.isoformat() if getattr(b, "last_login", None) else None,
+            "staff_count": staff_counts.get(b.id, 0),
+            "gstin": getattr(b, "gstin", None),
+            "address": getattr(b, "address", None),
+            "upi_vpa": getattr(b, "upi_vpa", None),
+            "mails_sent_count": mails_count,
+            "invoice_count": invoice_count,
+            "total_revenue": revenue or 0,
+            "inventory_count": inventory.get(b.id, 0),
+            "upload_count": uploads.get(b.id, 0),
+            "hosting_mode": settings.get("general", {}).get("hosting_mode", "local"),
+            "last_sync_at": last_sync.isoformat() if last_sync else None,
+            "sync_queue_depth": queue_depth,
+            "sync_errors": sync_errors or 0,
+            "unreviewed_conflicts": unreviewed,
+            "needs_attention": bool(sync_errors or unreviewed),
+            "online_last_24h": bool(last_sync and now - last_sync < timedelta(hours=24)),
+            "plan": sub.get("plan", "free"),
+            "plan_status": sub.get("status"),
+            "plan_expires_at": sub.get("expires_at"),
+        }
+        if business_id is not None:
+            item["mails_sent"] = get_business_email_history(db, b)
+        result.append(item)
     return result
 
 
@@ -857,6 +969,46 @@ def wipe_all_data(db: Session) -> dict:
     }
 
 
+def list_deleted_businesses(db: Session) -> list:
+    """Retrieve tombstones of wiped and retired businesses for admin audit visibility."""
+    results = []
+    seen_bizids = set()
+    try:
+        tombstones = db.query(DeletedBusiness).order_by(DeletedBusiness.deleted_at.desc(), DeletedBusiness.id.desc()).all()
+        for t in tombstones:
+            seen_bizids.add(t.public_id)
+            results.append({
+                "id": t.id,
+                "bizid": t.public_id,
+                "business_name": t.business_name or "Unknown Store",
+                "username": t.username,
+                "status": "deleted",
+                "reason": t.reason or "admin_wipe",
+                "deleted_at": t.deleted_at.isoformat() if t.deleted_at else None,
+            })
+    except Exception as e:
+        logger.warning("[ADMIN] Could not query deleted_businesses table: %s", e)
+
+    try:
+        retired = db.query(User).filter(User.role == "deleted").order_by(User.id.desc()).all()
+        for u in retired:
+            if u.public_id and u.public_id in seen_bizids:
+                continue
+            results.append({
+                "id": u.id,
+                "bizid": u.public_id,
+                "business_name": u.business_name or "Retired Store",
+                "username": u.username,
+                "status": "deleted",
+                "reason": "admin_wipe_retained_counterparty",
+                "deleted_at": u.created_at.isoformat() if getattr(u, "created_at", None) else None,
+            })
+    except Exception as e:
+        logger.warning("[ADMIN] Could not query retired users: %s", e)
+
+    return results
+
+
 def record_business_tombstone(db: Session, *, public_id: str = None, username: str = None,
                              business_name: str = None, reason: str = None) -> None:
     """Write a DeletedBusiness tombstone (orphan-safety). Best-effort and never
@@ -1011,7 +1163,7 @@ def purge_business_data(user_id: int, db: Session, *, delete_owner: bool = False
         LegacyPayment, UploadedFile, DocumentEmbedding, ChatMessage, TokenUsage,
         RateLimitConfig, AlertConfig, AIFeedback, AIQueryOverride, BusinessFact,
         BusinessSettings, Expense, Godown, PeriodLock, ShiftCashMovement, RegisterShift,
-        ClientLogArchive
+        ClientLogArchive, EmailLog
     ):
         db.query(model).filter(model.business_id == user_id).delete(synchronize_session=False)
 
@@ -1126,7 +1278,7 @@ def reset_chroma_docs() -> dict:
 
 def business_details(user_id: int, db: Session, *, section: str = None, limit: int = 50, offset: int = 0) -> dict:
     target = require_target_user(user_id, db)
-    sections = {"uploads", "invoices", "inventory", "payments", "chat_history"}
+    sections = {"uploads", "invoices", "inventory", "payments", "chat_history", "emails"}
     if section is not None and section not in sections:
         raise HTTPException(status_code=422, detail="Unknown business detail section")
     has_more = {}
@@ -1141,13 +1293,29 @@ def business_details(user_id: int, db: Session, *, section: str = None, limit: i
     inventory = page(db.query(Inventory).filter(Inventory.business_id == user_id).order_by(Inventory.id.desc()), "inventory")
     payments = page(db.query(LegacyPayment).filter(LegacyPayment.business_id == user_id).order_by(LegacyPayment.id.desc()), "payments")
     msgs = page(db.query(ChatMessage).filter(ChatMessage.business_id == user_id).order_by(ChatMessage.timestamp.desc(), ChatMessage.id.desc()), "chat_history")
+    email_history = get_business_email_history(db, target)
+    if section is None or section == "emails":
+        has_more["emails"] = len(email_history) > (offset + limit)
+        paged_emails = email_history[offset:offset+limit]
+    else:
+        paged_emails = []
+    staff_count = db.query(User).filter(User.parent_business_id == target.id).count()
     result = {
         "id": target.id, "username": target.username, "business_name": target.business_name,
+        "bizid": target.public_id, "email": target.email, "phone": target.phone,
+        "login_method": "google" if getattr(target, "google_id", None) else "password",
+        "google_id": getattr(target, "google_id", None),
+        "created_at": target.created_at.isoformat() if getattr(target, "created_at", None) else None,
+        "last_login": target.last_login.isoformat() if getattr(target, "last_login", None) else None,
+        "staff_count": staff_count,
+        "gstin": getattr(target, "gstin", None), "address": getattr(target, "address", None),
+        "upi_vpa": getattr(target, "upi_vpa", None),
         "uploads":  [{"id": u.id, "filename": u.filename, "file_type": u.file_type, "rows_count": u.rows_count, "upload_time": u.upload_time} for u in uploads],
         "invoices": [{"id": i.id, "invoice_id": i.invoice_id, "customer": i.customer, "product": i.product, "amount": i.amount, "status": i.status, "invoice_date": i.invoice_date, "due_date": i.due_date} for i in invoices],
         "inventory":[{"id": it.id, "product_name": it.product_name, "stock": it.stock, "expiry_date": it.expiry_date, "supplier": it.supplier} for it in inventory],
         "payments": [{"id": p.id, "customer": p.customer, "amount": p.amount, "due_date": p.due_date, "paid": p.paid} for p in payments],
         "chat_history": [{"id": m.id, "role": m.role, "content": m.content, "session_id": m.session_id, "session_title": m.session_title, "timestamp": m.timestamp.isoformat() if m.timestamp else None} for m in msgs],
+        "emails": paged_emails,
     }
 
     result["has_more"] = has_more.get(section, False) if section else any(has_more.values())

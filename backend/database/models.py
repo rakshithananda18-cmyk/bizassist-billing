@@ -143,6 +143,21 @@ class PasswordResetOTP(Base, TimestampMixin):
     used       = Column(Boolean, default=False, nullable=False)
 
 
+class EmailLog(Base, TimestampMixin):
+    """Log of transactional and promotional emails dispatched to users."""
+    __tablename__ = "email_logs"
+
+    id              = Column(Integer, primary_key=True, index=True)
+    business_id     = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
+    recipient_email = Column(String, index=True, nullable=False)
+    subject         = Column(String, nullable=False)
+    template_type   = Column(String, nullable=False)  # welcome, otp, reminder_digest, alert, invoice_receipt
+    status          = Column(String, default="sent", nullable=False)  # sent, dev_mode, failed
+    provider        = Column(String, default="brevo", nullable=False) # brevo, smtp, mock
+    details         = Column(Text, nullable=True)
+    sent_at         = Column(DateTime, default=utc_now, nullable=False)
+
+
 class DeletedBusiness(Base):
     """Tombstone for a retired business account (orphan-safety).
 

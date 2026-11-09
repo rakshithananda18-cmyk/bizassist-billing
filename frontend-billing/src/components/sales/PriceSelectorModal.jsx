@@ -6,8 +6,10 @@
 import React from 'react'
 import { TagIcon, CloseIcon } from '../Icons'
 import { fmt } from '../../utils/format'
+import TourPrivatePreview from '../../demo/TourPrivatePreview'
 
-export default function PriceSelectorModal({ productName, options, selectedIndex, onHoverIndex, onSelect, onClose }) {
+export default function PriceSelectorModal({ productName, options, selectedIndex, onHoverIndex, onSelect, onClose, protectTour = false }) {
+  const firstPrivateIndex = options.findIndex(option => option.label !== 'Standard Price')
   return (
     <div
       className="modal-overlay"
@@ -53,6 +55,9 @@ export default function PriceSelectorModal({ productName, options, selectedIndex
               </thead>
               <tbody>
                 {options.map((opt, oIdx) => {
+                  if (protectTour && opt.label !== 'Standard Price') {
+                    return oIdx === firstPrivateIndex ? <tr key="private-prices" data-tour-private="pricing"><td colSpan={3} style={{ padding: 0 }}><TourPrivatePreview compact /></td></tr> : null
+                  }
                   const isSelected = oIdx === selectedIndex;
                   return (
                     <tr

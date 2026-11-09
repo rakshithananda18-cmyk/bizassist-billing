@@ -11,7 +11,7 @@ from sqlalchemy import MetaData, Table, delete, inspect, or_, select, text
 logger = logging.getLogger("bizassist.field_cleanup")
 
 DELETE_ORDER = (
-    "ft_task_invoices", "ft_points_ledger", "ft_activity", "ft_location_pings",
+    "ft_handoff_ticket_uses", "ft_task_invoices", "ft_points_ledger", "ft_activity", "ft_location_pings",
     "ft_attendance", "ft_item_requests", "ft_tasks", "ft_run_stops", "ft_runs",
     "ft_route_stops", "ft_routes", "ft_staff", "ft_shops", "ft_settings",
 )
@@ -63,7 +63,8 @@ def purge_field_business(db, business_id: int) -> dict:
     tables = {name: Table(name, metadata, autoload_with=connection, resolve_fks=False)
               for name in DELETE_ORDER if name in present}
     for name, table in tables.items():
-        required = {"id", "business_id", *REFERENCES.get(name, {})}
+        pk_col = "digest" if name == "ft_handoff_ticket_uses" else "id"
+        required = {pk_col, "business_id", *REFERENCES.get(name, {})}
         if not required.issubset(table.c.keys()):
             raise HTTPException(409, "Business deletion stopped: an unsupported Field table layout needs review.")
         for column, parent_name in REFERENCES.get(name, {}).items():

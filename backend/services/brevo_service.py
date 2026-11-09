@@ -13,6 +13,7 @@ from __future__ import annotations
 import logging
 import os
 from typing import Optional
+from sqlalchemy import func
 import httpx
 
 logger = logging.getLogger("bizassist.brevo")
@@ -21,6 +22,27 @@ BREVO_API_URL = "https://api.brevo.com/v3"
 BREVO_API_KEY = os.environ.get("BREVO_API_KEY", "").strip()
 BREVO_SENDER_EMAIL = os.environ.get("BREVO_SENDER_EMAIL", "support@staterbill.com").strip()
 BREVO_SENDER_NAME = os.environ.get("BREVO_SENDER_NAME", "STATER Bill").strip()
+
+
+def log_email_dispatch(to_email: str, subject: str, template_type: str, status: str = "sent", details: Optional[str] = None):
+    try:
+        from database.db import SessionLocal
+        from database.models import EmailLog, User
+        with SessionLocal() as db:
+            u = db.query(User).filter(func.lower(User.email) == to_email.strip().lower()).first()
+            record = EmailLog(
+                business_id=u.id if u else None,
+                recipient_email=to_email.strip().lower(),
+                subject=subject,
+                template_type=template_type,
+                status=status,
+                provider="brevo",
+                details=details,
+            )
+            db.add(record)
+            db.commit()
+    except Exception as exc:
+        logger.debug("[BREVO] Non-fatal email log error: %s", exc)
 
 
 def is_brevo_configured() -> bool:
@@ -85,6 +107,7 @@ def send_otp_email(to_email: str, recipient_name: str, otp_code: str, username: 
             "[BREVO_DEV_MODE] BREVO_API_KEY is not set. OTP email suppressed for %s. Code: %s, Username: %s",
             to_email, otp_code, username
         )
+        log_email_dispatch(to_email, subject, "otp", status="dev_suppressed", details=f"Verification code sent (username: {username})")
         return True
 
     payload = {
@@ -107,9 +130,11 @@ def send_otp_email(to_email: str, recipient_name: str, otp_code: str, username: 
             )
             if resp.status_code in (200, 201, 202):
                 logger.info("[BREVO] OTP email delivered to %s (messageId: %s)", to_email, resp.json().get("messageId"))
+                log_email_dispatch(to_email, subject, "otp", status="sent", details=f"Delivered (messageId: {resp.json().get('messageId')})")
                 return True
             else:
                 logger.error("[BREVO] Failed to deliver OTP email to %s: HTTP %s: %s", to_email, resp.status_code, resp.text)
+                log_email_dispatch(to_email, subject, "otp", status="failed", details=f"HTTP {resp.status_code}")
                 return False
     except Exception as exc:
         logger.error("[BREVO] Network exception dispatching OTP to %s: %s", to_email, exc)
@@ -152,6 +177,7 @@ def send_welcome_email(to_email: str, recipient_name: str, username: str, busine
 
     if not is_brevo_configured():
         logger.info("[BREVO_DEV_MODE] Welcome email suppressed for %s (%s)", to_email, business_name)
+        log_email_dispatch(to_email, subject, "welcome", status="dev_suppressed", details=f"Store: {business_name}, User: {username}")
         return True
 
     payload = {
@@ -168,7 +194,9 @@ def send_welcome_email(to_email: str, recipient_name: str, username: str, busine
                 headers={"api-key": BREVO_API_KEY, "Content-Type": "application/json"},
                 json=payload,
             )
-            return resp.status_code in (200, 201, 202)
+            ok = resp.status_code in (200, 201, 202)
+            log_email_dispatch(to_email, subject, "welcome", status="sent" if ok else "failed", details=f"Store: {business_name}, User: {username}")
+            return ok
     except Exception as exc:
         logger.warning("[BREVO] Welcome email exception for %s: %s", to_email, exc)
         return False

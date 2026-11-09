@@ -26,6 +26,8 @@ import {
 import { usePageLifecycle } from '../hooks/usePageLifecycle'
 import ContextMenu from '../components/common/ContextMenu'
 import { useDocLabels } from '../hooks/useDocLabels'
+import { isProtectedTourPreview } from '../demo/tourPrivacy'
+import TourPrivatePreview, { TourPrivateValue } from '../demo/TourPrivatePreview'
 
 function StatCard({ icon, label, value, sub, variant = 'accent', badge, badgeType }) {
   return (
@@ -43,6 +45,7 @@ function StatCard({ icon, label, value, sub, variant = 'accent', badge, badgeTyp
 
 export default function Dashboard() {
   const { authFetch, profile, settings, user } = useAuth()
+  const protectTour = isProtectedTourPreview(user)
   const privacyMode = settings?.general?.privacy_mode === true
   const label = useDocLabels()
 
@@ -78,7 +81,7 @@ export default function Dashboard() {
       authFetch('/dashboard-summary').then(r => r.ok ? r.json() : undefined).catch(() => undefined),
       // Dashboard only shows the 5 most recent — don't pull the whole history.
       authFetch('/payments?limit=5').then(r => r.ok ? r.json() : undefined).catch(() => undefined),
-      authFetch('/dashboard-charts').then(r => r.ok ? r.json() : null).catch(() => null),
+      protectTour ? Promise.resolve(null) : authFetch('/dashboard-charts').then(r => r.ok ? r.json() : null).catch(() => null),
     ]).then(([summaryData, paymentsData, chartData]) => {
       if (scope !== requestScopeRef.current) return
       setSummaryError(!summaryData)
@@ -91,7 +94,7 @@ export default function Dashboard() {
       if (scope !== requestScopeRef.current) return
       loadedRef.current = true; setLoading(false); loadingRef.current = false
     })
-  }, [authFetch, user?.id])
+  }, [authFetch, user?.id, protectTour])
 
   useEffect(() => {
     requestScopeRef.current++
@@ -252,8 +255,8 @@ export default function Dashboard() {
                       ...(sensitive && privacyMode ? { filter: 'blur(8px)', userSelect: 'none', transition: 'filter 0.2s' } : {})
                     }}
                     title={sensitive && privacyMode ? 'Privacy Mode is ON — go to Settings > General to disable' : undefined}
-                  >{value}</div>
-                  <div className="vsummary-sub">{sub}</div>
+                  >{protectTour && label === 'Gross Margin' ? <TourPrivateValue /> : value}</div>
+                  <div className="vsummary-sub">{protectTour && label === 'Gross Margin' ? 'Available after sign-in' : sub}</div>
                 </div>
               )
               return (
@@ -275,12 +278,12 @@ export default function Dashboard() {
             })()}
 
             {/* Visual Analytics */}
-            <DashboardChartPanel
+            {protectTour ? <TourPrivatePreview /> : <DashboardChartPanel
               key={`${user?.public_id || user?.id || 'workspace'}:${privacyMode}`}
               chartData={chartsData}
               privacyMode={privacyMode}
               onRetry={load}
-            />
+            />}
 
             {/* Feed & Alerts grid */}
             <div className="dashboard-grid" style={{ alignItems: 'stretch' }}>

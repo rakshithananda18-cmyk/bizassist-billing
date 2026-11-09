@@ -195,7 +195,7 @@ export default function AdminInfrastructure() {
   }, [autoRefresh, fetchAllData])
 
   // Traces filtering
-  const filteredTraces = traces.filter(t => {
+  const filteredTraces = (Array.isArray(traces) ? traces : []).filter(t => {
     if (traceStatusFilter !== 'all') {
       if (traceStatusFilter === '2xx' && (t.status < 200 || t.status >= 300)) return false
       if (traceStatusFilter === '4xx' && (t.status < 400 || t.status >= 500)) return false

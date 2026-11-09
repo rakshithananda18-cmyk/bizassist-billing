@@ -1,0 +1,84 @@
+.tour-private-value {
+  display: inline-block;
+  min-width: 3.1em;
+  white-space: nowrap;
+  user-select: none;
+  vertical-align: middle;
+}
+.tour-private-value > span {
+  display: block;
+  filter: blur(4px);
+  letter-spacing: .15em;
+  opacity: .55;
+}
+.tour-private-preview {
+  position: relative;
+  isolation: isolate;
+  min-height: 200px;
+  margin-bottom: 20px;
+  padding: 24px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg, 12px);
+  background: var(--bg-2);
+  pointer-events: none;
+}
+.tour-private-preview-shapes {
+  display: flex;
+  height: 145px;
+  align-items: flex-end;
+  justify-content: space-around;
+  gap: 20px;
+  padding: 20px 12%;
+  filter: blur(9px);
+  opacity: .15;
+}
+.tour-private-preview-shapes > span {
+  flex: 1;
+  height: 45%;
+  background: var(--accent, #c15f3c);
+  border-radius: 7px 7px 0 0;
+}
+.tour-private-preview-shapes > span:nth-child(2) { height: 75%; }
+.tour-private-preview-shapes > span:nth-child(3) { height: 60%; }
+.tour-private-preview-shapes > span:nth-child(4) { height: 95%; }
+.tour-private-preview-shapes > span:nth-child(5) { height: 80%; }
+.tour-private-preview-copy {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  text-align: center;
+  padding: 18px;
+}
+.tour-private-preview-copy > span {
+  color: var(--text-muted);
+  font-size: 9px;
+  font-weight: 650;
+  letter-spacing: .14em;
+}
+.tour-private-preview-copy > p {
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 500;
+  margin: 0;
+}
+.tour-private-preview.is-compact {
+  min-height: 104px;
+  margin: 0;
+  padding: 10px;
+  border: none;
+  border-radius: 0;
+}
+.tour-private-preview.is-compact .tour-private-preview-shapes { height: 82px; padding: 0 15%; }
+.tour-private-preview.is-compact .tour-private-preview-copy { gap: 6px; }
+.tour-private-preview.is-compact .tour-private-preview-copy > p { font-size: 11px; }
+.tour-private-stock-note {
+  margin: 0 0 10px;
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.7;
+}

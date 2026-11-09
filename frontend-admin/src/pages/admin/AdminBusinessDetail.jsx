@@ -211,6 +211,20 @@ export default function AdminBusinessDetail() {
             <span>@{business?.username || ''}</span>
             <span>·</span>
             <span>hosting: {business?.hosting_mode || 'local'}</span>
+            <span>·</span>
+            <span>auth: {business?.login_method === 'google' ? 'Google SSO' : 'Password'}</span>
+            {business?.email && (
+              <>
+                <span>·</span>
+                <span style={{ color: 'var(--text-primary)' }}>{business.email}</span>
+              </>
+            )}
+            {business?.phone && (
+              <>
+                <span>·</span>
+                <span>{business.phone}</span>
+              </>
+            )}
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -235,10 +249,15 @@ export default function AdminBusinessDetail() {
       {!loading && business && (
         <>
           {/* Overview strip */}
-          <div className="widget" style={{ marginTop: 24, display: 'flex', gap: 32, flexWrap: 'wrap' }}>
+          <div className="widget" style={{ marginTop: 24, display: 'flex', gap: 28, flexWrap: 'wrap' }}>
+            <Stat label="Login Method" value={business.login_method === 'google' ? 'Google SSO' : 'Password'} />
+            <Stat label="Google / Email" value={business.email || '—'} mono />
+            <Stat label="Phone" value={business.phone || '—'} mono />
+            <Stat label="Mails Sent" value={business.mails_sent_count ?? (business.mails_sent?.length || 0)} mono />
             <Stat label="Invoices" value={business.invoice_count} />
             <Stat label="Revenue" value={`₹${(business.total_revenue || 0).toLocaleString('en-IN')}`} />
             <Stat label="Inventory items" value={business.inventory_count} />
+            <Stat label="Staff Accounts" value={business.staff_count ?? 0} mono />
             <Stat label="Uploads" value={business.upload_count} />
             <Stat label="Last sync" value={business.last_sync_at ? business.last_sync_at.slice(0, 16).replace('T', ' ') : 'never'} mono />
             <Stat label="Queue depth" value={business.sync_queue_depth ?? 0} mono />
@@ -331,6 +350,53 @@ export default function AdminBusinessDetail() {
                 </tbody>
               </table>
             </div>
+          </Section>
+
+          {/* Email Communications & Mails Sent */}
+          <Section title="Email Communications & Mails Sent" icon={<Icon name="mail" size={16} />} count={business.mails_sent?.length || 0} collapsible style={{ marginTop: 24 }}>
+            {!business.mails_sent || business.mails_sent.length === 0 ? (
+              <div style={{ color: 'var(--secondary-text)', fontSize: 13 }}>No emails recorded for this merchant.</div>
+            ) : (
+              <div className="admin-table-wrap" style={{ overflowX: 'auto', width: '100%' }}>
+                <table className="admin-table" style={{ width: '100%', marginTop: 8 }}>
+                  <thead>
+                    <tr>
+                      <th>Date & Time</th>
+                      <th>Template</th>
+                      <th>Recipient</th>
+                      <th>Subject</th>
+                      <th>Status</th>
+                      <th>Details</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {business.mails_sent.map((m, idx) => (
+                      <tr key={m.id || idx}>
+                        <td style={{ fontFamily: "'Geist Mono',monospace", fontSize: 11.5, whiteSpace: 'nowrap' }}>
+                          {m.sent_at ? new Date(m.sent_at).toLocaleString() : '—'}
+                        </td>
+                        <td>
+                          <span className="tag" style={{ textTransform: 'capitalize' }}>
+                            {m.template || 'email'}
+                          </span>
+                        </td>
+                        <td style={{ fontSize: 12 }}>{m.recipient}</td>
+                        <td style={{ fontWeight: 600, fontSize: 12.5 }}>{m.subject}</td>
+                        <td>
+                          <span className="tag" style={{
+                            background: m.status === 'sent' ? 'rgba(52, 168, 83, 0.12)' : 'var(--accent-dim)',
+                            color: m.status === 'sent' ? 'var(--success)' : 'var(--text-secondary)'
+                          }}>
+                            {m.status}
+                          </span>
+                        </td>
+                        <td style={{ fontSize: 11.5, color: 'var(--secondary-text)' }}>{m.details || '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </Section>
 
           {/* Server log tail */}
