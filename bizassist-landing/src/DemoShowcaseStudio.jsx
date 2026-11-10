@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import './demoShowcase.css'
 
 const CHAPTERS = [
@@ -14,6 +15,128 @@ function getAppBase() {
   const configured = import.meta.env.VITE_BILLING_APP_URL
   const local = ['localhost', '127.0.0.1'].includes(window.location.hostname)
   return new URL(configured || (local ? `${window.location.protocol}//${window.location.hostname}:5174` : 'https://app.staterbill.com'))
+}
+
+function TrialModal({ isOpen, onClose, registerUrl, loginUrl }) {
+  const dialogRef = useRef(null)
+
+  useEffect(() => {
+    if (!isOpen) return
+    const previousFocus = document.activeElement
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+
+    const primaryBtn = dialogRef.current?.querySelector('.demo-modal-btn-trial')
+    primaryBtn?.focus()
+
+    const handleKeyDown = event => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        onClose()
+      }
+      if (event.key === 'Tab' && dialogRef.current) {
+        const focusable = dialogRef.current.querySelectorAll('a, button, [tabindex="0"]')
+        if (focusable.length === 0) return
+        const first = focusable[0]
+        const last = focusable[focusable.length - 1]
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault()
+          last.focus()
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault()
+          first.focus()
+        }
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.body.style.overflow = previousOverflow
+      window.removeEventListener('keydown', handleKeyDown)
+      if (previousFocus && typeof previousFocus.focus === 'function') {
+        previousFocus.focus()
+      }
+    }
+  }, [isOpen, onClose])
+
+  if (!isOpen) return null
+
+  return createPortal(
+    <div
+      className="demo-studio demo-modal-backdrop"
+      onClick={event => {
+        if (event.target === event.currentTarget) onClose()
+      }}
+    >
+      <div
+        ref={dialogRef}
+        className="demo-modal-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="demo-trial-title"
+        aria-describedby="demo-trial-description"
+      >
+        <button
+          type="button"
+          className="demo-icon-button demo-modal-close"
+          aria-label="Close dialog and continue reviewing page"
+          onClick={onClose}
+        >
+          ×
+        </button>
+
+        <div className="demo-modal-header">
+          <span className="demo-eyebrow">
+            <span className="demo-live-dot" /> 14-DAY PRO TRIAL
+          </span>
+          <h3 id="demo-trial-title">Start your 14-day free trial</h3>
+          <p id="demo-trial-description">
+            Experience the full STATER Bill workspace for your store. Set up your billing counter, manage stock, and test all Pro features free for 14 days. No credit card required.
+          </p>
+        </div>
+
+        <div className="demo-modal-features">
+          <div className="demo-modal-feature-item">
+            <span className="demo-modal-check">✓</span>
+            <span>Full billing counter, local offline sales &amp; receipt printing</span>
+          </div>
+          <div className="demo-modal-feature-item">
+            <span className="demo-modal-check">✓</span>
+            <span>Multi-tier pricing, stock batches &amp; supplier purchase entries</span>
+          </div>
+          <div className="demo-modal-feature-item">
+            <span className="demo-modal-check">✓</span>
+            <span>Customer dues tracking, GST filings &amp; B2B digital supply network</span>
+          </div>
+        </div>
+
+        <div className="demo-modal-actions">
+          <a
+            className="demo-primary-button demo-modal-btn-trial"
+            href={registerUrl}
+          >
+            Start 14-day free trial <span>↗</span>
+          </a>
+          <div className="demo-modal-secondary-group">
+            <a
+              className="demo-text-button demo-modal-btn-signin"
+              href={loginUrl}
+            >
+              Already use STATER Bill? Sign in →
+            </a>
+            <button
+              type="button"
+              className="demo-modal-btn-cancel"
+              onClick={onClose}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body
+  )
 }
 
 export default function DemoShowcaseStudio() {
@@ -33,6 +156,7 @@ export default function DemoShowcaseStudio() {
   const [visible, setVisible] = useState(false)
   const [pageVisible, setPageVisible] = useState(!document.hidden)
   const [wantsPlay, setWantsPlay] = useState(() => !window.matchMedia('(prefers-reduced-motion: reduce)').matches)
+  const [showTrialModal, setShowTrialModal] = useState(false)
   const [tour, setTour] = useState({ chapter: 'home', caption: 'A guided look around your sample store.', progress: 0, playing: false })
   const [frameWidth, setFrameWidth] = useState(1120)
   const [frameKey, setFrameKey] = useState(0)
@@ -98,6 +222,10 @@ export default function DemoShowcaseStudio() {
     setWantsPlay(false)
     setExpanded(false)
   }
+  const openTrialModal = () => {
+    pause()
+    setShowTrialModal(true)
+  }
   const replay = () => {
     setWantsPlay(true)
     send('restart')
@@ -151,7 +279,15 @@ export default function DemoShowcaseStudio() {
         <iframe key={frameKey} ref={frameRef} src={iframeUrl} title="STATER Bill protected app tour with sample data" className="demo-app-frame" style={{ width: 1280, height: 820, transform: `scale(${scale})` }}
           loading="eager" tabIndex={-1} inert=""
           onLoad={() => { setLoadError(false); send(playing ? 'play' : 'pause') }} />
-        {ready && <a className="demo-takeover-surface" href={registerUrl} aria-label="Create your STATER Bill account to explore the full app" />}
+        {ready && (
+          <button
+            type="button"
+            className="demo-takeover-surface"
+            onClick={openTrialModal}
+            aria-label="Start 14-day free trial, sign in, or continue reviewing page"
+            aria-haspopup="dialog"
+          />
+        )}
         {!ready && <div className="demo-loading" role="status">
           <span className="demo-loading-mark">S<span>•</span></span>
           <strong>{loadError ? 'The app preview is taking a little longer.' : 'Opening your sample store…'}</strong>
@@ -177,5 +313,11 @@ export default function DemoShowcaseStudio() {
       </button>)}
     </div>
     <div className="demo-chapter-description"><p>{chapter.description}</p><span>Advanced pricing, analytics and inventory calculations are hidden. App Settings, B2B &amp; POS Live remain locked.</span></div>
+    <TrialModal
+      isOpen={showTrialModal}
+      onClose={() => setShowTrialModal(false)}
+      registerUrl={registerUrl}
+      loginUrl={loginUrl}
+    />
   </section>
 }

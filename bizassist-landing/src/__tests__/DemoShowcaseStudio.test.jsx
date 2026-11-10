@@ -1,5 +1,5 @@
 import React from 'react'
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import DemoShowcaseStudio from '../DemoShowcaseStudio'
 
@@ -44,20 +44,60 @@ function mountReadyTour() {
 }
 
 describe('public app tour entry points', () => {
-  it('links directly to clean registration and sign-in routes without collecting details', () => {
+  it('opens a modal prompt on video click with 14-day trial, sign-in, and cancel to continue reviewing', () => {
     const { frame, container, post } = mountReadyTour()
     const register = screen.getByRole('link', { name: /Create your account/ })
     const login = screen.getByRole('link', { name: /Already use STATER Bill/ })
-    const video = screen.getByRole('link', { name: /Create your STATER Bill account to explore/ })
     expect(register.getAttribute('href')).toBe(`${APP_ORIGIN}/register`)
     expect(login.getAttribute('href')).toBe(`${APP_ORIGIN}/login`)
-    expect(video.getAttribute('href')).toBe(register.getAttribute('href'))
+
+    // Initially no dialog is open
     expect(screen.queryByRole('dialog')).toBeNull()
     expect(container.querySelector('form, input')).toBeNull()
     expect(frame.getAttribute('tabindex')).toBe('-1')
     expect(frame.hasAttribute('inert')).toBe(true)
     expect(new URL(frame.src).searchParams.get('tour')).toBe('1')
-    expect(post.mock.calls.some(([data]) => data.command === 'sandbox')).toBe(false)
+
+    // Find the video takeover surface button
+    const video = screen.getByRole('button', { name: /Start 14-day free trial, sign in, or continue reviewing page/ })
+    fireEvent.click(video)
+
+    // Dialog opens with role="dialog"
+    const dialog = screen.getByRole('dialog')
+    expect(dialog).not.toBeNull()
+    expect(post.mock.calls.some(([data]) => data.command === 'pause')).toBe(true)
+
+    // 14-day trial CTA links to register
+    const trialLink = within(dialog).getByRole('link', { name: /Start 14-day free trial/ })
+    expect(trialLink.getAttribute('href')).toBe(`${APP_ORIGIN}/register`)
+
+    // Sign in links to login
+    const signInLink = within(dialog).getByRole('link', { name: /Already use STATER Bill\? Sign in/ })
+    expect(signInLink.getAttribute('href')).toBe(`${APP_ORIGIN}/login`)
+
+    // Cancel button closes the modal so visitor can continue reviewing the page
+    const cancelBtn = within(dialog).getByRole('button', { name: 'Cancel' })
+    fireEvent.click(cancelBtn)
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('closes the trial modal on escape key', () => {
+    mountReadyTour()
+    const video = screen.getByRole('button', { name: /Start 14-day free trial, sign in, or continue reviewing page/ })
+    fireEvent.click(video)
+    expect(screen.getByRole('dialog')).not.toBeNull()
+
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('closes the trial modal via close button', () => {
+    mountReadyTour()
+    const video = screen.getByRole('button', { name: /Start 14-day free trial, sign in, or continue reviewing page/ })
+    fireEvent.click(video)
+    const closeBtn = screen.getByRole('button', { name: /Close dialog and continue reviewing page/ })
+    fireEvent.click(closeBtn)
+    expect(screen.queryByRole('dialog')).toBeNull()
   })
 
   it('does not unlock controls in response to an untrusted frame message', () => {
@@ -67,7 +107,7 @@ describe('public app tour entry points', () => {
       data: { type: 'stater-tour:ready' }, origin: 'https://other.example.test', source: frame.contentWindow,
     })))
     expect(screen.getByRole('button', { name: 'Pause guided tour' }).disabled).toBe(true)
-    expect(screen.queryByRole('link', { name: /Create your STATER Bill account to explore/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /Start 14-day free trial, sign in, or continue reviewing page/ })).toBeNull()
   })
 })
 

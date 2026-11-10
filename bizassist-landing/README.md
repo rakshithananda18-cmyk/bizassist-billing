@@ -20,7 +20,7 @@ Pausing an expanded player returns it inline and restores the page's previous sc
 
 To run the landing component regressions after installing `frontend-billing` dependencies, run `node ../frontend-billing/node_modules/vitest/vitest.mjs run --config vitest.config.js` from this directory. The test-only configuration reuses the repository's existing tools; the landing build remains independent.
 
-The player offers guided playback. Clicking it or its trial CTA opens registration directly; existing users can choose Sign in. The name/phone form and browser-local lead flow have been removed. Application authorization remains responsible for access to account-only data and workflows; preview masking limits what the public tour shows.
+The player offers guided playback. Clicking it opens a prompt modal giving visitors the option to start a 14-day Pro trial, sign in, or cancel and continue reviewing the page. Application authorization remains responsible for access to account-only data and workflows; preview masking limits what the public tour shows.
 
 ## Deploy
 
