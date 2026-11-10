@@ -67,42 +67,46 @@ def send_otp_email(to_email: str, recipient_name: str, otp_code: str, username: 
     subject = f"{otp_code} is your STATER Bill verification code"
 
     html_content = f"""<!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8">
-  <style>
-    body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #0f1117; color: #e5e7eb; margin: 0; padding: 24px; }}
-    .container {{ max-width: 520px; margin: 0 auto; background-color: #1a1d24; border: 1px solid #2d3343; border-radius: 14px; padding: 32px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }}
-    .header {{ text-align: center; margin-bottom: 24px; }}
-    .brand {{ font-size: 20px; font-weight: 800; color: #f59e0b; letter-spacing: 0.05em; }}
-    .subtitle {{ font-size: 11px; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.15em; margin-top: 4px; }}
-    .content {{ font-size: 14px; line-height: 1.6; color: #d1d5db; }}
-    .otp-box {{ background: linear-gradient(135deg, rgba(245,158,11,0.15) 0%, rgba(217,119,6,0.05) 100%); border: 1.5px dashed #f59e0b; border-radius: 10px; text-align: center; padding: 18px; margin: 24px 0; }}
-    .otp-code {{ font-size: 32px; font-weight: 900; letter-spacing: 8px; color: #fbbf24; font-family: monospace; }}
-    .meta-box {{ background-color: #12141a; border-radius: 8px; padding: 12px 16px; margin-top: 20px; font-size: 12px; color: #9ca3af; }}
-    .footer {{ margin-top: 28px; text-align: center; font-size: 11px; color: #6b7280; border-top: 1px solid #262b36; padding-top: 18px; }}
-  </style>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>STATER Bill Verification Code</title>
 </head>
-<body>
-  <div class="container">
-    <div class="header">
-      <div class="brand">STATER Bill</div>
-      <div class="subtitle">Smart Counter Billing & POS</div>
-    </div>
-    <div class="content">
-      <p>Hello <strong>{escape(display_name)}</strong>,</p>
-      <p>We received a request to verify your account or reset the password for your store login.</p>
-      <div class="otp-box">
-        <div style="font-size: 11px; text-transform: uppercase; color: #f59e0b; font-weight: 700; margin-bottom: 6px;">Your 6-Digit Verification Code</div>
-        <div class="otp-code">{otp_code}</div>
+<body style="margin: 0; padding: 28px 12px; background-color: #0b0d12; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #e5e7eb;">
+  <div style="max-width: 520px; margin: 0 auto; background-color: #13161f; border: 1px solid #232836; border-radius: 16px; overflow: hidden; box-shadow: 0 12px 40px rgba(0,0,0,0.55);">
+    <div style="text-align: center; padding: 32px 24px 22px; border-bottom: 1px solid #1f2430; background-color: #171a25;">
+      <div style="font-size: 24px; font-weight: 800; color: #ffffff; letter-spacing: -0.02em; text-transform: uppercase;">
+        STATER <span style="color: #c15f3c; font-weight: 700; text-transform: none;">Bill</span>
       </div>
-      <p>This code will expire in <strong>10 minutes</strong>. If you did not request this verification, you can safely ignore this email; your account remains secure.</p>
-      <div class="meta-box">
-        <div><strong>Store Login Username:</strong> <span style="color: #fbbf24;">{escape(username)}</span></div>
+      <div style="font-size: 10px; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.16em; margin-top: 5px; font-weight: 600;">
+        στατήρ <span style="color: #c15f3c; font-weight: 800;">•</span> BY ARES &bull; SMART COUNTER BILLING &amp; POS
       </div>
     </div>
-    <div class="footer">
-      © {2026} STATER Bill • ARES Pvt Ltd<br>
+    <div style="padding: 32px 28px;">
+      <p style="font-size: 14px; line-height: 1.6; color: #d1d5db; margin: 0 0 14px;">
+        Hello <strong>{escape(display_name)}</strong>,
+      </p>
+      <p style="font-size: 14px; line-height: 1.6; color: #9ca3af; margin: 0 0 20px;">
+        We received a request to verify your account or reset the password for your store login.
+      </p>
+      <div style="background: linear-gradient(135deg, rgba(193, 95, 60, 0.16) 0%, rgba(185, 88, 56, 0.05) 100%); border: 1.5px dashed #c15f3c; border-radius: 12px; text-align: center; padding: 20px; margin: 22px 0;">
+        <div style="font-size: 11px; text-transform: uppercase; color: #c15f3c; font-weight: 700; letter-spacing: 0.08em; margin-bottom: 8px;">
+          Your 6-Digit Verification Code
+        </div>
+        <div style="font-size: 34px; font-weight: 900; letter-spacing: 8px; color: #ffffff; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;">
+          {otp_code}
+        </div>
+      </div>
+      <p style="font-size: 13px; line-height: 1.6; color: #9ca3af; margin: 0 0 18px;">
+        This code will expire in <strong style="color: #ffffff;">10 minutes</strong>. If you did not request this verification, you can safely ignore this email; your account remains secure.
+      </p>
+      <div style="background-color: #181c26; border: 1px solid #262c3b; border-radius: 8px; padding: 12px 16px; font-size: 12px; color: #9ca3af;">
+        <strong>Store Login Username:</strong> <span style="color: #ffffff; font-weight: 700; font-family: monospace;">{escape(username)}</span>
+      </div>
+    </div>
+    <div style="padding: 20px 28px 24px; border-top: 1px solid #1f2430; background-color: #10121a; text-align: center; font-size: 11px; color: #6b7280; line-height: 1.6;">
+      &copy; 2026 STATER Bill &bull; ARES Enterprise Solutions Pvt Ltd<br>
       High-performance counter billing for modern retail.
     </div>
   </div>
@@ -154,30 +158,118 @@ def send_welcome_email(to_email: str, recipient_name: str, username: str, busine
         return False
 
     display_name = (recipient_name or username or "Merchant").strip()
-    subject = f"Welcome to STATER Bill, {business_name}!"
+    clean_business = (business_name or display_name or "Your Store").strip()
+    subject = f"Welcome to STATER Bill, {clean_business}!"
 
     html_content = f"""<!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8">
-  <style>
-    body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #0f1117; color: #e5e7eb; margin: 0; padding: 24px; }}
-    .container {{ max-width: 520px; margin: 0 auto; background-color: #1a1d24; border: 1px solid #2d3343; border-radius: 14px; padding: 32px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }}
-    .brand {{ font-size: 20px; font-weight: 800; color: #f59e0b; }}
-    .btn {{ display: inline-block; background: #f59e0b; color: #000; font-weight: 700; text-decoration: none; padding: 12px 24px; border-radius: 8px; margin-top: 16px; }}
-    .card {{ background: #12141a; border-radius: 8px; padding: 14px; margin: 16px 0; font-size: 13px; }}
-  </style>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Welcome to STATER Bill</title>
 </head>
-<body>
-  <div class="container">
-    <div class="brand">STATER Bill</div>
-    <h2>Welcome to modern counter billing, {escape(display_name)}!</h2>
-    <p>Your store <strong>{escape(business_name)}</strong> is now live with a 14-day Pro trial.</p>
-    <div class="card">
-      <div><strong>Your Store Username:</strong> <span style="color:#fbbf24;">{escape(username)}</span></div>
-      <div style="margin-top:6px;"><strong>Web App Login:</strong> <a href="https://app.staterbill.com/login" style="color:#60a5fa;">https://app.staterbill.com</a></div>
+<body style="margin: 0; padding: 28px 12px; background-color: #0b0d12; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #e5e7eb;">
+  <div style="max-width: 560px; margin: 0 auto; background-color: #13161f; border: 1px solid #232836; border-radius: 16px; overflow: hidden; box-shadow: 0 12px 40px rgba(0,0,0,0.55);">
+    
+    <!-- Brand Header -->
+    <div style="text-align: center; padding: 32px 24px 22px; border-bottom: 1px solid #1f2430; background-color: #171a25;">
+      <div style="font-size: 24px; font-weight: 800; color: #ffffff; letter-spacing: -0.02em; text-transform: uppercase;">
+        STATER <span style="color: #c15f3c; font-weight: 700; text-transform: none;">Bill</span>
+      </div>
+      <div style="font-size: 10px; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.16em; margin-top: 5px; font-weight: 600;">
+        στατήρ <span style="color: #c15f3c; font-weight: 800;">•</span> BY ARES &bull; HIGH-PERFORMANCE COUNTER BILLING
+      </div>
     </div>
-    <a href="https://app.staterbill.com/login" class="btn">Open Your POS Counter ➔</a>
+
+    <!-- Main Content -->
+    <div style="padding: 32px 28px;">
+      
+      <div style="text-align: center; margin-bottom: 24px;">
+        <span style="display: inline-block; background-color: rgba(193, 95, 60, 0.14); border: 1px solid rgba(193, 95, 60, 0.35); border-radius: 20px; padding: 4px 14px; font-size: 11px; font-weight: 700; color: #e39a77; letter-spacing: 0.08em; text-transform: uppercase;">
+          14-Day Free Pro Trial Active
+        </span>
+        <h1 style="font-size: 22px; font-weight: 700; color: #ffffff; letter-spacing: -0.03em; line-height: 1.3; margin: 14px 0 8px;">
+          Welcome to modern counter billing, {escape(display_name)}!
+        </h1>
+        <p style="font-size: 14px; line-height: 1.6; color: #9ca3af; margin: 0;">
+          Your store <strong style="color: #ffffff;">{escape(clean_business)}</strong> is now ready. Start barcode billing, manage stock, and test your counter with zero friction.
+        </p>
+      </div>
+
+      <!-- Account Credentials Card -->
+      <div style="background-color: #181c26; border: 1px solid #262c3b; border-radius: 12px; padding: 18px 20px; margin: 24px 0;">
+        <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.12em; color: #c15f3c; margin-bottom: 12px;">
+          Store Credentials &amp; Access
+        </div>
+        <table style="width: 100%; border-collapse: collapse;">
+          <tr>
+            <td style="padding: 7px 0; font-size: 13px; color: #9ca3af;">Store Name</td>
+            <td style="padding: 7px 0; font-size: 13px; font-weight: 600; color: #ffffff; text-align: right;">{escape(clean_business)}</td>
+          </tr>
+          <tr>
+            <td style="padding: 7px 0; font-size: 13px; color: #9ca3af; border-top: 1px solid #1f2533;">Username / Identifier</td>
+            <td style="padding: 7px 0; font-size: 13px; text-align: right; border-top: 1px solid #1f2533;">
+              <span style="font-family: monospace; background-color: #0f1118; color: #ffffff; padding: 2px 7px; border-radius: 5px; border: 1px solid #282e3d; font-weight: 700;">{escape(username)}</span>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 7px 0; font-size: 13px; color: #9ca3af; border-top: 1px solid #1f2533;">Web Application</td>
+            <td style="padding: 7px 0; font-size: 13px; font-weight: 600; text-align: right; border-top: 1px solid #1f2533;">
+              <a href="https://app.staterbill.com/login" style="color: #c15f3c; text-decoration: none;">app.staterbill.com/login</a>
+            </td>
+          </tr>
+        </table>
+      </div>
+
+      <!-- Feature Checklist -->
+      <div style="margin: 24px 0 28px;">
+        <div style="font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #d1d5db; margin-bottom: 12px;">
+          What you can do right now:
+        </div>
+        <table style="width: 100%; border-collapse: collapse;">
+          <tr>
+            <td style="width: 22px; vertical-align: top; padding: 4px 0; color: #64856c; font-weight: 800; font-size: 14px;">✓</td>
+            <td style="padding: 4px 0 8px 6px; font-size: 13px; color: #d1d5db; line-height: 1.5;">
+              <strong style="color: #ffffff;">Fast Barcode Billing:</strong> Scan barcodes, manage open tabs, and print thermal receipts.
+            </td>
+          </tr>
+          <tr>
+            <td style="width: 22px; vertical-align: top; padding: 4px 0; color: #64856c; font-weight: 800; font-size: 14px;">✓</td>
+            <td style="padding: 4px 0 8px 6px; font-size: 13px; color: #d1d5db; line-height: 1.5;">
+              <strong style="color: #ffffff;">Multi-Tier Pricing:</strong> Retail, wholesale, and distributor prices on a single product.
+            </td>
+          </tr>
+          <tr>
+            <td style="width: 22px; vertical-align: top; padding: 4px 0; color: #64856c; font-weight: 800; font-size: 14px;">✓</td>
+            <td style="padding: 4px 0 8px 6px; font-size: 13px; color: #d1d5db; line-height: 1.5;">
+              <strong style="color: #ffffff;">Desktop Offline Mode:</strong> Download our desktop app to bill uninterrupted without internet.
+            </td>
+          </tr>
+        </table>
+      </div>
+
+      <!-- CTA Button -->
+      <div style="text-align: center; margin: 28px 0 16px;">
+        <a href="https://app.staterbill.com/login" style="display: inline-block; background-color: #b95838; color: #ffffff !important; font-weight: 700; font-size: 14px; text-decoration: none; padding: 13px 32px; border-radius: 10px; box-shadow: 0 4px 16px rgba(185, 88, 56, 0.35); letter-spacing: 0.01em;">
+          Open Your Billing Counter ➔
+        </a>
+      </div>
+      <p style="font-size: 12px; color: #9ca3af; text-align: center; line-height: 1.5; margin: 0;">
+        No credit card required &bull; Full Pro features unlocked for 14 days
+      </p>
+
+    </div>
+
+    <!-- Footer -->
+    <div style="padding: 22px 28px 28px; border-top: 1px solid #1f2430; background-color: #10121a; text-align: center; font-size: 11px; color: #6b7280; line-height: 1.6;">
+      <p style="margin: 0 0 6px;">
+        Need help setting up your catalogue or hardware? Reach our team at <a href="mailto:support@staterbill.com" style="color: #c15f3c; text-decoration: none;">support@staterbill.com</a>
+      </p>
+      <p style="margin: 0;">
+        &copy; 2026 STATER Bill &bull; ARES Enterprise Solutions Pvt Ltd &bull; All rights reserved.
+      </p>
+    </div>
+
   </div>
 </body>
 </html>"""
@@ -247,34 +339,38 @@ def send_account_update_email(to_email: str, recipient_name: str, changes_list: 
     changes_html = "".join([f"<li style='margin-bottom:6px;'>{escape(str(c))}</li>" for c in changes_list]) if changes_list else "<li>Store account profile details</li>"
 
     html_content = f"""<!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8">
-  <style>
-    body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #0f1117; color: #e5e7eb; margin: 0; padding: 24px; }}
-    .container {{ max-width: 520px; margin: 0 auto; background-color: #1a1d24; border: 1px solid #2d3343; border-radius: 14px; padding: 32px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }}
-    .brand {{ font-size: 20px; font-weight: 800; color: #f59e0b; }}
-    .card {{ background: #12141a; border-radius: 8px; padding: 14px; margin: 16px 0; font-size: 13px; }}
-    .alert-box {{ background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 8px; padding: 12px; color: #f87171; font-size: 12px; margin-top: 18px; }}
-  </style>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Account Details Updated</title>
 </head>
-<body>
-  <div class="container">
-    <div class="brand">STATER Bill</div>
-    <h2>Account Details Updated</h2>
-    <p>Hello <strong>{escape(display_name)}</strong>,</p>
-    <p>This is a confirmation that changes were recently made to your business account:</p>
-    <div class="card">
-      <ul style="padding-left: 20px; margin: 0; color: #fbbf24;">
-        {changes_html}
-      </ul>
+<body style="margin: 0; padding: 28px 12px; background-color: #0b0d12; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #e5e7eb;">
+  <div style="max-width: 520px; margin: 0 auto; background-color: #13161f; border: 1px solid #232836; border-radius: 16px; overflow: hidden; box-shadow: 0 12px 40px rgba(0,0,0,0.55);">
+    <div style="text-align: center; padding: 32px 24px 22px; border-bottom: 1px solid #1f2430; background-color: #171a25;">
+      <div style="font-size: 24px; font-weight: 800; color: #ffffff; letter-spacing: -0.02em; text-transform: uppercase;">
+        STATER <span style="color: #c15f3c; font-weight: 700; text-transform: none;">Bill</span>
+      </div>
+      <div style="font-size: 10px; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.16em; margin-top: 5px; font-weight: 600;">
+        στατήρ <span style="color: #c15f3c; font-weight: 800;">•</span> BY ARES &bull; SECURITY NOTIFICATION
+      </div>
     </div>
-    <div class="alert-box">
-      <strong>Didn't make this change?</strong> If you did not authorize these account modifications, please contact support at support@staterbill.com immediately.
+    <div style="padding: 32px 28px;">
+      <h2 style="font-size: 20px; font-weight: 700; color: #ffffff; margin: 0 0 12px;">Account Details Updated</h2>
+      <p style="font-size: 14px; line-height: 1.6; color: #d1d5db; margin: 0 0 14px;">Hello <strong>{escape(display_name)}</strong>,</p>
+      <p style="font-size: 14px; line-height: 1.6; color: #9ca3af; margin: 0 0 16px;">This is a confirmation that changes were recently made to your business account:</p>
+      <div style="background-color: #181c26; border: 1px solid #262c3b; border-radius: 10px; padding: 14px 18px; margin: 16px 0;">
+        <ul style="padding-left: 20px; margin: 0; color: #e39a77; font-size: 13px; line-height: 1.6;">
+          {changes_html}
+        </ul>
+      </div>
+      <div style="background-color: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 8px; padding: 14px; color: #f87171; font-size: 12px; margin-top: 18px; line-height: 1.5;">
+        <strong>Didn't make this change?</strong> If you did not authorize these account modifications, please contact support at <a href="mailto:support@staterbill.com" style="color: #fca5a5; text-decoration: underline;">support@staterbill.com</a> immediately.
+      </div>
     </div>
-    <p style="font-size: 11px; color: #6b7280; margin-top: 24px; border-top: 1px solid #262b36; padding-top: 12px;">
-      STATER Bill Security &bull; High-performance counter billing for modern retail.
-    </p>
+    <div style="padding: 20px 28px 24px; border-top: 1px solid #1f2430; background-color: #10121a; text-align: center; font-size: 11px; color: #6b7280; line-height: 1.6;">
+      &copy; 2026 STATER Bill Security &bull; High-performance counter billing for modern retail.
+    </div>
   </div>
 </body>
 </html>"""
@@ -316,34 +412,38 @@ def send_password_changed_email(to_email: str, recipient_name: str, username: st
     subject = f"Security Alert: Your STATER Bill password has been changed"
 
     html_content = f"""<!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8">
-  <style>
-    body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #0f1117; color: #e5e7eb; margin: 0; padding: 24px; }}
-    .container {{ max-width: 520px; margin: 0 auto; background-color: #1a1d24; border: 1px solid #2d3343; border-radius: 14px; padding: 32px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }}
-    .brand {{ font-size: 20px; font-weight: 800; color: #f59e0b; }}
-    .card {{ background: #12141a; border-radius: 8px; padding: 14px; margin: 16px 0; font-size: 13px; }}
-    .alert-box {{ background: rgba(239, 68, 68, 0.12); border: 1.5px solid #ef4444; border-radius: 8px; padding: 14px; color: #fca5a5; font-size: 13px; margin-top: 18px; line-height: 1.5; }}
-  </style>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Password Change Notice</title>
 </head>
-<body>
-  <div class="container">
-    <div class="brand">STATER Bill</div>
-    <h2>Password Change Notice</h2>
-    <p>Hello <strong>{escape(display_name)}</strong>,</p>
-    <p>The password for your store login (<strong>{escape(username)}</strong>) was just changed successfully.</p>
-    <div class="card">
-      <div><strong>Affected Account:</strong> <span style="color:#fbbf24;">{escape(username)}</span></div>
-      <div style="margin-top:4px;"><strong>Time:</strong> Just now</div>
+<body style="margin: 0; padding: 28px 12px; background-color: #0b0d12; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #e5e7eb;">
+  <div style="max-width: 520px; margin: 0 auto; background-color: #13161f; border: 1px solid #232836; border-radius: 16px; overflow: hidden; box-shadow: 0 12px 40px rgba(0,0,0,0.55);">
+    <div style="text-align: center; padding: 32px 24px 22px; border-bottom: 1px solid #1f2430; background-color: #171a25;">
+      <div style="font-size: 24px; font-weight: 800; color: #ffffff; letter-spacing: -0.02em; text-transform: uppercase;">
+        STATER <span style="color: #c15f3c; font-weight: 700; text-transform: none;">Bill</span>
+      </div>
+      <div style="font-size: 10px; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.16em; margin-top: 5px; font-weight: 600;">
+        στατήρ <span style="color: #c15f3c; font-weight: 800;">•</span> BY ARES &bull; SECURITY NOTIFICATION
+      </div>
     </div>
-    <div class="alert-box">
-      <strong>Didn't make this change?</strong><br>
-      If you did not authorize this change, please reset your password immediately at <a href="https://app.staterbill.com/login" style="color:#93c5fd;">https://app.staterbill.com/login</a> or reach our emergency support team at support@staterbill.com.
+    <div style="padding: 32px 28px;">
+      <h2 style="font-size: 20px; font-weight: 700; color: #ffffff; margin: 0 0 12px;">Password Change Notice</h2>
+      <p style="font-size: 14px; line-height: 1.6; color: #d1d5db; margin: 0 0 14px;">Hello <strong>{escape(display_name)}</strong>,</p>
+      <p style="font-size: 14px; line-height: 1.6; color: #9ca3af; margin: 0 0 16px;">The password for your store login (<strong>{escape(username)}</strong>) was just changed successfully.</p>
+      <div style="background-color: #181c26; border: 1px solid #262c3b; border-radius: 8px; padding: 14px 18px; margin: 16px 0; font-size: 13px;">
+        <div><strong>Affected Account:</strong> <span style="color:#ffffff; font-weight: 700; font-family: monospace;">{escape(username)}</span></div>
+        <div style="margin-top:6px; color:#9ca3af;"><strong>Time:</strong> Just now</div>
+      </div>
+      <div style="background-color: rgba(239, 68, 68, 0.12); border: 1.5px solid #ef4444; border-radius: 8px; padding: 14px; color: #fca5a5; font-size: 13px; margin-top: 18px; line-height: 1.5;">
+        <strong>Didn't make this change?</strong><br>
+        If you did not authorize this change, please reset your password immediately at <a href="https://app.staterbill.com/login" style="color:#ffffff; font-weight: 700; text-decoration: underline;">https://app.staterbill.com/login</a> or reach our emergency support team at <a href="mailto:support@staterbill.com" style="color:#ffffff; font-weight: 700;">support@staterbill.com</a>.
+      </div>
     </div>
-    <p style="font-size: 11px; color: #6b7280; margin-top: 24px; border-top: 1px solid #262b36; padding-top: 12px;">
-      STATER Bill Security &bull; High-performance counter billing for modern retail.
-    </p>
+    <div style="padding: 20px 28px 24px; border-top: 1px solid #1f2430; background-color: #10121a; text-align: center; font-size: 11px; color: #6b7280; line-height: 1.6;">
+      &copy; 2026 STATER Bill Security &bull; High-performance counter billing for modern retail.
+    </div>
   </div>
 </body>
 </html>"""
