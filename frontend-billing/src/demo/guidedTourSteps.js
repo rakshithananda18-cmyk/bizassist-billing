@@ -8,12 +8,12 @@ export const guidedTourSteps = [
   { id: 'dashboard', route: '/dashboard', steps: [
     { target: '.vsummary-strip', caption: 'The Dashboard brings revenue, pending invoices and inventory into one view.', hold: 6000 },
     { target: '.dashboard-grid', caption: 'Follow recent payments and see which products need restocking.', hold: 6500 },
-    { target: '.vsummary-strip:nth-of-type(3), .vsummary-strip', caption: 'Purchase totals, active customers and margin help you plan the next day.', hold: 5500 },
+    { target: '.vsummary-strip:nth-of-type(3), .vsummary-strip', caption: 'Review purchase totals and active customers. Advanced margin analytics are protected in this preview.', hold: 5500 },
   ] },
   { id: 'pos', route: '/sales', steps: [
     { target: '.pos-search-container input', caption: 'At the Billing Counter, scan a barcode or search for an item.', input: 'Royal', hold: 1600 },
     { target: '.pos-search-container [role="option"]', caption: 'Choose Royal Heritage Basmati Rice from the real product catalogue.', click: true, hold: 2500 },
-    { target: '[data-tour="pos-standard-price"]', caption: 'Review the saved retail, wholesale and distributor prices. Choose Standard Price for this walk-in bill.', click: true, hold: 3500 },
+    { target: '[data-tour="pos-standard-price"]', caption: 'Choose Standard Price for this walk-in bill. Advanced pricing options are protected in this preview.', click: true, hold: 3500 },
     { target: '.pos-search-container input', caption: 'Add a second item. We’ll use Tata Tea for this sample bill.', input: 'Tata', hold: 1500 },
     { target: '.pos-search-container [role="option"]', caption: 'Each item carries its saved price and tax details into the cart.', click: true, hold: 2000 },
     { target: '[data-tour="pos-standard-price"]', caption: 'Use the Standard Price for Tata Tea too. The chosen price is applied to the cart line.', click: true, hold: 3500 },
@@ -24,7 +24,7 @@ export const guidedTourSteps = [
     { target: '.inv-shell', caption: 'Stock & Purchases opens the same intake workspace your team uses every day.', hold: 5000 },
     { target: '[data-tour="stock-tab-catalogue"]', caption: 'Open Catalogue to inspect the products already in your store.', click: true, hold: 3500 },
     { target: 'input[placeholder="Search products…"]', caption: 'Find Royal Heritage rice by name, product code or barcode.', input: 'Royal', hold: 4000 },
-    { target: '.inv-dense tbody tr', caption: 'Read the saved prices, quantity and stock status for the matching item.', hold: 6000 },
+    { target: '.inv-dense tbody tr', caption: 'Review the item, retail price and stock quantity. Cost and margin calculations are protected in this preview.', hold: 6000 },
   ] },
   { id: 'purchases', route: '/stock/purchase', steps: [
     { target: '[data-tour="purchase-table"]', caption: 'Purchases keeps supplier bills, item counts, amounts and status together.', hold: 5500 },

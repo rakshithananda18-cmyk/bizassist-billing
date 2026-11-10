@@ -18,10 +18,10 @@ export function PageHeader({ title, subtitle, actions, badge, style }) {
   return (
     <div className="vheader" style={{ marginBottom: 16, ...style }}>
       <div>
-        <div className="vheader-title">
+        <h1 className="vheader-title">
           {title}
           {badge != null && badge !== '' && <span className="vbadge">{badge}</span>}
-        </div>
+        </h1>
         {subtitle && <div className="vheader-sub">{subtitle}</div>}
       </div>
       {actions && (
@@ -38,7 +38,7 @@ export function Card({ title, actions, children, className = '', style }) {
     <div className={`widget ${className}`.trim()} style={style}>
       {(title || actions) && (
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-          {title ? <div className="widget-title" style={{ margin: 0 }}>{title}</div> : <span />}
+          {title ? <h2 className="widget-title" style={{ margin: 0 }}>{title}</h2> : <span />}
           {actions && <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>{actions}</div>}
         </div>
       )}

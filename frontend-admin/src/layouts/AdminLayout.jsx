@@ -3,48 +3,48 @@ import { useAuth } from '../contexts/AuthContext'
 import { useState, useEffect, useRef } from 'react'
 import { BuildingMark } from '../components/Logo'
 import { Icon } from '../components/icons'
-import { useAdminTheme } from '../utils/adminPreferences'
+import { useAdminTheme, useAdminPreference } from '../utils/adminPreferences'
 
 const NAV_SECTIONS = [
   {
-    section: 'Core Operations',
+    section: 'Workspace',
     items: [
-      { to: '/admin/dashboard',  icon: 'dashboard', label: 'Dashboard & Router' },
-      { to: '/admin/bi',         icon: 'chart',     label: 'BI Analytics & Sales' },
-      { to: '/admin/businesses', icon: 'users',     label: 'Businesses & Fleet' },
+      { to: '/admin/dashboard',  icon: 'dashboard', label: 'Overview' },
+      { to: '/admin/bi',         icon: 'chart',     label: 'Business insights' },
+      { to: '/admin/businesses', icon: 'users',     label: 'Businesses' },
     ]
   },
   {
-    section: 'Growth & Limits',
+    section: 'Growth & activity',
     items: [
-      { to: '/admin/campaigns',  icon: 'rocket',    label: 'In-App Campaigns' },
-      { to: '/admin/metrics',    icon: 'sparkle',   label: 'Platform Metrics' },
-      { to: '/admin/usage',      icon: 'chart',     label: 'Usage & API Limits' },
+      { to: '/admin/campaigns',  icon: 'rocket',    label: 'Campaigns' },
+      { to: '/admin/metrics',    icon: 'sparkle',   label: 'Platform metrics' },
+      { to: '/admin/usage',      icon: 'chart',     label: 'Usage & limits' },
     ]
   },
   {
-    section: 'System Ops & Logs',
+    section: 'Platform',
     items: [
-      { to: '/admin/health',     icon: 'shield',    label: 'Health & Audits' },
-      { to: '/admin/infra',      icon: 'server',    label: 'Cloud Console & APM' },
-      { to: '/admin/telemetry',  icon: 'activity',  label: 'Telemetry & Logs' },
-      { to: '/admin/cache',      icon: 'server',    label: 'System Cache' },
+      { to: '/admin/health',     icon: 'shield',    label: 'Health & audit' },
+      { to: '/admin/infra',      icon: 'server',    label: 'Infrastructure' },
+      { to: '/admin/telemetry',  icon: 'activity',  label: 'Event logs' },
+      { to: '/admin/cache',      icon: 'database',  label: 'Cache & storage' },
     ]
   }
 ]
 
 const PAGE_TITLES = {
-  '/admin/dashboard':  'Overview & AI Router',
-  '/admin/bi':         'Business Intelligence & Sales',
-  '/admin/businesses': 'Business Directory & Sandboxes',
-  '/admin/campaigns':  'Growth Campaigns & Promos',
-  '/admin/metrics':    'Fleet Growth & Metrics',
-  '/admin/usage':      'API Usage & Rate Limits',
-  '/admin/health':     'System Diagnostics & Audits',
-  '/admin/infra':      'Google Cloud Console & APM',
-  '/admin/telemetry':  'Live Telemetry & Logs',
-  '/admin/cache':      'System Cache & Database Ops',
-  '/admin/settings':   'System & Admin Settings',
+  '/admin/dashboard':  'Overview',
+  '/admin/bi':         'Business insights',
+  '/admin/businesses': 'Businesses',
+  '/admin/campaigns':  'Campaigns',
+  '/admin/metrics':    'Platform metrics',
+  '/admin/usage':      'Usage & limits',
+  '/admin/health':     'Health & audit',
+  '/admin/infra':      'Infrastructure',
+  '/admin/telemetry':  'Event logs',
+  '/admin/cache':      'Cache & storage',
+  '/admin/settings':   'Settings',
 }
 
 export default function AdminLayout() {
@@ -64,6 +64,7 @@ export default function AdminLayout() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [showProfileMenu, setShowProfileMenu] = useState(false)
   const [isDark, setTheme] = useAdminTheme()
+  const [timeFormat] = useAdminPreference('admin_time_format')
   const [isMobile, setIsMobile] = useState(() => window.innerWidth <= 1024)
   const [copiedBizId, setCopiedBizId] = useState(false)
   const [copyError, setCopyError] = useState(null)
@@ -71,6 +72,7 @@ export default function AdminLayout() {
   const sidebarRef = useRef(null)
   const mobileTriggerRef = useRef(null)
   const mobileCloseRef = useRef(null)
+  const mainRef = useRef(null)
   const adminBizId = adminUser?.public_id || adminUser?.bizid || null
 
   function toggleSidebarCollapsed() {
@@ -131,6 +133,7 @@ export default function AdminLayout() {
   useEffect(() => {
     setMobileMenuOpen(false)
     setShowProfileMenu(false)
+    if (mainRef.current) mainRef.current.scrollTop = 0
   }, [location.pathname])
 
   useEffect(() => {
@@ -172,10 +175,15 @@ export default function AdminLayout() {
     }
   }, [isMobile, mobileMenuOpen])
 
-  const currentTitle = PAGE_TITLES[location.pathname] || 'Admin Console'
+  const currentTitle = PAGE_TITLES[location.pathname] || (location.pathname.startsWith('/admin/businesses/') ? 'Business workspace' : 'Admin workspace')
+  const operatorName = adminUser?.username || 'Administrator'
+  const operatorInitials = operatorName.slice(0, 2).toUpperCase()
+  const today = new Date()
+  const dateLabel = today.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', timeZone: timeFormat === 'UTC' ? 'UTC' : 'Asia/Kolkata' })
 
   return (
-    <div className="app-shell">
+    <div className="app-shell admin-experience">
+      <a className="admin-skip-link" href="#admin-main">Skip to workspace</a>
       {/* ── SIDEBAR (Matching frontend-billing Architecture) ── */}
       <aside
         ref={sidebarRef}
@@ -203,13 +211,13 @@ export default function AdminLayout() {
         </button>}
 
         {/* Brand Block */}
-        <div className="sidebar-brand">
-          <BuildingMark size={28} />
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div className="brand-name">BIZASSIST</div>
-            <div className="brand-tag">ADMIN CONSOLE</div>
+        <NavLink to="/admin/dashboard" className="sidebar-brand" aria-label="BizAssist operations home" onClick={() => setMobileMenuOpen(false)}>
+          <span className="sidebar-brand-mark"><BuildingMark size={28} accent="#df9878" /></span>
+          <div className="sidebar-brand-copy">
+            <div className="brand-name">BizAssist<span> / admin</span></div>
+            <div className="brand-tag">STATER BILL OPERATIONS</div>
           </div>
-        </div>
+        </NavLink>
 
         {/* Navigation Sections */}
         <nav className="sidebar-nav">
@@ -249,10 +257,12 @@ export default function AdminLayout() {
               <span className="nav-icon">
                 <Icon name="settings" size={16} />
               </span>
-              <span className="nav-label">Admin Settings</span>
+              <span className="nav-label">Settings</span>
             </NavLink>
           </div>
         </nav>
+
+        <div className="sidebar-workspace-note"><Icon name="building" size={17} /><div><strong>Every business. One workspace.</strong><span>People, activity and the details between.</span></div></div>
 
         {/* Sidebar Footer with Operator Profile & Settings Menu */}
         <div className="sidebar-footer">
@@ -261,7 +271,7 @@ export default function AdminLayout() {
             <div className="profile-menu" id="admin-profile-menu" ref={profileMenuRef}>
               <div className="profile-menu-header">
                 <div className="profile-menu-biz">{adminUser?.username || 'admin'}</div>
-                <div className="profile-menu-sub">Super Administrator</div>
+                <div className="profile-menu-sub">Platform administrator</div>
               </div>
 
               {/* BizID Copy Affordance */}
@@ -331,12 +341,13 @@ export default function AdminLayout() {
             onClick={() => setShowProfileMenu(prev => !prev)}
           >
             <div className="user-avatar">
-              AD
+              {operatorInitials}
             </div>
             <div className="user-info">
-              <div className="user-name">{adminUser?.username || 'admin'}</div>
-              <div className="user-role">Super Admin</div>
+              <div className="user-name">{operatorName}</div>
+              <div className="user-role">Platform administrator</div>
             </div>
+            <Icon name="chevronDown" size={14} />
           </button>
         </div>
       </aside>
@@ -353,7 +364,7 @@ export default function AdminLayout() {
       <div className="main-area" inert={isMobile && mobileMenuOpen ? '' : undefined} aria-hidden={isMobile && mobileMenuOpen ? true : undefined}>
         {/* Top Header Bar */}
         <header className="topbar">
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div className="admin-topbar-leading">
             {/* Mobile Hamburger Menu Toggle */}
             {isMobile && <button
               ref={mobileTriggerRef}
@@ -377,36 +388,25 @@ export default function AdminLayout() {
             </button>}
 
             {/* Breadcrumb & Title */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-muted)' }}>BizAssist Admin</span>
-              <span style={{ color: 'var(--border)' }}>/</span>
-              <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text-primary)' }}>{currentTitle}</span>
+            <div className="admin-route-context">
+              <span className="admin-route-eyebrow">THE OPERATIONS DESK</span>
+              <nav className="admin-breadcrumb" aria-label="Breadcrumb">
+                <NavLink to="/admin/dashboard">Workspace</NavLink>
+                <Icon name="chevronRight" size={12} />
+                <span aria-current="page">{currentTitle}</span>
+              </nav>
             </div>
           </div>
 
           {/* Quick Actions & Status */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div className="admin-topbar-actions">
             {/* System Status Indicator */}
-            <div style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 6,
-              padding: '3px 9px',
-              borderRadius: 999,
-              background: 'var(--accent-dim)',
-              border: '1px solid var(--border)',
-              fontSize: 11,
-              fontWeight: 600,
-              color: 'var(--text-secondary)',
-              letterSpacing: '0.02em'
-            }}>
-              <span>Admin Console</span>
-            </div>
+            <time className="admin-workspace-date" dateTime={today.toISOString()}><Icon name="clock" size={13} /><span>{dateLabel}</span><small>{timeFormat}</small></time>
 
             {/* Quick Settings Icon */}
             <NavLink
               to="/admin/settings"
-              className="btn-flush"
+              className="btn-flush admin-topbar-icon"
               style={{
                 padding: '6px 8px',
                 borderRadius: 'var(--radius-md, 8px)',
@@ -424,7 +424,7 @@ export default function AdminLayout() {
             <button
               type="button"
               onClick={() => toggleTheme()}
-              className="btn-flush"
+              className="btn-flush admin-topbar-icon"
               style={{
                 padding: '6px 8px',
                 borderRadius: 'var(--radius-md, 8px)',
@@ -442,7 +442,8 @@ export default function AdminLayout() {
             <button
               type="button"
               onClick={handleLogout}
-              className="btn-flush"
+              className="btn-flush admin-topbar-exit"
+              aria-label="Sign out of admin console"
               style={{
                 padding: '6px 12px',
                 fontSize: 12.5,
@@ -452,13 +453,13 @@ export default function AdminLayout() {
               title="Sign Out of Admin Console"
             >
               <Icon name="logout" size={14} />
-              <span>Exit</span>
+              <span>Sign out</span>
             </button>
           </div>
         </header>
 
         {/* Main Routed Content */}
-        <main className={`app-main ${location.pathname === '/admin/settings' ? 'app-main-split' : ''}`}>
+        <main ref={mainRef} id="admin-main" tabIndex={-1} className={`app-main ${location.pathname === '/admin/settings' ? 'app-main-split' : ''}`}>
           <Outlet />
         </main>
       </div>

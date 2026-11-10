@@ -22,6 +22,7 @@
 import { act, cleanup, render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import userEvent from '@testing-library/user-event'
 import AdminInfrastructure from '../pages/admin/AdminInfrastructure'
 import { DialogProvider } from '../contexts/DialogContext'
 
@@ -96,5 +97,39 @@ describe('Infrastructure page (1.45)', () => {
     for (const invented of ['asia-south1 (Mumbai)', 'CONNECTED', 'BOM1 (Mumbai Edge)']) {
       expect(screen.queryAllByText(invented)).toHaveLength(0)
     }
+  })
+
+  it('keeps measured zeros distinct from missing process metrics', async () => {
+    const measured = { ...METRICS_WITH_GAPS, cloud_run: { ...METRICS_WITH_GAPS.cloud_run,
+      cpu_percent: 0, memory: { rss_mb: 0 }, thread_count: 0, region: 'test-region' } }
+    auth.authFetch.mockImplementation(async url => reply(200, url.includes('/infrastructure-metrics') ? measured
+      : url.includes('/console-metrics') ? { traffic: {}, latency: {}, cost: {} } : []))
+    mount()
+    await screen.findByText('CPU Utilization')
+    expect(rowOf('CPU Utilization')).toHaveTextContent('0%')
+    expect(rowOf('Process Memory (RSS)')).toHaveTextContent('0 MB')
+    expect(rowOf('Worker Threads')).toHaveTextContent('0')
+    expect(rowOf('Region')).toHaveTextContent('test-region')
+    expect(rowOf('CPU Utilization')).not.toHaveTextContent(/unavailable/i)
+  })
+
+  it('retries a failed snapshot and preserves known readings after a later refresh failure', async () => {
+    let primaryCalls = 0
+    auth.authFetch.mockImplementation(async url => {
+      if (url.includes('/console-metrics')) return reply(200, { traffic: {}, latency: {}, cost: {} })
+      if (url.includes('/api-traces')) return reply(200, [])
+      primaryCalls++
+      return primaryCalls === 2 ? reply(200, METRICS_WITH_GAPS) : reply(503, { detail: 'Diagnostics temporarily unavailable' })
+    })
+    mount()
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('503')
+    await userEvent.click(within(alert).getByRole('button', { name: 'Retry diagnostics' }))
+    await screen.findByText('CPU Utilization')
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Refresh' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Showing the last loaded data')
+    expect(rowOf('Revision')).toHaveTextContent('staterbill-api-00042-abc')
+    expect(primaryCalls).toBe(3)
   })
 })

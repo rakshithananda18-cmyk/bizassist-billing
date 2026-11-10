@@ -6,7 +6,7 @@ import { readableError } from '../../utils/httpErrors'
 import '../../styles/infrastructure.css'
 
 function formatBytes(bytes) {
-  if (!bytes || isNaN(bytes)) return '0 B'
+  if (bytes === null || bytes === undefined || !Number.isFinite(Number(bytes))) return 'Unavailable'
   const units = ['B', 'KB', 'MB', 'GB', 'TB']
   let idx = 0
   let b = Number(bytes)
@@ -18,29 +18,38 @@ function formatBytes(bytes) {
 }
 
 function uptime(value) {
-  if (value === null || value === undefined) return '0s'
+  if (value === null || value === undefined || !Number.isFinite(Number(value))) return 'Unavailable'
   const seconds = Math.max(0, Math.floor(value))
   return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m ${seconds % 60}s`
 }
 
+function metric(value, suffix = '') {
+  return value === null || value === undefined || value === '' || (typeof value === 'number' && !Number.isFinite(value))
+    ? 'Unavailable' : `${value}${suffix}`
+}
+
+function MetricRow({ label, value }) {
+  return <div className="infra-stat"><span>{label}</span><strong>{value}</strong></div>
+}
+
 function StatusBadge({ status }) {
   const s = String(status || '').toUpperCase()
-  let bg = 'rgba(142, 142, 147, 0.15)'
-  let color = '#8e8e93'
-  let border = 'rgba(142, 142, 147, 0.3)'
+  let bg = 'var(--bg-3)'
+  let color = 'var(--text-muted)'
+  let border = 'var(--border)'
 
   if (s === 'ACTIVE' || s === 'HEALTHY' || s === 'ONLINE' || s === 'CONNECTED' || s === 'FREE_TIER') {
-    bg = 'rgba(56, 161, 105, 0.15)'
-    color = '#48bb78'
-    border = 'rgba(56, 161, 105, 0.3)'
+    bg = 'var(--success-dim)'
+    color = 'var(--success)'
+    border = 'color-mix(in srgb, var(--success) 25%, transparent)'
   } else if (s === 'UNAVAILABLE' || s === 'ERROR' || s === 'DOWN') {
-    bg = 'rgba(229, 62, 62, 0.15)'
-    color = '#f56565'
-    border = 'rgba(229, 62, 62, 0.3)'
+    bg = 'var(--danger-dim)'
+    color = 'var(--danger)'
+    border = 'color-mix(in srgb, var(--danger) 25%, transparent)'
   } else if (s === 'WARNING' || s === 'DEGRADED') {
-    bg = 'rgba(221, 107, 32, 0.15)'
-    color = '#ed8936'
-    border = 'rgba(221, 107, 32, 0.3)'
+    bg = 'var(--warning-dim)'
+    color = 'var(--warning)'
+    border = 'color-mix(in srgb, var(--warning) 25%, transparent)'
   }
 
   return (
@@ -127,17 +136,19 @@ export default function AdminInfrastructure() {
   const [infraData, setInfraData] = useState(null)
   const [consoleData, setConsoleData] = useState(null)
   const [traces, setTraces] = useState([])
+  const [tracesLoaded, setTracesLoaded] = useState(false)
   const [selectedTrace, setSelectedTrace] = useState(null)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState(null)
-  const [autoRefresh, setAutoRefresh] = useState(true)
+  const [autoRefresh, setAutoRefresh] = useState(false)
   const [traceSearch, setTraceSearch] = useState('')
   const [traceStatusFilter, setTraceStatusFilter] = useState('all')
   const [traceMethodFilter, setTraceMethodFilter] = useState('all')
 
   const mounted = useRef(true)
   const pending = useRef(false)
+  const hasData = useRef(false)
 
   const fetchAllData = useCallback(async () => {
     if (pending.current) return
@@ -145,28 +156,33 @@ export default function AdminInfrastructure() {
     setRefreshing(true)
 
     try {
-      // 1. Existing infrastructure probe
-      const pInfra = authFetch(`${API_BASE}/admin/infrastructure-metrics`)
-        .then(r => r.ok ? r.json() : null)
-        .catch(() => null)
-
-      // 2. New console metrics (APM + Cost)
-      const pConsole = authFetch(`${API_BASE}/admin/console-metrics`)
-        .then(r => r.ok ? r.json() : null)
-        .catch(() => null)
-
-      // 3. Recent traces
-      const pTraces = authFetch(`${API_BASE}/admin/api-traces?limit=60`)
-        .then(r => r.ok ? r.json() : [])
-        .catch(() => [])
-
-      const [resInfra, resConsole, resTraces] = await Promise.all([pInfra, pConsole, pTraces])
-
+      const read = async (path, label, validate) => {
+        try {
+          const response = await authFetch(`${API_BASE}${path}`)
+          if (!response.ok) {
+            const body = await response.json().catch(() => ({}))
+            throw new Error(`${label} (HTTP ${response.status || 'error'}): ${readableError(response.status, body)}`)
+          }
+          const data = await response.json()
+          if (!validate(data)) throw new Error(`${label}: the server returned an unavailable or invalid response.`)
+          return { data }
+        } catch (requestError) {
+          return { error: requestError.message || `${label}: could not reach the server.` }
+        }
+      }
+      const [resInfra, resConsole, resTraces] = await Promise.all([
+        read('/admin/infrastructure-metrics', 'Infrastructure', data => data && typeof data === 'object' && !Array.isArray(data) && data.cloud_run),
+        read('/admin/console-metrics', 'Performance metrics', data => data && typeof data.traffic === 'object' && data.traffic !== null),
+        read('/admin/api-traces?limit=60', 'API traces', Array.isArray),
+      ])
       if (!mounted.current) return
-      if (resInfra) setInfraData(resInfra)
-      if (resConsole) setConsoleData(resConsole)
-      if (resTraces) setTraces(resTraces)
-      setError(null)
+      const previouslyLoaded = hasData.current
+      if (resInfra.data) setInfraData(resInfra.data)
+      if (resConsole.data) setConsoleData(resConsole.data)
+      if (resTraces.data) { setTraces(resTraces.data); setTracesLoaded(true) }
+      const errors = [resInfra, resConsole, resTraces].map(result => result.error).filter(Boolean)
+      setError(errors.length ? `${previouslyLoaded ? 'Showing the last loaded data where a refresh failed. ' : ''}${errors.join(' · ')}` : null)
+      if (resInfra.data || resConsole.data || resTraces.data) hasData.current = true
     } catch (err) {
       if (mounted.current) setError(err.message || 'Failed to fetch cloud infrastructure data.')
     } finally {
@@ -225,8 +241,8 @@ export default function AdminInfrastructure() {
     <div className="admin-main" style={{ padding: '24px 32px', maxWidth: 1400, margin: '0 auto' }}>
       {/* Mini Google Console Top Banner */}
       <div style={{
-        background: 'linear-gradient(180deg, #1d2127 0%, #15181c 100%)',
-        border: '1px solid rgba(255,255,255,0.08)',
+        background: 'var(--bg-2)',
+        border: '1px solid var(--border)',
         borderRadius: 14,
         padding: '16px 20px',
         marginBottom: 24,
@@ -235,26 +251,26 @@ export default function AdminInfrastructure() {
         alignItems: 'center',
         flexWrap: 'wrap',
         gap: 16,
-        boxShadow: '0 4px 20px rgba(0,0,0,0.25)'
+        boxShadow: 'var(--shadow-sm)'
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
           <div style={{
             width: 42,
             height: 42,
             borderRadius: 10,
-            background: 'rgba(66, 133, 244, 0.15)',
-            border: '1px solid rgba(66, 133, 244, 0.3)',
+            background: 'var(--accent-dim)',
+            border: '1px solid var(--border)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            color: '#4285F4'
+            color: 'var(--accent)'
           }}>
             <Icon name="server" size={22} />
           </div>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ fontSize: 16, fontWeight: 700, color: '#fff', letterSpacing: '-0.01em' }}>
-                Google Cloud Console
+              <span style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.01em' }}>
+                Infrastructure &amp; observability
               </span>
               <span style={{
                 fontSize: 11,
@@ -265,16 +281,14 @@ export default function AdminInfrastructure() {
                 border: '1px solid rgba(194, 113, 79, 0.3)',
                 fontWeight: 600
               }}>
-                staterbill
+                Platform diagnostics
               </span>
-              <StatusBadge status="ACTIVE" />
+              {cloud?.status && <StatusBadge status={cloud.status} />}
             </div>
             <div style={{ fontSize: 12, color: '#8e8e93', marginTop: 3, display: 'flex', gap: 12 }}>
-              <span>Region: <strong style={{ color: '#fff' }}>asia-south1 (Mumbai)</strong></span>
+              <span>Runtime: <strong style={{ color: 'var(--text-primary)' }}>{cloud?.provider || 'Awaiting diagnostics'}</strong></span>
               <span>•</span>
-              <span>Services: <strong style={{ color: '#fff' }}>staterbill-api, staterbill-task</strong></span>
-              <span>•</span>
-              <span>Database: <strong style={{ color: '#fff' }}>Supabase PostgreSQL</strong></span>
+              <span>Snapshot: <strong style={{ color: 'var(--text-primary)' }}>{infraData?.timestamp ? new Date(infraData.timestamp).toLocaleString() : 'Not yet loaded'}</strong></span>
             </div>
           </div>
         </div>
@@ -288,7 +302,7 @@ export default function AdminInfrastructure() {
               onChange={e => setAutoRefresh(e.target.checked)}
               style={{ accentColor: 'var(--accent, #c2714f)' }}
             />
-            Live Stream (15s)
+            Auto-refresh (15s)
           </label>
           <button
             type="button"
@@ -301,8 +315,8 @@ export default function AdminInfrastructure() {
               padding: '8px 14px',
               borderRadius: 8,
               background: 'rgba(255,255,255,0.06)',
-              border: '1px solid rgba(255,255,255,0.12)',
-              color: '#fff',
+              border: '1px solid var(--border)',
+              color: 'var(--text-primary)',
               fontSize: 12,
               fontWeight: 600,
               cursor: 'pointer'
@@ -315,16 +329,17 @@ export default function AdminInfrastructure() {
       </div>
 
       {error && (
-        <div style={{
+        <div role="alert" style={{
           padding: '12px 18px',
           borderRadius: 10,
           background: 'rgba(229, 62, 62, 0.12)',
           border: '1px solid rgba(229, 62, 62, 0.3)',
-          color: '#feb2b2',
+          color: 'var(--danger)',
           marginBottom: 20,
           fontSize: 13
         }}>
-          <strong>Console Warning:</strong> {error}
+          <div><strong>Diagnostics could not be loaded.</strong><p>{error}</p></div>
+          <button type="button" className="btn btn-secondary" disabled={refreshing} onClick={fetchAllData}>Retry diagnostics</button>
         </div>
       )}
 
@@ -338,7 +353,7 @@ export default function AdminInfrastructure() {
         {[
           { id: 'topology', label: 'Cloud Topology & Services', icon: 'server' },
           { id: 'apm', label: 'APM & Performance Metrics', icon: 'sparkle' },
-          { id: 'traces', label: `Call Hits & Tracing (${traces.length})`, icon: 'activity' },
+          { id: 'traces', label: `Call Hits & Tracing (${tracesLoaded ? traces.length : '—'})`, icon: 'activity' },
           { id: 'cost', label: 'Cloud Billing & Cost breakdown', icon: 'wallet' },
         ].map(tab => (
           <button
@@ -366,183 +381,58 @@ export default function AdminInfrastructure() {
         ))}
       </div>
 
-      {/* TAB 1: TOPOLOGY */}
-      {activeTab === 'topology' && (
-        <div>
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
-            gap: 20
-          }}>
-            {/* Cloud Run Billing API Card */}
-            <div style={{
-              background: 'var(--bg-2, #18191c)',
-              border: '1px solid var(--border, rgba(255,255,255,0.08))',
-              borderRadius: 14,
-              padding: 20,
-              boxShadow: '0 4px 20px rgba(0,0,0,0.15)'
-            }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <Icon name="server" size={20} />
-                  <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: '#fff' }}>Cloud Run: staterbill-api</h3>
-                </div>
-                <StatusBadge status={cloud?.status || 'ACTIVE'} />
-              </div>
+      {loading && <div className="card" role="status" style={{ padding: 24 }}>Loading infrastructure diagnostics…</div>}
+      {!loading && ((activeTab === 'topology' && !infraData) || (['apm', 'cost'].includes(activeTab) && !consoleData) || (activeTab === 'traces' && !tracesLoaded)) && <div className="card" role="status" style={{ padding: 24 }}>Diagnostics unavailable. Retry to request a current snapshot.</div>}
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: 13 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#8e8e93' }}>
-                  <span>Revision:</span>
-                  <strong style={{ color: '#fff', fontFamily: 'monospace' }}>{cloud?.revision || 'staterbill-api-00008-lur'}</strong>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#8e8e93' }}>
-                  <span>Process Uptime:</span>
-                  <strong style={{ color: '#fff' }}>{uptime(cloud?.uptime_seconds)}</strong>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#8e8e93' }}>
-                  <span>Memory RSS:</span>
-                  <strong style={{ color: '#fff' }}>{cloud?.memory?.rss_mb ? `${cloud.memory.rss_mb} MB` : '847 MB'}</strong>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#8e8e93' }}>
-                  <span>CPU Utilization:</span>
-                  <strong style={{ color: '#48bb78' }}>{cloud?.cpu_percent ? `${cloud.cpu_percent}%` : '< 1%'}</strong>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#8e8e93' }}>
-                  <span>Worker Threads:</span>
-                  <strong style={{ color: '#fff' }}>{cloud?.thread_count || 11}</strong>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#8e8e93' }}>
-                  <span>Runtime:</span>
-                  <strong style={{ color: '#fff' }}>Python {cloud?.python_version || '3.11.18'}</strong>
-                </div>
-              </div>
-            </div>
+      {/* TAB 1: TOPOLOGY — values come only from the diagnostics response. */}
+      {activeTab === 'topology' && infraData && (
+        <div className="infra-grid">
+          <article className="card infra-card" style={{ padding: 20 }}>
+            <div className="infra-card-header"><h2><Icon name="server" size={18} />{cloud?.service_name || cloud?.provider || 'Backend runtime'}</h2><StatusBadge status={cloud?.status || 'UNAVAILABLE'} /></div>
+            <MetricRow label="Region" value={metric(cloud?.region)} />
+            <MetricRow label="Revision" value={metric(cloud?.revision)} />
+            <MetricRow label="Process Uptime" value={uptime(cloud?.uptime_seconds)} />
+            <MetricRow label="Process Memory (RSS)" value={metric(cloud?.memory?.rss_mb, ' MB')} />
+            <MetricRow label="CPU Utilization" value={metric(cloud?.cpu_percent, '%')} />
+            <MetricRow label="Worker Threads" value={metric(cloud?.thread_count)} />
+            <MetricRow label="Runtime" value={cloud?.python_version ? `Python ${cloud.python_version}` : 'Unavailable'} />
+            <p className="infra-note">Process measurements describe the responding instance, not the entire deployment.</p>
+          </article>
 
-            {/* Cloud Run Field Team Task Card */}
-            <div style={{
-              background: 'var(--bg-2, #18191c)',
-              border: '1px solid var(--border, rgba(255,255,255,0.08))',
-              borderRadius: 14,
-              padding: 20,
-              boxShadow: '0 4px 20px rgba(0,0,0,0.15)'
-            }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <Icon name="users" size={20} />
-                  <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: '#fff' }}>Cloud Run: staterbill-task</h3>
-                </div>
-                <StatusBadge status="ACTIVE" />
-              </div>
+          <article className="card infra-card" style={{ padding: 20 }}>
+            <div className="infra-card-header"><h2><Icon name="users" size={18} />Field Team API</h2><StatusBadge status={infraData.field_team?.status || 'UNAVAILABLE'} /></div>
+            <MetricRow label="Health Endpoint" value={metric(infraData.field_team?.url)} />
+            <MetricRow label="Probe HTTP Status" value={metric(infraData.field_team?.code)} />
+            <MetricRow label="Probe Roundtrip" value={metric(infraData.field_team?.latency_ms, ' ms')} />
+            {infraData.field_team?.error && <p className="infra-note">{infraData.field_team.error}</p>}
+          </article>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: 13 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#8e8e93' }}>
-                  <span>Revision:</span>
-                  <strong style={{ color: '#fff', fontFamily: 'monospace' }}>staterbill-task-00001-zcd</strong>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#8e8e93' }}>
-                  <span>Traffic Split:</span>
-                  <strong style={{ color: '#48bb78' }}>100% to latest</strong>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#8e8e93' }}>
-                  <span>GCP Service Account:</span>
-                  <strong style={{ color: '#fff', fontSize: 11, fontFamily: 'monospace' }}>staterbill-task-run@staterbill...</strong>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#8e8e93' }}>
-                  <span>Secret Manager Mounts:</span>
-                  <strong style={{ color: '#fff' }}>DATABASE_URL, JWT_SECRET</strong>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#8e8e93' }}>
-                  <span>Endpoint Domain:</span>
-                  <strong style={{ color: 'var(--accent, #c2714f)', fontSize: 11, fontFamily: 'monospace' }}>staterbill-task-ftkym77vzq...</strong>
-                </div>
-              </div>
-            </div>
+          <article className="card infra-card" style={{ padding: 20 }}>
+            <div className="infra-card-header"><h2><Icon name="database" size={18} />{db?.provider || 'Database'}</h2><StatusBadge status={db?.status || 'UNAVAILABLE'} /></div>
+            <MetricRow label="Database Engine" value={metric(db?.dialect)} />
+            <MetricRow label="Storage Footprint" value={db?.size_str ?? formatBytes(db?.size_bytes)} />
+            <MetricRow label="Cache Hit Ratio" value={metric(db?.cache_hit_ratio_pct, '%')} />
+            <MetricRow label="Pool Connections" value={`${metric(db?.connection_pool?.active)} active · ${metric(db?.connection_pool?.idle)} idle`} />
+            <MetricRow label="Connection Capacity" value={metric(db?.connection_pool?.max)} />
+            <MetricRow label="Invoices (estimate)" value={metric(db?.table_counts?.invoices)} />
+            <MetricRow label="Products (estimate)" value={metric(db?.table_counts?.products)} />
+            <p className="infra-note">Table counts are catalog estimates. Unavailable measurements are not reported as zero.</p>
+          </article>
 
-            {/* Supabase PostgreSQL Database Card */}
-            <div style={{
-              background: 'var(--bg-2, #18191c)',
-              border: '1px solid var(--border, rgba(255,255,255,0.08))',
-              borderRadius: 14,
-              padding: 20,
-              boxShadow: '0 4px 20px rgba(0,0,0,0.15)'
-            }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <Icon name="database" size={20} />
-                  <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: '#fff' }}>Supabase PostgreSQL</h3>
-                </div>
-                <StatusBadge status={db?.status || 'CONNECTED'} />
-              </div>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: 13 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#8e8e93' }}>
-                  <span>Storage Footprint:</span>
-                  <strong style={{ color: '#fff' }}>{db?.size_str || '43 MB'} / 500 MB Free Quota</strong>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#8e8e93' }}>
-                  <span>Cache Hit Ratio:</span>
-                  <strong style={{ color: '#48bb78' }}>{db?.cache_hit_ratio_pct ? `${db.cache_hit_ratio_pct}%` : '99.82%'}</strong>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#8e8e93' }}>
-                  <span>Pool Connections:</span>
-                  <strong style={{ color: '#fff' }}>{db?.connection_pool?.active || 1} active · {db?.connection_pool?.idle || 13} idle</strong>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#8e8e93' }}>
-                  <span>Indexed Tables:</span>
-                  <strong style={{ color: '#fff' }}>Invoices ({db?.table_counts?.invoices || 96}), Products ({db?.table_counts?.products || 78})</strong>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#8e8e93' }}>
-                  <span>RLS Security:</span>
-                  <strong style={{ color: '#48bb78' }}>Enforced (Tenant Isolation)</strong>
-                </div>
-              </div>
-            </div>
-
-            {/* Vercel Frontend Card */}
-            <div style={{
-              background: 'var(--bg-2, #18191c)',
-              border: '1px solid var(--border, rgba(255,255,255,0.08))',
-              borderRadius: 14,
-              padding: 20,
-              boxShadow: '0 4px 20px rgba(0,0,0,0.15)'
-            }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <Icon name="sparkle" size={20} />
-                  <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: '#fff' }}>Vercel Global Edge</h3>
-                </div>
-                <StatusBadge status="ONLINE" />
-              </div>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: 13 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#8e8e93' }}>
-                  <span>Primary Domain:</span>
-                  <strong style={{ color: '#fff' }}>{edge?.domain || 'staterbill.com'}</strong>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#8e8e93' }}>
-                  <span>Admin Portal:</span>
-                  <strong style={{ color: '#fff' }}>admin.staterbill.com</strong>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#8e8e93' }}>
-                  <span>Field Team Portal:</span>
-                  <strong style={{ color: '#fff' }}>task.staterbill.com</strong>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#8e8e93' }}>
-                  <span>Edge Roundtrip:</span>
-                  <strong style={{ color: '#48bb78' }}>{edge?.latency_ms ? `${edge.latency_ms} ms` : '110 ms'}</strong>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#8e8e93' }}>
-                  <span>Edge POP Location:</span>
-                  <strong style={{ color: '#fff' }}>{edge?.edge_pop || 'bom1 (Mumbai)'}</strong>
-                </div>
-              </div>
-            </div>
-          </div>
+          <article className="card infra-card" style={{ padding: 20 }}>
+            <div className="infra-card-header"><h2><Icon name="sparkle" size={18} />{infraData.vercel?.provider || 'Web endpoint'}</h2><StatusBadge status={edge?.status || 'UNAVAILABLE'} /></div>
+            <MetricRow label="Primary Domain" value={metric(edge?.domain)} />
+            <MetricRow label="Endpoint" value={metric(edge?.url)} />
+            <MetricRow label="HTTP Status" value={metric(edge?.code)} />
+            <MetricRow label="Edge Roundtrip" value={metric(edge?.latency_ms, ' ms')} />
+            <MetricRow label="Edge POP Location" value={metric(edge?.edge_pop)} />
+            {edge?.error && <p className="infra-note">{edge.error}</p>}
+          </article>
         </div>
       )}
 
       {/* TAB 2: APM & PERFORMANCE */}
-      {activeTab === 'apm' && (
+      {activeTab === 'apm' && consoleData && (
         <div>
           {/* APM Stats Row */}
           <div style={{
@@ -553,52 +443,52 @@ export default function AdminInfrastructure() {
           }}>
             <div style={{
               background: 'var(--bg-2, #18191c)',
-              border: '1px solid rgba(255,255,255,0.08)',
+              border: '1px solid var(--border)',
               borderRadius: 12,
               padding: 18
             }}>
               <div style={{ fontSize: 11, fontWeight: 700, color: '#8e8e93', textTransform: 'uppercase' }}>Current Throughput</div>
-              <div style={{ fontSize: 26, fontWeight: 700, color: '#fff', marginTop: 6, fontFamily: 'monospace' }}>
-                {traffic.rpm_1m || 0} <span style={{ fontSize: 13, color: '#8e8e93', fontWeight: 500 }}>RPM</span>
+              <div style={{ fontSize: 26, fontWeight: 700, color: 'var(--text-primary)', marginTop: 6, fontFamily: 'monospace' }}>
+                {metric(traffic.rpm_1m)} <span style={{ fontSize: 13, color: '#8e8e93', fontWeight: 500 }}>RPM</span>
               </div>
               <div style={{ fontSize: 12, color: '#8e8e93', marginTop: 4 }}>
-                5m avg: {traffic.rpm_5m || 0} req/min
+                5m avg: {metric(traffic.rpm_5m)} req/min
               </div>
             </div>
 
             <div style={{
               background: 'var(--bg-2, #18191c)',
-              border: '1px solid rgba(255,255,255,0.08)',
+              border: '1px solid var(--border)',
               borderRadius: 12,
               padding: 18
             }}>
               <div style={{ fontSize: 11, fontWeight: 700, color: '#8e8e93', textTransform: 'uppercase' }}>P50 Latency (Median)</div>
               <div style={{ fontSize: 26, fontWeight: 700, color: '#48bb78', marginTop: 6, fontFamily: 'monospace' }}>
-                {latency.p50_ms || 0} <span style={{ fontSize: 13, color: '#8e8e93', fontWeight: 500 }}>ms</span>
+                {metric(latency.p50_ms)} <span style={{ fontSize: 13, color: '#8e8e93', fontWeight: 500 }}>ms</span>
               </div>
               <div style={{ fontSize: 12, color: '#8e8e93', marginTop: 4 }}>
-                Avg: {latency.avg_ms || 0} ms
+                Avg: {metric(latency.avg_ms)} ms
               </div>
             </div>
 
             <div style={{
               background: 'var(--bg-2, #18191c)',
-              border: '1px solid rgba(255,255,255,0.08)',
+              border: '1px solid var(--border)',
               borderRadius: 12,
               padding: 18
             }}>
               <div style={{ fontSize: 11, fontWeight: 700, color: '#8e8e93', textTransform: 'uppercase' }}>P95 / P99 Tail Latency</div>
               <div style={{ fontSize: 26, fontWeight: 700, color: '#ed8936', marginTop: 6, fontFamily: 'monospace' }}>
-                {latency.p95_ms || 0} <span style={{ fontSize: 13, color: '#8e8e93', fontWeight: 500 }}>/ {latency.p99_ms || 0} ms</span>
+                {metric(latency.p95_ms)} <span style={{ fontSize: 13, color: '#8e8e93', fontWeight: 500 }}>/ {metric(latency.p99_ms)} ms</span>
               </div>
               <div style={{ fontSize: 12, color: '#8e8e93', marginTop: 4 }}>
-                95% of calls complete under {latency.p95_ms || 0} ms
+                95% of calls complete under {metric(latency.p95_ms)} ms
               </div>
             </div>
 
             <div style={{
               background: 'var(--bg-2, #18191c)',
-              border: '1px solid rgba(255,255,255,0.08)',
+              border: '1px solid var(--border)',
               borderRadius: 12,
               padding: 18
             }}>
@@ -610,10 +500,10 @@ export default function AdminInfrastructure() {
                 marginTop: 6,
                 fontFamily: 'monospace'
               }}>
-                {traffic.error_rate_pct || 0}%
+                {metric(traffic.error_rate_pct)}%
               </div>
               <div style={{ fontSize: 12, color: '#8e8e93', marginTop: 4 }}>
-                Total calls logged: {(traffic.total_requests || 0).toLocaleString()}
+                Total calls logged: {traffic.total_requests == null ? 'Unavailable' : Number(traffic.total_requests).toLocaleString()}
               </div>
             </div>
           </div>
@@ -621,17 +511,17 @@ export default function AdminInfrastructure() {
           {/* Status Distribution Bar */}
           <div style={{
             background: 'var(--bg-2, #18191c)',
-            border: '1px solid rgba(255,255,255,0.08)',
+            border: '1px solid var(--border)',
             borderRadius: 14,
             padding: 20,
             marginBottom: 24
           }}>
-            <h3 style={{ margin: '0 0 14px 0', fontSize: 15, fontWeight: 700, color: '#fff' }}>
+            <h3 style={{ margin: '0 0 14px 0', fontSize: 15, fontWeight: 700, color: 'var(--text-primary)' }}>
               HTTP Status Code Distribution (Active Instance)
             </h3>
             <div style={{ display: 'flex', height: 24, borderRadius: 6, overflow: 'hidden', background: 'rgba(255,255,255,0.05)', marginBottom: 12 }}>
               {(() => {
-                const dist = traffic.status_distribution || { '2xx': 100, '3xx': 0, '4xx': 0, '5xx': 0 }
+                const dist = traffic.status_distribution || { '2xx': 0, '3xx': 0, '4xx': 0, '5xx': 0 }
                 const tot = Math.max(1, (dist['2xx'] || 0) + (dist['3xx'] || 0) + (dist['4xx'] || 0) + (dist['5xx'] || 0))
                 const p2 = ((dist['2xx'] || 0) / tot) * 100
                 const p3 = ((dist['3xx'] || 0) / tot) * 100
@@ -650,19 +540,19 @@ export default function AdminInfrastructure() {
             <div style={{ display: 'flex', gap: 20, fontSize: 12, color: '#8e8e93', flexWrap: 'wrap' }}>
               <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#48bb78' }} />
-                2xx Success: <strong>{traffic.status_distribution?.['2xx'] || 0}</strong>
+                2xx Success: <strong>{metric(traffic.status_distribution?.['2xx'])}</strong>
               </span>
               <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#63b3ed' }} />
-                3xx Redirect: <strong>{traffic.status_distribution?.['3xx'] || 0}</strong>
+                3xx Redirect: <strong>{metric(traffic.status_distribution?.['3xx'])}</strong>
               </span>
               <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#ed8936' }} />
-                4xx Client Error: <strong>{traffic.status_distribution?.['4xx'] || 0}</strong>
+                4xx Client Error: <strong>{metric(traffic.status_distribution?.['4xx'])}</strong>
               </span>
               <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#f56565' }} />
-                5xx Server Error: <strong>{traffic.status_distribution?.['5xx'] || 0}</strong>
+                5xx Server Error: <strong>{metric(traffic.status_distribution?.['5xx'])}</strong>
               </span>
             </div>
           </div>
@@ -670,7 +560,7 @@ export default function AdminInfrastructure() {
       )}
 
       {/* TAB 3: CALL HITS & TRACES */}
-      {activeTab === 'traces' && (
+      {activeTab === 'traces' && tracesLoaded && (
         <div>
           {/* Filter Bar */}
           <div style={{
@@ -691,8 +581,8 @@ export default function AdminInfrastructure() {
                   padding: '8px 14px',
                   borderRadius: 8,
                   background: 'var(--bg-2, #18191c)',
-                  border: '1px solid rgba(255,255,255,0.1)',
-                  color: '#fff',
+                  border: '1px solid var(--border)',
+                  color: 'var(--text-primary)',
                   fontSize: 13,
                   width: 240
                 }}
@@ -705,8 +595,8 @@ export default function AdminInfrastructure() {
                   padding: '8px 12px',
                   borderRadius: 8,
                   background: 'var(--bg-2, #18191c)',
-                  border: '1px solid rgba(255,255,255,0.1)',
-                  color: '#fff',
+                  border: '1px solid var(--border)',
+                  color: 'var(--text-primary)',
                   fontSize: 13
                 }}
               >
@@ -724,8 +614,8 @@ export default function AdminInfrastructure() {
                   padding: '8px 12px',
                   borderRadius: 8,
                   background: 'var(--bg-2, #18191c)',
-                  border: '1px solid rgba(255,255,255,0.1)',
-                  color: '#fff',
+                  border: '1px solid var(--border)',
+                  color: 'var(--text-primary)',
                   fontSize: 13
                 }}
               >
@@ -744,7 +634,7 @@ export default function AdminInfrastructure() {
           {/* Traces Table */}
           <div style={{
             background: 'var(--bg-2, #18191c)',
-            border: '1px solid rgba(255,255,255,0.08)',
+            border: '1px solid var(--border)',
             borderRadius: 14,
             overflow: 'hidden'
           }}>
@@ -786,7 +676,7 @@ export default function AdminInfrastructure() {
                       <td style={{ padding: '12px 16px' }}>
                         <MethodBadge method={t.method} />
                       </td>
-                      <td style={{ padding: '12px 16px', fontFamily: 'monospace', color: '#fff', fontWeight: 600 }}>
+                      <td style={{ padding: '12px 16px', fontFamily: 'monospace', color: 'var(--text-primary)', fontWeight: 600 }}>
                         {t.path}
                       </td>
                       <td style={{ padding: '12px 16px', fontFamily: 'monospace', color: t.duration_ms > 500 ? '#ed8936' : '#48bb78' }}>
@@ -809,8 +699,8 @@ export default function AdminInfrastructure() {
                             padding: '4px 10px',
                             borderRadius: 6,
                             background: 'rgba(255,255,255,0.06)',
-                            border: '1px solid rgba(255,255,255,0.1)',
-                            color: '#fff',
+                            border: '1px solid var(--border)',
+                            color: 'var(--text-primary)',
                             fontSize: 11,
                             cursor: 'pointer'
                           }}
@@ -834,7 +724,7 @@ export default function AdminInfrastructure() {
               bottom: 0,
               width: 500,
               maxWidth: '90vw',
-              background: '#15181c',
+              background: 'var(--bg-2)',
               borderLeft: '1px solid rgba(255,255,255,0.12)',
               boxShadow: '-10px 0 30px rgba(0,0,0,0.5)',
               zIndex: 9999,
@@ -846,7 +736,7 @@ export default function AdminInfrastructure() {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <Icon name="activity" size={18} />
-                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#fff' }}>API Trace Detail</h3>
+                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>API Trace Detail</h3>
                 </div>
                 <button
                   type="button"
@@ -883,17 +773,17 @@ export default function AdminInfrastructure() {
 
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ color: '#8e8e93', fontSize: 12 }}>Execution Duration</span>
-                  <strong style={{ color: '#fff', fontFamily: 'monospace' }}>{selectedTrace.duration_ms} ms</strong>
+                  <strong style={{ color: 'var(--text-primary)', fontFamily: 'monospace' }}>{selectedTrace.duration_ms} ms</strong>
                 </div>
 
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ color: '#8e8e93', fontSize: 12 }}>Caller IP Address</span>
-                  <strong style={{ color: '#fff', fontFamily: 'monospace' }}>{selectedTrace.ip}</strong>
+                  <strong style={{ color: 'var(--text-primary)', fontFamily: 'monospace' }}>{selectedTrace.ip}</strong>
                 </div>
 
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ color: '#8e8e93', fontSize: 12 }}>Tenant / Biz ID</span>
-                  <strong style={{ color: '#fff' }}>{selectedTrace.biz_id}</strong>
+                  <strong style={{ color: 'var(--text-primary)' }}>{selectedTrace.biz_id}</strong>
                 </div>
 
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -908,11 +798,11 @@ export default function AdminInfrastructure() {
                   <div style={{
                     padding: 10,
                     borderRadius: 8,
-                    background: 'rgba(0,0,0,0.3)',
-                    border: '1px solid rgba(255,255,255,0.06)',
+                    background: 'var(--bg-3)',
+                    border: '1px solid var(--border)',
                     fontFamily: 'monospace',
                     fontSize: 12,
-                    color: '#fff',
+                    color: 'var(--text-primary)',
                     wordBreak: 'break-all'
                   }}>
                     {selectedTrace.full_path}
@@ -927,7 +817,7 @@ export default function AdminInfrastructure() {
                       borderRadius: 8,
                       background: 'rgba(229, 62, 62, 0.1)',
                       border: '1px solid rgba(229, 62, 62, 0.3)',
-                      color: '#feb2b2',
+                      color: 'var(--danger)',
                       fontSize: 12,
                       fontFamily: 'monospace'
                     }}>
@@ -941,10 +831,10 @@ export default function AdminInfrastructure() {
                   <pre style={{
                     padding: 12,
                     borderRadius: 8,
-                    background: 'rgba(0,0,0,0.5)',
-                    border: '1px solid rgba(255,255,255,0.06)',
+                    background: 'var(--bg-3)',
+                    border: '1px solid var(--border)',
                     fontSize: 11,
-                    color: '#a0aec0',
+                    color: 'var(--text-secondary)',
                     overflowX: 'auto'
                   }}>
                     {JSON.stringify(selectedTrace, null, 2)}
@@ -957,7 +847,7 @@ export default function AdminInfrastructure() {
       )}
 
       {/* TAB 4: CLOUD BILLING & COST */}
-      {activeTab === 'cost' && (
+      {activeTab === 'cost' && consoleData && (
         <div>
           {/* Cost Headline Cards */}
           <div style={{
@@ -968,42 +858,42 @@ export default function AdminInfrastructure() {
           }}>
             <div style={{
               background: 'var(--bg-2, #18191c)',
-              border: '1px solid rgba(255,255,255,0.08)',
+              border: '1px solid var(--border)',
               borderRadius: 14,
               padding: 20
             }}>
               <div style={{ fontSize: 11, fontWeight: 700, color: '#8e8e93', textTransform: 'uppercase' }}>
-                Current Monthly Cloud Burn
+                Estimated Monthly Cloud Cost
               </div>
               <div style={{ fontSize: 32, fontWeight: 700, color: '#48bb78', marginTop: 8, fontFamily: 'monospace' }}>
-                $0.00 <span style={{ fontSize: 14, color: '#8e8e93' }}>(₹0.00)</span>
+                {cost.current_monthly_usd == null ? 'Unavailable' : `$${Number(cost.current_monthly_usd).toFixed(2)}`} <span style={{ fontSize: 14, color: '#8e8e93' }}>{cost.current_monthly_inr == null ? '' : `(₹${Number(cost.current_monthly_inr).toFixed(2)})`}</span>
               </div>
               <div style={{ fontSize: 12, color: '#48bb78', marginTop: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
                 <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#48bb78' }} />
-                100% Free Tier Compliant
+                Planning estimate · not an invoice
               </div>
             </div>
 
             <div style={{
               background: 'var(--bg-2, #18191c)',
-              border: '1px solid rgba(255,255,255,0.08)',
+              border: '1px solid var(--border)',
               borderRadius: 14,
               padding: 20
             }}>
               <div style={{ fontSize: 11, fontWeight: 700, color: '#8e8e93', textTransform: 'uppercase' }}>
                 Projected at 10x Scale
               </div>
-              <div style={{ fontSize: 32, fontWeight: 700, color: '#fff', marginTop: 8, fontFamily: 'monospace' }}>
-                ${cost.projected_scale?.at_10x_traffic_usd || '0.00'}
+              <div style={{ fontSize: 32, fontWeight: 700, color: 'var(--text-primary)', marginTop: 8, fontFamily: 'monospace' }}>
+                {cost.projected_scale?.at_10x_traffic_usd == null ? 'Unavailable' : `$${Number(cost.projected_scale.at_10x_traffic_usd).toFixed(2)}`}
               </div>
               <div style={{ fontSize: 12, color: '#8e8e93', marginTop: 6 }}>
-                Remains within Google Cloud Run 2M free requests
+                Based on the server's recorded request volume
               </div>
             </div>
 
             <div style={{
               background: 'var(--bg-2, #18191c)',
-              border: '1px solid rgba(255,255,255,0.08)',
+              border: '1px solid var(--border)',
               borderRadius: 14,
               padding: 20
             }}>
@@ -1011,10 +901,10 @@ export default function AdminInfrastructure() {
                 Projected at 100x Scale
               </div>
               <div style={{ fontSize: 32, fontWeight: 700, color: '#ed8936', marginTop: 8, fontFamily: 'monospace' }}>
-                ${cost.projected_scale?.at_100x_traffic_usd || '25.00'} <span style={{ fontSize: 14, color: '#8e8e93' }}>/mo</span>
+                {cost.projected_scale?.at_100x_traffic_usd == null ? 'Unavailable' : `$${Number(cost.projected_scale.at_100x_traffic_usd).toFixed(2)}`} <span style={{ fontSize: 14, color: '#8e8e93' }}>/mo</span>
               </div>
               <div style={{ fontSize: 12, color: '#8e8e93', marginTop: 6 }}>
-                Includes Supabase Pro upgrade ($25) for 100k+ MAU
+                Model assumptions may differ from provider billing
               </div>
             </div>
           </div>
@@ -1022,21 +912,16 @@ export default function AdminInfrastructure() {
           {/* Services Breakdown Table */}
           <div style={{
             background: 'var(--bg-2, #18191c)',
-            border: '1px solid rgba(255,255,255,0.08)',
+            border: '1px solid var(--border)',
             borderRadius: 14,
             padding: 20
           }}>
-            <h3 style={{ margin: '0 0 16px 0', fontSize: 15, fontWeight: 700, color: '#fff' }}>
-              Cloud Provider Free Tier Allocations & Status
+            <h3 style={{ margin: '0 0 16px 0', fontSize: 15, fontWeight: 700, color: 'var(--text-primary)' }}>
+              Service Cost Model & Assumptions
             </h3>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {(cost.services || [
-                { name: 'Google Cloud Run', role: 'Serverless APIs (Mumbai)', unit: 'Requests & vCPU', consumed: 'Active instances', quota: '2,000,000 req / mo free', cost_usd: 0, status: 'FREE_TIER' },
-                { name: 'Supabase PostgreSQL', role: 'Primary Database', unit: 'Storage & Compute', consumed: '43 MB used', quota: '500 MB free storage', cost_usd: 0, status: 'FREE_TIER' },
-                { name: 'Groq AI LPU', role: 'LLM Router & Billing Copilot', unit: 'Tokens', consumed: 'Within rate limits', quota: '14,400 req / day free', cost_usd: 0, status: 'FREE_TIER' },
-                { name: 'Vercel Global Edge', role: 'Frontend Distribution', unit: 'Bandwidth & Edge Requests', consumed: 'Edge caching active', quota: '100 GB bandwidth / mo', cost_usd: 0, status: 'FREE_TIER' }
-              ]).map((svc, idx) => (
+              {(cost.services || []).map((svc, idx) => (
                 <div
                   key={idx}
                   style={{
@@ -1046,27 +931,27 @@ export default function AdminInfrastructure() {
                     padding: '14px 18px',
                     borderRadius: 10,
                     background: 'rgba(255,255,255,0.02)',
-                    border: '1px solid rgba(255,255,255,0.04)',
+                    border: '1px solid var(--border)',
                     flexWrap: 'wrap',
                     gap: 12
                   }}
                 >
                   <div>
-                    <div style={{ fontSize: 14, fontWeight: 700, color: '#fff' }}>{svc.name}</div>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>{svc.name}</div>
                     <div style={{ fontSize: 12, color: '#8e8e93' }}>{svc.role} • {svc.unit}</div>
                   </div>
 
                   <div style={{ textAlign: 'center' }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: '#fff' }}>{svc.consumed}</div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{svc.consumed}</div>
                     <div style={{ fontSize: 11, color: '#8e8e93' }}>Quota: {svc.quota}</div>
                   </div>
 
                   <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
                     <div style={{ textAlign: 'right' }}>
                       <div style={{ fontSize: 14, fontWeight: 700, color: '#48bb78', fontFamily: 'monospace' }}>
-                        ${Number(svc.cost_usd || 0).toFixed(2)}
+                        {svc.cost_usd == null ? 'Unavailable' : `$${Number(svc.cost_usd).toFixed(2)}`}
                       </div>
-                      <div style={{ fontSize: 10, color: '#8e8e93' }}>Current Month</div>
+                      <div style={{ fontSize: 10, color: '#8e8e93' }}>Model estimate</div>
                     </div>
                     <StatusBadge status={svc.status} />
                   </div>

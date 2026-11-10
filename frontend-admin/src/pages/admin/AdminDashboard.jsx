@@ -3,14 +3,17 @@ import { useAuth } from '../../contexts/AuthContext'
 import { logger } from '../../utils/logger'
 import { useDialog } from '../../contexts/DialogContext'
 import { API_BASE } from '../../config'
-import { BuildingMark } from '../../components/Logo'
+import { Link } from 'react-router-dom'
+import { formatAdminTime } from '../../utils/adminPreferences'
+import '../../styles/overview.css'
 import { Icon } from '../../components/icons'
 
 export default function AdminDashboard() {
-  const { authFetch } = useAuth()
+  const { authFetch, adminUser } = useAuth()
   const { showAlert, showConfirm, showError } = useDialog()
   const [stats, setStats] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [loadedAt, setLoadedAt] = useState(null)
   const [loadError, setLoadError] = useState(null)
   const statsRequest = useRef(0)
   const [dropdownOpen, setDropdownOpen] = useState(false)
@@ -78,8 +81,10 @@ export default function AdminDashboard() {
       setStats({
         businesses: count,
         revenue: combinedRevenue,
-        files: combinedFiles
+        files: combinedFiles,
+        records: [...data].sort((a, b) => (a.business_name || a.username || '').localeCompare(b.business_name || b.username || '')).slice(0, 5),
       })
+      setLoadedAt(new Date().toISOString())
     } catch (err) {
       if (requestId !== statsRequest.current) return
       logger.error(err)
@@ -138,206 +143,110 @@ export default function AdminDashboard() {
     function handleClickOutside() {
       setDropdownOpen(false)
     }
+    const onKey = event => { if (event.key === 'Escape') setDropdownOpen(false) }
     window.addEventListener('click', handleClickOutside)
-    return () => window.removeEventListener('click', handleClickOutside)
+    window.addEventListener('keydown', onKey)
+    return () => { window.removeEventListener('click', handleClickOutside); window.removeEventListener('keydown', onKey) }
   }, [])
 
+  const workspaces = [
+    { to: '/admin/businesses', icon: 'users', title: 'Support a business', copy: 'Accounts, plans, access and business records.' },
+    { to: '/admin/metrics', icon: 'chart', title: 'Follow adoption', copy: 'Activation, plan mix and businesses to follow up.' },
+    { to: '/admin/health', icon: 'shield', title: 'Check diagnostics', copy: 'Review service health and audit results.' },
+    { to: '/admin/telemetry', icon: 'activity', title: 'Trace an issue', copy: 'Find events and logs for a closer look.' },
+  ]
+  const displayCount = value => value != null && Number.isFinite(Number(value)) ? Number(value).toLocaleString('en-IN') : '—'
+
   return (
-    <div className="admin-main" style={{ margin: 0, padding: 0 }}>
-      <div className="admin-header-row">
-        <div className="admin-title-group">
-          <h1 style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <BuildingMark size={24} /> BizAssist Admin Workspace
-          </h1>
-          <p>Aggregated tracking, limits, and telemetry for all enterprise business accounts</p>
+    <div className="admin-main admin-overview">
+      <header className="overview-heading">
+        <div>
+          <p className="overview-eyebrow">The operations desk</p>
+          <h1>Your platform.<br /><span>A clearer perspective.</span></h1>
+          <p className="overview-intro">Welcome back{adminUser?.username ? `, ${adminUser.username}` : ''}. Keep an eye on the businesses you support, then get straight to the work that matters.</p>
         </div>
-        <div className="admin-header-actions">
-          <button type="button" className="btn-flush" onClick={loadDashboardStats} disabled={loading}>
+        <div className="overview-heading-actions">
+          <Link className="overview-primary-link" to="/admin/businesses">Open business directory <Icon name="chevronRight" size={15} /></Link>
+          <button type="button" className="btn-flush overview-refresh" onClick={loadDashboardStats} disabled={loading}>
             <Icon name="refresh" size={14} /> Refresh overview
           </button>
-          {/* Flush Cache Dropdown */}
-          <div className={`flush-dropdown ${dropdownOpen ? 'open' : ''}`} onClick={e => e.stopPropagation()}>
-            <button className="btn-flush" style={{ padding: '8px 14px', fontSize: 13 }} onClick={() => setDropdownOpen(!dropdownOpen)}>
-              <Icon name="trash" size={14} />
-              <span>System Cache</span>
-              <Icon name="chevronDown" size={12} />
-            </button>
-            <div className="flush-dropdown-menu">
-              <button className="flush-dropdown-item" onClick={() => { setDropdownOpen(false); handleFlushAll(); }}>
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><Icon name="refresh" size={14} /> Flush All Query Cache</span>
-                <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 'auto' }}>All users</span>
-              </button>
-              <button className="flush-dropdown-item" onClick={() => { setDropdownOpen(false); handleResetChroma(); }}>
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><Icon name="brain" size={14} /> Reset Chroma Documents</span>
-                <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 'auto' }}>Fix dim errors</span>
-              </button>
-              <div className="flush-dropdown-divider" />
-              <button className="flush-dropdown-item danger" onClick={() => { setDropdownOpen(false); handleWipeAllData(); }}>
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><Icon name="warn" size={14} /> Wipe All Business Data</span>
-                <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 'auto' }}>Wipe DB</span>
-              </button>
-            </div>
-          </div>
         </div>
-      </div>
+      </header>
 
-      {loadError && <div role="alert" style={{ marginTop: 16, color: 'var(--danger)' }}>
+      {loadError && <div className="overview-load-notice" role="alert">
+        <Icon name="alert" size={17} />
         <p>{loadError}{stats ? ' Showing the last loaded overview.' : ''}</p>
         <button type="button" className="btn-flush" onClick={loadDashboardStats} disabled={loading}>Retry overview</button>
       </div>}
       {loading && !stats ? (
-        <div className="vskel"></div>
+        <div className="overview-skeleton" role="status" aria-label="Loading business overview"><div /><div /><div /></div>
       ) : stats ? (
         <>
-          {/* STATS STRIP */}
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
-            gap: 16,
-            marginTop: 18,
-          }}>
-            <div style={{
-              background: 'var(--bg-2)',
-              border: '1px solid var(--border)',
-              borderLeft: '4px solid var(--accent)',
-              borderRadius: 'var(--radius-lg, 12px)',
-              padding: '18px 20px',
-              boxShadow: 'var(--shadow-sm)',
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>Registered Businesses</span>
-                <Icon name="users" size={16} style={{ color: 'var(--accent)' }} />
+          <section className="overview-stat-section" aria-label="Business overview totals">
+            <div className="overview-section-meta"><span>Business snapshot</span><span><Icon name="clock" size={12} /> Updated {formatAdminTime(loadedAt)}</span></div>
+            <div className="overview-stats">
+              <div className="overview-stat overview-stat-featured">
+                <div className="overview-stat-top"><span>Registered Businesses</span><Icon name="users" size={19} /></div>
+                <strong>{stats.businesses.toLocaleString('en-IN')}</strong>
+                <p>Accounts in the business directory</p>
+                <Link to="/admin/businesses">View directory <Icon name="chevronRight" size={13} /></Link>
               </div>
-              <div style={{ fontSize: 28, fontWeight: 700, fontFamily: "var(--font-serif)", color: 'var(--text-primary)' }}>{stats.businesses}</div>
-              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>active sandboxes</div>
+              <div className="overview-stat">
+                <div className="overview-stat-top"><span>Business revenue</span><Icon name="wallet" size={19} /></div>
+                <strong>₹{stats.revenue.toLocaleString('en-IN')}</strong>
+                <p>Recorded across these business accounts</p>
+                <span className="overview-stat-note">Merchant sales, across all recorded periods</span>
+              </div>
+              <div className="overview-stat">
+                <div className="overview-stat-top"><span>Files uploaded</span><Icon name="file" size={19} /></div>
+                <strong>{stats.files.toLocaleString('en-IN')}</strong>
+                <p>Documents and datasets in these accounts</p>
+                <Link to="/admin/usage">Review usage &amp; limits <Icon name="chevronRight" size={13} /></Link>
+              </div>
             </div>
+          </section>
 
-            <div style={{
-              background: 'var(--bg-2)',
-              border: '1px solid var(--border)',
-              borderLeft: '4px solid var(--success)',
-              borderRadius: 'var(--radius-lg, 12px)',
-              padding: '18px 20px',
-              boxShadow: 'var(--shadow-sm)',
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>Combined Revenue</span>
-                <Icon name="wallet" size={16} style={{ color: 'var(--success)' }} />
-              </div>
-              <div style={{ fontSize: 28, fontWeight: 700, fontFamily: "var(--font-serif)", color: 'var(--text-primary)' }}>₹{stats.revenue.toLocaleString('en-IN')}</div>
-              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>across all accounts</div>
-            </div>
+          <div className="overview-work-grid">
+            <section className="overview-business-panel" aria-labelledby="overview-business-title">
+              <div className="overview-panel-heading"><div><span className="overview-eyebrow">The businesses behind the numbers</span><h2 id="overview-business-title">Business directory</h2></div><Link to="/admin/businesses">View all <Icon name="chevronRight" size={13} /></Link></div>
+              {stats.records.length ? <div className="overview-business-table-wrap"><table className="overview-business-table">
+                <thead><tr><th>Business</th><th>Inventory</th><th>Invoices</th><th><span className="overview-sr-only">Open account</span></th></tr></thead>
+                <tbody>{stats.records.map((business, index) => <tr key={business.id ?? `${business.username}-${index}`}>
+                  <td><div className="overview-business-identity"><span className="overview-business-initial" aria-hidden="true">{(business.business_name || business.username || 'B').trim().charAt(0).toUpperCase()}</span><div>{business.id != null ? <Link to={`/admin/businesses/${business.id}`}>{business.business_name || business.username || 'Unnamed business'}</Link> : <strong>{business.business_name || business.username || 'Unnamed business'}</strong>}<span>{business.bizid || business.public_id || 'BizID unavailable'}</span></div></div></td>
+                  <td>{displayCount(business.inventory_count)}</td><td>{displayCount(business.invoice_count)}</td>
+                  <td>{business.id != null && <Link className="overview-business-open" to={`/admin/businesses/${business.id}`} aria-label={`Open ${business.business_name || business.username || 'business'} account`}><Icon name="chevronRight" size={16} /></Link>}</td>
+                </tr>)}</tbody>
+              </table></div> : <div className="overview-empty"><Icon name="building" size={30} /><h3>Your directory starts here.</h3><p>Registered businesses will appear here with their inventory and invoice counts.</p><Link to="/admin/businesses">Open the business directory <Icon name="chevronRight" size={13} /></Link></div>}
+              {stats.records.length > 0 && <p className="overview-table-note">Showing up to five businesses, sorted by name. Open the directory to search and manage every account.</p>}
+            </section>
 
-            <div style={{
-              background: 'var(--bg-2)',
-              border: '1px solid var(--border)',
-              borderLeft: '4px solid var(--warning)',
-              borderRadius: 'var(--radius-lg, 12px)',
-              padding: '18px 20px',
-              boxShadow: 'var(--shadow-sm)',
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>Total Files Logged</span>
-                <Icon name="file" size={16} style={{ color: 'var(--warning)' }} />
-              </div>
-              <div style={{ fontSize: 28, fontWeight: 700, fontFamily: "var(--font-serif)", color: 'var(--text-primary)' }}>{stats.files}</div>
-              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>datasets uploaded</div>
-            </div>
+            <section className="overview-workspaces" aria-labelledby="overview-workspaces-title">
+              <div className="overview-panel-heading"><div><span className="overview-eyebrow">Pick up the next task</span><h2 id="overview-workspaces-title">A place for every operation.</h2></div></div>
+              <div className="overview-workspace-list">{workspaces.map(workspace => <Link key={workspace.to} className="overview-workspace-link" to={workspace.to}><span className="overview-workspace-icon"><Icon name={workspace.icon} size={17} /></span><span><strong>{workspace.title}</strong><small>{workspace.copy}</small></span><Icon name="chevronRight" size={14} /></Link>)}</div>
+            </section>
           </div>
 
-          {/* AI Router Mode switch */}
-          <div className="admin-table-widget" style={{ marginTop: 20 }}>
-            <div className="admin-table-title" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span>AI Router Mode</span>
-                {routerMode && (
-                  <span className="tag" style={{
-                    background: routerMode === 'new' ? 'rgba(99,102,241,.12)'
-                              : routerMode === 'shadow' ? 'var(--warning-dim)'
-                              : 'var(--bg-1)',
-                    color: routerMode === 'new' ? '#6366f1'
-                         : routerMode === 'shadow' ? 'var(--warning)'
-                         : 'var(--text-secondary)',
-                    border: '1px solid var(--border)',
-                  }}>
-                    {routerMode.toUpperCase()}
-                  </span>
-                )}
+          <section className="overview-runtime" aria-labelledby="overview-runtime-title">
+            <div className="overview-panel-heading"><div><span className="overview-eyebrow">Platform controls</span><h2 id="overview-runtime-title">Runtime &amp; maintenance</h2></div>
+              <div className={`flush-dropdown ${dropdownOpen ? 'open' : ''}`} onClick={e => e.stopPropagation()}>
+                <button type="button" className="btn-flush" aria-expanded={dropdownOpen} aria-controls="overview-cache-menu" onClick={() => setDropdownOpen(!dropdownOpen)}><Icon name="settings" size={14} /> System Cache <Icon name="chevronDown" size={12} /></button>
+                {dropdownOpen && <div className="flush-dropdown-menu" id="overview-cache-menu">
+                  <button className="flush-dropdown-item" onClick={() => { setDropdownOpen(false); handleFlushAll(); }}><Icon name="refresh" size={14} /><span>Flush All Query Cache</span></button>
+                  <button className="flush-dropdown-item" onClick={() => { setDropdownOpen(false); handleResetChroma(); }}><Icon name="brain" size={14} /><span>Reset Chroma Documents</span></button>
+                  <div className="flush-dropdown-divider" />
+                  <button className="flush-dropdown-item danger" onClick={() => { setDropdownOpen(false); handleWipeAllData(); }}><Icon name="warn" size={14} /><span>Wipe All Business Data</span></button>
+                </div>}
               </div>
             </div>
-            <div style={{ color: 'var(--text-muted)', fontSize: 13, lineHeight: 1.5, margin: '8px 0 14px' }}>
-              Switch how chat questions are routed — takes effect on the next message without restart.
-              Resets to the environment default (<code>LLM_ROUTER</code>) on server reboot.
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10 }}>
+            <div className="overview-router-heading"><div><h3>AI Router Mode <span className="overview-router-state">{routerMode ? routerMode.toUpperCase() : 'UNAVAILABLE'}</span></h3><p>Choose how chat requests are handled. Changes take effect on the next message; a server restart restores the environment default.</p></div><Icon name="sliders" size={21} /></div>
+            <div className="overview-router-options">
               {[
-                { key: 'legacy', icon: 'building', label: 'Legacy Mode',  desc: 'Exact previous deterministic behaviour' },
-                { key: 'shadow', icon: 'eye',      label: 'Shadow Mode',  desc: 'Legacy answers + silent comparison logs' },
-                { key: 'new',    icon: 'brain',    label: 'New AI Router', desc: 'LLM router steers with automatic fallback' },
-              ].map(opt => {
-                const isSelected = routerMode === opt.key
-                return (
-                  <button
-                    key={opt.key}
-                    type="button"
-                    disabled={routerBusy}
-                    onClick={() => handleRouterMode(opt.key)}
-                    style={{
-                      padding: '12px 14px',
-                      borderRadius: 'var(--radius-md, 8px)',
-                      textAlign: 'left',
-                      cursor: routerBusy ? 'wait' : 'pointer',
-                      opacity: routerBusy ? 0.6 : 1,
-                      border: isSelected ? '1.5px solid var(--accent)' : '1px solid var(--border)',
-                      background: isSelected ? 'var(--accent-dim)' : 'var(--bg-2)',
-                      transition: 'all 0.15s ease',
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontWeight: isSelected ? 600 : 500, color: isSelected ? 'var(--accent)' : 'var(--text-primary)', fontSize: 13.5 }}>
-                      <Icon name={opt.icon} size={15} />
-                      <span>{opt.label}</span>
-                    </div>
-                    <span style={{ display: 'block', fontSize: 11.5, color: 'var(--text-muted)', marginTop: 4 }}>
-                      {opt.desc}
-                    </span>
-                  </button>
-                )
-              })}
+                { key: 'legacy', icon: 'building', label: 'Legacy Mode', desc: 'Use the established deterministic routing.' },
+                { key: 'shadow', icon: 'eye', label: 'Shadow Mode', desc: 'Keep legacy answers and log new-router comparisons.' },
+                { key: 'new', icon: 'brain', label: 'New AI Router', desc: 'Let the LLM router steer, with automatic legacy fallback.' },
+              ].map(option => <button key={option.key} type="button" className={`overview-router-option ${routerMode === option.key ? 'is-selected' : ''}`} aria-pressed={routerMode === option.key} disabled={routerBusy} onClick={() => handleRouterMode(option.key)}><span><Icon name={option.icon} size={17} /><strong>{option.label}</strong>{routerMode === option.key && <Icon name="check" size={14} />}</span><small>{option.desc}</small></button>)}
             </div>
-          </div>
-
-          {/* Quick operations guide */}
-          <div className="admin-table-widget" style={{ marginTop: 20 }}>
-            <div className="admin-table-title">Admin Quick Operations</div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 14, marginTop: 12 }}>
-              <div style={{ padding: '12px 14px', background: 'var(--bg-1)', borderRadius: 'var(--radius-md, 8px)', border: '1px solid var(--border)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: 13, color: 'var(--text-primary)', marginBottom: 4 }}>
-                  <Icon name="users" size={14} style={{ color: 'var(--accent)' }} /> Businesses
-                </div>
-                <div style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5 }}>
-                  View registered merchants, audit user limits, inspect database tables, and manage Pro plans.
-                </div>
-              </div>
-
-              <div style={{ padding: '12px 14px', background: 'var(--bg-1)', borderRadius: 'var(--radius-md, 8px)', border: '1px solid var(--border)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: 13, color: 'var(--text-primary)', marginBottom: 4 }}>
-                  <Icon name="chart" size={14} style={{ color: 'var(--accent)' }} /> Usage & Limits
-                </div>
-                <div style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5 }}>
-                  Monitor daily API request allowances, token burn, queries count, and AI execution times.
-                </div>
-              </div>
-
-              <div style={{ padding: '12px 14px', background: 'var(--bg-1)', borderRadius: 'var(--radius-md, 8px)', border: '1px solid var(--border)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: 13, color: 'var(--text-primary)', marginBottom: 4 }}>
-                  <Icon name="trash" size={14} style={{ color: 'var(--accent)' }} /> Cache & System
-                </div>
-                <div style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.5 }}>
-                  Inspect active context and query memory caches, flush stale embeddings, and run schema resets.
-                </div>
-              </div>
-            </div>
-          </div>
+          </section>
         </>
       ) : null}
     </div>

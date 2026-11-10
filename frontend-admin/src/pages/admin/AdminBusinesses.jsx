@@ -6,6 +6,7 @@ import { useDialog } from '../../contexts/DialogContext'
 import { API_BASE } from '../../config'
 import { Section } from '../../components/ui'
 import { Icon } from '../../components/icons'
+import '../../styles/directory.css'
 
 export default function AdminBusinesses() {
   const { authFetch } = useAuth()
@@ -53,6 +54,10 @@ export default function AdminBusinesses() {
 
   // Search & Copy BizID
   const [search, setSearch] = useState('')
+  const [focus, setFocus] = useState('all')
+  const [deletedLoaded, setDeletedLoaded] = useState(false)
+  const [deletedLoading, setDeletedLoading] = useState(false)
+  const [deletedError, setDeletedError] = useState(null)
   const [copiedId, setCopiedId] = useState(null)
 
   async function copyBusinessId(bizid) {
@@ -80,14 +85,22 @@ export default function AdminBusinesses() {
       if (requestId !== listRequest.current) return
       setBusinesses(data.map(b => ({ ...b, total_revenue: Number(b.total_revenue) })))
       setHasLoaded(true)
+      setDeletedLoading(true)
+      setDeletedError(null)
       try {
         const delRes = await authFetch(`${API_BASE}/admin/deleted-businesses`)
-        if (delRes.ok) {
-          const delData = await delRes.json()
-          if (Array.isArray(delData)) setDeletedBusinesses(delData)
-        }
+        if (!delRes.ok) throw new Error('Could not load deleted stores')
+        const delData = await delRes.json()
+        if (requestId !== listRequest.current) return
+        if (!Array.isArray(delData)) throw new Error('Invalid deleted stores response')
+        setDeletedBusinesses(delData)
+        setDeletedLoaded(true)
       } catch (e) {
+        if (requestId !== listRequest.current) return
         logger.debug('Could not load deleted businesses:', e)
+        setDeletedError('Deleted store records could not be loaded.')
+      } finally {
+        if (requestId === listRequest.current) setDeletedLoading(false)
       }
     } catch (err) {
       if (requestId !== listRequest.current) return
@@ -349,148 +362,114 @@ export default function AdminBusinesses() {
     finally { if (request === inspectRequest.current) setInspectMoreLoading(null) }
   }
 
+  const matchesFocus = b => focus === 'all'
+    || (focus === 'pro' && b.plan === 'pro')
+    || (focus === 'recent' && b.online_last_24h === true)
+    || (focus === 'attention' && Boolean(b.needs_attention))
   const filteredBusinesses = businesses.filter(b => {
-    if (!search.trim()) return true
+    if (!matchesFocus(b)) return false
     const q = search.trim().toLowerCase()
-    return (
-      (b.business_name && b.business_name.toLowerCase().includes(q)) ||
-      (b.username && b.username.toLowerCase().includes(q)) ||
-      (b.bizid && b.bizid.toLowerCase().includes(q)) ||
-      (b.email && b.email.toLowerCase().includes(q)) ||
-      (b.phone && b.phone.toLowerCase().includes(q)) ||
-      (b.login_method && b.login_method.toLowerCase().includes(q))
-    )
+    return !q || [b.business_name, b.username, b.bizid, b.email, b.phone, b.login_method]
+      .some(value => String(value ?? '').toLowerCase().includes(q))
   })
-
   const filteredDeletedBusinesses = deletedBusinesses.filter(d => {
-    if (!search.trim()) return true
     const q = search.trim().toLowerCase()
-    return (
-      (d.business_name && d.business_name.toLowerCase().includes(q)) ||
-      (d.username && d.username.toLowerCase().includes(q)) ||
-      (d.bizid && d.bizid.toLowerCase().includes(q)) ||
-      (d.reason && d.reason.toLowerCase().includes(q))
-    )
+    return !q || [d.business_name, d.username, d.bizid, d.reason]
+      .some(value => String(value ?? '').toLowerCase().includes(q))
   })
+  const summary = [
+    { key: 'all', label: 'Merchant accounts', count: businesses.length, note: 'In the current directory', icon: 'building' },
+    { key: 'pro', label: 'Pro accounts', count: businesses.filter(b => b.plan === 'pro').length, note: 'Saved subscription plan', icon: 'sparkle' },
+    { key: 'recent', label: 'Reported in 24h', count: businesses.filter(b => b.online_last_24h === true).length, note: 'Recently connected stores', icon: 'activity' },
+    { key: 'attention', label: 'Needs attention', count: businesses.filter(b => b.needs_attention).length, note: 'Reported sync errors or conflicts', icon: 'alert' },
+  ]
+  const visibleCount = viewTab === 'deleted' ? filteredDeletedBusinesses.length : filteredBusinesses.length
+  const sourceCount = viewTab === 'deleted' ? deletedBusinesses.length : businesses.length
+  const focusLabels = { all: 'All merchants', pro: 'Pro accounts', recent: 'Reported in 24h', attention: 'Needs attention' }
+  const emptyFocus = { pro: 'No Pro accounts match this view.', recent: 'No stores reported a connection in the last 24 hours.', attention: 'No businesses are currently flagged for attention.' }
 
   return (
-    <div className="admin-main" style={{ margin: 0, padding: 0 }}>
-      {/* Header */}
-      <div className="admin-header-row">
+    <div className="admin-main directory-page">
+      <div className="admin-header-row directory-heading">
         <div className="admin-title-group">
-          <h1 style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Icon name="users" size={22} style={{ color: 'var(--accent)' }} />
-            <span>Registered Enterprises</span>
-          </h1>
-          <p>Manage merchant accounts, access credentials, rate limits, and live data synchronization</p>
+          <span className="directory-eyebrow">MERCHANT OPERATIONS</span>
+          <h1>Every store, in view.</h1>
+          <p>Find a merchant, understand their account, and take the next support action.</p>
         </div>
-        <div className="admin-header-actions">
+        <div className="admin-header-actions directory-heading-actions">
           <button type="button" className="btn-flush" onClick={loadBusinesses} disabled={loading}>
             <Icon name="refresh" size={14} /> Refresh directory
           </button>
-          <button className="btn-primary" onClick={() => setShowCreateModal(true)}>
-            <Icon name="plus" size={14} />
-            <span>Add New Merchant</span>
+          <button type="button" className="btn-primary" onClick={() => setShowCreateModal(true)}>
+            <Icon name="plus" size={14} /><span>Add New Merchant</span>
           </button>
         </div>
       </div>
 
-      {loadError && <div role="alert" style={{ marginTop: 16, color: 'var(--danger)' }}>
-        <p>{loadError}{hasLoaded ? ' Showing the last loaded directory.' : ''}</p>
+      <div className="directory-summary" role="group" aria-label="Merchant directory focus">
+        {summary.map(item => <button type="button" key={item.key}
+          className={`directory-summary-item ${focus === item.key && viewTab === 'active' ? 'is-selected' : ''} ${item.key === 'attention' ? 'is-attention' : ''}`}
+          aria-pressed={focus === item.key && viewTab === 'active'} disabled={!hasLoaded}
+          onClick={() => { setFocus(item.key); setViewTab('active') }}>
+          <span className="directory-summary-top"><Icon name={item.icon} size={16} /><span>{item.label}</span></span>
+          <strong>{hasLoaded ? item.count : '—'}</strong>
+          <span className="directory-summary-note">{hasLoaded ? item.note : 'Waiting for the directory'}</span>
+        </button>)}
+      </div>
+
+      {loadError && <div role="alert" className="directory-load-alert">
+        <Icon name="alert" size={18} /><div><strong>{loadError}</strong><p>{hasLoaded ? 'Showing the last loaded directory. Refresh again to bring it up to date.' : 'The directory is unavailable. Try again to load merchant accounts.'}</p></div>
         <button type="button" className="btn-flush" onClick={loadBusinesses} disabled={loading}>Retry directory</button>
       </div>}
 
       {/* Directory Table */}
       <Section
-        title="Enterprise Business Directory"
+        title="Business directory"
+        persistKey="section_open_enterprise_business_directory"
+        className="directory-workspace"
         icon={<Icon name="database" size={16} />}
         collapsible
         noPad
-        style={{ marginTop: 20 }}
+        style={{ marginTop: 0 }}
       >
-        {/* Active vs Deleted Tabs */}
-        <div style={{ display: 'flex', gap: 6, padding: '12px 18px 0', background: 'var(--bg-1)', borderBottom: '1px solid var(--border)' }}>
-          <button
-            type="button"
-            onClick={() => setViewTab('active')}
-            style={{
-              padding: '8px 16px',
-              border: 'none',
-              borderBottom: viewTab === 'active' ? '2px solid var(--accent)' : '2px solid transparent',
-              background: 'transparent',
-              color: viewTab === 'active' ? 'var(--text-primary)' : 'var(--text-muted)',
-              fontWeight: viewTab === 'active' ? 700 : 500,
-              fontSize: 13,
-              cursor: 'pointer',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 6,
-            }}
-          >
-            <span>Active Stores</span>
-            <span className="tag" style={{ fontSize: 11, padding: '1px 6px' }}>{businesses.length}</span>
+        <div className="directory-tabs" role="group" aria-label="Store records">
+          <button type="button" onClick={() => setViewTab('active')} className={viewTab === 'active' ? 'is-active' : ''} aria-pressed={viewTab === 'active'}>
+            <Icon name="building" size={14} /><span>Active Stores</span><b>{hasLoaded ? businesses.length : '—'}</b>
           </button>
-          <button
-            type="button"
-            onClick={() => setViewTab('deleted')}
-            style={{
-              padding: '8px 16px',
-              border: 'none',
-              borderBottom: viewTab === 'deleted' ? '2px solid var(--danger)' : '2px solid transparent',
-              background: 'transparent',
-              color: viewTab === 'deleted' ? 'var(--danger)' : 'var(--text-muted)',
-              fontWeight: viewTab === 'deleted' ? 700 : 500,
-              fontSize: 13,
-              cursor: 'pointer',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 6,
-            }}
-          >
-            <span>Deleted / Wiped Stores</span>
-            <span className="tag" style={{ fontSize: 11, padding: '1px 6px', background: 'var(--danger-dim)', color: 'var(--danger)' }}>
-              {deletedBusinesses.length}
-            </span>
+          <button type="button" onClick={() => setViewTab('deleted')} className={viewTab === 'deleted' ? 'is-active is-deleted' : ''} aria-pressed={viewTab === 'deleted'}>
+            <Icon name="shield" size={14} /><span>Deleted / Wiped Stores</span><b>{deletedLoaded ? deletedBusinesses.length : '—'}</b>
           </button>
+          <span className="directory-source-note">{loading ? 'Refreshing directory…' : hasLoaded ? 'Latest loaded records' : 'Loading records…'}</span>
         </div>
 
-        {/* Search & Filter Toolbar */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 18px', borderBottom: '1px solid var(--border)', background: 'var(--bg-1)', flexWrap: 'wrap' }}>
-          <div style={{ position: 'relative', flex: 1, minWidth: 260, maxWidth: 420 }}>
-            <Icon name="search" size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-            <input
-              type="text"
-              className="admin-input"
-              placeholder="Search by business name, username, or BizID..."
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              style={{ paddingLeft: 32, fontSize: 13, height: 36 }}
-            />
-          </div>
-          {search && (
-            <button
-              type="button"
-              className="btn-flush"
-              onClick={() => setSearch('')}
-              style={{ height: 36, padding: '0 12px', fontSize: 12 }}
-            >
-              Clear Filter
-            </button>
-          )}
-          {hasLoaded && <span style={{ fontSize: 12, color: 'var(--text-muted)', marginLeft: 'auto' }}>
-            Showing <b>{filteredBusinesses.length}</b> of <b>{businesses.length}</b> businesses
-          </span>}
+        <div className="directory-toolbar">
+          <label className="directory-search">
+            <Icon name="search" size={16} />
+            <input type="search" className="admin-input" aria-label="Search merchant accounts"
+              placeholder={viewTab === 'deleted' ? 'Search deleted stores or a wipe reason…' : 'Search stores, BizID, email or phone…'}
+              value={search} onChange={e => setSearch(e.target.value)} />
+          </label>
+          {viewTab === 'active' && <label className="directory-focus-control"><span>View</span><select className="admin-input" aria-label="Directory focus" value={focus} onChange={e => setFocus(e.target.value)}>
+            {Object.entries(focusLabels).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+          </select></label>}
+          {(search || (viewTab === 'active' && focus !== 'all')) && <button type="button" className="btn-flush directory-clear" onClick={() => { setSearch(''); setFocus('all') }}>Clear Filter</button>}
+          {(viewTab === 'active' ? hasLoaded : deletedLoaded) && <span className="directory-result-count" role="status">Showing <b>{visibleCount}</b> of <b>{sourceCount}</b> {viewTab === 'deleted' ? 'deleted stores' : 'businesses'}</span>}
         </div>
 
         {loading && !hasLoaded ? (
-          <div className="vskel" style={{ padding: 20 }}></div>
+          <div className="directory-loading" role="status"><span className="directory-loading-lines" aria-hidden="true" /><span>Loading merchant accounts…</span></div>
+        ) : hasLoaded && viewTab === 'deleted' && deletedError && !deletedLoaded ? (
+          <div role="alert" className="directory-empty"><Icon name="alert" size={24} /><strong>{deletedError}</strong><p>{deletedLoaded ? 'The last loaded deleted-store records are retained. Retry to refresh this view.' : 'Retry before reviewing the deleted-store audit records.'}</p><button type="button" className="btn-flush" onClick={loadBusinesses} disabled={loading}>Retry deleted stores</button></div>
+        ) : hasLoaded && viewTab === 'deleted' && !deletedLoaded ? (
+          <div className="directory-loading" role="status">{deletedLoading ? 'Loading deleted store records…' : 'Deleted store records have not loaded yet.'}</div>
         ) : hasLoaded && viewTab === 'deleted' ? (
           <div className="admin-table-wrap" style={{ overflowX: 'auto', width: '100%', padding: '12px 18px 24px' }}>
+            {deletedError && <div role="alert" className="directory-load-alert"><Icon name="alert" size={17} /><div><strong>{deletedError}</strong><p>Showing the last loaded deleted-store records.</p></div><button type="button" className="btn-flush" onClick={loadBusinesses} disabled={loading}>Retry deleted stores</button></div>}
             <div style={{ margin: '4px 0 14px', padding: '10px 14px', borderRadius: 8, background: 'var(--bg-2)', border: '1px solid var(--border)', fontSize: 12.5, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 8 }}>
               <Icon name="shield" size={15} style={{ color: 'var(--accent)' }} />
               <span><b>Tombstone Audit Ledger:</b> Permanently wiped stores. All private operational data (invoices, inventory, journal ledgers, credentials, session tokens) has been destroyed. BizID and basic store metadata are preserved to prevent identity recycling.</span>
             </div>
-            <table className="admin-table" style={{ width: '100%' }}>
+            <table className="admin-table" aria-label="Deleted store audit records" style={{ width: '100%' }}>
               <thead>
                 <tr>
                   <th>ID</th>
@@ -563,165 +542,27 @@ export default function AdminBusinesses() {
                 }}>
                   <Icon name="alert" size={16} />
                   <span>
-                    {flagged.length} business{flagged.length > 1 ? 'es' : ''} need attention —
+                    {flagged.length} business{flagged.length > 1 ? 'es need' : ' needs'} attention —
                     {' '}sync errors or unreviewed financial conflicts detected. Look for the Attention badge below.
                   </span>
                 </div>
               )
             })()}
-            <table className="admin-table" style={{ width: '100%', marginTop: 8 }}>
-              <thead>
-                <tr>
-                  <th>ID</th>
-                  <th>BizID</th>
-                  <th>Business Name</th>
-                  <th>Login Method</th>
-                  <th>Email & Phone</th>
-                  <th>Mails Sent</th>
-                  <th>Mode</th>
-                  <th>Sync</th>
-                  <th>Plan</th>
-                  <th>Invoices</th>
-                  <th>Revenue</th>
-                  <th>Stock Items</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
+            <table className="admin-table directory-table" aria-label="Merchant accounts">
+              <thead><tr><th>Business</th><th>BizID</th><th>Contact &amp; sign-in</th><th>Store setup</th><th>Plan</th><th>Activity</th><th>Sales recorded</th><th>Actions</th></tr></thead>
               <tbody>
-                {filteredBusinesses.length === 0 ? (
-                  <tr>
-                    <td colSpan="13" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 36 }}>
-                      {search ? 'No businesses match the search query.' : 'No enterprise businesses registered yet.'}
-                    </td>
+                {filteredBusinesses.length === 0 ? <tr><td colSpan={8}><div className="directory-empty"><Icon name="building" size={27} /><strong>{search ? 'No businesses match the search query.' : focus !== 'all' && businesses.length ? emptyFocus[focus] : 'No enterprise businesses registered yet.'}</strong><p>{search || focus !== 'all' ? 'Try another search or clear the current filter.' : 'Add a merchant account to start managing your network here.'}</p>{(search || focus !== 'all') && <button type="button" className="btn-flush" onClick={() => { setSearch(''); setFocus('all') }}>Show all merchants</button>}</div></td></tr> : filteredBusinesses.map(b => (
+                  <tr key={b.id}>
+                    <td><div className="directory-merchant"><span className="directory-merchant-monogram" aria-hidden="true">{String(b.business_name || b.username).slice(0, 2).toUpperCase()}</span><div><Link to={`/admin/businesses/${b.id}`} className="directory-merchant-name" title="Open drill-down: sync health, telemetry, logs, force logout">{b.business_name || b.username}</Link><span className="directory-merchant-meta">@{b.username}<i />Account #{b.id}</span>{b.needs_attention && <span className="directory-attention" title={`Needs attention — ${b.sync_errors || 0} sync error(s), ${b.unreviewed_conflicts || 0} unreviewed conflict(s)`}><Icon name="alert" size={11} />Attention</span>}</div></div></td>
+                    <td><span className="directory-bizid" title="Stable identity across cloud & local databases"><span>{b.bizid || '—'}</span>{b.bizid && <button type="button" className="directory-copy" onClick={() => copyBusinessId(b.bizid)} title={copiedId === b.bizid ? 'Copied!' : 'Copy BizID'} aria-label={`Copy BizID for ${b.business_name || b.username}`}><Icon name={copiedId === b.bizid ? 'check' : 'copy'} size={13} /></button>}</span></td>
+                    <td><div className="directory-contact"><span className="directory-contact-email">{b.email || 'No email recorded'}</span>{b.phone && <span>{b.phone}</span>}<div className="directory-account-tags"><span className="directory-login-method"><Icon name={b.login_method === 'google' ? 'google' : 'key'} size={11} />{b.login_method === 'google' ? 'Google' : 'Password'}</span><span title={b.mails_sent_count > 0 ? `${b.mails_sent_count} system email(s) sent (welcome, OTPs)` : 'No emails dispatched'}><Icon name="mail" size={11} />{b.mails_sent_count || 0} sent</span></div></div></td>
+                    <td><div className="directory-store-setup"><span className="directory-mode">{b.hosting_mode || 'Mode not reported'}</span><span className={`directory-sync ${b.online_last_24h === true ? 'is-recent' : ''}`} title={b.last_sync_at ? `Last sync ${b.last_sync_at}${b.sync_queue_depth ? ` · ${b.sync_queue_depth} queued` : ''}` : 'No sync timestamp reported'}><i />{b.online_last_24h === true ? 'Reported in 24h' : b.last_sync_at ? 'Earlier sync recorded' : 'No sync reported'}</span>{b.sync_queue_depth > 0 && <span className="directory-queued">{b.sync_queue_depth} queued</span>}</div></td>
+                    <td><span className={`directory-plan ${b.plan === 'pro' ? 'is-pro' : ''}`}>{b.plan || 'free'}</span></td>
+                    <td><div className="directory-activity"><span><b>{b.invoice_count ?? '—'}</b> invoices</span><span><b>{b.inventory_count ?? '—'}</b> stock items</span></div></td>
+                    <td className="directory-revenue">₹{b.total_revenue.toLocaleString('en-IN')}</td>
+                    <td><div className="directory-row-actions"><Link to={`/admin/businesses/${b.id}`} className="btn-flush directory-open">Open <span aria-hidden="true">↗</span></Link><button type="button" className="btn-flush" onClick={() => openInspectModal(b)}>Inspect</button><details className="directory-row-menu"><summary aria-label={`More actions for ${b.business_name || b.username}`}>More <Icon name="chevronDown" size={11} /></summary><div><button type="button" className="btn-flush" onClick={() => openEditModal(b)}>Edit</button><button type="button" className="btn-flush" onClick={() => openLimitsModal(b)}><Icon name="settings" size={12} />Limits</button><button type="button" className="btn-flush" onClick={() => openPlanModal(b)}>Plan</button><button type="button" className="btn-flush" onClick={() => handleFlushCache(b.id, b.business_name)}>Flush</button><button type="button" className="btn-flush" onClick={() => handleDownloadLogs(b.id, b.business_name)}>Logs</button><button type="button" className="btn-wipe-row" onClick={() => handleWipeUser(b.id, b.business_name)}>Wipe</button></div></details></div></td>
                   </tr>
-                ) : (
-                  filteredBusinesses.map(b => (
-                    <tr key={b.id}>
-                      <td style={{ fontFamily: "var(--font-mono, monospace)", fontSize: 12, color: 'var(--text-muted)' }}>{b.id}</td>
-                      <td style={{ fontFamily: "var(--font-mono, monospace)", fontSize: 11.5 }} title="Stable identity across cloud & local databases">
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                          <span>{b.bizid || '—'}</span>
-                          {b.bizid && (
-                            <button
-                              type="button"
-                              onClick={() => copyBusinessId(b.bizid)}
-                              style={{
-                                background: 'transparent',
-                                border: 'none',
-                                cursor: 'pointer',
-                                color: copiedId === b.bizid ? 'var(--success)' : 'var(--text-muted)',
-                                padding: '2px',
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                              }}
-                              title={copiedId === b.bizid ? 'Copied!' : 'Copy BizID'}
-                            >
-                              <Icon name={copiedId === b.bizid ? 'check' : 'copy'} size={13} />
-                            </button>
-                          )}
-                        </span>
-                      </td>
-                      <td style={{ fontWeight: 600 }}>
-                        <Link to={`/admin/businesses/${b.id}`} title="Open drill-down: sync health, telemetry, logs, force logout"
-                          style={{ color: 'var(--accent)', textDecoration: 'none' }}>
-                          {b.business_name}
-                        </Link>
-                        {b.needs_attention && (
-                          <span
-                            className="tag"
-                            title={`Needs attention — ${b.sync_errors || 0} sync error(s), ${b.unreviewed_conflicts || 0} unreviewed conflict(s)`}
-                            style={{
-                              marginLeft: 8,
-                              background: 'var(--danger-dim)',
-                              color: 'var(--danger)',
-                              border: '1px solid rgba(155,28,28,0.2)',
-                            }}
-                          >
-                            <Icon name="alert" size={11} /> Attention
-                          </span>
-                        )}
-                      </td>
-                      <td>
-                        {b.login_method === 'google' ? (
-                          <span className="tag" style={{ background: 'rgba(66, 133, 244, 0.12)', color: '#60a5fa', border: '1px solid rgba(66, 133, 244, 0.25)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                            <Icon name="google" size={11} /> Google
-                          </span>
-                        ) : (
-                          <span className="tag" style={{ background: 'var(--bg-1)', border: '1px solid var(--border)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                            <Icon name="key" size={11} /> Password
-                          </span>
-                        )}
-                        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>@{b.username}</div>
-                      </td>
-                      <td>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 2, fontSize: 12 }}>
-                          {b.email ? (
-                            <span style={{ color: 'var(--text-primary)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                              <Icon name="mail" size={11} style={{ color: 'var(--text-muted)' }} />
-                              <span>{b.email}</span>
-                            </span>
-                          ) : (
-                            <span style={{ color: 'var(--text-muted)' }}>No email</span>
-                          )}
-                          {b.phone && (
-                            <span style={{ color: 'var(--text-secondary)', display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11.5 }}>
-                              <Icon name="phone" size={11} style={{ color: 'var(--text-muted)' }} />
-                              <span>{b.phone}</span>
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                      <td>
-                        <span
-                          className="tag"
-                          title={b.mails_sent_count > 0 ? `${b.mails_sent_count} system email(s) sent (welcome, OTPs)` : 'No emails dispatched'}
-                          style={{
-                            background: b.mails_sent_count > 0 ? 'rgba(52, 168, 83, 0.12)' : 'var(--bg-1)',
-                            color: b.mails_sent_count > 0 ? 'var(--success)' : 'var(--text-muted)',
-                            border: `1px solid ${b.mails_sent_count > 0 ? 'rgba(52, 168, 83, 0.25)' : 'var(--border)'}`,
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: 4
-                          }}
-                        >
-                          <Icon name="mail" size={11} /> {b.mails_sent_count || 0} sent
-                        </span>
-                      </td>
-                      <td><span className="tag" style={{ background: 'var(--bg-1)', border: '1px solid var(--border)' }}>{b.hosting_mode || 'local'}</span></td>
-                      <td>
-                        <span title={b.last_sync_at ? `Last sync ${b.last_sync_at}${b.sync_queue_depth ? ` · ${b.sync_queue_depth} queued` : ''}` : 'Never synced'} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12 }}>
-                          <span style={{ width: 8, height: 8, borderRadius: '50%', background: b.online_last_24h ? 'var(--success)' : 'var(--border)', display: 'inline-block' }}></span>
-                          <span>{b.online_last_24h ? '24h' : (b.last_sync_at ? 'stale' : '—')}</span>
-                          {b.sync_queue_depth > 0 && <span style={{ color: 'var(--accent)', fontWeight: 600 }}>+{b.sync_queue_depth}</span>}
-                        </span>
-                      </td>
-                      <td>
-                        <span className="tag" style={{
-                          background: b.plan === 'pro' ? 'var(--success-dim)' : 'var(--accent-dim)',
-                          color: b.plan === 'pro' ? 'var(--success)' : 'var(--text-secondary)',
-                          border: `1px solid ${b.plan === 'pro' ? 'rgba(31,107,58,0.2)' : 'rgba(193,95,60,0.2)'}`,
-                        }}>{b.plan || 'free'}</span>
-                      </td>
-                      <td>{b.invoice_count}</td>
-                      <td style={{ fontFamily: "var(--font-serif)", fontSize: 15, fontWeight: 600, color: 'var(--text-primary)' }}>
-                        ₹{b.total_revenue.toLocaleString('en-IN')}
-                      </td>
-                      <td>{b.inventory_count} items</td>
-                      <td>
-                        <div className="admin-business-actions">
-                          <Link to={`/admin/businesses/${b.id}`} className="btn-flush" style={{ textDecoration: 'none', padding: '5px 10px', fontSize: 12 }}>Open</Link>
-                          <button className="btn-flush" style={{ padding: '5px 10px', fontSize: 12 }} onClick={() => openInspectModal(b)}>Inspect</button>
-                          <button className="btn-flush" style={{ padding: '5px 10px', fontSize: 12 }} onClick={() => openEditModal(b)}>Edit</button>
-                          <button className="btn-flush" style={{ padding: '5px 10px', fontSize: 12, gap: 4 }} onClick={() => openLimitsModal(b)}><Icon name="settings" size={12} /> Limits</button>
-                          <button className="btn-flush" style={{ padding: '5px 10px', fontSize: 12 }} onClick={() => openPlanModal(b)}>Plan</button>
-                          <button className="btn-flush" style={{ padding: '5px 10px', fontSize: 12 }} onClick={() => handleFlushCache(b.id, b.business_name)}>Flush</button>
-                          <button className="btn-flush" style={{ padding: '5px 10px', fontSize: 12 }} onClick={() => handleDownloadLogs(b.id, b.business_name)}>Logs</button>
-                          <button className="btn-wipe-row" style={{ padding: '5px 10px', fontSize: 12 }} onClick={() => handleWipeUser(b.id, b.business_name)}>Wipe</button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
-                )}
+                ))}
               </tbody>
             </table>
           </div>

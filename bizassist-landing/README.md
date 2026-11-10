@@ -16,6 +16,10 @@ Run `frontend-billing` alongside this site (port 5174 by default). Set `VITE_BIL
 
 The six chapters use real Home, Dashboard, Billing Counter, Stock & Items, Purchases and Contacts screens. Playback pauses offscreen or in a hidden tab. Visitors can pause, replay or select a chapter while continuing to scroll the landing page. Selected advanced pricing and analytics details are protected in the public preview. App Settings, B2B and POS Live stay locked in demo mode.
 
+Pausing an expanded player returns it inline and restores the page's previous scroll setting. Resuming does not lock the page again.
+
+To run the landing component regressions after installing `frontend-billing` dependencies, run `node ../frontend-billing/node_modules/vitest/vitest.mjs run --config vitest.config.js` from this directory. The test-only configuration reuses the repository's existing tools; the landing build remains independent.
+
 The player offers guided playback. Clicking it or its trial CTA opens registration directly; existing users can choose Sign in. The name/phone form and browser-local lead flow have been removed. Application authorization remains responsible for access to account-only data and workflows; preview masking limits what the public tour shows.
 
 ## Deploy

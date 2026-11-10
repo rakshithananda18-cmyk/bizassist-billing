@@ -186,7 +186,7 @@ export default function GuidedTour() {
         playing.current = false
         running = false
         setPointer(null)
-        update({ progress: 1, complete: true, caption: 'Tour complete. Replay a chapter or take control to try the demo yourself.' })
+        update({ progress: 1, complete: true, caption: 'Tour complete. Create an account or sign in to explore the full app.' })
       } catch (error) {
         if (runGeneration !== generation.current || !mounted) return
         playing.current = false

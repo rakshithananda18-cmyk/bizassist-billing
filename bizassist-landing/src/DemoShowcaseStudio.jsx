@@ -108,6 +108,16 @@ export default function DemoShowcaseStudio() {
     else if (wantsPlay) pause()
     else setWantsPlay(true)
   }
+  const toggleExpanded = () => {
+    if (expanded) { setExpanded(false); return }
+    // An explicitly paused preview must never reopen a fixed scroll trap.
+    // Make resuming part of this action, with the button labelled accordingly.
+    if (!wantsPlay) {
+      if (tour.complete) replay()
+      else setWantsPlay(true)
+    }
+    setExpanded(true)
+  }
   const chooseChapter = id => {
     if (!ready) return
     setTour(previous => ({ ...previous, chapter: id, progress: 0, complete: false, error: null }))
@@ -134,7 +144,7 @@ export default function DemoShowcaseStudio() {
         <span className="demo-window-title">STATER Bill <span>/ Guided app tour</span></span>
         <div className="demo-window-actions">
           <span className="demo-sample-label">PROTECTED PREVIEW</span>
-          <button className="demo-icon-button" aria-label={expanded ? 'Collapse app preview' : 'Expand app preview'} onClick={() => setExpanded(value => !value)}>{expanded ? '↙' : '⛶'}</button>
+          <button className="demo-icon-button" aria-label={expanded ? 'Collapse app preview' : wantsPlay ? 'Expand app preview' : tour.complete ? 'Replay and expand app preview' : 'Resume and expand app preview'} onClick={toggleExpanded}>{expanded ? '↙' : '⛶'}</button>
         </div>
       </div>
       <div ref={viewportRef} className="demo-app-viewport" style={{ height: `${820 * scale}px` }}>
