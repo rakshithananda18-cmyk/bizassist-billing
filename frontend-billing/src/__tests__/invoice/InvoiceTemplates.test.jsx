@@ -71,7 +71,7 @@ describe('ModernA4', () => {
     expect(screen.getByText('INV-42')).toBeInTheDocument()
     expect(screen.getByTestId('status-chip')).toHaveTextContent('PAID')
     expect(screen.getByText('Total')).toBeInTheDocument()
-    expect(screen.getByText(/Powered by BizAssist/)).toBeInTheDocument()
+    expect(screen.getByText(/Powered by Stater/)).toBeInTheDocument()
   })
 
   it('shows PAYMENT DUE chip and balance for an unpaid invoice', () => {

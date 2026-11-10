@@ -16,12 +16,14 @@ Architecture:
 from __future__ import annotations
 import logging
 import time
+import os
 from typing import Dict, List
 
 import ipaddress
 
-from fastapi import APIRouter, Header, HTTPException, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel
+from services.auth import require_business_owner
 
 logger = logging.getLogger("bizassist.discovery")
 router = APIRouter(tags=["discovery"])
@@ -87,11 +89,33 @@ _TTL_SECONDS = 2 * 60 * 60   # 2 hours
 TTL_SECONDS = _TTL_SECONDS   # Public alias for tests
 
 
+def _persist_enabled():
+    from database.db import engine
+    return engine.dialect.name == "postgresql" or os.getenv("DISCOVERY_PERSIST") == "1"
+
+
+def _persist_entry(biz_id, ip, port, now):
+    from database.db import SessionLocal
+    from sqlalchemy import text
+    with SessionLocal() as db:
+        db.execute(text("INSERT INTO discovery_registrations(biz_id,ip,port,url,registered_at,last_seen) VALUES(:b,:ip,:port,:url,:now,:now) ON CONFLICT(biz_id,ip,port) DO UPDATE SET last_seen=excluded.last_seen,url=excluded.url"), {"b":biz_id,"ip":ip,"port":port,"url":f"http://{ip}:{port}","now":now})
+        db.commit()
+
+
 def _prune(biz_id: str) -> None:
     """Remove expired entries for a business."""
     now = time.time()
     entries = _REGISTRY.get(biz_id, [])
     _REGISTRY[biz_id] = [e for e in entries if now - e["last_seen"] < _TTL_SECONDS]
+    if _persist_enabled():
+        from database.db import SessionLocal
+        from database.runtime_state import DiscoveryRegistration
+        with SessionLocal() as db:
+            db.query(DiscoveryRegistration).filter(DiscoveryRegistration.biz_id == biz_id, DiscoveryRegistration.last_seen <= now - _TTL_SECONDS).delete(synchronize_session=False)
+            if not _REGISTRY[biz_id]:
+                _REGISTRY[biz_id] = [{"ip":r.ip,"port":r.port,"registered_at":r.registered_at,"last_seen":r.last_seen}
+                    for r in db.query(DiscoveryRegistration).filter(DiscoveryRegistration.biz_id == biz_id, DiscoveryRegistration.last_seen > now - _TTL_SECONDS).all()]
+            db.commit()
 
 
 class DiscoverRegisterRequest(BaseModel):
@@ -102,11 +126,25 @@ class DiscoverRegisterRequest(BaseModel):
 
 # ── Routes ─────────────────────────────────────────────────────────────────────
 
+def _assert_registration_owner(req: DiscoverRegisterRequest, current_user: dict) -> str:
+    """Bind a registry mutation to the authenticated business's public BizID."""
+    claimed = str(req.biz_id).strip()
+    authenticated = str(current_user.get("public_id") or "").strip()
+    if not authenticated or claimed != authenticated:
+        raise HTTPException(status_code=403, detail="Discovery registrations must match the authenticated business.")
+    return authenticated
+
+
 @router.post("/discover/register")
-async def register_local_backend(req: DiscoverRegisterRequest, request: Request):
+async def register_local_backend(
+    req: DiscoverRegisterRequest,
+    request: Request,
+    current_user: dict = Depends(require_business_owner),
+):
     """
     Called by the local backend on startup (and periodically) to announce its
-    LAN IP + port. No auth — a local backend has no cloud session at boot.
+    LAN IP + port.  The local backend uses its provisioned cloud owner token;
+    a public BizID is an identifier, not authorization to mutate this registry.
 
     THREAT MODEL (review finding S-2)
     ---------------------------------
@@ -127,18 +165,10 @@ async def register_local_backend(req: DiscoverRegisterRequest, request: Request)
     i.e. credential harvesting off a public identifier — structurally the same
     defect as F-1, on a different surface.
 
-    MITIGATION: only PRIVATE addresses may be registered. A local backend's LAN
-    address is by definition RFC1918 / loopback / link-local, so rejecting public
-    IPs costs nothing legitimate and removes the remote attacker entirely — an
-    internet host cannot point a victim at itself using an address that is only
-    routable inside the victim's own network. The number of entries per BizID is
-    also capped so the list cannot be flooded.
-
-    RESIDUAL RISK, stated plainly: a device ALREADY on the same LAN can still
-    register a competing address. LAN discovery inherently trusts the LAN, and
-    closing that needs the registrant to prove it holds the BizID (a signed
-    token), which a backend does not have before login. Tracked as future work;
-    the remote attack is what mattered and is closed.
+    MITIGATION: only PRIVATE addresses may be registered *and* the caller must
+    present a cloud-issued owner token whose public_id equals ``biz_id``.  The
+    number of entries per BizID is also capped.  A public BizID is therefore no
+    longer enough to poison or delete a business's discovery record.
     """
     ip = req.ip
     # If the caller sent a non-routable placeholder, fall back to the connection IP.
@@ -159,7 +189,7 @@ async def register_local_backend(req: DiscoverRegisterRequest, request: Request)
     if not (0 < int(req.port) < 65536):
         raise HTTPException(status_code=422, detail="Invalid port.")
 
-    biz_id = str(req.biz_id)
+    biz_id = _assert_registration_owner(req, current_user)
     _prune(biz_id)
 
     entries = _REGISTRY.setdefault(biz_id, [])
@@ -183,23 +213,37 @@ async def register_local_backend(req: DiscoverRegisterRequest, request: Request)
     # Update existing entry for this ip:port or add new one
     for entry in entries:
         if entry["ip"] == ip and entry["port"] == req.port:
+            if _persist_enabled():
+                _persist_entry(biz_id, ip, req.port, now)
             entry["last_seen"] = now
             logger.info("[DISCOVER] Renewed registration %s:%d for biz %s", ip, req.port, biz_id)
             return {"status": "renewed", "ip": ip, "port": req.port}
 
+    if _persist_enabled():
+        _persist_entry(biz_id, ip, req.port, now)
     entries.append({"ip": ip, "port": req.port, "registered_at": now, "last_seen": now})
     logger.info("[DISCOVER] Registered %s:%d for biz %s", ip, req.port, biz_id)
     return {"status": "registered", "ip": ip, "port": req.port}
 
 
 @router.delete("/discover/register")
-async def unregister_local_backend(req: DiscoverRegisterRequest):
+async def unregister_local_backend(
+    req: DiscoverRegisterRequest,
+    current_user: dict = Depends(require_business_owner),
+):
     """Called by the local backend on clean shutdown to remove its entry."""
-    biz_id = str(req.biz_id)
+    biz_id = _assert_registration_owner(req, current_user)
+    _prune(biz_id)
     entries = _REGISTRY.get(biz_id, [])
     before = len(entries)
     _REGISTRY[biz_id] = [e for e in entries if not (e["ip"] == req.ip and e["port"] == req.port)]
     removed = before - len(_REGISTRY[biz_id])
+    if _persist_enabled():
+        from database.db import SessionLocal
+        from database.runtime_state import DiscoveryRegistration
+        with SessionLocal() as db:
+            db.query(DiscoveryRegistration).filter_by(biz_id=biz_id, ip=req.ip, port=req.port).delete(synchronize_session=False)
+            db.commit()
     logger.info("[DISCOVER] Unregistered %s:%d for biz %s (removed %d)", req.ip, req.port, biz_id, removed)
     return {"status": "ok", "removed": removed}
 

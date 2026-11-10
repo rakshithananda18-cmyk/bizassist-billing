@@ -6,6 +6,7 @@ import React from 'react'
 import CustomSelect from '../common/CustomSelect'
 import { CheckIcon, CloseIcon, SyncIcon } from '../Icons'
 import { useDocLabels } from '../../hooks/useDocLabels'
+import { estimateReturn, estimateReturnLine } from '../../utils/returnPreview'
 
 const fmt = (n) =>
   n != null ? `₹${Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '—'
@@ -30,19 +31,17 @@ export default function SaleReturnModal({ returningInvoice, setReturningInvoice,
                   <thead>
                     <tr>
                       <th>Item Name</th>
-                      <th style={{ width: 100, textAlign: 'center' }}>Original Qty</th>
+                      <th style={{ width: 100, textAlign: 'center' }}>Available Qty</th>
                       <th style={{ width: 120, textAlign: 'center' }}>Return Qty</th>
                       <th style={{ width: 100, textAlign: 'right' }}>Unit Price</th>
                       <th style={{ width: 100, textAlign: 'right' }}>GST Rate</th>
-                      <th style={{ width: 120, textAlign: 'right' }}>Refund Total</th>
+                      <th style={{ width: 120, textAlign: 'right' }}>Estimated Refund</th>
                     </tr>
                   </thead>
                   <tbody>
                     {returnLines.map((line, idx) => {
                       const taxRate = (line.cgst_rate || 0) + (line.sgst_rate || 0) + (line.igst_rate || 0)
-                      const returnQty = parseFloat(line.quantity) || 0
-                      const price = parseFloat(line.unit_price) || 0
-                      const refundLineTotal = returnQty * price * (1 + taxRate / 100)
+                      const refundLineTotal = estimateReturnLine(line).total
 
                       return (
                         <tr key={idx}>
@@ -80,24 +79,16 @@ export default function SaleReturnModal({ returningInvoice, setReturningInvoice,
 
               {/* Summary */}
               {(() => {
-                let sub = 0, tax = 0
-                returnLines.forEach(l => {
-                  const qty = parseFloat(l.quantity) || 0
-                  const p = parseFloat(l.unit_price) || 0
-                  const taxRate = (l.cgst_rate || 0) + (l.sgst_rate || 0) + (l.igst_rate || 0)
-                  const taxable = qty * p
-                  sub += taxable
-                  tax += taxable * (taxRate / 100)
-                })
-                const total = sub + tax
+                const { subtotal: sub, tax, total } = estimateReturn(returnLines, returningInvoice)
                 return (
                   <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 20, fontSize: '0.85rem', fontWeight: 600, borderTop: '1px solid var(--border)', paddingTop: 10, marginBottom: 15 }}>
                     <div>Return Subtotal: <span style={{ color: 'var(--text-secondary)' }}>{fmt(sub)}</span></div>
                     <div>Return Tax: <span style={{ color: 'var(--text-secondary)' }}>{fmt(tax)}</span></div>
-                    <div>Grand Total: <span style={{ color: 'var(--accent)', fontWeight: 700 }}>{fmt(total)}</span></div>
+                    <div>Estimated Total: <span style={{ color: 'var(--accent)', fontWeight: 700 }}>{fmt(total)}</span></div>
                   </div>
                 )
               })()}
+              <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>Estimate from the original invoice. The saved credit note applies original discounts, taxes, previous returns and rounding; its recorded total is final.</p>
 
               <div className="form-group">
                 <label className="form-label" style={{ fontWeight: 600 }}>Remarks / Reason for Return</label>

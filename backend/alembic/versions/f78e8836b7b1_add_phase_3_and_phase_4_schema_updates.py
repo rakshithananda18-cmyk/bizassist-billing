@@ -6,6 +6,7 @@ Create Date: 2026-07-03 18:03:52.366511
 """
 from alembic import op
 import sqlalchemy as sa
+from contextlib import contextmanager
 
 
 # revision identifiers, used by Alembic.
@@ -15,8 +16,57 @@ branch_labels = None
 depends_on = None
 
 
+@contextmanager
+def _safe_batch(table, **kwargs):
+    """Reflect before queuing SQLite batch operations; exceptions occur at flush.
+
+    A try/except around drop_index only queues the invalid operation and cannot
+    catch its later failure. Existing startup-created columns/indexes are kept.
+    """
+    inspector = sa.inspect(op.get_bind())
+    columns = {c['name'] for c in inspector.get_columns(table)}
+    indexes = {i['name'] for i in inspector.get_indexes(table)}
+    unique = {i['name'] for i in inspector.get_unique_constraints(table)}
+    foreign = {i['name'] for i in inspector.get_foreign_keys(table)}
+    with op.batch_alter_table(table, **kwargs) as batch:
+        class Guard:
+            def __getattr__(self, name):
+                return getattr(batch, name)
+            def drop_index(self, name, **options):
+                if name in indexes:
+                    indexes.remove(name)
+                    batch.drop_index(name, **options)
+            def create_index(self, name, column_names, **options):
+                if name not in indexes:
+                    indexes.add(name)
+                    batch.create_index(name, column_names, **options)
+            def drop_constraint(self, name, type_=None, **options):
+                names = foreign if type_ == 'foreignkey' else unique
+                if name in names:
+                    names.remove(name)
+                    batch.drop_constraint(name, type_=type_, **options)
+            def create_unique_constraint(self, name, column_names, **options):
+                if name not in unique:
+                    unique.add(name)
+                    batch.create_unique_constraint(name, column_names, **options)
+            def add_column(self, column, **options):
+                if column.name not in columns:
+                    columns.add(column.name)
+                    batch.add_column(column, **options)
+            def create_foreign_key(self, name, *args, **options):
+                if name not in foreign:
+                    foreign.add(name)
+                    batch.create_foreign_key(name, *args, **options)
+        yield Guard()
+
+
 def upgrade() -> None:
     bind = op.get_bind()
+    # These shift tables were also historically created only by startup. They
+    # must exist before adding the payment/invoice references below.
+    from database.models import RegisterShift, ShiftCashMovement
+    RegisterShift.__table__.create(bind, checkfirst=True)
+    ShiftCashMovement.__table__.create(bind, checkfirst=True)
     is_pg = bind.dialect.name == "postgresql"
 
     # ── 1. Drop old-named indexes / constraints safely (IF EXISTS on PG, best-effort on SQLite) ──
@@ -89,17 +139,17 @@ def upgrade() -> None:
             op.execute(f'DROP INDEX IF EXISTS "{idx}"')
     else:
         # SQLite: batch_alter_table handles it
-        with op.batch_alter_table('action_logs', schema=None) as batch_op:
+        with _safe_batch('action_logs', schema=None) as batch_op:
             try: batch_op.drop_index('ix_action_log_business_id')
             except Exception: pass
             try: batch_op.drop_index('ix_action_log_id')
             except Exception: pass
-        with op.batch_alter_table('ai_feedback', schema=None) as batch_op:
+        with _safe_batch('ai_feedback', schema=None) as batch_op:
             try: batch_op.drop_index('ix_feedback_business_id')
             except Exception: pass
             try: batch_op.drop_index('ix_feedback_id')
             except Exception: pass
-        with op.batch_alter_table('ai_query_overrides', schema=None) as batch_op:
+        with _safe_batch('ai_query_overrides', schema=None) as batch_op:
             try: batch_op.drop_index('ix_query_override_business_id')
             except Exception: pass
             try: batch_op.drop_index('ix_query_override_id')
@@ -108,14 +158,14 @@ def upgrade() -> None:
             except Exception: pass
             try: batch_op.drop_constraint('uq_query_override_biz_query', type_='unique')
             except Exception: pass
-        with op.batch_alter_table('b2b_invite_codes', schema=None) as batch_op:
+        with _safe_batch('b2b_invite_codes', schema=None) as batch_op:
             try: batch_op.drop_index('ix_connection_codes_code')
             except Exception: pass
             try: batch_op.drop_index('ix_connection_codes_id')
             except Exception: pass
             try: batch_op.drop_index('ix_connection_codes_seller_code')
             except Exception: pass
-        with op.batch_alter_table('b2b_ledgers', schema=None) as batch_op:
+        with _safe_batch('b2b_ledgers', schema=None) as batch_op:
             try: batch_op.drop_index('ix_shared_ledgers_id')
             except Exception: pass
             try: batch_op.drop_index('ix_shared_ledgers_seller_buyer')
@@ -131,14 +181,14 @@ def upgrade() -> None:
             'rate_limit_configs', 'stock_ledger', 'stock_transfer_line_items',
             'stock_transfers', 'vendors',
         ]:
-            with op.batch_alter_table(tbl, schema=None) as batch_op:
+            with _safe_batch(tbl, schema=None) as batch_op:
                 for uq in old_unique:
                     try: batch_op.drop_index(uq)
                     except Exception: pass
-        with op.batch_alter_table('godowns', schema=None) as batch_op:
+        with _safe_batch('godowns', schema=None) as batch_op:
             try: batch_op.drop_index('ix_godowns_business')
             except Exception: pass
-        with op.batch_alter_table('stock_transfers', schema=None) as batch_op:
+        with _safe_batch('stock_transfers', schema=None) as batch_op:
             try: batch_op.drop_index('ix_stock_transfers_business')
             except Exception: pass
 
@@ -150,13 +200,13 @@ def upgrade() -> None:
         op.execute("ALTER TABLE invoices ADD COLUMN IF NOT EXISTS shift_id INTEGER")
         op.execute("ALTER TABLE payments ADD COLUMN IF NOT EXISTS shift_id INTEGER")
     else:
-        with op.batch_alter_table('invoices', schema=None) as batch_op:
+        with _safe_batch('invoices', schema=None) as batch_op:
             batch_op.add_column(sa.Column('uid_token', sa.String(), nullable=True))
             batch_op.add_column(sa.Column('print_template', sa.String(), nullable=True))
             batch_op.add_column(sa.Column('shift_id', sa.Integer(), nullable=True))
-        with op.batch_alter_table('invoice_payments', schema=None) as batch_op:
+        with _safe_batch('invoice_payments', schema=None) as batch_op:
             batch_op.add_column(sa.Column('shift_id', sa.Integer(), nullable=True))
-        with op.batch_alter_table('payments', schema=None) as batch_op:
+        with _safe_batch('payments', schema=None) as batch_op:
             batch_op.add_column(sa.Column('shift_id', sa.Integer(), nullable=True))
 
     # ── 3. Create new indexes (IF NOT EXISTS on PG, otherwise safe on SQLite) ──
@@ -179,30 +229,30 @@ def upgrade() -> None:
         op.execute("CREATE INDEX IF NOT EXISTS ix_invoices_uid_token ON invoices (uid_token)")
         op.execute("CREATE INDEX IF NOT EXISTS ix_payments_shift_id ON payments (shift_id)")
     else:
-        with op.batch_alter_table('action_logs', schema=None) as batch_op:
+        with _safe_batch('action_logs', schema=None) as batch_op:
             batch_op.create_index('ix_action_logs_business_id', ['business_id'], unique=False)
             batch_op.create_index('ix_action_logs_id', ['id'], unique=False)
-        with op.batch_alter_table('ai_feedback', schema=None) as batch_op:
+        with _safe_batch('ai_feedback', schema=None) as batch_op:
             batch_op.create_index('ix_ai_feedback_business_id', ['business_id'], unique=False)
             batch_op.create_index('ix_ai_feedback_id', ['id'], unique=False)
-        with op.batch_alter_table('ai_query_overrides', schema=None) as batch_op:
+        with _safe_batch('ai_query_overrides', schema=None) as batch_op:
             batch_op.create_index('ix_ai_query_overrides_business_id', ['business_id'], unique=False)
             batch_op.create_index('ix_ai_query_overrides_id', ['id'], unique=False)
             batch_op.create_index('ix_ai_query_overrides_query_norm', ['query_norm'], unique=False)
             batch_op.create_unique_constraint('uq_ai_query_overrides_biz_query', ['business_id', 'query_norm'])
-        with op.batch_alter_table('b2b_invite_codes', schema=None) as batch_op:
+        with _safe_batch('b2b_invite_codes', schema=None) as batch_op:
             batch_op.create_index('ix_b2b_invite_codes_code', ['code'], unique=True)
             batch_op.create_index('ix_b2b_invite_codes_id', ['id'], unique=False)
             batch_op.create_index('ix_b2b_invite_codes_seller_code', ['seller_business_id', 'code'], unique=False)
-        with op.batch_alter_table('b2b_ledgers', schema=None) as batch_op:
+        with _safe_batch('b2b_ledgers', schema=None) as batch_op:
             batch_op.create_index('ix_b2b_ledgers_id', ['id'], unique=False)
             batch_op.create_index('ix_b2b_ledgers_seller_buyer', ['seller_business_id', 'buyer_business_id'], unique=False)
-        with op.batch_alter_table('invoice_payments', schema=None) as batch_op:
+        with _safe_batch('invoice_payments', schema=None) as batch_op:
             batch_op.create_index('ix_invoice_payments_shift_id', ['shift_id'], unique=False)
-        with op.batch_alter_table('invoices', schema=None) as batch_op:
+        with _safe_batch('invoices', schema=None) as batch_op:
             batch_op.create_index('ix_invoices_shift_id', ['shift_id'], unique=False)
             batch_op.create_index('ix_invoices_uid_token', ['uid_token'], unique=True)
-        with op.batch_alter_table('payments', schema=None) as batch_op:
+        with _safe_batch('payments', schema=None) as batch_op:
             batch_op.create_index('ix_payments_shift_id', ['shift_id'], unique=False)
 
     # ── 4. Add register_shifts foreign keys (use savepoints on PG so a pre-existing FK doesn't abort the transaction) ──
@@ -221,11 +271,11 @@ def upgrade() -> None:
             except Exception:
                 conn.execute(sa.text(f"ROLLBACK TO SAVEPOINT {sp}"))
     else:
-        with op.batch_alter_table('invoice_payments', schema=None) as batch_op:
+        with _safe_batch('invoice_payments', schema=None) as batch_op:
             batch_op.create_foreign_key('fk_invoice_payments_shift_id_register_shifts', 'register_shifts', ['shift_id'], ['id'])
-        with op.batch_alter_table('invoices', schema=None) as batch_op:
+        with _safe_batch('invoices', schema=None) as batch_op:
             batch_op.create_foreign_key('fk_invoices_shift_id_register_shifts', 'register_shifts', ['shift_id'], ['id'])
-        with op.batch_alter_table('payments', schema=None) as batch_op:
+        with _safe_batch('payments', schema=None) as batch_op:
             batch_op.create_foreign_key('fk_payments_shift_id_register_shifts', 'register_shifts', ['shift_id'], ['id'])
 
     # ### end Alembic commands ###

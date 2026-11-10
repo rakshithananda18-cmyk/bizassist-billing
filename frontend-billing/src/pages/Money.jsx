@@ -8,10 +8,11 @@
 //   /money/:view      → parties | invoices | cashbook
 // Reuses existing components/endpoints — no new backend.
 // ============================================================================
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import AppLayout from '../layouts/AppLayout'
-import WorkspaceTopBar, { WsDivider } from '../components/common/WorkspaceTopBar'
+import PageTabs from '../components/common/PageTabs'
+import HeaderSearchSlot from '../components/common/HeaderSearchSlot'
 import { useAuth } from '../contexts/AuthContext'
 import { BillsIcon, CheckIcon, SearchIcon, SyncIcon, MessageIcon, ContactsIcon } from '../components/Icons'
 import InvoicesListView from '../components/payments/InvoicesListView'
@@ -19,6 +20,8 @@ import CashbookView from '../components/money/CashbookView'
 import PartyAccount from '../components/money/PartyAccount'
 import SettleDuesModal from '../components/payments/SettleDuesModal'
 import useInvoiceActions from '../hooks/useInvoiceActions'
+import { logger } from '../utils/logger'
+import { readAllPages } from '../utils/readPages'
 
 const fmt = (n) => `₹${Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`
 
@@ -32,6 +35,9 @@ export default function Money() {
   const setView = (v) => { setSelectedParty(null); navigate(`/money/${v}`) }
 
   const [customers, setCustomers] = useState([])
+  const [partiesLoading, setPartiesLoading] = useState(true)
+  const [partiesError, setPartiesError] = useState(false)
+  const partiesRequestRef = useRef(0)
   const [q, setQ] = useState('')
   const [selectedParty, setSelectedParty] = useState(null)
   const [reloadKey, setReloadKey] = useState(0)
@@ -43,14 +49,28 @@ export default function Money() {
   // Invoices view AND the party drill-down — identical behaviour everywhere.
   const invoiceActions = useInvoiceActions(authFetch, { onChanged: refreshAll })
 
-  const loadParties = useCallback(() => {
-    authFetch('/customers?per_page=500')
-      .then(r => r.ok ? r.json() : [])
-      .then(d => setCustomers(Array.isArray(d) ? d : (d.customers || d.items || [])))
-      .catch(() => setCustomers([]))
+  const loadParties = useCallback(async () => {
+    const request = ++partiesRequestRef.current
+    setPartiesLoading(true)
+    setPartiesError(false)
+    try {
+      const data = await readAllPages(authFetch, '/customers')
+      if (request === partiesRequestRef.current) setCustomers(Array.isArray(data) ? data : (data.customers || data.items || []))
+    } catch (error) {
+      if (request !== partiesRequestRef.current) return
+      setCustomers([])
+      setPartiesError(true)
+      logger.warn('[MONEY] Customer accounts could not load:', error)
+    } finally {
+      if (request === partiesRequestRef.current) setPartiesLoading(false)
+    }
   }, [authFetch])
 
-  useEffect(() => { loadParties() }, [loadParties, reloadKey])
+  useEffect(() => {
+    loadParties()
+    return () => { partiesRequestRef.current++ }
+  }, [loadParties, reloadKey, user?.id])
+  useEffect(() => { setSelectedParty(null); setCustomers([]) }, [user?.id])
 
   const sendReminder = (party) => {
     const phone = (party?.phone || '').replace(/\D/g, '')
@@ -64,26 +84,22 @@ export default function Money() {
     return customers.filter(c => (c.name || '').toLowerCase().includes(s) || (c.phone || '').includes(s))
   }, [customers, q])
 
-  const tab = (id, label) => (
-    <button className={`ws-tab ${view === id ? 'active' : ''}`} onClick={() => setView(id)}>{label}</button>
-  )
-
   return (
     <AppLayout title="Money">
       <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
-        <WorkspaceTopBar
-          settingsTab="transactions"
-          windowControls={false}
-          actions={
+        <div className="page-header">
+          <div className="page-header-left">
+            <h1 className="page-title">Money</h1>
+            <p className="page-subtitle">Contacts, invoices, and cash movements in one place</p>
+          </div>
+          <div className="page-actions">
+            <HeaderSearchSlot />
+            <PageTabs inline label="Money pages" tabs={[{id:'parties',label:'Parties'}, {id:'invoices',label:'Invoices'}, {id:'cashbook',label:'Cashbook'}]} active={view} onChange={setView} />
             <button className="btn btn-ghost btn-sm" onClick={refreshAll} title="Refresh" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
               <SyncIcon size={14} /> Refresh
             </button>
-          }
-        >
-          {tab('parties', 'Parties')}
-          {tab('invoices', 'Invoices')}
-          {tab('cashbook', 'Cashbook')}
-        </WorkspaceTopBar>
+          </div>
+        </div>
 
         <div style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: '14px 18px', display: 'flex', flexDirection: 'column', gap: 12 }}>
           {/* ── Parties ── */}
@@ -112,7 +128,15 @@ export default function Money() {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredCustomers.length === 0 ? (
+                    {partiesLoading ? (
+                      <tr><td colSpan={5}><div className="empty-state" role="status">Loading customer accounts…</div></td></tr>
+                    ) : partiesError ? (
+                      <tr><td colSpan={5}><div className="empty-state" role="alert">
+                        <h3>Customer accounts are unavailable</h3>
+                        <p>The accounts could not be loaded. No balances have been changed.</p>
+                        <button type="button" className="btn btn-secondary" onClick={loadParties}>Retry customers</button>
+                      </div></td></tr>
+                    ) : filteredCustomers.length === 0 ? (
                       <tr><td colSpan={5}>
                         <div className="empty-state">
                           <div className="empty-icon"><ContactsIcon size={24} /></div>

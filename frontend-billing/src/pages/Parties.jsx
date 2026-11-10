@@ -5,15 +5,19 @@
 //              payment reminders/UPI payment links via WhatsApp.
 // ============================================================================
 import React, { useEffect, useState, useCallback, useRef } from 'react'
+import { prepareReturnLines } from '../utils/returnPreview'
+import useInvoiceActions from '../hooks/useInvoiceActions'
 import { useNavigate } from 'react-router-dom'
 import PageShell from '../components/common/PageShell'
 import { useAuth } from '../contexts/AuthContext'
-import { BillsIcon, CheckIcon, CopyIcon, CloseIcon, ContactsIcon, HandshakeIcon, InventoryIcon, MessageIcon, PlusIcon, PrinterIcon, SearchIcon, SyncIcon, UserIcon, WarehouseIcon, ExpandIcon } from '../components/Icons'
+import { BillsIcon, CheckIcon, CopyIcon, CloseIcon, ContactsIcon, HandshakeIcon, InventoryIcon, MessageIcon, PlusIcon, PrinterIcon, SearchIcon, SyncIcon, UserIcon, WarehouseIcon, ExpandIcon, ZapIcon } from '../components/Icons'
 import PartyFormModal from '../components/parties/PartyFormModal'
 import SaleReturnModal from '../components/parties/SaleReturnModal'
+import PartyCreditDrawer from '../components/parties/PartyCreditDrawer'
 import { logger } from '../utils/logger'
+import { readAllPages } from '../utils/readPages'
 import { formatApiError } from '../utils/apiError'
-import { buildUpiUri, buildWhatsAppShareUrl, normalizePhoneIN } from '../utils/share'
+import { buildUpiUri, buildWhatsAppShareUrl, normalizePhoneIN, resolvePaymentVpa } from '../utils/share'
 import { applyDelta, hasDelta } from '../sync/applyDelta'
 import FilterDropdown from '../components/common/FilterDropdown'
 import SortDropdown from '../components/common/SortDropdown'
@@ -52,7 +56,8 @@ export default function Parties({ embedded = false, headerTabs = null, inlinePag
   // older arrangement where the tabs were injected into that toolbar; both are
   // "embedded", hence the combined flag.
   const inWorkspace = Boolean(headerTabs) || inlinePage
-  const { authFetch, user, settings } = useAuth()
+  const { authFetch, user, settings, profile } = useAuth()
+  const { print: handlePrintInvoice } = useInvoiceActions(authFetch)
   const navigate = useNavigate()
   const label = useDocLabels()
   const confirm = useConfirm()
@@ -67,6 +72,8 @@ export default function Parties({ embedded = false, headerTabs = null, inlinePag
   const [invoices, setInvoices]     = useState([])
   const [purchases, setPurchases]   = useState([])
   const [loading, setLoading]       = useState(true)
+  const [loadError, setLoadError] = useState(false)
+  const loadRequestRef = useRef(0)
   const [activeTab, setActiveTab]   = useState('Customers')
   const [isFullScreen, setIsFullScreen] = useState(false)
   // Seeded from ?q= — see Stock.jsx. Two customers with the same name show as
@@ -86,6 +93,7 @@ export default function Parties({ embedded = false, headerTabs = null, inlinePag
   // settleParty removed — "Settle" now navigates to /parties/payments?customer=name.
   const isCashier = (user?.role || '').toLowerCase() === 'cashier'
   const [returningInvoice, setReturningInvoice] = useState(null)
+  const [creditDrawerParty, setCreditDrawerParty] = useState(null)
   const [returnLines, setReturnLines] = useState([])
   const [returnNote, setReturnNote] = useState('')
   const [savingReturn, setSavingReturn] = useState(false)
@@ -94,18 +102,26 @@ export default function Parties({ embedded = false, headerTabs = null, inlinePag
   const [ctxMenu, setCtxMenu] = useState(null)
 
   const load = useCallback(() => {
+    const request = ++loadRequestRef.current
     setLoading(true)
-    Promise.all([
+    setLoadError(false)
+    const read = async path => {
+      const response = await authFetch(path)
+      if (!response.ok) throw new Error(`Contacts data unavailable: HTTP ${response.status}`)
+      return response.json()
+    }
+    return Promise.all([
       // per_page is REQUIRED here. The endpoints default to 20 and this page has
       // no pagination control, so without it the list silently stopped at the
       // 20th contact alphabetically and the tab badge reported that truncated
       // count as the total — 23 customers displayed as "Customers (20)".
       // Matches InvoicesListView's `/invoices?per_page=500`.
-      authFetch('/billing/customers?per_page=500').then(r => r.ok ? r.json() : []).catch(() => []),
-      authFetch('/billing/vendors?per_page=500').then(r => r.ok ? r.json() : []).catch(() => []),
-      authFetch('/billing/invoices').then(r => r.ok ? r.json() : []).catch(() => []),
-      authFetch('/purchases').then(r => r.ok ? r.json() : []).catch(() => []),
+      readAllPages(authFetch, '/billing/customers'),
+      readAllPages(authFetch, '/billing/vendors'),
+      read('/billing/invoices'),
+      read('/purchases'),
     ]).then(([c, v, invs, purchs]) => {
+      if (request !== loadRequestRef.current) return
       const custItems = Array.isArray(c) ? c : (c && Array.isArray(c.items) ? c.items : [])
       const vendItems = Array.isArray(v) ? v : (v && Array.isArray(v.items) ? v.items : [])
       const invItems = Array.isArray(invs) ? invs : (invs && Array.isArray(invs.items) ? invs.items : [])
@@ -114,8 +130,12 @@ export default function Parties({ embedded = false, headerTabs = null, inlinePag
       setVendors(vendItems)
       setInvoices(invItems)
       setPurchases(purchItems)
-    }).finally(() => setLoading(false))
-  }, [authFetch])
+    }).catch(error => {
+      if (request !== loadRequestRef.current) return
+      setLoadError(true)
+      logger.warn('[PARTIES] Contact data could not load:', error)
+    }).finally(() => { if (request === loadRequestRef.current) setLoading(false) })
+  }, [authFetch, user?.id])
 
   // Page lifecycle: guard when form modal is open with typed data
   const { blocker, isRefreshing, dirtyMessage } = usePageLifecycle({
@@ -154,6 +174,7 @@ export default function Parties({ embedded = false, headerTabs = null, inlinePag
     // throttled — no separate 'focus' listener here (that caused a double reload).
     window.addEventListener('sync-event', handleSync)
     return () => {
+      loadRequestRef.current++
       window.removeEventListener('sync-event', handleSync)
     }
   }, [load])
@@ -184,7 +205,7 @@ export default function Parties({ embedded = false, headerTabs = null, inlinePag
       if (activeTab === 'Other Invoices') {
         return !q || p.invoice_number?.toLowerCase().includes(q) || p.notes?.toLowerCase().includes(q)
       }
-      
+
       // Balance filter (Outstanding Dues / Nil)
       const outstanding = parseFloat(p.outstanding_balance ?? 0)
       if (balanceFilter === 'due' && outstanding <= 0) return false
@@ -317,29 +338,6 @@ export default function Parties({ embedded = false, headerTabs = null, inlinePag
     }
   }
 
-  const handlePrintInvoice = async (invoiceNo) => {
-    if (!invoiceNo) return
-    try {
-      const res = await authFetch(`/sales/${invoiceNo}/pdf`)
-      if (res.ok) {
-        const blob = await res.blob()
-        const url = window.URL.createObjectURL(blob)
-        const iframe = document.createElement('iframe')
-        iframe.style.display = 'none'
-        iframe.src = url
-        document.body.appendChild(iframe)
-        iframe.onload = () => {
-          iframe.contentWindow.print()
-        }
-      } else {
-        setAlert({ type: 'danger', msg: 'Failed to load PDF for printing.' })
-      }
-    } catch (err) {
-      logger.error('[PARTIES] print invoice failed', err)
-      setAlert({ type: 'danger', msg: 'Error printing invoice.' })
-    }
-  }
-
   // Navigate to the Invoices tab, pre-filtered to this customer's invoices.
   // The Invoices tab (InvoicesPage) reads ?customer= from the URL and shows a
   // clearable chip, so the user can remove the filter to see all invoices.
@@ -358,11 +356,13 @@ export default function Parties({ embedded = false, headerTabs = null, inlinePag
     const balance = parseFloat(party.outstanding_balance || 0)
     if (balance <= 0) return
 
-    const upiVpa = localStorage.getItem('pos_upi_vpa') || 'bizassist@upi'
-    const businessName = (user?.business_name || 'BizAssist Merchant').toUpperCase()
+    const upiVpa = resolvePaymentVpa({ profile, user })
+    const businessName = (user?.business_name || 'STATER Bill Merchant').toUpperCase()
 
-    const upiLink = buildUpiUri({ vpa: upiVpa, payeeName: businessName, amount: balance })
-    const message = `Hi ${party.name}, a friendly reminder that you have an outstanding balance of ₹${balance.toLocaleString('en-IN')} with ${businessName}. Please clear it via UPI to: ${upiVpa}. Click to pay directly: ${upiLink}. Thank you!`
+    const upiLink = upiVpa ? buildUpiUri({ vpa: upiVpa, payeeName: businessName, amount: balance }) : ''
+    const message = upiVpa
+      ? `Hi ${party.name}, a friendly reminder that you have an outstanding balance of ₹${balance.toLocaleString('en-IN')} with ${businessName}. Please clear it via UPI to: ${upiVpa}. Click to pay directly: ${upiLink}. Thank you!`
+      : `Hi ${party.name}, a friendly reminder that you have an outstanding balance of ₹${balance.toLocaleString('en-IN')} with ${businessName}. Thank you!`
 
     window.open(buildWhatsAppShareUrl(party.phone, message), '_blank')
   }
@@ -371,8 +371,8 @@ export default function Parties({ embedded = false, headerTabs = null, inlinePag
     const invoiceNo = invoice.invoice_number || invoice.invoice_no
     const total = parseFloat(invoice.total_amount || 0)
     const paid = parseFloat(invoice.paid_amount || 0)
-    const balance = Math.max(total - paid, 0)
-    
+    const balance = invoice.outstanding != null ? parseFloat(invoice.outstanding) : Math.max(total - paid, 0)
+
     let phone = ''
     if (customer && customer.phone) {
       phone = customer.phone
@@ -383,17 +383,21 @@ export default function Parties({ embedded = false, headerTabs = null, inlinePag
       if (!input) return
       phone = input
     }
-    
-    const upiVpa = localStorage.getItem('pos_upi_vpa') || 'bizassist@upi'
-    const businessName = (user?.business_name || 'BizAssist Merchant').toUpperCase()
-    
+
+    const upiVpa = resolvePaymentVpa({ profile, user })
+    const businessName = (user?.business_name || 'STATER Bill Merchant').toUpperCase()
+
     let message = `Hi ${customer?.name || 'Customer'},\n\nHere is your Invoice ${invoiceNo} from ${businessName}:\nDate: ${invoice.date || invoice.invoice_date}\nTotal Amount: ₹${total.toLocaleString('en-IN')}\n`
     if (balance > 0) {
-      const upiLink = buildUpiUri({ vpa: upiVpa, payeeName: businessName, amount: balance, note: `INV-${invoiceNo}` })
-      message += `Balance Due: ₹${balance.toLocaleString('en-IN')}.\nYou can pay online using this UPI link: ${upiLink}\n`
+      if (upiVpa) {
+        const upiLink = buildUpiUri({ vpa: upiVpa, payeeName: businessName, amount: balance, note: `INV-${invoiceNo}` })
+        message += `Balance Due: ₹${balance.toLocaleString('en-IN')}.\nYou can pay online using this UPI link: ${upiLink}\n`
+      } else {
+        message += `Balance Due: ₹${balance.toLocaleString('en-IN')}.\n`
+      }
     }
     message += `\nThank you for your business!`
-    
+
     window.open(buildWhatsAppShareUrl(phone, message), '_blank')
   }
 
@@ -406,19 +410,7 @@ export default function Parties({ embedded = false, headerTabs = null, inlinePag
         const detail = await res.json()
         setReturningInvoice(detail)
         // Map lines
-        const lines = detail.lines.map(li => ({
-          product_id: li.product_id,
-          product_name: li.product_name,
-          quantity: 0,
-          max_quantity: li.quantity,
-          unit_price: li.unit_price,
-          cgst_rate: li.cgst_rate || 0,
-          sgst_rate: li.sgst_rate || 0,
-          igst_rate: li.igst_rate || 0,
-          cess_rate: li.cess_rate || 0,
-          unit: li.unit || 'Nos',
-          hsn_sac: li.hsn_sac || ''
-        }))
+        const lines = prepareReturnLines(detail.lines)
         setReturnLines(lines)
         setReturnNote('')
         setShowReturnModal(true)
@@ -442,7 +434,7 @@ export default function Parties({ embedded = false, headerTabs = null, inlinePag
       }))
       return
     }
-    
+
     const invalidLine = activeLines.find(l => l.quantity > l.max_quantity)
     if (invalidLine) {
       window.dispatchEvent(new CustomEvent('show_toast', {
@@ -471,7 +463,7 @@ export default function Parties({ embedded = false, headerTabs = null, inlinePag
           note: returnNote
         })
       })
-      
+
       if (res.ok) {
         setAlert({ type: 'success', msg: `${label('sale_return')} recorded successfully! Stock and customer balance updated.` })
         setShowReturnModal(false)
@@ -501,7 +493,7 @@ export default function Parties({ embedded = false, headerTabs = null, inlinePag
           {/* Search — always first */}
           <div className="search-bar" style={{ margin: 0, height: 34, boxSizing: 'border-box', display: 'flex', alignItems: 'center', flex: '1 1 200px', maxWidth: 320 }}>
             <span style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}><SearchIcon size={16} /></span>
-            <input value={search} onChange={e => setSearch(e.target.value)} placeholder={`Search ${activeTab.toLowerCase()}…`} style={{ fontSize: '0.82rem' }} />
+            <input data-tour="contacts-search" value={search} onChange={e => setSearch(e.target.value)} placeholder={`Search ${activeTab.toLowerCase()}…`} style={{ fontSize: '0.82rem' }} />
           </div>
 
           {activeTab !== 'Other Invoices' && (
@@ -620,7 +612,7 @@ export default function Parties({ embedded = false, headerTabs = null, inlinePag
         {/* Table */}
         {(() => {
           const tableContent = (
-            <table className="data-table" style={{ width: '100%', fontSize: '0.82rem' }}>
+            <table data-tour="contacts-table" className="data-table" style={{ width: '100%', fontSize: '0.82rem' }}>
               <thead>
                 {activeTab === 'Customers' && (
                   <tr>
@@ -733,6 +725,7 @@ export default function Parties({ embedded = false, headerTabs = null, inlinePag
                       onContextMenu={e => {
                         e.preventDefault()
                         setCtxMenu({ x: e.clientX, y: e.clientY, items: [
+                          { label: 'Credit Statement & Dues', icon: <ZapIcon size={13} />, action: () => setCreditDrawerParty(p) },
                           { label: 'View Invoices', icon: <BillsIcon size={13} />, action: () => navigate(`/parties/invoices?customer=${encodeURIComponent(p.name)}`) },
                           { label: 'Send Payment Reminder', icon: <MessageIcon size={13} />, action: () => handleWhatsAppReminder(p) },
                           { divider: true },
@@ -793,6 +786,15 @@ export default function Parties({ embedded = false, headerTabs = null, inlinePag
                             in the row's right-click menu. */}
                         {activeTab === 'Customers' ? (
                           <>
+                            <button
+                              className="btn btn-secondary btn-sm row-act"
+                              onClick={() => setCreditDrawerParty(p)}
+                              title="Credit Statement & Running Ledger"
+                              aria-label="Credit Statement"
+                              style={{ color: 'var(--accent, #6366f1)', fontWeight: 700 }}
+                            >
+                              <ZapIcon size={14} />
+                            </button>
                             <button className="btn btn-secondary btn-sm row-act" onClick={() => handleViewInvoices(p)}
                               title="View invoices" aria-label="View invoices"><BillsIcon size={14} /></button>
                             {outstanding > 0 && !isCashier && (
@@ -812,8 +814,19 @@ export default function Parties({ embedded = false, headerTabs = null, inlinePag
                             )}
                           </>
                         ) : (
-                          <button className="btn btn-secondary btn-sm row-act" onClick={() => handleViewPurchases(p)}
-                            title="View purchases" aria-label="View purchases"><InventoryIcon size={14} /></button>
+                          <>
+                            <button
+                              className="btn btn-secondary btn-sm row-act"
+                              onClick={() => setCreditDrawerParty(p)}
+                              title="Credit Statement & Running Ledger"
+                              aria-label="Credit Statement"
+                              style={{ color: 'var(--accent, #6366f1)', fontWeight: 700 }}
+                            >
+                              <ZapIcon size={14} />
+                            </button>
+                            <button className="btn btn-secondary btn-sm row-act" onClick={() => handleViewPurchases(p)}
+                              title="View purchases" aria-label="View purchases"><InventoryIcon size={14} /></button>
+                          </>
                         )}
                         </div>
                       </td>
@@ -824,6 +837,11 @@ export default function Parties({ embedded = false, headerTabs = null, inlinePag
             </table>
           )
           if (loading) return <div className="page-loader"><span className="spinner" /> Loading…</div>
+          if (loadError) return <div className="empty-state" role="alert">
+            <h3>Contacts are unavailable</h3>
+            <p>Customer, supplier or balance data could not be loaded. Retry before relying on account balances.</p>
+            <button type="button" className="btn btn-secondary" onClick={load}>Retry contacts</button>
+          </div>
           if (isFullScreen) return (
             <div className="table-fullscreen-overlay" onClick={e => { if (e.target === e.currentTarget) setIsFullScreen(false) }}>
               <div className="table-fullscreen-panel">
@@ -870,6 +888,16 @@ export default function Parties({ embedded = false, headerTabs = null, inlinePag
           (/parties/payments?customer=name) pre-filtered to that customer.
           The Transactions tab's workspace top bar has a Settle Dues button that handles
           the FIFO settlement flow from there. */}
+      {creditDrawerParty && (
+        <PartyCreditDrawer
+          party={creditDrawerParty}
+          partyType={activeTab === 'Customers' ? 'customer' : 'supplier'}
+          onClose={() => setCreditDrawerParty(null)}
+          onSettle={(p) => navigate(`/parties/payments?customer=${encodeURIComponent(p.name)}`)}
+          authFetch={authFetch}
+          user={user}
+        />
+      )}
       <ContextMenu menu={ctxMenu} onClose={() => setCtxMenu(null)} />
       <UnsavedChangesModal blocker={blocker} message={dirtyMessage} />
     </PageShell>

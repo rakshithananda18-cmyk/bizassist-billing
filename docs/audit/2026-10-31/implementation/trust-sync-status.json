@@ -1,0 +1,116 @@
+[
+  {
+    "id": "TS-01",
+    "status": "fixed",
+    "evidence": [
+      "backend/database/change_feed.py:18 installs transaction-bound source triggers; backend/database/change_feed.py:138 pages by per-business revision rather than timestamp.",
+      "backend/routes/sync.py:886 selects protocol 2 and explicitly rejects legacy incremental/paginated peers with HTTP 426; backend/services/sync_worker.py:3289 retains its cursor on an incompatible peer.",
+      "backend/tests/test_sync_protocol_v2.py:57 verifies same-time ties and raw-SQL/backdated changes; :78 verifies the legacy upgrade hold. Included in the independently executed disposable PostgreSQL 11-pass run on 2026-10-31."
+    ],
+    "remaining": [
+      "Deploy migrations and protocol-compatible server/device builds together. Legacy incremental clients deliberately pause until upgraded; production deployment was not performed."
+    ]
+  },
+  {
+    "id": "TS-02",
+    "status": "fixed",
+    "evidence": [
+      "backend/database/change_feed.py:18 captures insert/update/delete in the source transaction. PostgreSQL increments a per-business clock while holding its row lock through commit; SQLite serializes writers.",
+      "backend/database/change_feed.py:138 acknowledges only visible committed event revisions, independent of source timestamps and client clock skew.",
+      "backend/tests/test_sync_protocol_v2.py:57 verifies a raw-SQL write with a backdated timestamp after an acknowledged page; :175 uses real concurrent PostgreSQL transactions and verifies that the second writer cannot publish a later revision before its predecessor commits. Both passed in the 11-test constrained-role run."
+    ],
+    "remaining": [
+      "No production contention/throughput measurement or long-running operational soak was performed. Database deadlock/transaction retry handling remains the normal writer responsibility; an aborted transaction does not publish its feed event."
+    ]
+  },
+  {
+    "id": "TS-03",
+    "status": "fixed",
+    "evidence": [
+      "backend/services/sync_worker.py:3613 advances after rejected rows only when no table was unread; :3622 holds the cursor whenever failed_tables is nonempty.",
+      "The preserved independent remediation proof exercised the actual worker cursor branch across nine rejected-row/unread-table combinations. Protocol 2 also emits a single transactional feed rather than independently skipping unread source tables."
+    ],
+    "remaining": [
+      "The worker decision proof extracts the actual branch; it is not an installed-device/end-to-end network-outage exercise."
+    ]
+  },
+  {
+    "id": "TS-04",
+    "status": "fixed",
+    "evidence": [
+      "backend/routes/sync_staff.py changes the token version on material replicated password/role changes and clears version caches on mutation/deletion; the preserved actual-receiver proof verified material change, idempotent repeat and valid deletion.",
+      "backend/services/auth.py:110 checks live subject authority instead of accepting a warm version cache; backend/database/security.py:69 rejects deleted/retired subjects and owners.",
+      "backend/tests/test_sync_protocol_v2.py:144 verifies immediate retired-identity rejection with a warm cache; :95 verifies acknowledged valid staff tombstone and duplicate delivery. Included in the PostgreSQL 11-pass run."
+    ],
+    "remaining": [
+      "No deployed multi-process or installed-device revocation exercise was performed."
+    ]
+  },
+  {
+    "id": "TS-05",
+    "status": "fixed",
+    "evidence": [
+      "backend/services/control_outbox.py:43 flushes intent without committing its caller; staff/profile commands enqueue before their own commit. :77 uses FIFO, backoff and a conditional lease; :169 atomically validates identity, contiguous origin revision and duplicate receipts with the receiver mutation.",
+      "backend/services/control_outbox.py:150 purges outbox/origin/receipt/stream state. backend/services/admin_service.py:959 invokes it during purge; backend/routes/auth.py:173 retires/purges the old BizID before rekeying and :176 creates a fresh owner when shared history retains the old identity.",
+      "backend/services/sync_worker.py:913 retries control backlog before ordinary idle-skip; :2748 holds synchronization without a cloud-issued credential. backend/routes/sync.py:1138 exposes non-payload pending/error status.",
+      "backend/tests/test_sync_protocol_v2.py:85, :95, :116 and :132 verify caller rollback, atomic/idempotent contiguous acknowledgment with valid deletion, FIFO backoff and old-identity quarantine. Included in the 11-pass PostgreSQL run."
+    ],
+    "remaining": [
+      "Migrate both receiver and device schemas before resuming control replication; unverifiable pre-protocol intents are cancelled rather than sent under a new identity.",
+      "No installed-device process-kill/restart/offline-reconnect drill was performed. Local database encryption/key recovery and production transport/storage controls are separate deployment gates owned by the operations workstream."
+    ]
+  },
+  {
+    "id": "TS-06",
+    "status": "fixed",
+    "evidence": [
+      "backend/database/security.py:19, :42, :49, :57 and :69 implement fixed narrow authentication/signup/public-token/live-subject bootstrap helpers. :80 installs explicit function grants and fail-closed tenant policies; backend/database/db.py binds service sessions to their request tenant.",
+      "backend/database/trade_service.py:31 fails closed without an explicit dedicated trade credential; :53 revalidates the actor, accepted connection, order party and locked live businesses. :117 exposes a minimal profile, :110 exposes only two trading-policy values, and :162 grants the internal trade role public User columns rather than password/settings access.",
+      "backend/tests/test_sync_protocol_v2.py:154, :209 and :248 passed under a real NOSUPERUSER NOBYPASSRLS HTTP role and separate constrained-grant trade role: bootstrap, signup/login/staff/paid/public paths, B2B request/approval/catalog/place/fulfil/post, hidden-product denial, buyer-ledger privacy, actual-row audit ownership, actor mismatch and denied credential/settings SQL.",
+      "Root independently ran backend/tests/run_sync_role_smoke.py on a disposable loopback PostgreSQL cluster: 11 passed in 8.90s. Root also verified the complete historical Alembic chain, repeated upgrade and all 66 model-table parity on fresh SQLite and PostgreSQL after head d60a4c1f3b05.",
+      "backend/database/admin_service.py:46 provides an explicitly authenticated administration session; each service transaction rechecks live admin role and token version under a row-share lock. All routes/admin.py routes and only the admin routes in routes/campaigns.py use this dependency. Normal merchant campaign evaluation stays tenant-bound; there is no global campaign sender/scheduler.",
+      "backend/database/admin_service.py:104 provisions explicit known-Billing table grants and SELECT/DELETE only on supported Field cleanup tables. It grants no CREATE, TRUNCATE, role membership or grant option. Ordinary HTTP sessions remain NOBYPASSRLS; missing ADMIN_SERVICE_URL returns 503.",
+      "backend/services/admin_service.py:111 rejects constrained PostgreSQL calls without the service boundary; backend/services/log_uploader.py:136 exits on PostgreSQL because that task only archives desktop-local SQLite logs.",
+      "backend/tests/test_sync_protocol_v2.py:320 adds actual platform-admin fleet and campaign preview HTTP tests, normal owner and stale-role-claim denial, missing configuration, post-commit token revocation, absent privileged-role membership and synthetic FORCE-RLS Field cleanup. The new complete real PostgreSQL role run passed all 12 tests in 13.60s on 2026-10-31.",
+      "Non-superuser provider preflight gap corrected in database/security.py: operator-only bootstrap SET/inherited ownership and explicit EXECUTE support CREATE OR REPLACE/retry, while temporary bootstrap CREATE is revoked and HTTP membership stays absent. Dedicated native proof ran the complete historical chain/retry and constrained owner/staff/public auth: 9 checks passed in 14.88s. See trust-nonsuperuser-security.json; full-schema-chain CI now includes the proof."
+    ],
+    "remaining": [
+      "Provision/configure actual schema-admin, NOSUPERUSER NOBYPASSRLS HTTP runtime, NOLOGIN bootstrap and separate narrowly granted NOSUPERUSER BYPASSRLS trade/admin roles. Set BIZASSIST_RUNTIME_DB_ROLE, BIZASSIST_TRADE_DB_ROLE and BIZASSIST_ADMIN_DB_ROLE during provisioning, DATABASE_TRADE_SERVICE_URL and ADMIN_SERVICE_URL as separate server-only secrets. Do not grant HTTP-role membership in privileged roles. Missing trade/admin configuration deliberately returns 503.",
+      "Apply through migration e70b5d2a4c06 under an operator role permitted to provision these grants/functions. Hosted-provider role-provisioning permissions, deployed grants/credential custody and production behavior were not inspected or configured.",
+      "The Field cleanup proof uses a minimal synthetic ft_settings table with FORCE RLS; the full Field migration/contract suite is a separate root-owned gate."
+    ]
+  },
+  {
+    "id": "TS-07",
+    "status": "fixed",
+    "evidence": [
+      "backend/routes/data_transfer.py:193 raises on a required table-read failure rather than returning an empty table; backend/routes/data_transfer.py:857 aborts the outer export.",
+      "The preserved actual helper injection raises RuntimeError; backend/tests/test_wp2_sync_durable.py:197 verifies an incomplete export returns HTTP 500. The earlier focused WP2 run passed all six tests."
+    ],
+    "remaining": [
+      "A successful export is not evidence of a consistent live backup or a completed production restore drill. Operations owns backup encryption, restore/RPO/RTO and deployed storage verification."
+    ]
+  },
+  {
+    "id": "TS-08",
+    "status": "fixed",
+    "evidence": [
+      "desktop/src/backend.js:27 parses the actual /health response; :41 requires both status=ok and db=connected.",
+      "docs/audit/2026-10-30/remediation-review/trust-desktop-readiness.cjs executed the actual JavaScript probe body: disconnected HTTP 200 rejected, healthy HTTP 200 accepted, malformed JSON rejected and HTTP 503 rejected (4/4 cases)."
+    ],
+    "remaining": [
+      "No installed Electron/live backend process readiness drill was performed."
+    ]
+  },
+  {
+    "id": "TS-09",
+    "status": "fixed",
+    "evidence": [
+      "backend/services/auth.py:13 requires a configured JWT secret, :22 rejects a secret shorter than 32 bytes and :25 uses the configured value without random per-process transformation.",
+      "The preserved independent proof imports the real auth module in isolated subprocesses: short configuration is rejected and two valid imports preserve the same configured signing key."
+    ],
+    "remaining": [
+      "Production secret configuration and rotation were not inspected or changed. The separately confirmed historical Supabase database-password exposure still requires external rotation; see ../SECURITY-RESPONSE.md."
+    ]
+  }
+]

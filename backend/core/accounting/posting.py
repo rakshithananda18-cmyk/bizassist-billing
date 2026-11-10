@@ -10,14 +10,40 @@ is written, so the posted journal is a true, tamper-evident audit trail.
 Account names MUST match the derived engine in `core/api/reports.py` so the
 posted journal reconciles with the reconstructed one.
 """
+import contextlib
 import hashlib
 import json
 import logging
+import math
 from datetime import datetime
+
+from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 
 from core.models import JournalEntry, JournalLine
 
 logger = logging.getLogger("bizassist.accounting")
+
+
+def money_savepoint(db):
+    """A SAVEPOINT around one money write - on PostgreSQL only.
+
+    Python's sqlite3 driver does not open its transaction until the first data
+    change, so a SAVEPOINT that is the first write of a transaction starts it,
+    and releasing that savepoint COMMITS it. A receipt would then be saved even
+    if the rest of its command (the invoice's paid amount, later bills in a
+    settlement) fails and rolls back. On SQLite the write joins the caller's
+    transaction instead; the duplicate it guards against is a cross-process
+    race SQLite's single writer and the callers' re-check under lock already
+    close."""
+    if savepoints_supported(db):
+        return db.begin_nested()
+    return contextlib.nullcontext()
+
+
+def savepoints_supported(db) -> bool:
+    return db.bind.dialect.name == "postgresql"
+
 
 GENESIS_HASH = "GENESIS"
 
@@ -81,6 +107,15 @@ def post_entry(db, *, business_id, entry_date, source_type, source_id,
     of books, which is a strictly worse outcome than a late entry in a closed
     period. Never pass False from a user-facing command path.
     """
+    # Serialise the append-only hash chain per business on Postgres.  Without
+    # this, two concurrent receipts can both observe the same head and write
+    # sibling entries with the same prev_hash.  The transaction-scoped advisory
+    # lock is released automatically on commit/rollback and is a no-op for the
+    # local SQLite product, whose single writer already serialises this path.
+    if db.bind.dialect.name == "postgresql":
+        db.execute(text("SELECT pg_advisory_xact_lock(:business_id)"),
+                   {"business_id": int(business_id)})
+
     existing = db.query(JournalEntry).filter(
         JournalEntry.business_id == business_id,
         JournalEntry.source_type == source_type,
@@ -104,7 +139,15 @@ def post_entry(db, *, business_id, entry_date, source_type, source_id,
         from core.accounting import period_lock  # lazy import: avoid cycle
         period_lock.assert_period_open(db, business_id, entry_date)
 
-    clean = [(a, _r2(dr), _r2(cr)) for (a, dr, cr) in lines if _r2(dr) or _r2(cr)]
+    clean = []
+    for account, debit, credit in lines:
+        debit, credit = _r2(debit), _r2(credit)
+        if not math.isfinite(debit) or not math.isfinite(credit) or debit < 0 or credit < 0:
+            raise ValueError("Journal amounts must be finite and non-negative")
+        if debit and credit:
+            raise ValueError("A journal line cannot be both debit and credit")
+        if debit or credit:
+            clean.append((account, debit, credit))
     td = _r2(sum(dr for _, dr, _ in clean))
     tc = _r2(sum(cr for _, _, cr in clean))
     if abs(td - tc) >= 0.01:
@@ -126,16 +169,33 @@ def post_entry(db, *, business_id, entry_date, source_type, source_id,
         clean=clean, prev_hash=prev_hash,
     )
 
-    entry = JournalEntry(
-        business_id=business_id, entry_date=entry_date,
-        source_type=source_type, source_id=source_id,
-        ref_no=ref_no, narration=narration,
-        prev_hash=prev_hash, entry_hash=entry_hash,
-    )
-    db.add(entry)
-    db.flush()
-    for (a, dr, cr) in clean:
-        db.add(JournalLine(entry_id=entry.id, account=a, debit=dr, credit=cr))
+    # The unique constraint is the second line of defence for callers that
+    # race before either sees the other's row (or run on a backend without the
+    # advisory lock).  Contain an IntegrityError in a SAVEPOINT so a duplicate
+    # cannot poison the caller's wider money transaction.
+    try:
+        with money_savepoint(db):
+            entry = JournalEntry(
+                business_id=business_id, entry_date=entry_date,
+                source_type=source_type, source_id=source_id,
+                ref_no=ref_no, narration=narration,
+                prev_hash=prev_hash, entry_hash=entry_hash,
+            )
+            db.add(entry)
+            db.flush()
+            for (a, dr, cr) in clean:
+                db.add(JournalLine(entry_id=entry.id, account=a, debit=dr, credit=cr))
+    except IntegrityError:
+        if not savepoints_supported(db):
+            raise          # no savepoint to fall back to: the transaction is spent
+        existing = db.query(JournalEntry).filter(
+            JournalEntry.business_id == business_id,
+            JournalEntry.source_type == source_type,
+            JournalEntry.source_id == source_id,
+        ).first()
+        if existing is not None:
+            return existing
+        raise
 
     logger.info("[ACCT] posted %s#%s biz=%s dr=%.2f cr=%.2f lines=%d hash=%s",
                 source_type, source_id, business_id, td, tc, len(clean), entry_hash[:12])
@@ -234,9 +294,14 @@ def build_sale_lines(inv):
 
 def build_credit_note_lines(inv):
     total = _r2(inv.total_amount)
+    cash = _r2(getattr(inv, "cash_discount", 0.0))
     gst = _gst_total(inv)
-    net = _r2(total - gst)
-    return [(ACC_SALES, net, 0.0), (ACC_GST_OUT, gst, 0.0), (ACC_AR, 0.0, total)]
+    net = _r2(total + cash - gst)
+    # Reverse the cash-discount expense alongside the proportional return.
+    # Omitting it either over-refunds the customer or leaves Discount Allowed
+    # behind after a complete reversal of the original sale.
+    return [(ACC_SALES, net, 0.0), (ACC_GST_OUT, gst, 0.0),
+            (ACC_AR, 0.0, total), (ACC_DISCOUNT, 0.0, cash)]
 
 
 def build_purchase_lines(pur):

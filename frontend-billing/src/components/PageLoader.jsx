@@ -31,7 +31,7 @@ export default function PageLoader() {
   return (
     <div
       role="status"
-      aria-label="Loading BizAssist Billing"
+      aria-label="Loading STATER Bill"
       style={{
         position: 'fixed',
         inset: 0,

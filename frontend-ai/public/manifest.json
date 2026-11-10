@@ -1,6 +1,6 @@
 {
-  "name": "BizAssist",
-  "short_name": "BizAssist",
+  "name": "Stater AI",
+  "short_name": "Stater AI",
   "description": "AI operations manager for Indian distributors and wholesalers",
   "start_url": "/",
   "display": "standalone",

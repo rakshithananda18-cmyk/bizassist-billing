@@ -15,6 +15,12 @@ export default function PrintPortal({ children }) {
 
 /** Trigger the browser print dialog (also the "Download PDF" path via
  *  print-to-PDF). Kept as a helper so tests can spy on it. */
-export function triggerPrint() {
+export async function triggerPrint() {
+  if (window.bizassistDesktop?.print) {
+    const result = await window.bizassistDesktop.print()
+    // Cancelling the native dialog is a normal outcome, not a print failure.
+    if (!result?.success && !result?.cancelled) throw new Error('Native print dialog unavailable')
+    return
+  }
   window.print()
 }

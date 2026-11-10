@@ -315,12 +315,13 @@ export default function CartItemRow({
             const currentRate = parseFloat(item.selected_price) || (parseFloat(item.price) - (parseFloat(item.discount) / (parseFloat(item.qty) || 1)))
             return (
               <td key="rate" className="pos-align-right">
-                {item.product_id ? (
+                {item.product_id || item.is_custom ? (
                   <input
                     type="number"
                     min="0"
                     step="any"
                     className="pos-cell-input rate-input pos-rate-input"
+                    aria-label={`Rate for ${item.product || 'custom item'}`}
                     value={isNaN(currentRate) ? '' : parseFloat(currentRate.toFixed(2))}
                     onChange={e => {
                       const newRate = parseFloat(e.target.value) || 0

@@ -8,6 +8,7 @@ import logging
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 from database.models import Invoice, Inventory, LegacyPayment, UploadedFile, DocumentEmbedding, ChatMessage
+from core.billing.balances import invoice_net_amount
 from services.dates import biz_today_str, biz_now
 
 logger = logging.getLogger("bizassist.insights_service")
@@ -131,12 +132,13 @@ def expiring_batches(db: Session, business_id: int, days: int = None):
 
 def business_insights(user_id: int, db: Session) -> dict:
     insights = []
-    overdue = db.query(Invoice).filter(Invoice.business_id == user_id, Invoice.status == "Overdue").all()
+    from core.billing.balances import outstanding_rows, business_revenue_summary
+    overdue = outstanding_rows(db, user_id, overdue=True)
     total_overdue = sum(i.amount or 0 for i in overdue)
     if total_overdue > 0:
         insights.append({"type": "overdue", "message": f"₹{total_overdue} is currently overdue across {len(overdue)} invoices."})
 
-    pending = db.query(Invoice).filter(Invoice.business_id == user_id, Invoice.status == "Pending").all()
+    pending = outstanding_rows(db, user_id, overdue=False)
     if pending:
         insights.append({"type": "pending", "message": str(len(pending)) + " invoices are pending payment."})
 
@@ -145,7 +147,7 @@ def business_insights(user_id: int, db: Session) -> dict:
         insights.append({"type": "expiry", "message": str(len(expiring)) + " products have expiry tracking enabled."})
 
     invoices = db.query(Invoice).filter(Invoice.business_id == user_id).all()
-    total_rev = sum(i.amount or 0 for i in invoices)
+    total_rev = business_revenue_summary(db, user_id)["net_revenue"]
     insights.append({"type": "revenue", "message": f"Total tracked revenue is ₹{total_rev}"})
 
     return {"total_insights": len(insights), "insights": insights}
@@ -166,10 +168,10 @@ def dashboard_summary(user_id: int, db: Session) -> dict:
     invoices = db.query(Invoice).filter(Invoice.business_id == user_id).all()
     products = db.query(Product).filter(Product.business_id == user_id).all()
     
-    valid_invoices = [i for i in invoices if i.status not in ("Draft", "Cancelled")]
-    total_revenue = sum(i.total_amount or 0 for i in valid_invoices)
-    invoice_count = len(valid_invoices)
-    
+    from core.billing.balances import business_revenue_summary, outstanding_rows
+    metrics = business_revenue_summary(db, user_id)
+    valid_invoices = [invoice for invoice in invoices if invoice.status not in ("Draft", "Cancelled")]
+    total_revenue, invoice_count = metrics["net_revenue"], metrics["invoice_count"]
     # Use biz_today_str() / biz_now() so IST-local dates match what the counter
     # stamps on invoices and payments. datetime.now() is server-local (UTC on
     # the HF instance) and would miscount bills from 00:00–05:30 IST as
@@ -177,11 +179,11 @@ def dashboard_summary(user_id: int, db: Session) -> dict:
     today_str = biz_today_str()
     thirty_days_ago = (biz_now() - timedelta(days=30)).strftime("%Y-%m-%d")
     
-    rev_30d = sum(i.total_amount or 0 for i in valid_invoices if i.invoice_date and i.invoice_date >= thirty_days_ago)
+    rev_30d = sum(invoice_net_amount(i) for i in valid_invoices if i.invoice_date and i.invoice_date >= thirty_days_ago)
     
-    pending_invoices = [i for i in valid_invoices if i.status == "Pending"]
+    pending_invoices = outstanding_rows(db, user_id, overdue=False)
     pending_count = len(pending_invoices)
-    pending_amount = sum((i.total_amount or 0) - (i.paid_amount or 0) for i in pending_invoices)
+    pending_amount = sum(i.amount for i in pending_invoices)
     
     payments_today = db.query(InvoicePayment).filter(
         InvoicePayment.business_id == user_id,
@@ -189,9 +191,9 @@ def dashboard_summary(user_id: int, db: Session) -> dict:
     ).all()
     paid_today = sum(p.amount_paid or 0.0 for p in payments_today)
     
-    overdue_invoices = [i for i in valid_invoices if i.status == "Overdue"]
+    overdue_invoices = outstanding_rows(db, user_id, overdue=True)
     overdue_count = len(overdue_invoices)
-    overdue_amount = sum((i.total_amount or 0) - (i.paid_amount or 0) for i in overdue_invoices)
+    overdue_amount = sum(i.amount for i in overdue_invoices)
     
     purchases = db.query(PurchaseInvoice).filter(
         PurchaseInvoice.business_id == user_id,
@@ -358,43 +360,52 @@ def delete_upload(user_id: int, upload_id: int, db: Session) -> dict:
 
 
 def dashboard_charts(user_id: int, db: Session) -> dict:
-    invoices = db.query(Invoice).filter(Invoice.business_id == user_id).all()
+    """Current invoice totals and remaining receivables, including returns.
 
-    # Monthly revenue
-    monthly_rev = {}
+    Status labels are not balances: a partially paid overdue invoice contributes
+    only what is still owed. A credit note reduces sales and is never a bill due.
+    """
+    from database.models import InvoiceLineItem
+
+    invoices = [inv for inv in db.query(Invoice).filter(Invoice.business_id == user_id).all()
+                if (inv.status or "").lower() not in {"cancelled", "canceled", "void", "draft"}]
+    from core.billing.balances import invoice_balances
+    balances = invoice_balances(db, [inv for inv in invoices if inv.invoice_type != "credit_note"])
+    ids = [inv.id for inv in invoices]
+    lines_by_invoice = {}
+    if ids:
+        for line in db.query(InvoiceLineItem).filter(InvoiceLineItem.invoice_id.in_(ids)).all():
+            lines_by_invoice.setdefault(line.invoice_id, []).append(line)
+    monthly, product_totals = {}, {}
+    aging = {"0-30 days": 0.0, "31-60 days": 0.0, "61-90 days": 0.0, "90+ days": 0.0}
+    today = biz_now().date()
     for inv in invoices:
-        dt = parse_date(inv.invoice_date)
-        if dt:
-            key = dt.strftime("%Y-%m")
-            if key not in monthly_rev:
-                monthly_rev[key] = {"month": dt.strftime("%b %y"), "revenue": 0}
-            monthly_rev[key]["revenue"] += inv.amount or 0
-    sorted_monthly = [monthly_rev[k] for k in sorted(monthly_rev.keys())] or [
-        {"month": "Jan", "revenue": 0}, {"month": "Feb", "revenue": 0}, {"month": "Mar", "revenue": 0}
-    ]
-
-    # Invoice aging
-    now = datetime.now()
-    aging = {"0-30 days": 0, "31-60 days": 0, "61-90 days": 0, "90+ days": 0}
-    for inv in invoices:
-        if inv.status in ("Overdue", "Pending"):
-            due_dt = parse_date(inv.due_date)
-            if due_dt:
-                delta = (now - due_dt).days
-                if delta <= 0:    continue
-                elif delta <= 30: aging["0-30 days"]  += inv.amount or 0
-                elif delta <= 60: aging["31-60 days"] += inv.amount or 0
-                elif delta <= 90: aging["61-90 days"] += inv.amount or 0
-                else:             aging["90+ days"]   += inv.amount or 0
-    aging_list = [{"range": k, "amount": v} for k, v in aging.items()]
-
-    # Product breakdown
-    product_totals = {}
-    for inv in invoices:
-        p = inv.product or "Services"
-        product_totals[p] = (product_totals.get(p) or 0) + (inv.amount or 0)
-    top_products = [{"name": n, "value": v} for n, v in sorted(product_totals.items(), key=lambda x: x[1], reverse=True)[:5]]
-    if not top_products:
-        top_products = [{"name": "No data", "value": 0}]
-
-    return {"monthly_revenue": sorted_monthly, "aging_overview": aging_list, "top_products": top_products}
+        total = abs(float(inv.total_amount or inv.amount or 0)) if inv.invoice_type == "credit_note" else float(inv.total_amount or inv.amount or 0)
+        sign = -1 if inv.invoice_type == "credit_note" else 1
+        date = parse_date(inv.invoice_date)
+        if date:
+            key = date.strftime("%Y-%m")
+            period = monthly.setdefault(key, {"month": date.strftime("%b %y"), "revenue": 0.0})
+            period["revenue"] += sign * total
+        due_date = parse_date(inv.due_date)
+        due = balances[inv.id]["outstanding"] if sign > 0 else 0.0
+        if due_date and due > 0:
+            days = (today - due_date.date()).days
+            if days > 0:
+                bucket = "0-30 days" if days <= 30 else "31-60 days" if days <= 60 else "61-90 days" if days <= 90 else "90+ days"
+                aging[bucket] += due
+        lines = lines_by_invoice.get(inv.id, [])
+        line_sum = sum(float(line.line_total or 0) for line in lines)
+        if lines and line_sum > 0:
+            for line in lines:
+                name = line.product_name or "Other sales"
+                product_totals[name] = product_totals.get(name, 0.0) + sign * total * float(line.line_total or 0) / line_sum
+        else:
+            name = inv.product or "Other sales"
+            product_totals[name] = product_totals.get(name, 0.0) + sign * total
+    return {
+        "monthly_revenue": [{**monthly[key], "revenue": round(monthly[key]["revenue"], 2)} for key in sorted(monthly)],
+        "aging_overview": [{"range": key, "amount": round(value, 2)} for key, value in aging.items()],
+        "top_products": [{"name": name, "value": round(value, 2)}
+                         for name, value in sorted(product_totals.items(), key=lambda item: item[1], reverse=True)[:5]],
+    }

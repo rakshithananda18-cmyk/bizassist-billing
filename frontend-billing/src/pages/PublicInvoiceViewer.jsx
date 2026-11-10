@@ -79,7 +79,7 @@ export default function PublicInvoiceViewer() {
       
       <div className="no-print" style={{ textAlign: 'center', marginTop: 24 }}>
         <p style={{ color: '#666', fontSize: '13px' }}>
-          Powered by <a href="/" style={{ color: 'var(--accent, #c15f3c)', textDecoration: 'none', fontWeight: 'bold' }}>BizAssist</a>
+          Powered by <a href="/" style={{ color: 'var(--accent, #c15f3c)', textDecoration: 'none', fontWeight: 'bold' }}>Stater</a>
         </p>
       </div>
     </div>

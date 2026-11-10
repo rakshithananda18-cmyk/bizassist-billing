@@ -24,7 +24,7 @@ export default function PageLoader() {
 
   const [pre, hl, post] = TAGLINES[i]
   return (
-    <div className="ba-pageloader" role="status" aria-label="Loading BizAssist">
+    <div className="ba-pageloader" role="status" aria-label="Loading Stater">
       <div style={{ color: 'var(--accent-color)' }}><SkylineLoader size={92} /></div>
       <div className="ba-tagline" key={i}>
         {pre}<span className="hl">{hl}</span>{post}

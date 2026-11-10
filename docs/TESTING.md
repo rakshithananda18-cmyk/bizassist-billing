@@ -1,6 +1,8 @@
 # BizAssist — Test Automation Strategy
 
-*Created 2026-06-27. The layered, all-free/open-source automation stack and how to run it. Companion to the manual plans: [`MANUAL_TEST_PLAN.md`](MANUAL_TEST_PLAN.md) (scenarios) and [`RLS_FAIL_CLOSED_TEST_PLAN.md`](RLS_FAIL_CLOSED_TEST_PLAN.md) (S-1).*
+*Created 2026-06-27; reconciled 2026-10-28. The layered automation stack and how to run it. Companion to the archived scenario plans: [`MANUAL_TEST_PLAN.md`](archive/MANUAL_TEST_PLAN.md) and [`RLS_FAIL_CLOSED_TEST_PLAN.md`](archive/RLS_FAIL_CLOSED_TEST_PLAN.md).*
+
+Current commands, dated suite results, skips and verification limits are recorded in [2026-10-28 release checks](release/2026-10-28-verification.md). Test counts in older reviews are historical snapshots, not current pass totals. Fail-closed RLS is implemented; its live Postgres verification is separate from SQLite/mock coverage.
 
 ## Why layered (not one framework)
 
@@ -9,9 +11,9 @@ No single tool covers a 2-backend (SQLite local + Postgres cloud) + 2-frontend +
 | Layer | Tool (free/OSS) | Scope | Status |
 |---|---|---|---|
 | Unit / component (FE) | **Vitest + Testing Library** | React components, hooks, invoice math | ✅ in use (`frontend-*/src/__tests__`) |
-| API / logic (BE) | **pytest** | routes, sync/migration logic, accounting | ✅ in use (693 passing) |
-| **E2E browser** | **Playwright** (Apache-2.0) | login → nudge → sync, multi-terminal real-time, POS | 🆕 scaffolded here (`frontend-billing/e2e/`) |
-| **Postgres / RLS** | **pytest + testcontainers[postgres]** (Apache-2.0) | tenant isolation, RLS fail-closed (S-1) on real Postgres | 🆕 scaffolded here (`backend/tests/test_rls_postgres.py`) |
+| API / logic (BE) | **pytest** | routes, sync/migration logic, accounting | In use; see the dated record for results and selected/full-suite scope |
+| **E2E browser** | **Playwright** (Apache-2.0) | login → nudge → sync, multi-terminal real-time, POS | Specs and a CI job exist (`frontend-billing/e2e/`); credential-dependent scenarios can skip |
+| **Postgres / RLS** | **pytest + testcontainers[postgres]** (Apache-2.0) | tenant isolation and fail-closed policies on real Postgres | Implemented tests and a Postgres CI service gate exist; verify the run result separately |
 
 All four are MIT/Apache-licensed and free, run locally and in GitHub Actions.
 
@@ -29,10 +31,13 @@ S-1 (RLS fail-closed) **cannot be tested on SQLite** (no RLS) and you don't want
 
 ## How to run
 
-### 1. Backend (pytest) — already works
+### 1. Backend (pytest)
+
+Activate a working Python virtual environment with the repository's test dependencies installed, then confirm `python --version` and `python -m pytest --version`. A copied or moved `venv` may refer to an interpreter that no longer exists; recreate that environment instead of relying on a machine-specific path.
+
 ```powershell
 cd backend
-..\venv\Scripts\python.exe -m pytest -q
+python -m pytest -q
 ```
 
 ### 2. Frontend components (Vitest) — already works
@@ -41,7 +46,7 @@ cd frontend-billing
 npm test
 ```
 
-### 3. E2E (Playwright) — new
+### 3. E2E (Playwright)
 ```powershell
 cd frontend-billing
 npm install              # picks up @playwright/test (added to devDependencies)
@@ -53,47 +58,33 @@ npx playwright show-report
 ```
 Configure via env (don't hardcode creds): `E2E_BASE_URL` (default `http://localhost:5174`), `E2E_USER`, `E2E_PASS`, `E2E_CLOUD_URL`.
 
-### 4. Postgres / RLS (pytest + Docker) — new
+Use a disposable seeded account and isolated backend data for write scenarios. A green run with credential-dependent scenarios skipped does not establish two-terminal or fresh-device sync behaviour. Physical printer output, a real offline/reconnect cycle and two-server hosting transitions remain pending unless the dated record documents those checks.
+
+### 4. Postgres / RLS (pytest + Docker)
 ```powershell
-# Requires Docker running locally (or a CI service container).
-pip install "testcontainers[postgres]" psycopg2-binary --break-system-packages
+# Run in the working virtual environment; requires Docker or a throwaway PG.
+python -m pip install "testcontainers[postgres]" psycopg2-binary
 cd backend
-..\venv\Scripts\python.exe -m pytest tests/test_rls_postgres.py -v
+python -m pytest tests/test_rls_postgres.py -v
 # Or point at an existing throwaway PG instead of Docker:
-$env:TEST_PG_URL = "postgresql://user:pass@localhost:5432/rls_test"; pytest tests/test_rls_postgres.py -v
+$env:TEST_PG_URL = "postgresql://user:pass@localhost:5432/rls_test"
+python -m pytest tests/test_rls_postgres.py -v
 ```
-These tests **skip automatically** if neither Docker nor `TEST_PG_URL` is available, so they never block the normal suite.
+These tests **skip automatically** when their Postgres dependencies are unavailable. Record skips explicitly; they do not establish that live RLS checks passed. Never point this destructive test fixture at a production database.
 
 ---
 
-## CI (GitHub Actions sketch)
+## CI (GitHub Actions)
 
-```yaml
-jobs:
-  backend:
-    runs-on: ubuntu-latest
-    services:
-      postgres: { image: postgres:15, env: { POSTGRES_PASSWORD: pass, POSTGRES_DB: rls_test }, ports: ['5432:5432'] }
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-      - run: pip install -r backend/requirements.txt pytest "testcontainers[postgres]" psycopg2-binary
-      - run: cd backend && pytest -q                       # 693 logic tests (SQLite)
-      - run: cd backend && TEST_PG_URL=postgresql://postgres:pass@localhost:5432/rls_test pytest tests/test_rls_postgres.py -v
-  e2e:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-      - run: cd frontend-billing && npm ci && npx playwright install --with-deps
-      - run: cd frontend-billing && npm run e2e   # spins the vite server via playwright webServer
-```
+The executable configuration is [`.github/workflows/ci.yml`](../.github/workflows/ci.yml). It runs the SQLite backend logic suite, a real Postgres RLS service gate, selected financial/sync/tenant suites against Postgres, the billing and AI frontend suites, and a Playwright job with an isolated test backend. Inspect each job's current result and skips rather than treating the existence of the workflow as a pass.
+
+The current Playwright job supplies `E2E_BASE_URL`; the cloud-account scenarios still need their documented seeded credentials and endpoints. Keep live two-server and printer checks in the dated verification record until that evidence exists.
 
 ---
 
 ## Mapping: manual scenarios → automated tests
 
-| Manual (`MANUAL_TEST_PLAN.md`) | Automated by |
+| Manual ([archived scenario plan](archive/MANUAL_TEST_PLAN.md)) | Automated by |
 |---|---|
 | §1 local→cloud migration (logic) | pytest `test_sync_migration_fixes.py`, `test_uid_cross_db.py` |
 | §2 multi-system real-time sync | Playwright `e2e/realtime-sync.spec.js` (two contexts) |
@@ -101,4 +92,4 @@ jobs:
 | §2d durable-uid no-collision | pytest `test_uid_cross_db.py` (+ E2E re-sync assertion) |
 | §6 RLS / tenant isolation, S-1 | pytest `test_rls_postgres.py` (testcontainers) |
 
-**Net:** the logic + RLS layers can be fully green in CI today; the E2E specs are scaffolds — confirm selectors/seed accounts against your running stack, then wire into CI.
+**Verification boundary:** isolated logic, component and Postgres gates cover different failure modes. None alone proves live two-device delivery, physical printing or deployed backup recovery. Record the actual environment and result for each layer.

@@ -1,0 +1,42 @@
+[
+  {
+    "id": "FT-01",
+    "status": "fixed",
+    "summary": "Cancelled-to-pending now resolves and locks linked invoices, repeats exclusivity/current-due checks and checks completed/cancelled run and stop state.",
+    "evidence": "Actual SQLite API regression test passes; selected Field task/invoice/collection/run suites: 40 passed, 2 PostgreSQL-only cases skipped.",
+    "source": "backend-task/app/routers/tasks.py:173",
+    "remaining": "Real PostgreSQL reopen-versus-create/complete race has not been run; fixed refers to the original reproduced duplicate-reservation scenario, not deployment certification."
+  },
+  {
+    "id": "OPS-01",
+    "status": "partial",
+    "summary": "The specific equal-total donor guess has been removed and the original synthetic scenario now copies zero unrelated lines.",
+    "evidence": "Unmodified current repair script run in a disposable synthetic directory; desired refusal assertion passes.",
+    "source": "repair_line_items.py:57",
+    "remaining": "The tool still defaults to backend/bizassist.db and commits writes directly without a dry-run default, explicit approved UID mapping, pre-repair snapshot or ambiguity checks for the remaining number-based donor path. Containment is implemented; the planned operational safety contract is incomplete."
+  },
+  {
+    "id": "OPS-02",
+    "status": "open",
+    "summary": "Ignore entries were added, but all three financial repair snapshots remain tracked.",
+    "evidence": "git ls-files backend/voided_payment_*.json still returns three paths; no financial contents were read or reproduced during this review.",
+    "source": ".gitignore:105",
+    "remaining": "Preserve restoration evidence privately, remove operational exports from future source/build contents, use any-depth ignore coverage, and assess published copies separately. Adding .gitignore does not remove tracked files. The duplicated backend-only pattern is also not the intended any-depth rule."
+  },
+  {
+    "id": "CI-01",
+    "status": "partial",
+    "summary": "Billing build and Admin/AI test/build coverage were added; Field triggers now include core models, balances, sales and Alembic changes.",
+    "evidence": "Current workflow inspection and sanitized root-proof-results.json.",
+    "source": ".github/workflows/ci.yml:197",
+    "remaining": "Landing/lint/required secret scan remain absent, Field triggers still omit collection and purge/cleanup contracts, and the schema contract still uses create_all with postgres rather than proving actual migrations and full application behavior under the constrained runtime role. No live GitHub Actions run for this working tree was checked."
+  },
+  {
+    "id": "DOC-01",
+    "status": "partial",
+    "summary": "Foundation now identifies its table as historical; the lean plan links the dated execution baseline and marks invoice-table reuse settled.",
+    "evidence": "Current Foundation/master-plan diff; original historical issue register intentionally retained unchanged.",
+    "source": "backend/FOUNDATION.md:5",
+    "remaining": "The linked baseline plan is not evidence that remediation is complete. Reconcile the other historical status boards and attach a current per-issue verification ledger. This remediation review provides that ledger; the original audit's all-open statuses and baseline-hash checks should remain historical rather than be reused as fix validation."
+  }
+]

@@ -53,8 +53,8 @@ export default function TotalBreakupModal({
   if (!open) return null
 
   const businessName = localStorage.getItem('billing_user')
-    ? JSON.parse(localStorage.getItem('billing_user')).business_name || 'BizAssist Merchant'
-    : 'BizAssist Merchant'
+    ? JSON.parse(localStorage.getItem('billing_user')).business_name || 'Stater Merchant'
+    : 'Stater Merchant'
 
   return (
     <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>

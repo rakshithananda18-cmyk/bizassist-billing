@@ -10,12 +10,39 @@ Never modify existing entries, never scatter ALTER TABLE code across the file.
 import logging
 import os
 import re
+import hashlib
+from datetime import datetime, timezone
 from sqlalchemy import text
+from sqlalchemy.schema import CreateTable, CreateIndex
 from database.db import engine, SessionLocal
 from database.models import Base, User
 from services.auth import hash_password
 
 logger = logging.getLogger("bizassist.migration")
+MIGRATION_REVISION = "cloud-run-hardening-2026-11-07"
+_BOOT_LOCK_TIMEOUT = "90s"
+_STEP_FAILURES = []
+
+
+def compute_schema_signature(dialect):
+    ddl = [MIGRATION_REVISION, os.getenv("BIZASSIST_BUILD_ID") or os.getenv("K_REVISION", "")]
+    for table in sorted(Base.metadata.tables.values(), key=lambda t: t.name):
+        ddl.append(str(CreateTable(table).compile(dialect=dialect)))
+        ddl.extend(str(CreateIndex(i).compile(dialect=dialect)) for i in sorted(table.indexes, key=lambda i: i.name))
+    return hashlib.sha256("\n".join(ddl).encode()).hexdigest()
+
+
+def _schema_current(connection, signature):
+    try:
+        if not connection.execute(text("SELECT to_regclass('public.schema_state')")).scalar():
+            return False
+        row = connection.execute(text("SELECT (SELECT signature FROM schema_state WHERE key='runtime'), to_regprocedure('bizassist_feed_emit(integer,text,jsonb,text)')")).first()
+        return bool(row and row[0] == signature and row[1])
+    finally:
+        try:
+            connection.commit()
+        except Exception:
+            pass
 
 
 # ---------------------------------------------------------------------------
@@ -306,11 +333,43 @@ _COLUMN_MIGRATIONS = [
     # without these it is re-sent every cycle forever — see SyncQueue.attempts.
     {"table": "sync_queue", "column": "attempts",        "ddl": "ALTER TABLE sync_queue ADD COLUMN attempts INTEGER DEFAULT 0"},
     {"table": "sync_queue", "column": "next_attempt_at", "ddl": "ALTER TABLE sync_queue ADD COLUMN next_attempt_at DATETIME"},
+    # B2B seller_bizid and buyer_bizid — cross-database portable identity
+    {"table": "b2b_connections", "column": "seller_bizid", "ddl": "ALTER TABLE b2b_connections ADD COLUMN seller_bizid TEXT"},
+    {"table": "b2b_connections", "column": "buyer_bizid",  "ddl": "ALTER TABLE b2b_connections ADD COLUMN buyer_bizid TEXT"},
+    {"table": "b2b_orders",      "column": "seller_bizid", "ddl": "ALTER TABLE b2b_orders ADD COLUMN seller_bizid TEXT"},
+    {"table": "b2b_orders",      "column": "buyer_bizid",  "ddl": "ALTER TABLE b2b_orders ADD COLUMN buyer_bizid TEXT"},
+    {"table": "invoice_line_items", "column": "cost_price", "ddl": "ALTER TABLE invoice_line_items ADD COLUMN cost_price REAL"},
+    {"table": "invoice_line_items", "column": "cost_snapshot_known", "ddl": "ALTER TABLE invoice_line_items ADD COLUMN cost_snapshot_known BOOLEAN"},
+    {"table": "invoices", "column": "legacy_paid_baseline", "ddl": "ALTER TABLE invoices ADD COLUMN legacy_paid_baseline REAL"},
+    {"table": "invoices", "column": "legacy_paid_baseline_source", "ddl": "ALTER TABLE invoices ADD COLUMN legacy_paid_baseline_source VARCHAR"},
+    {"table": "invoices", "column": "legacy_paid_baseline_date", "ddl": "ALTER TABLE invoices ADD COLUMN legacy_paid_baseline_date VARCHAR"},
+    {"table": "b2b_orders", "column": "quoted_place_of_supply", "ddl": "ALTER TABLE b2b_orders ADD COLUMN quoted_place_of_supply VARCHAR"},
+    {"table": "b2b_orders", "column": "quoted_seller_state", "ddl": "ALTER TABLE b2b_orders ADD COLUMN quoted_seller_state VARCHAR"},
+    {"table": "b2b_orders", "column": "quoted_tax_inclusive", "ddl": "ALTER TABLE b2b_orders ADD COLUMN quoted_tax_inclusive BOOLEAN"},
+    {"table": "b2b_orders", "column": "quoted_round_off_enabled", "ddl": "ALTER TABLE b2b_orders ADD COLUMN quoted_round_off_enabled BOOLEAN"},
+    {"table": "b2b_connections", "column": "seller_snapshot", "ddl": "ALTER TABLE b2b_connections ADD COLUMN seller_snapshot TEXT"},
+    {"table": "b2b_connections", "column": "buyer_snapshot",  "ddl": "ALTER TABLE b2b_connections ADD COLUMN buyer_snapshot TEXT"},
+    {"table": "b2b_connections", "column": "seller_deleted",   "ddl": "ALTER TABLE b2b_connections ADD COLUMN seller_deleted BOOLEAN DEFAULT 0"},
+    {"table": "b2b_connections", "column": "buyer_deleted",    "ddl": "ALTER TABLE b2b_connections ADD COLUMN buyer_deleted BOOLEAN DEFAULT 0"},
+    {"table": "b2b_orders",      "column": "seller_snapshot", "ddl": "ALTER TABLE b2b_orders ADD COLUMN seller_snapshot TEXT"},
+    {"table": "b2b_orders",      "column": "buyer_snapshot",  "ddl": "ALTER TABLE b2b_orders ADD COLUMN buyer_snapshot TEXT"},
+    {"table": "b2b_orders",      "column": "seller_deleted",   "ddl": "ALTER TABLE b2b_orders ADD COLUMN seller_deleted BOOLEAN DEFAULT 0"},
+    {"table": "b2b_orders",      "column": "buyer_deleted",    "ddl": "ALTER TABLE b2b_orders ADD COLUMN buyer_deleted BOOLEAN DEFAULT 0"},
+    {"table": "b2b_orders",      "column": "seller_invoice_uid", "ddl": "ALTER TABLE b2b_orders ADD COLUMN seller_invoice_uid VARCHAR(36)"},
+    {"table": "b2b_orders",      "column": "seller_invoice_number", "ddl": "ALTER TABLE b2b_orders ADD COLUMN seller_invoice_number VARCHAR"},
+    {"table": "sync_control_outbox", "column": "business_public_id", "ddl": "ALTER TABLE sync_control_outbox ADD COLUMN business_public_id VARCHAR"},
+    {"table": "sync_control_outbox", "column": "source_id", "ddl": "ALTER TABLE sync_control_outbox ADD COLUMN source_id VARCHAR"},
+    {"table": "sync_control_outbox", "column": "source_revision", "ddl": "ALTER TABLE sync_control_outbox ADD COLUMN source_revision INTEGER"},
+    {"table": "sync_control_outbox", "column": "lease_id", "ddl": "ALTER TABLE sync_control_outbox ADD COLUMN lease_id VARCHAR"},
+    {"table": "sync_control_outbox", "column": "lease_until", "ddl": "ALTER TABLE sync_control_outbox ADD COLUMN lease_until TIMESTAMP"},
+    # users additions — Google OAuth ID
+    {"table": "users", "column": "google_id", "ddl": "ALTER TABLE users ADD COLUMN google_id VARCHAR"},
 ]
 
 
 # Tables that carry a durable `uid` (BusinessOwnedMixin and synced child/aux tables). Used by the uid backfill.
 _UID_TABLES = [
+    "supplier_payments", "customer_refunds", "customer_credit_allocations", "document_party_snapshots",
     "customers", "vendors", "products", "invoices", "inventory", "payments",
     "purchase_orders", "purchase_invoices", "expenses", "godowns", "stock_transfers",
     "journal_entries", "period_locks",
@@ -353,6 +412,7 @@ def _rollback_quietly(conn, where: str) -> None:
     is an acceptable swallow under rule 13 — it is cleanup inside an error path
     that has already been reported — but it is logged, never silent.
     """
+    _STEP_FAILURES.append(where)
     try:
         conn.rollback()
     except Exception as rb:
@@ -449,12 +509,22 @@ def _migrate_inventory_stock_precision(conn):
 
 
 def _backfill_null_business_ids(conn):
+    """Report legacy unowned rows without guessing a tenant from a local id.
+
+    Business 2 has no portable ownership meaning. Assigning these records to
+    it can expose another merchant's books; only a reviewed mapping backed by
+    source evidence can establish the correct owner.
+    """
     for table in ("invoices", "inventory", "payments", "uploaded_files"):
-        try:
-            conn.execute(text(f"UPDATE {table} SET business_id = 2 WHERE business_id IS NULL"))
-        except Exception as e:
-            logger.error(f"[Migration] Backfill business_id {table}: {e}")
-    conn.commit()
+        count = conn.execute(text(
+            f"SELECT COUNT(*) FROM {table} WHERE business_id IS NULL"
+        )).scalar_one()
+        if count:
+            logger.error(
+                "[Migration] %s has %s unowned rows; left unchanged. "
+                "Restore ownership only from an explicit, reviewed source mapping.",
+                table, count,
+            )
 
 
 def _backfill_staff_login_name(conn):
@@ -886,8 +956,9 @@ def _report_existing_overfill(conn, child, parent, fk, TARGET, TOL):
         logger.error(
             "[Migration] overfill: %s %s row(s) already hold MORE line value "
             "than was billed (ids: %s). The guard only constrains NEW writes; "
-            "these are existing corruption. Repair with: python "
-            "scripts/repair_line_items_by_invariant.py --apply",
+            "these are existing corruption. Start with the read-only report: python "
+            "scripts/repair_line_items_by_invariant.py. Verify original documents "
+            "and a restorable backup before approving a specific repair; no rows were changed.",
             len(bad), parent,
             "; ".join(f"{b[0]} +{round(float(b[1] or 0.0), 2)}" for b in bad[:25]),
         )
@@ -903,7 +974,7 @@ def _install_overfill_guard(conn, child, parent, fk, TARGET, suffix, TOL, is_pg)
             already = conn.execute(text(
                 "SELECT 1 FROM pg_trigger WHERE tgname = :n"), {"n": name}).fetchone()
             if already:
-                _rollback_quietly(conn, f"{name} already-installed check")
+                conn.rollback()
                 return
             # A CHECK constraint cannot contain a subquery, so Postgres needs a
             # real trigger function.
@@ -932,7 +1003,7 @@ def _install_overfill_guard(conn, child, parent, fk, TARGET, suffix, TOL, is_pg)
                 "SELECT 1 FROM sqlite_master WHERE type='trigger' AND name = :n"),
                 {"n": name}).fetchone()
             if already:
-                _rollback_quietly(conn, f"{name} already-installed check")
+                conn.rollback()
                 return
             tgt_sql = f"(SELECT {TARGET} FROM {parent} WHERE id = NEW.{fk})"
             cur_sql = (f"COALESCE((SELECT SUM(line_total) FROM {child} "
@@ -1504,9 +1575,11 @@ def _backfill_biz_ids(db):
 
 def _seed_users(db):
     is_test = "test" in os.environ.get("DATABASE_URL", "") or os.environ.get("BIZASSIST_TESTING") == "1"
-    _admin_pw = os.environ.get("ADMIN_SEED_PASSWORD", "admin123")
 
     if is_test:
+        # Test fixtures deliberately use predictable credentials. They are
+        # confined to test databases by conftest/db.py's test-only guards.
+        _admin_pw = os.environ.get("ADMIN_SEED_PASSWORD", "admin123")
         default_users = [
             {"id": 1, "username": "admin",       "password": _admin_pw,        "business_name": "Admin Central",          "role": "admin"},
             {"id": 2, "username": "pharmacy",    "password": "pharmacy123",    "business_name": "MediCare Pharmacy",       "role": "enterprise"},
@@ -1514,21 +1587,13 @@ def _seed_users(db):
             {"id": 4, "username": "store",       "password": "store123",       "business_name": "Apna Bazaar Store",       "role": "enterprise"},
         ]
     else:
-        default_users = [
-            {"id": 1, "username": "admin", "password": _admin_pw,
-             "business_name": "Admin Central", "role": "admin"}
-        ]
-        from services.admin_service import wipe_user_data
-        demo_usernames = ["pharmacy", "supermarket", "store"]
-        demo_users = db.query(User).filter(User.username.in_(demo_usernames)).all()
-        for du in demo_users:
-            logger.info(f"[Seed] Removing demo user '{du.username}'...")
-            try:
-                wipe_user_data(du.id, db)
-            except Exception as e:
-                logger.error(f"[Seed] Failed to wipe user data for {du.username}: {e}")
-                db.delete(du)
-                db.commit()
+        # Never manufacture a production administrator (and never delete
+        # accounts) at boot. A known default credential is an immediate remote
+        # takeover, while a boot-time cleanup risks deleting real businesses.
+        # Production admins must be provisioned through the controlled
+        # deployment/operations path before the admin API is enabled.
+        default_users = []
+        logger.info("[Seed] Built-in users are disabled outside test databases.")
 
     for u in default_users:
         existing = db.query(User).filter(User.username == u["username"]).first()
@@ -1538,7 +1603,7 @@ def _seed_users(db):
                 password=hash_password(u["password"]),
                 business_name=u["business_name"], role=u["role"],
             ))
-        elif u["username"] == "admin" and (is_test or os.environ.get("ADMIN_SEED_PASSWORD")):
+        elif u["username"] == "admin" and is_test:
             existing.password = hash_password(u["password"])
     db.commit()
 
@@ -1594,7 +1659,110 @@ def _step(conn, fn):
         return None
 
 
+def _backfill_b2b_bizids(conn):
+    """Backfill seller_bizid and buyer_bizid on b2b_orders and b2b_connections from users.public_id."""
+    for tbl in ("b2b_orders", "b2b_connections"):
+        try:
+            conn.execute(text(f"""
+                UPDATE {tbl}
+                SET seller_bizid = (SELECT public_id FROM users WHERE users.id = {tbl}.seller_business_id)
+                WHERE (seller_bizid IS NULL OR seller_bizid = '')
+                  AND seller_business_id IS NOT NULL;
+            """))
+            conn.execute(text(f"""
+                UPDATE {tbl}
+                SET buyer_bizid = (SELECT public_id FROM users WHERE users.id = {tbl}.buyer_business_id)
+                WHERE (buyer_bizid IS NULL OR buyer_bizid = '')
+                  AND buyer_business_id IS NOT NULL;
+            """))
+            conn.commit()
+        except Exception as e:
+            _rollback_quietly(conn, f"_backfill_b2b_bizids on {tbl}")
+            logger.warning("[Migration] _backfill_b2b_bizids on %s: %s", tbl, e)
+
+
 def run_migrations_and_seed():
+    """Cheap catalog readiness on warm cloud boots; one serialized slow path.
+
+    Key steps delegated to _run_migration_steps include:
+      _step(conn, _ensure_staff_login_name_unique_index)  -- one staff login name per business (ss9.5)
+    """
+    _STEP_FAILURES.clear()
+    if engine.dialect.name != "postgresql":
+        return _run_migration_steps()
+    signature = compute_schema_signature(engine.dialect)
+    force = os.getenv("BIZASSIST_FORCE_MIGRATIONS") == "1"
+    with engine.connect() as connection:
+        privileged = connection.execute(text("SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname=current_user")).scalar()
+        if not privileged:
+            import core.models  # Register the complete modeled runtime schema.
+            from database.sync_map import MODEL_MAP
+            columns = {}
+            for table_name, column_name in connection.execute(text(
+                "SELECT table_name,column_name FROM information_schema.columns WHERE table_schema='public'"
+            )):
+                columns.setdefault(table_name, set()).add(column_name)
+            missing = sorted(
+                f"{table.name}.{column.name}"
+                for table in Base.metadata.tables.values()
+                for column in table.columns
+                if column.name not in columns.get(table.name, set())
+            )
+            if missing:
+                raise RuntimeError("Database migration required before starting the constrained runtime: missing " + ", ".join(missing[:12]))
+            if not connection.execute(text("SELECT to_regprocedure('bizassist_feed_emit(integer,text,jsonb,text)')")).scalar():
+                raise RuntimeError("Database migration required before starting the constrained runtime: change feed missing")
+            captures = {
+                name for name, function, kind, enabled in connection.execute(text(
+                    "SELECT c.relname,p.proname,t.tgtype,t.tgenabled FROM pg_trigger t "
+                    "JOIN pg_class c ON c.oid=t.tgrelid JOIN pg_namespace n ON n.oid=c.relnamespace "
+                    "JOIN pg_proc p ON p.oid=t.tgfoid "
+                    "WHERE n.nspname='public' AND t.tgname='bizassist_feed_capture' AND NOT t.tgisinternal"
+                ))
+                if function == f"bizassist_feed_{name}" and kind == 31 and enabled in ("O", "A")
+            }
+            absent = sorted(set(MODEL_MAP) - captures)
+            if absent:
+                raise RuntimeError("Database migration required before starting the constrained runtime: capture missing for " + ", ".join(absent))
+            if not _schema_current(connection, signature):
+                logger.warning("[Migration] Runtime signature differs; run release migrations with schema credentials")
+            return
+        if not force and _schema_current(connection, signature):
+            logger.info("[Migration] schema current, skipped")
+            return
+    # Session lock lives on its own connection because the legacy migration
+    # steps deliberately commit independently. It must span every such commit.
+    with engine.connect() as lock_connection:
+        lock_connection.execute(text(f"SET lock_timeout = '{_BOOT_LOCK_TIMEOUT}'"))
+        lock_connection.execute(text("SELECT pg_advisory_lock(724839101)"))
+        lock_connection.commit()
+        try:
+            if not force and _schema_current(lock_connection, signature):
+                logger.info("[Migration] schema current, peer completed")
+                return
+            lock_connection.commit()
+            _run_migration_steps()
+            if _STEP_FAILURES:
+                raise RuntimeError("Database migration steps failed: " + ", ".join(_STEP_FAILURES))
+            lock_connection.execute(text("INSERT INTO schema_state(key,signature,applied_at,applied_by) VALUES('runtime',:s,:at,:by) ON CONFLICT(key) DO UPDATE SET signature=excluded.signature,applied_at=excluded.applied_at,applied_by=excluded.applied_by"), {"s":signature,"at":datetime.now(timezone.utc),"by":os.getenv("BIZASSIST_BUILD_ID") or os.getenv("K_REVISION", "manual")})
+            lock_connection.commit()
+        finally:
+            lock_connection.rollback()
+            lock_connection.execute(text("SELECT pg_advisory_unlock(724839101)"))
+            lock_connection.commit()
+
+
+def _run_migration_steps():
+    # Runtime and migration identities are deliberately separate on Postgres.
+    # A constrained HTTP role verifies readiness and never executes DDL/seeding.
+    if engine.dialect.name == "postgresql":
+        with engine.connect() as connection:
+            privileged = connection.execute(text("SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname=current_user")).scalar()
+            if not privileged:
+                for table in ("users", "sync_feed_events", "sync_control_receipts"):
+                    if connection.execute(text("SELECT to_regclass(:t)"), {"t": "public." + table}).scalar() is None:
+                        raise RuntimeError("Database migration required before starting the constrained runtime")
+                return
     """Called on app startup. Idempotent — safe to run on every boot."""
     logger.info("[Migration] Starting...")
 
@@ -1602,10 +1770,21 @@ def run_migrations_and_seed():
     Base.metadata.create_all(bind=engine)
     logger.info("[Migration] create_all done.")
 
+    # create_all does not add an index to a table that already exists. Keep
+    # legacy privileged upgrades efficient before seeding the complete feed.
+    index_sql = "CREATE INDEX " + ("CONCURRENTLY " if engine.dialect.name == "postgresql" else "") + "IF NOT EXISTS ix_sync_feed_events_business_entity_row_uid ON sync_feed_events(business_id,entity,row_uid)"
+    with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as index_connection:
+        index_connection.execute(text(index_sql))
+
     # 2. Add missing columns to existing tables
     with engine.connect() as conn:
         _run_column_migrations(conn)
         _check_schema_integrity(conn)
+        from core.accounting.settlement_schema import install_financial_schema
+        install_financial_schema(conn)
+        from core.party_archive_schema import install_party_archive_schema
+        install_party_archive_schema(conn)
+        conn.commit()
 
     # 3. Backfills & sequence resync
     #
@@ -1621,6 +1800,7 @@ def run_migrations_and_seed():
         _step(conn, _ensure_sync_queue_dedup_index)  # same shape, for the outbox pending window
         _step(conn, _backfill_staff_login_name)
         _step(conn, _backfill_b2b_connection_consent)
+        _step(conn, _backfill_b2b_bizids)
         # M-7: re-derive any invoice whose paid state drifted from its ledger
         # (pull-side reconciliation was missing until Jul-2026).
         _step(conn, _repair_invoice_paid_state)
@@ -1655,8 +1835,18 @@ def run_migrations_and_seed():
         _backfill_biz_ids(db)
         _seed_users(db)
     except Exception as e:
+        _STEP_FAILURES.append("seed users")
         logger.error(f"[Migration] Seed error: {e}", exc_info=True)
     finally:
         db.close()
 
+    from database.change_feed import install_change_feed
+    try:
+        with engine.begin() as feed_connection:
+            install_change_feed(feed_connection)
+            from database.security import install_security
+            install_security(feed_connection)
+    except Exception:
+        logger.exception("[Migration] change feed/security installation failed")
+        raise
     logger.info("[Migration] Done.")

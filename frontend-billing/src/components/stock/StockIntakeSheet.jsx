@@ -257,6 +257,11 @@ export default function StockIntakeSheet({ products = [], onSaved, onExit, prefi
   const authFetch = auth?.authFetch
   const settings = auth?.settings
 
+  const isPro = Boolean(
+    (auth?.settings?.subscription?.plan || '').toLowerCase() === 'pro' ||
+    (auth?.user?.plan || '').toLowerCase() === 'pro' ||
+    (auth?.user?.plan_name || '').toLowerCase() === 'pro'
+  )
   const showMrpCol = settings?.inventory?.mrp_enabled !== false
 
   const intakeCols = React.useMemo(() => INTAKE_COLS.filter(c => {
@@ -945,13 +950,34 @@ export default function StockIntakeSheet({ products = [], onSaved, onExit, prefi
           />
           <button
             className="btn btn-secondary btn-sm"
-            onClick={() => fileRef.current?.click()}
+            onClick={() => {
+              if (!isPro) {
+                alert('Upload Bill with AI OCR & Auto-Parsing is a PRO feature. Upgrade to STATER Bill Pro or start your 14-day free trial!')
+                return
+              }
+              fileRef.current?.click()
+            }}
             disabled={saving || uploading}
-            title="Upload PDF, image, or CSV to auto-fill rows"
-            style={{ whiteSpace: 'nowrap' }}
+            title={!isPro ? 'Bill OCR parsing is a PRO feature' : 'Upload PDF, image, or CSV to auto-fill rows'}
+            style={{ whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 6 }}
           >
             <UploadIcon size={13} />
-            {uploading ? ' Parsing…' : ' Upload bill'}
+            <span>{uploading ? ' Parsing…' : ' Upload bill'}</span>
+            {!isPro && (
+              <span
+                style={{
+                  fontSize: '0.62rem',
+                  fontWeight: 800,
+                  padding: '1px 5px',
+                  borderRadius: 4,
+                  background: 'linear-gradient(135deg, #c15f3c, #d4833b)',
+                  color: '#fff',
+                  letterSpacing: '0.04em',
+                }}
+              >
+                PRO
+              </span>
+            )}
           </button>
         </div>
       </div>

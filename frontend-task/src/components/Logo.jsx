@@ -100,7 +100,7 @@ export function Logo({ size = 24, wordmark = true, className = '' }) {
           color: 'var(--text-primary)',
           lineHeight: 1,
         }}>
-          Biz<span style={{ color: 'var(--accent)' }}>Assist</span>
+          Stater
         </span>
       )}
     </span>

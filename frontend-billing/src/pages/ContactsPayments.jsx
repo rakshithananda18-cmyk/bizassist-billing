@@ -11,23 +11,32 @@
 //   /parties/payments   → Payments view
 //   /parties/invoices   → Invoices view
 //   /parties/invoices?customer=Name  → Invoices filtered to that customer
+//   /parties/field      → Field collections (owners only): money Field Team
+//                         staff collected, confirmed here into payments
 // (bare /parties redirects to the last-used tab; legacy ?tab= links still work)
 // ============================================================================
 import { useEffect } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
+import { useAuth } from '../contexts/AuthContext'
 import AppLayout from '../layouts/AppLayout'
 import PageTabs from '../components/common/PageTabs'
-import { ContactsIcon, CashIcon, BillsIcon } from '../components/Icons'
+import HeaderSearchSlot from '../components/common/HeaderSearchSlot'
+import { ContactsIcon, CashIcon, BillsIcon, TruckIcon } from '../components/Icons'
 
 import Parties from './Parties'
 import Payments from './Payments'
 import InvoicesPage from './InvoicesPage'
+import FieldCollections from '../components/payments/FieldCollections'
 
-const TABS = [
+const BASE_TABS = [
   { id: 'contacts', label: 'Contacts',     icon: <ContactsIcon size={16} /> },
   { id: 'payments', label: 'Transactions', icon: <CashIcon size={16} /> },
   { id: 'invoices', label: 'Invoices',     icon: <BillsIcon size={16} /> },
 ]
+// Confirming field collections records payments: owner-level only, like the
+// backend's require_owner (cashiers and supply adders never see the tab).
+const FIELD_TAB = { id: 'field', label: 'Field collections', icon: <TruckIcon size={16} /> }
+const STAFF_ROLES = new Set(['cashier', 'supply adder'])
 
 const LAST_TAB_KEY = 'khata_last_tab'
 
@@ -35,6 +44,8 @@ export default function ContactsPayments() {
   const { tab: tabParam } = useParams()
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
+  const { user } = useAuth()
+  const TABS = STAFF_ROLES.has((user?.role || '').toLowerCase()) ? BASE_TABS : [...BASE_TABS, FIELD_TAB]
 
   // Path param first; legacy ?tab= second; remembered tab third.
   const legacy = searchParams.get('tab')
@@ -84,12 +95,17 @@ export default function ContactsPayments() {
             </p>
           </div>
           <div className="page-actions">
-            <PageTabs inline tabs={TABS} active={tab} onChange={handleTabChange} />
+            <HeaderSearchSlot />
+            <div className="mobile-only-header-tabs">
+              <PageTabs inline tabs={TABS} active={tab} onChange={handleTabChange} />
+            </div>
           </div>
         </div>
 
         <div className="khata-body">
-          {tab === 'payments'
+          {tab === 'field'
+            ? <FieldCollections />
+            : tab === 'payments'
             ? <Payments  embedded inlinePage />
             : tab === 'invoices'
             ? <InvoicesPage embedded inlinePage />

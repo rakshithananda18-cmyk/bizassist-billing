@@ -93,6 +93,8 @@ ALLOWED: Dict[str, str] = {
         "Admin console: platform-wide merchant feedback. Gated by require_admin().",
     "routes/admin.py::download_feedback_logs::UserFeedback":
         "Admin console: fetches one feedback's log archive by id. Gated by require_admin().",
+    "routes/admin.py::download_feedback_logs::ClientLogArchive":
+        "Admin console: downloads one durable support archive by feedback id. Gated by require_admin().",
     "routes/admin.py::get_admin_table_alterations::TableAlteration":
         "Admin console: platform-wide schema-alteration audit log. Gated by require_admin().",
     "services/admin_service.py::read_audit_log::ActionLog":
@@ -110,13 +112,6 @@ ALLOWED: Dict[str, str] = {
     # the tenant-model set and is never scanned. Recorded here because the
     # distinction is easy to get wrong: "queried without a business filter" and
     # "cross-tenant" are the same thing only for tables that HAVE an owner.
-
-    # ── Redemption by secret. The caller presents an unguessable single-use code;
-    # the code IS the authorisation, so the lookup cannot be pre-scoped to the
-    # redeemer (the seller is unknown until the row is found).
-    "core/connection/service.py::redeem_connection_code::B2BInviteCode":
-        "Lookup by single-use secret code — the secret is the authorisation. "
-        "Seller identity is a RESULT of this query, so it cannot scope it.",
 
     # ── Public, deliberately unauthenticated surfaces.
     "routes/public.py::get_public_invoice::Invoice":

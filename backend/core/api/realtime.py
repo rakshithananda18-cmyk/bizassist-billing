@@ -5,8 +5,11 @@ FastAPI routes for Server-Sent Events (SSE) and POS Real-time synchronization.
 """
 import json
 import asyncio
+import os
+import time
 import logging
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Request, HTTPException
+from starlette.concurrency import run_in_threadpool
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from database.db import get_db
@@ -23,7 +26,7 @@ def generate_sse_ticket(current_user: dict = Depends(get_active_user)):
     Generate a short-lived single-use SSE ticket for authentication.
     """
     from services.auth import create_sse_ticket
-    ticket = create_sse_ticket(current_user)
+    ticket = create_sse_ticket(current_user, aud="sse")
     return {"ticket": ticket, "expires_in": 30}
 
 
@@ -33,21 +36,43 @@ async def sse_realtime_feed(request: Request, current_user: dict = Depends(get_a
     Server-Sent Events stream for real-time notifications, scoped to the business.
     """
     bid = current_user.get("parent_business_id") or current_user.get("id")
-    q = realtime_manager.subscribe(bid)
+    q, replay, replay_status = realtime_manager.subscribe_from(bid, request.query_params.get("last_event_id") or request.headers.get("Last-Event-ID"))
     
     async def event_generator():
         try:
             # Yield initial retry hint to EventSource
             yield "retry: 5000\n\n"
+            cursor = f"{realtime_manager.epoch}-{realtime_manager._sequences[bid]}"
+            yield f"event: hello\ndata: {json.dumps({'epoch': realtime_manager.epoch, 'replay': replay_status, 'cursor': cursor})}\n\n"
+            for event in replay:
+                event_id = realtime_manager.event_id(bid, event, q)
+                prefix = f"id: {event_id}\n" if event_id else ""
+                yield f"{prefix}data: {json.dumps(event)}\n\n"
+            started = time.monotonic()
+            lifetime = max(1, float(os.getenv("SSE_MAX_STREAM_SECONDS", "100")))
             while True:
+                remaining = lifetime - (time.monotonic() - started)
+                if remaining <= 0:
+                    yield "event: rotate\ndata: {}\n\n"
+                    break
+                # Revocation/retirement closes an already-open connection too;
+                # a bearer ticket is not indefinite permission to keep books.
+                from services.auth import _validate_token_version, _validate_parent_session
+                try:
+                    await run_in_threadpool(_validate_token_version, current_user)
+                    await run_in_threadpool(_validate_parent_session, current_user)
+                except HTTPException:
+                    break
                 if await request.is_disconnected():
                     logger.info(f"[REALTIME] Client disconnected for Business {bid}")
                     break
                 try:
-                    event = await asyncio.wait_for(q.get(), timeout=15.0)
+                    event = await asyncio.wait_for(q.get(), timeout=min(15.0, remaining))
                     if event.get("type") == "shutdown":
                         break
-                    yield f"data: {json.dumps(event)}\n\n"
+                    event_id = realtime_manager.event_id(bid, event, q)
+                    prefix = f"id: {event_id}\n" if event_id else ""
+                    yield f"{prefix}data: {json.dumps(event)}\n\n"
                 except asyncio.TimeoutError:
                     # Periodically yield keep-alive comment to prevent proxy timeouts
                     yield ": keep-alive\n\n"

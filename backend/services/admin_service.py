@@ -15,18 +15,19 @@ Phase A hardening (Admin Console plan):
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import Optional
-from sqlalchemy import func
+from sqlalchemy import func, case, or_
 from sqlalchemy.orm import Session
 from fastapi import HTTPException
 import os
 import json
+import re
 from database.models import (
     User, Invoice, InvoiceLineItem, Inventory, LegacyPayment, UploadedFile,
     DocumentEmbedding, ChatMessage, TokenUsage, RateLimitConfig,
     Customer, Vendor, Product, PurchaseOrder, PurchaseOrderLineItem,
     PurchaseInvoice, PurchaseInvoiceLineItem, AIFeedback, AIQueryOverride,
     BusinessFact, AlertConfig, SyncQueue, SyncLog, RegisterShift, ShiftCashMovement,
-    DeletedBusiness
+    DeletedBusiness, ClientLogArchive, EmailLog
 )
 from core.models import (
     StockLedger, ProductBarcode, BusinessSettings, InvoicePayment,
@@ -52,51 +53,25 @@ def _admin_api_enabled() -> bool:
 
 
 def audit_log(admin, action: str, details: dict = None, db: Session = None):
-    """Append who/what/when for every admin mutation (JSONL + DB fallback).
-
-    Identities are recorded by **BizID** (users.public_id) + username, not the
-    numeric row id — numeric ids differ between the cloud and local databases,
-    while the BizID is the stable cross-DB identity spine. `admin` may be a
-    User row (preferred) or a bare int id (legacy callers)."""
-    try:
-        log_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "logs")
-        os.makedirs(log_dir, exist_ok=True)
-        log_file = os.path.join(log_dir, "admin_audit.jsonl")
-        with open(log_file, "a") as f:
-            entry = {
-                "timestamp": utc_now().isoformat(),
-                "admin_id": getattr(admin, "id", admin),
-                "admin_bizid": getattr(admin, "public_id", None),
-                "admin_username": getattr(admin, "username", None),
-                "action": action,
-                "details": details or {}
-            }
-            f.write(json.dumps(entry) + "\n")
-    except Exception as e:
-        logger.error(f"Audit log JSONL failed: {e}")
-
+    """Database is the durable audit authority; disk is a labelled fallback."""
+    entry = {"timestamp":utc_now().isoformat(),"admin_id":getattr(admin,"id",admin),"admin_bizid":getattr(admin,"public_id",None),"admin_username":getattr(admin,"username",None),"action":action,"details":details or {}}
     if db is not None:
         try:
             from database.models import ActionLog
-            business_id = getattr(admin, "id", admin)
-            target = None
-            if details and "target" in details:
-                target = str(details["target"])
-            elif details and "target_username" in details:
-                target = str(details["target_username"])
-                
-            log_row = ActionLog(
-                business_id=business_id,
-                action=action,
-                target=target,
-                detail=json.dumps(details) if details else None,
-                status="success"
-            )
-            db.add(log_row)
+            db.add(ActionLog(business_id=entry["admin_id"], action=action, target=str((details or {}).get("target", (details or {}).get("target_username", ""))) or None, detail=json.dumps(details or {}), status="success"))
             db.commit()
-        except Exception as e:
+            return
+        except Exception:
             db.rollback()
-            logger.error(f"Audit log DB write failed: {e}")
+            logger.warning("Durable admin audit unavailable; using this instance only", exc_info=True)
+    try:
+        log_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)),"logs")
+        os.makedirs(log_dir,exist_ok=True)
+        entry["storage"] = "this instance only"
+        with open(os.path.join(log_dir,"admin_audit.jsonl"),"a",encoding="utf-8") as output:
+            output.write(json.dumps(entry)+"\n")
+    except Exception:
+        logger.exception("Admin audit fallback failed")
 
 
 def require_admin(user_id: int, db: Session, action: str = None, details: dict = None) -> User:
@@ -107,6 +82,12 @@ def require_admin(user_id: int, db: Session, action: str = None, details: dict =
     if not _admin_api_enabled():
         logger.warning(f"[AUTH] Admin API disabled — blocked user_id={user_id}")
         raise HTTPException(status_code=404, detail="Not found")
+
+    if db.bind.dialect.name == "postgresql" and not db.info.get("admin_authorized"):
+        from sqlalchemy import text
+        role = db.execute(text("SELECT rolsuper,rolbypassrls FROM pg_roles WHERE rolname=current_user")).first()
+        if role is None or not any(role):
+            raise HTTPException(status_code=503, detail="Use the configured platform administration service")
 
     u = db.query(User).filter(User.id == user_id).first()
     if not u or u.role != "admin":
@@ -142,96 +123,157 @@ def _settings_dict(u: User) -> dict:
         return {}
 
 
-def list_businesses(db: Session) -> list:
-    """Per business: core stats + fleet fields (hosting mode, last sync,
-    queue depth, online-in-last-24h) + subscription plan."""
+def business_hosting_mode(user: User, db: Session) -> str:
+    """Use the reported setup; a Pro grant does not establish a local mirror."""
+    mode = (_settings_dict(user).get("general") or {}).get("hosting_mode")
+    if mode in {"local", "hybrid", "cloud"}:
+        return mode
+    return "cloud" if db.get_bind().dialect.name == "postgresql" else "local"
+
+
+def get_business_email_history(db: Session, target: User) -> list:
+    """Provider dispatch records, including failed and suppressed attempts."""
+    emails = []
+    try:
+        # Legacy dispatches may have no tenant reference. Never attach another
+        # business's records just because its email used to match this owner.
+        scope = EmailLog.business_id == target.id
+        if target.email:
+            scope = or_(scope, (EmailLog.business_id.is_(None)) & (func.lower(EmailLog.recipient_email) == target.email.strip().lower()))
+        logs = (
+            db.query(EmailLog)
+            .filter(scope)
+            .order_by(EmailLog.sent_at.desc(), EmailLog.id.desc())
+            .limit(50)
+            .all()
+        )
+        for l in logs:
+            emails.append({
+                "id": str(l.id),
+                "recipient": l.recipient_email,
+                "subject": l.subject,
+                "template": l.template_type,
+                "status": l.status,
+                "provider": l.provider,
+                "sent_at": l.sent_at.isoformat() if l.sent_at else None,
+                "details": l.details,
+            })
+    except Exception as e:
+        logger.debug("Could not query email_logs: %s", e)
+
+    emails.sort(key=lambda x: x.get("sent_at") or "", reverse=True)
+    return emails
+
+
+def list_businesses(db: Session, business_id: int = None) -> list:
+    """Fleet aggregates use a fixed query count and can target one business."""
     now = utc_now()
-    businesses = db.query(User).filter(User.role == "enterprise").all()
+    query = db.query(User).filter(User.role == "enterprise")
+    if business_id is not None:
+        query = query.filter(User.id == business_id)
+    businesses = query.all()
+    if business_id is not None and not businesses:
+        raise HTTPException(status_code=404, detail="Business not found")
+    ids = [b.id for b in businesses]
+    if not ids:
+        return []
+    invoices = {row[0]: row[1:] for row in db.query(Invoice.business_id, func.count(Invoice.id), func.sum(Invoice.amount)).filter(Invoice.business_id.in_(ids)).group_by(Invoice.business_id).all()}
+    inventory = dict(db.query(Inventory.business_id, func.count(Inventory.id)).filter(Inventory.business_id.in_(ids)).group_by(Inventory.business_id).all())
+    uploads = dict(db.query(UploadedFile.business_id, func.count(UploadedFile.id)).filter(UploadedFile.business_id.in_(ids)).group_by(UploadedFile.business_id).all())
+    syncs = dict(db.query(SyncLog.business_id, func.max(SyncLog.synced_at)).filter(SyncLog.business_id.in_(ids)).group_by(SyncLog.business_id).all())
+    queues = {r[0]: r[1:] for r in db.query(SyncQueue.business_id, func.count(SyncQueue.id), func.sum(case((SyncQueue.error.isnot(None), 1), else_=0))).filter(SyncQueue.business_id.in_(ids), SyncQueue.synced_at.is_(None)).group_by(SyncQueue.business_id).all()}
+    from database.models import ConflictLog
+    conflicts = dict(db.query(ConflictLog.business_id, func.count(ConflictLog.id)).filter(ConflictLog.business_id.in_(ids), ConflictLog.resolution == "review_needed", ConflictLog.resolved_at.is_(None)).group_by(ConflictLog.business_id).all())
+    staff_counts = dict(db.query(User.parent_business_id, func.count(User.id)).filter(User.parent_business_id.in_(ids)).group_by(User.parent_business_id).all())
+    email_log_counts = {}
+    try:
+        email_log_counts = dict(db.query(User.id, func.count(EmailLog.id)).join(
+            EmailLog, or_(EmailLog.business_id == User.id,
+                          EmailLog.business_id.is_(None) & (func.lower(EmailLog.recipient_email) == func.lower(User.email)))
+        ).filter(User.id.in_(ids), EmailLog.status == "sent").group_by(User.id).all())
+    except Exception:
+        pass
     result = []
     for b in businesses:
-        s = _settings_dict(b)
-        sub = s.get("subscription") or {}
-        last_sync = (
-            db.query(func.max(SyncLog.synced_at))
-            .filter(SyncLog.business_id == b.id).scalar()
-        )
-        pending_q = (
-            db.query(SyncQueue)
-            .filter(SyncQueue.business_id == b.id, SyncQueue.synced_at.is_(None))
-        )
-        queue_depth = pending_q.count()
-        # Lightweight fleet attention signal — CHEAP counts only (errored sync
-        # rows + unreviewed financial conflicts). The expensive hash-chain
-        # integrity walk stays on the per-business detail view.
-        sync_errors = pending_q.filter(SyncQueue.error.isnot(None)).count()
-        try:
-            from database.models import ConflictLog
-            unreviewed_conflicts = (
-                db.query(func.count(ConflictLog.id))
-                .filter(ConflictLog.business_id == b.id,
-                        ConflictLog.resolution == "review_needed",
-                        ConflictLog.resolved_at.is_(None))
-                .scalar()
-            ) or 0
-        except Exception:
-            unreviewed_conflicts = 0
-        needs_attention = (sync_errors > 0) or (unreviewed_conflicts > 0)
-        online_24h = bool(last_sync and (now - last_sync) < timedelta(hours=24))
-        result.append({
-            "id":              b.id,
-            "bizid":           b.public_id,   # stable identity across cloud/local DBs
-            "username":        b.username,
-            "business_name":   b.business_name,
-            "invoice_count":   db.query(Invoice).filter(Invoice.business_id == b.id).count(),
-            "total_revenue":   db.query(func.sum(Invoice.amount)).filter(Invoice.business_id == b.id).scalar() or 0,
-            "inventory_count": db.query(Inventory).filter(Inventory.business_id == b.id).count(),
-            "upload_count":    db.query(UploadedFile).filter(UploadedFile.business_id == b.id).count(),
-            # Fleet fields
-            "hosting_mode":    s.get("general", {}).get("hosting_mode", "local"),
-            "last_sync_at":    last_sync.isoformat() if last_sync else None,
+        settings = _settings_dict(b)
+        sub = settings.get("subscription") or {}
+        last_sync = syncs.get(b.id)
+        queue_depth, sync_errors = queues.get(b.id, (0, 0))
+        unreviewed = conflicts.get(b.id, 0)
+        invoice_count, revenue = invoices.get(b.id, (0, 0))
+        login_method = "google" if getattr(b, "google_id", None) else "password"
+        phone = b.phone or settings.get("general", {}).get("phone")
+        mails_count = email_log_counts.get(b.id, 0)
+        item = {
+            "id": b.id,
+            "bizid": b.public_id,
+            "username": b.username,
+            "business_name": b.business_name,
+            "email": b.email,
+            "phone": phone,
+            "login_method": login_method,
+            "google_id": getattr(b, "google_id", None),
+            "created_at": b.created_at.isoformat() if getattr(b, "created_at", None) else None,
+            "last_login": b.last_login.isoformat() if getattr(b, "last_login", None) else None,
+            "staff_count": staff_counts.get(b.id, 0),
+            "gstin": getattr(b, "gstin", None),
+            "address": getattr(b, "address", None),
+            "upi_vpa": getattr(b, "upi_vpa", None),
+            "state_code": b.state_code,
+            "pan": b.pan,
+            "logo": b.logo,
+            "counter_prefix": b.counter_prefix,
+            "mails_sent_count": mails_count,
+            "invoice_count": invoice_count,
+            "total_revenue": revenue or 0,
+            "inventory_count": inventory.get(b.id, 0),
+            "upload_count": uploads.get(b.id, 0),
+            "hosting_mode": business_hosting_mode(b, db),
+            "last_sync_at": last_sync.isoformat() if last_sync else None,
             "sync_queue_depth": queue_depth,
-            "sync_errors":     sync_errors,
-            "unreviewed_conflicts": unreviewed_conflicts,
-            "needs_attention": needs_attention,
-            "online_last_24h": online_24h,
-            # Subscription
-            "plan":            sub.get("plan", "free"),
-            "plan_status":     sub.get("status"),
+            "sync_errors": sync_errors or 0,
+            "unreviewed_conflicts": unreviewed,
+            "needs_attention": bool(sync_errors or unreviewed),
+            "online_last_24h": bool(last_sync and now - last_sync < timedelta(hours=24)),
+            "plan": sub.get("plan", "free"),
+            "plan_status": sub.get("status"),
             "plan_expires_at": sub.get("expires_at"),
-        })
+        }
+        if business_id is not None:
+            item["mails_sent"] = get_business_email_history(db, b)
+        result.append(item)
     return result
 
 
 # ── Sync doctor (REVIEW_1 §4.2) ──────────────────────────────────────────────
 
-def sync_doctor(db: Session) -> list:
-    """Automated per-business sync health: red / amber / green with reasons.
-    The v1.1.1 sync-duplication incident showed these checks must be permanent.
-
-    green — no pending ops, or pending ops all younger than 15 min
-    amber — pending ops older than 15 min, or last push had failures
-    red   — pending ops older than 60 min, or repeated failures on the
-            newest 20 log rows, or errors recorded on queued ops
-    """
+def sync_doctor(db: Session, business_id: int = None) -> list:
+    """Grouped queue metrics and a window bounded to 20 logs per business."""
     now = utc_now()
+    query = db.query(User).filter(User.role == "enterprise")
+    if business_id is not None:
+        query = query.filter(User.id == business_id)
+    businesses = query.all()
+    if business_id is not None and not businesses:
+        raise HTTPException(status_code=404, detail="Business not found")
+    ids = [b.id for b in businesses]
+    if not ids:
+        return []
+    pending = {r[0]:r[1:] for r in db.query(SyncQueue.business_id, func.count(SyncQueue.id), func.min(SyncQueue.created_at), func.sum(case((SyncQueue.error.isnot(None),1),else_=0))).filter(SyncQueue.business_id.in_(ids),SyncQueue.synced_at.is_(None)).group_by(SyncQueue.business_id).all()}
+    ranked = db.query(SyncLog.business_id.label("business_id"), SyncLog.status.label("status"), SyncLog.synced_at.label("synced_at"), func.row_number().over(partition_by=SyncLog.business_id, order_by=SyncLog.id.desc()).label("rn")).filter(SyncLog.business_id.in_(ids)).subquery()
+    recent_by_business = {}
+    for r in db.query(ranked).filter(ranked.c.rn <= 20).order_by(ranked.c.rn).all():
+        recent_by_business.setdefault(r.business_id, []).append(r)
     out = []
-    for b in db.query(User).filter(User.role == "enterprise").all():
-        pending = db.query(SyncQueue).filter(
-            SyncQueue.business_id == b.id, SyncQueue.synced_at.is_(None))
-        pending_count = pending.count()
-        oldest_pending = pending.order_by(SyncQueue.created_at.asc()).first()
-        errored_pending = pending.filter(SyncQueue.error.isnot(None)).count()
-
-        recent = (db.query(SyncLog)
-                  .filter(SyncLog.business_id == b.id)
-                  .order_by(SyncLog.id.desc()).limit(20).all())
-        recent_failures = sum(1 for r in recent if r.status == "failed")
+    for b in businesses:
+        pending_count, oldest_pending, errored_pending = pending.get(b.id,(0,None,0))
+        recent = recent_by_business.get(b.id, [])
+        recent_failures = sum(r.status == "failed" for r in recent)
         last_sync = recent[0].synced_at if recent else None
-
         reasons, status = [], "green"
         stuck_minutes = None
-        if oldest_pending is not None and oldest_pending.created_at:
-            stuck_minutes = int((now - oldest_pending.created_at).total_seconds() // 60)
+        if oldest_pending is not None:
+            stuck_minutes = int((now - oldest_pending).total_seconds() // 60)
             if stuck_minutes >= 60:
                 status = "red"; reasons.append(f"oldest queued op stuck {stuck_minutes} min")
             elif stuck_minutes >= 15:
@@ -252,9 +294,8 @@ def sync_doctor(db: Session) -> list:
             "recent_failures": recent_failures,
             "last_sync_at": last_sync.isoformat() if last_sync else None,
         })
-    # Worst first so the fleet monitor surfaces problems at the top.
-    order = {"red": 0, "amber": 1, "green": 2}
-    out.sort(key=lambda r: (order.get(r["status"], 3), -(r["pending_ops"] or 0)))
+    order = {"red":0,"amber":1,"green":2}
+    out.sort(key=lambda r:(order.get(r["status"],3), -(r["pending_ops"] or 0)))
     return out
 
 
@@ -542,10 +583,21 @@ def telemetry_devices(db=None) -> list:
     return sorted(out, key=lambda d: d.get("last_seen") or "", reverse=True)
 
 
+from uuid import uuid4
+_INSTANCE_STARTED = utc_now().isoformat()
+_INSTANCE_BOOT_ID = uuid4().hex
+
+
+def instance_info() -> dict:
+    return {"service":os.getenv("K_SERVICE"),"revision":os.getenv("K_REVISION"),"started_at":_INSTANCE_STARTED,"boot_id":_INSTANCE_BOOT_ID}
+
+
 def server_log_tail(lines: int = 200, q: str = None) -> dict:
     """Tail of the backend server log (bizassist.log) for the Debug tab.
     Optional `q` substring filter (e.g. a BizID or username) gives a segregated
     view of one business's lines without shipping the whole log."""
+    if os.getenv("K_SERVICE"):
+        return {"path":None,"filter":q,"lines":[],"instance":instance_info(),"note":"Server logs for this service are in Cloud Logging.","cloud_logging_filter":'resource.type="cloud_run_revision" AND resource.labels.service_name='+json.dumps(os.environ["K_SERVICE"])}
     lines = max(1, min(int(lines or 200), 2000))
     candidates = ("bizassist.log", os.path.join("logs", "bizassist.log"))
     for path in candidates:
@@ -555,10 +607,10 @@ def server_log_tail(lines: int = 200, q: str = None) -> dict:
                     all_lines = [l.rstrip("\n") for l in f.readlines()]
                 if q:
                     all_lines = [l for l in all_lines if q in l]
-                return {"path": path, "filter": q, "lines": all_lines[-lines:]}
+                return {"path": path, "filter": q, "lines": all_lines[-lines:], "instance":instance_info()}
             except Exception as e:
                 raise HTTPException(status_code=500, detail=f"Failed to read server log: {e}")
-    return {"path": None, "filter": q, "lines": []}
+    return {"path": None, "filter": q, "lines": [], "instance":instance_info()}
 
 
 def telemetry_businesses(db=None) -> list:
@@ -644,7 +696,9 @@ def read_audit_log(limit: int = 200, db: Session = None) -> list:
         lines = f.readlines()
     for line in reversed(lines):
         try:
-            rows.append(json.loads(line))
+            entry = json.loads(line)
+            entry["storage"] = "this instance only"
+            rows.append(entry)
         except Exception:
             continue
         if len(rows) >= limit:
@@ -677,26 +731,44 @@ def set_subscription(business_id: int, body, admin: User, db: Session) -> dict:
     /settings patches and preserves it on every save, so only admins can
     change it."""
     target = require_target_user(business_id, db)
+    if target.role != "enterprise" or target.parent_business_id is not None:
+        raise HTTPException(status_code=404, detail="Business owner not found")
     plan = (body.plan or "free").lower()
     if plan not in VALID_PLANS:
         raise HTTPException(status_code=400, detail=f"Invalid plan. Valid: {', '.join(VALID_PLANS)}")
 
     s = _settings_dict(target)
+    previous = s.get("subscription") or {}
     if plan == "free":
+        if not previous:
+            return get_subscription(business_id, db)
         # Revoke: drop the key entirely — free is the absence of a grant.
         s.pop("subscription", None)
+        changes = ["Subscription changed to Free"]
     else:
-        s["subscription"] = {
+        proposed = {
             "plan":       plan,
             "status":     body.status or "active",
             "expires_at": body.expires_at,
-            "granted_by": admin.username,
-            "granted_at": utc_now().isoformat(),
             "note":       body.note,
         }
+        changed_keys = [key for key, value in proposed.items() if previous.get(key) != value]
+        if not changed_keys:
+            return get_subscription(business_id, db)
+        s["subscription"] = {**proposed, "granted_by": admin.username, "granted_at": utc_now().isoformat()}
+        labels = {"plan": "Subscription plan", "status": "Subscription status", "expires_at": "Plan expiry", "note": "Subscription note"}
+        changes = [f"{labels[key]} updated" for key in changed_keys]
     target.settings = json.dumps(s)
     db.commit()
     invalidate_user_cache(business_id)
+    from services.account_identity import normalize_email
+    try:
+        email = normalize_email(target.email)
+        if email:
+            from services.brevo_service import send_account_update_email
+            send_account_update_email(email, target.business_name or target.username, changes, business_id=business_id)
+    except Exception as exc:
+        logger.warning("[ADMIN] Failed dispatching subscription notification: %s", exc)
     return get_subscription(business_id, db)
 
 
@@ -895,6 +967,46 @@ def wipe_all_data(db: Session) -> dict:
     }
 
 
+def list_deleted_businesses(db: Session) -> list:
+    """Retrieve tombstones of wiped and retired businesses for admin audit visibility."""
+    results = []
+    seen_bizids = set()
+    try:
+        tombstones = db.query(DeletedBusiness).order_by(DeletedBusiness.deleted_at.desc(), DeletedBusiness.id.desc()).all()
+        for t in tombstones:
+            seen_bizids.add(t.public_id)
+            results.append({
+                "id": t.id,
+                "bizid": t.public_id,
+                "business_name": t.business_name or "Unknown Store",
+                "username": t.username,
+                "status": "deleted",
+                "reason": t.reason or "admin_wipe",
+                "deleted_at": t.deleted_at.isoformat() if t.deleted_at else None,
+            })
+    except Exception as e:
+        logger.warning("[ADMIN] Could not query deleted_businesses table: %s", e)
+
+    try:
+        retired = db.query(User).filter(User.role == "deleted").order_by(User.id.desc()).all()
+        for u in retired:
+            if u.public_id and u.public_id in seen_bizids:
+                continue
+            results.append({
+                "id": u.id,
+                "bizid": u.public_id,
+                "business_name": u.business_name or "Retired Store",
+                "username": u.username,
+                "status": "deleted",
+                "reason": "admin_wipe_retained_counterparty",
+                "deleted_at": u.created_at.isoformat() if getattr(u, "created_at", None) else None,
+            })
+    except Exception as e:
+        logger.warning("[ADMIN] Could not query retired users: %s", e)
+
+    return results
+
+
 def record_business_tombstone(db: Session, *, public_id: str = None, username: str = None,
                              business_name: str = None, reason: str = None) -> None:
     """Write a DeletedBusiness tombstone (orphan-safety). Best-effort and never
@@ -908,8 +1020,34 @@ def record_business_tombstone(db: Session, *, public_id: str = None, username: s
         logger.warning("[TOMBSTONE] failed to record (non-fatal): %s", e)
 
 
+def _prepare_product_purge(user_id: int, db: Session):
+    """Keep other businesses' historical snapshots while removing optional FKs.
+
+    Required product references cannot be detached. Refuse before mutating any
+    rows so an operator can repair the cross-business reference explicitly.
+    """
+    product_ids = [r[0] for r in db.query(Product.id).filter(Product.business_id == user_id).all()]
+    if not product_ids:
+        return
+    foreign_b2b = db.query(B2BOrderLineItem.id).join(B2BOrder).filter(
+        B2BOrderLineItem.product_id.in_(product_ids),
+        B2BOrder.seller_business_id != user_id,
+        B2BOrder.buyer_business_id != user_id).first()
+    foreign_transfer = db.query(StockTransferLineItem.id).join(StockTransfer).filter(
+        StockTransferLineItem.product_id.in_(product_ids),
+        StockTransfer.business_id != user_id).first()
+    if foreign_b2b or foreign_transfer:
+        raise HTTPException(status_code=409, detail=(
+            "Business deletion stopped: another business has a required product reference. "
+            "Repair that reference before retrying. No business data was deleted."))
+    for model in (InvoiceLineItem, PurchaseInvoiceLineItem, PurchaseOrderLineItem,
+                  Inventory, StockLedger):
+        db.query(model).filter(model.product_id.in_(product_ids)).update(
+            {model.product_id: None}, synchronize_session=False)
+
+
 def purge_business_data(user_id: int, db: Session, *, delete_owner: bool = False,
-                        delete_staff: bool = True) -> dict:
+                        delete_staff: bool = True, retire_account: bool = False) -> dict:
     """Thorough, dependency-ordered purge of ALL data owned by business `user_id`.
 
     Single source of truth for erasing a business's rows so callers can't drift:
@@ -923,6 +1061,23 @@ def purge_business_data(user_id: int, db: Session, *, delete_owner: bool = False
     (and any re-key the caller performs) commits or rolls back atomically.
     Returns a summary dict.
     """
+    from services.field_business_cleanup import purge_field_business
+    # Refuse corrupt cross-tenant references before archiving or purging any
+    # other state. Optional references are detached only after this preflight.
+    _prepare_product_purge(user_id, db)
+    from core.party_archive import archive_shared_history, DocumentPartySnapshot, retire_identity
+    shared_history = archive_shared_history(db, user_id, retiring=delete_owner or retire_account)
+    from services.control_outbox import purge_control_state
+    purge_control_state(db, user_id)
+    # Settlement helpers own their child ordering and compose in this same txn.
+    from core.accounting.settlements import purge_settlement_state
+    purge_settlement_state(db, user_id)
+    field_deleted = purge_field_business(db, user_id)
+    from services.registration_policy import retain_trial_claim
+    target_owner = db.get(User, user_id)
+    if target_owner is not None:
+        retain_trial_claim(db, target_owner)
+
     # 1. Delete child lines that do NOT have business_id directly
     db.query(InvoiceLineItem).filter(
         InvoiceLineItem.invoice_id.in_(
@@ -942,13 +1097,8 @@ def purge_business_data(user_id: int, db: Session, *, delete_owner: bool = False
         )
     ).delete(synchronize_session=False)
 
-    db.query(B2BOrderLineItem).filter(
-        B2BOrderLineItem.order_id.in_(
-            db.query(B2BOrder.id).filter(
-                (B2BOrder.seller_business_id == user_id) | (B2BOrder.buyer_business_id == user_id)
-            )
-        )
-    ).delete(synchronize_session=False)
+    # Shared orders and their snapshotted lines belong to BOTH counterparties.
+    # archive_shared_history detached optional source-product/invoice references.
 
     db.query(JournalLine).filter(
         JournalLine.entry_id.in_(
@@ -973,9 +1123,6 @@ def purge_business_data(user_id: int, db: Session, *, delete_owner: bool = False
     db.query(Invoice).filter(Invoice.business_id == user_id).delete(synchronize_session=False)
     db.query(PurchaseInvoice).filter(PurchaseInvoice.business_id == user_id).delete(synchronize_session=False)
     db.query(PurchaseOrder).filter(PurchaseOrder.business_id == user_id).delete(synchronize_session=False)
-    db.query(B2BOrder).filter(
-        (B2BOrder.seller_business_id == user_id) | (B2BOrder.buyer_business_id == user_id)
-    ).delete(synchronize_session=False)
     db.query(JournalEntry).filter(JournalEntry.business_id == user_id).delete(synchronize_session=False)
     db.query(StockTransfer).filter(StockTransfer.business_id == user_id).delete(synchronize_session=False)
     db.query(StockLedger).filter(StockLedger.business_id == user_id).delete(synchronize_session=False)
@@ -1004,19 +1151,17 @@ def purge_business_data(user_id: int, db: Session, *, delete_owner: bool = False
     db.query(Vendor).filter(Vendor.business_id == user_id).delete(synchronize_session=False)
 
     # B2B network relationships (use correct key names)
-    db.query(B2BConnection).filter(
-        (B2BConnection.seller_business_id == user_id) | (B2BConnection.buyer_business_id == user_id)
-    ).delete(synchronize_session=False)
     db.query(B2BInviteCode).filter(B2BInviteCode.seller_business_id == user_id).delete(synchronize_session=False)
-    db.query(B2BLedger).filter(
-        (B2BLedger.seller_business_id == user_id) | (B2BLedger.buyer_business_id == user_id)
-    ).delete(synchronize_session=False)
+    # Retain shared ledger amounts/balances. Retiring an account is not payment,
+    # cancellation of the counterparty's receivable, or erasure of their history.
+    db.query(DocumentPartySnapshot).filter(DocumentPartySnapshot.business_id == user_id).delete(synchronize_session=False)
 
     # 3. Delete all other business-scoped data
     for model in (
         LegacyPayment, UploadedFile, DocumentEmbedding, ChatMessage, TokenUsage,
         RateLimitConfig, AlertConfig, AIFeedback, AIQueryOverride, BusinessFact,
-        BusinessSettings, Expense, Godown, PeriodLock, ShiftCashMovement, RegisterShift
+        BusinessSettings, Expense, Godown, PeriodLock, ShiftCashMovement, RegisterShift,
+        ClientLogArchive, EmailLog
     ):
         db.query(model).filter(model.business_id == user_id).delete(synchronize_session=False)
 
@@ -1044,7 +1189,14 @@ def purge_business_data(user_id: int, db: Session, *, delete_owner: bool = False
     # 6. Optionally delete the owner row itself. Admin "wipe" frees the username
     #    for clean re-registration; reclaim keeps the row so it can be re-keyed.
     owner_deleted = False
-    if delete_owner:
+    identity_retained = bool(shared_history and (delete_owner or retire_account))
+    if identity_retained:
+        target = db.query(User).filter(User.id == user_id).first()
+        if target is not None:
+            retire_identity(target)
+        from services.auth import clear_token_version_cache
+        clear_token_version_cache(user_id)
+    elif delete_owner:
         target = db.query(User).filter(User.id == user_id).first()
         if target is not None:
             db.delete(target)
@@ -1059,6 +1211,9 @@ def purge_business_data(user_id: int, db: Session, *, delete_owner: bool = False
         "business_id": user_id,
         "staff_deleted": staff_deleted or 0,
         "owner_deleted": owner_deleted,
+        "identity_retained": identity_retained,
+        "shared_history_retained": bool(shared_history),
+        "field_deleted": field_deleted,
     }
 
 
@@ -1068,13 +1223,14 @@ def wipe_user_data(user_id: int, db: Session) -> dict:
     target = require_target_user(user_id, db)
     uname = target.username
     _pub, _bn = target.public_id, target.business_name
-    purge_business_data(user_id, db, delete_owner=True, delete_staff=True)
+    result = purge_business_data(user_id, db, delete_owner=True, delete_staff=True)
     record_business_tombstone(db, public_id=_pub, username=uname,
                               business_name=_bn, reason="admin_wipe")
     db.commit()
     invalidate_user_cache(user_id)
-    logger.warning("[ADMIN] Wiped business %s ('%s') — data + owner + staff deleted; username freed.", user_id, uname)
-    return {"status": "success", "message": "All data for " + uname + " deleted."}
+    logger.warning("[ADMIN] Retired business %s; private data and logins removed; shared_history_retained=%s.",
+                   user_id, result["shared_history_retained"])
+    return {**result, "message": "Business account and private data deleted. Shared transaction history remains available to counterparties."}
 
 
 def token_usage(db: Session) -> list:
@@ -1118,21 +1274,56 @@ def reset_chroma_docs() -> dict:
             "message": "Chroma document collections reset. Re-upload your files to rebuild the index."}
 
 
-def business_details(user_id: int, db: Session) -> dict:
+def business_details(user_id: int, db: Session, *, section: str = None, limit: int = 50, offset: int = 0) -> dict:
     target = require_target_user(user_id, db)
-    uploads  = db.query(UploadedFile).filter(UploadedFile.business_id == user_id).all()
-    invoices = db.query(Invoice).filter(Invoice.business_id == user_id).all()
-    inventory = db.query(Inventory).filter(Inventory.business_id == user_id).all()
-    payments = db.query(LegacyPayment).filter(LegacyPayment.business_id == user_id).all()
-    msgs = db.query(ChatMessage).filter(ChatMessage.business_id == user_id).order_by(ChatMessage.timestamp.desc()).all()
-    return {
+    sections = {"uploads", "invoices", "inventory", "payments", "chat_history", "emails"}
+    if section is not None and section not in sections:
+        raise HTTPException(status_code=422, detail="Unknown business detail section")
+    has_more = {}
+    def page(query, name):
+        if section is not None and section != name:
+            return []
+        rows = query.offset(offset).limit(limit+1).all()
+        has_more[name] = len(rows)>limit
+        return rows[:limit]
+    uploads  = page(db.query(UploadedFile).filter(UploadedFile.business_id == user_id).order_by(UploadedFile.id.desc()), "uploads")
+    invoices = page(db.query(Invoice).filter(Invoice.business_id == user_id).order_by(Invoice.id.desc()), "invoices")
+    inventory = page(db.query(Inventory).filter(Inventory.business_id == user_id).order_by(Inventory.id.desc()), "inventory")
+    payments = page(db.query(LegacyPayment).filter(LegacyPayment.business_id == user_id).order_by(LegacyPayment.id.desc()), "payments")
+    msgs = page(db.query(ChatMessage).filter(ChatMessage.business_id == user_id).order_by(ChatMessage.timestamp.desc(), ChatMessage.id.desc()), "chat_history")
+    email_history = get_business_email_history(db, target)
+    if section is None or section == "emails":
+        has_more["emails"] = len(email_history) > (offset + limit)
+        paged_emails = email_history[offset:offset+limit]
+    else:
+        paged_emails = []
+    staff_count = db.query(User).filter(User.parent_business_id == target.id).count()
+    result = {
         "id": target.id, "username": target.username, "business_name": target.business_name,
+        "bizid": target.public_id, "email": target.email, "phone": target.phone,
+        "login_method": "google" if getattr(target, "google_id", None) else "password",
+        "google_id": getattr(target, "google_id", None),
+        "created_at": target.created_at.isoformat() if getattr(target, "created_at", None) else None,
+        "last_login": target.last_login.isoformat() if getattr(target, "last_login", None) else None,
+        "staff_count": staff_count,
+        "gstin": getattr(target, "gstin", None), "address": getattr(target, "address", None),
+        "upi_vpa": getattr(target, "upi_vpa", None),
+        "state_code": target.state_code, "pan": target.pan,
+        "logo": target.logo, "counter_prefix": target.counter_prefix,
+        "hosting_mode": business_hosting_mode(target, db),
         "uploads":  [{"id": u.id, "filename": u.filename, "file_type": u.file_type, "rows_count": u.rows_count, "upload_time": u.upload_time} for u in uploads],
         "invoices": [{"id": i.id, "invoice_id": i.invoice_id, "customer": i.customer, "product": i.product, "amount": i.amount, "status": i.status, "invoice_date": i.invoice_date, "due_date": i.due_date} for i in invoices],
         "inventory":[{"id": it.id, "product_name": it.product_name, "stock": it.stock, "expiry_date": it.expiry_date, "supplier": it.supplier} for it in inventory],
         "payments": [{"id": p.id, "customer": p.customer, "amount": p.amount, "due_date": p.due_date, "paid": p.paid} for p in payments],
         "chat_history": [{"id": m.id, "role": m.role, "content": m.content, "session_id": m.session_id, "session_title": m.session_title, "timestamp": m.timestamp.isoformat() if m.timestamp else None} for m in msgs],
+        "emails": paged_emails,
     }
+
+    result["has_more"] = has_more.get(section, False) if section else any(has_more.values())
+    result["pagination"] = {"section":section,"limit":limit,"offset":offset,"sections":has_more}
+    if section:
+        result = {key:value for key,value in result.items() if key not in sections or key==section}
+    return result
 
 
 def get_rate_limit_config(user_id: int, db: Session) -> dict:
@@ -1160,13 +1351,21 @@ def set_rate_limit_config(user_id: int, body, db: Session) -> dict:
 
 
 def all_usage_stats(db: Session) -> list:
+    from services.rate_limiter import DEFAULTS
     businesses = db.query(User).filter(User.role == "enterprise").all()
+    ids = [b.id for b in businesses]
+    if not ids:
+        return []
+    configs = {c.business_id:c for c in db.query(RateLimitConfig).filter(RateLimitConfig.business_id.in_(ids)).all()}
+    today = datetime.combine(utc_now().date(), datetime.min.time())
+    usage = {r[0]:r[1:] for r in db.query(TokenUsage.business_id,func.count(TokenUsage.id),func.sum(TokenUsage.total_tokens),func.sum(case((TokenUsage.model_tier=="AI_COMPLEX",1),else_=0))).filter(TokenUsage.business_id.in_(ids),TokenUsage.timestamp>=today).group_by(TokenUsage.business_id).all()}
     result = []
     for b in businesses:
-        s = get_usage_summary(b.id)
-        s["business_name"] = b.business_name
-        s["username"]      = b.username
-        result.append(s)
+        cfg = configs.get(b.id)
+        def limit(key):
+            return getattr(cfg,key) if cfg is not None else DEFAULTS[key]
+        queries,tokens,complex_queries = usage.get(b.id,(0,0,0))
+        result.append({"business_id":b.id,"business_name":b.business_name,"username":b.username,"queries_today":int(queries or 0),"tokens_today":int(tokens or 0),"complex_today":int(complex_queries or 0),"queries_limit":limit("requests_per_day"),"tokens_limit":limit("max_tokens_per_day"),"complex_limit":limit("complex_per_day"),"requests_per_minute":limit("requests_per_minute")})
     return result
 
 
@@ -1182,14 +1381,114 @@ def create_merchant(username: str, password: str, business_name: str, db: Sessio
 
 def update_merchant(user_id: int, req, db: Session) -> dict:
     target = require_target_user(user_id, db)
-    if req.username and req.username != target.username:
-        if db.query(User).filter(User.username == req.username).first():
+    if target.role != "enterprise" or target.parent_business_id is not None:
+        raise HTTPException(status_code=404, detail="Business owner not found")
+
+    from services.registration_policy import normalize_phone
+    from services.account_identity import normalize_email, validate_password
+
+    def email_value(value):
+        try:
+            return normalize_email(value)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from None
+
+    # Validate the complete patch before changing the row or dispatching mail.
+    patch = {}
+    if req.username is not None:
+        username = req.username.strip()
+        if len(username) < 3:
+            raise HTTPException(status_code=422, detail="Username must be at least 3 characters long.")
+        if db.query(User.id).filter(User.username == username, User.id != user_id).first():
             raise HTTPException(status_code=400, detail="Username already exists")
-        target.username = req.username
-    if req.business_name:
-        target.business_name = req.business_name
-    if req.password:
-        target.password = hash_password(req.password)
-    db.commit()
-    invalidate_user_cache(user_id)
-    return {"status": "success", "message": "Merchant user " + target.username + " updated successfully."}
+        patch["username"] = username
+    if req.business_name is not None:
+        if not req.business_name.strip():
+            raise HTTPException(status_code=422, detail="Business name is required.")
+        patch["business_name"] = req.business_name.strip()
+    if req.email is not None:
+        patch["email"] = email_value(req.email)
+    if req.phone is not None:
+        try:
+            patch["phone"] = normalize_phone(req.phone) if req.phone.strip() else None
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from None
+    if patch.get("email") or patch.get("phone"):
+        others = db.query(User).filter(
+            User.id != user_id, User.parent_business_id.is_(None),
+            or_(User.role.is_(None), func.lower(User.role).notin_(["deleted", "retired"])),
+        ).all()
+        for other in others:
+            if patch.get("email") and patch["email"] == (other.email or "").strip().lower():
+                raise HTTPException(status_code=400, detail="This email is already registered to another business account.")
+            if patch.get("phone") and other.phone:
+                try:
+                    other_phone = normalize_phone(other.phone)
+                except ValueError:
+                    other_phone = other.phone
+                if patch["phone"] == other_phone:
+                    raise HTTPException(status_code=400, detail="This mobile number is already registered to another business account.")
+
+    for key in ("address", "gstin", "state_code", "pan", "upi_vpa", "logo"):
+        value = getattr(req, key, None)
+        if value is not None:
+            patch[key] = value.strip() or None
+    if req.counter_prefix is not None:
+        patch["counter_prefix"] = re.sub(r"[^A-Za-z0-9_]", "", req.counter_prefix.strip())[:8] or None
+    if req.hosting_mode is not None and req.hosting_mode not in {"local", "hybrid", "cloud"}:
+        raise HTTPException(status_code=422, detail="Storage setup must be local, hybrid, or cloud.")
+
+    password = req.password
+    password_changed = password is not None and password != ""
+    if password_changed:
+        if not email_value(patch.get("email", target.email)):
+            raise HTTPException(status_code=400, detail="A valid registered email address is mandatory to update account password.")
+        try:
+            validate_password(password)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from None
+        from services.auth import verify_password
+        password_changed = not verify_password(password, target.password)
+
+    old_email = target.email
+    username_changed = "username" in patch and patch["username"] != target.username
+    changes = []
+    labels = {"username": "Username", "business_name": "Business Name", "email": "Email", "phone": "Phone", "address": "Business Address", "gstin": "GSTIN", "state_code": "State Code", "pan": "PAN", "upi_vpa": "UPI VPA", "logo": "Business Logo", "counter_prefix": "Counter Prefix"}
+    for key, value in patch.items():
+        if value != getattr(target, key):
+            setattr(target, key, value)
+            changes.append(f"{labels[key]} updated")
+    if req.hosting_mode is not None and req.hosting_mode != business_hosting_mode(target, db):
+        settings = _settings_dict(target)
+        settings.setdefault("general", {})["hosting_mode"] = req.hosting_mode
+        target.settings = json.dumps(settings)
+        changes.append(f"Storage setup changed to {req.hosting_mode}")
+    if password_changed:
+        target.password = hash_password(password)
+    if password_changed or username_changed:
+        from services.auth import bump_token_version
+        bump_token_version(db, target)
+
+    if changes or password_changed:
+        db.commit()
+        invalidate_user_cache(user_id)
+        # Only successful writes generate security mail. Alert both addresses
+        # when a contact changes, so the previous owner can report takeover.
+        recipients = set()
+        for address in (old_email, target.email):
+            try:
+                normalized = normalize_email(address)
+            except ValueError:
+                continue
+            if normalized:
+                recipients.add(normalized)
+        from services.brevo_service import send_account_update_email, send_password_changed_email
+        for recipient in sorted(recipients):
+            try:
+                if changes:
+                    send_account_update_email(recipient, target.business_name or target.username, changes, business_id=user_id)
+                if password_changed:
+                    send_password_changed_email(recipient, target.business_name or target.username, target.username, business_id=user_id)
+            except Exception as exc:
+                logger.warning("[ADMIN] Failed dispatching account notification: %s", exc)
+    return {"status": "success", "message": f"Merchant user {target.username} updated successfully."}

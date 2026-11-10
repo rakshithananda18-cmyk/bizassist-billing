@@ -1,9 +1,10 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
 import { logger } from '../../utils/logger'
 import { API_BASE } from '../../config'
 import { Section } from '../../components/ui'
 import { Icon } from '../../components/icons'
+import { formatAdminTime, useAdminPreference } from '../../utils/adminPreferences'
 
 /**
  * AdminTelemetry — Phase B.2 + B.3 of the Admin Console plan.
@@ -32,11 +33,6 @@ function LevelBadge({ level }) {
   )
 }
 
-function fmtTime(iso) {
-  if (!iso) return '—'
-  try { return new Date(iso).toLocaleString() } catch { return iso }
-}
-
 function fmtBizid(b) {
   if (!b) return '—'
   return b.length > 14 ? b.slice(0, 14) + '…' : b
@@ -52,6 +48,9 @@ const TABS = [
 
 export default function AdminTelemetry() {
   const { authFetch } = useAuth()
+  const [timeFormat] = useAdminPreference('admin_time_format')
+  const [pollInterval] = useAdminPreference('admin_poll_interval')
+  const fmtTime = value => formatAdminTime(value, timeFormat)
   const [tab, setTab] = useState('events')
   const [loading, setLoading] = useState(false)
 
@@ -142,51 +141,70 @@ export default function AdminTelemetry() {
     setTab('events')
   }
 
+  const refreshRef = useRef(null)
+  refreshRef.current = () => Promise.allSettled([loadStats(), tab === 'events' ? loadEvents() : loadTab(tab)])
   useEffect(() => {
-    loadStats()
-    if (tab === 'events') loadEvents()
-    else loadTab(tab)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab])
+    // Refresh only while this telemetry view is visible. A recursive timeout
+    // prevents overlapping poll requests when the server is slow.
+    let cancelled = false
+    let timer
+    const poll = async () => {
+      if (!document.hidden) {
+        await refreshRef.current()
+      }
+      if (!cancelled) timer = setTimeout(poll, Number(pollInterval) * 1000)
+    }
+    void poll()
+    return () => { cancelled = true; clearTimeout(timer) }
+  }, [tab, authFetch, pollInterval])
 
   const overCap = stats?.over_cap
   const pct = stats ? Math.min(100, Math.round((stats.size_mb / (stats.max_mb || 200)) * 100)) : 0
 
   return (
     <div className="admin-main" style={{ margin: 0, padding: 0 }}>
-      <div className="admin-header-row" style={{ borderBottom: '1.5px solid var(--border-color)', paddingBottom: 20 }}>
+      <div className="admin-header-row">
         <div className="admin-title-group">
-          <h1>✦ TELEMETRY & LOGS</h1>
-          <p>Field-install diagnostics by business (bizid), server log tail, and the admin audit trail</p>
+          <h1 style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Icon name="file" size={22} style={{ color: 'var(--accent)' }} />
+            <span>Telemetry & System Logs</span>
+          </h1>
+          <p>Field-install diagnostics by BizID, live application telemetry, server logs, and admin action audits</p>
         </div>
-        <button className="btn-flush" onClick={() => { loadStats(); tab === 'events' ? loadEvents() : loadTab(tab) }} style={{ padding: '10px 16px', fontSize: 13 }}>
-          ↻ Refresh
+        <button className="btn-flush" onClick={() => { loadStats(); tab === 'events' ? loadEvents() : loadTab(tab) }} style={{ padding: '8px 14px', fontSize: 13 }}>
+          <Icon name="refresh" size={13} />
+          <span>Refresh</span>
         </button>
       </div>
 
       {/* ── Persistent-store health banner ── */}
       {stats && (
         <div style={{
-          marginTop: 16, padding: '12px 16px', borderRadius: 10,
-          border: `1px solid ${overCap ? '#c0392b' : 'var(--border-color)'}`,
-          background: overCap ? 'rgba(192,57,43,0.08)' : 'var(--hover-bg)',
-          display: 'flex', flexWrap: 'wrap', gap: 20, alignItems: 'center', fontSize: 13,
+          marginTop: 16, padding: '12px 16px', borderRadius: 'var(--radius-md, 8px)',
+          border: `1px solid ${overCap ? 'var(--danger)' : 'var(--border)'}`,
+          background: overCap ? 'var(--danger-dim)' : 'var(--bg-2)',
+          display: 'flex', flexWrap: 'wrap', gap: 18, alignItems: 'center', fontSize: 13,
+          boxShadow: 'var(--shadow-sm)',
         }}>
           <span><strong>{stats.rows.toLocaleString()}</strong> rows</span>
           <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <strong>{stats.size_mb} MB</strong> / {stats.max_mb} MB cap
-            <span style={{ width: 90, height: 6, borderRadius: 3, background: 'var(--border-color)', overflow: 'hidden' }}>
-              <span style={{ display: 'block', height: '100%', width: `${pct}%`, background: overCap ? '#c0392b' : 'var(--accent-color)' }} />
+            <span style={{ width: 90, height: 6, borderRadius: 3, background: 'var(--bg-1)', border: '1px solid var(--border)', overflow: 'hidden', display: 'inline-block' }}>
+              <span style={{ display: 'block', height: '100%', width: `${pct}%`, background: overCap ? 'var(--danger)' : 'var(--accent)' }} />
             </span>
           </span>
           <span style={{ opacity: 0.8 }}>retention {stats.retention_days}d · {fmtTime(stats.oldest)} → {fmtTime(stats.newest)}</span>
-          {overCap && <span style={{ color: '#c0392b', fontWeight: 700 }}>⚠ Over cap — archive &amp; purge now</span>}
+          {overCap && (
+            <span style={{ color: 'var(--danger)', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+              <Icon name="warn" size={14} /> Over cap — archive &amp; purge now
+            </span>
+          )}
           <span style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
             <button className="btn-flush" disabled={archiving} onClick={() => downloadArchive(false)} style={{ fontSize: 12 }}>
-              {archiving ? '…' : '⭳ Download (.gz)'}
+              <Icon name="download" size={12} />
+              <span>{archiving ? 'Archiving…' : 'Download (.gz)'}</span>
             </button>
-            <button className="btn-flush" disabled={archiving} onClick={() => downloadArchive(true)}
-                    style={{ fontSize: 12, color: '#c0392b', fontWeight: 600 }}>
+            <button className="btn-wipe-row" disabled={archiving} onClick={() => downloadArchive(true)} style={{ fontSize: 12 }}>
               Archive &amp; purge
             </button>
           </span>
@@ -194,22 +212,28 @@ export default function AdminTelemetry() {
       )}
 
       {/* Sub-tabs */}
-      <div style={{ display: 'flex', gap: 6, marginTop: 20, flexWrap: 'wrap' }}>
-        {TABS.map(t => (
-          <button
-            key={t.key}
-            className="btn-flush"
-            onClick={() => setTab(t.key)}
-            style={{
-              padding: '8px 16px', fontSize: 13,
-              background: tab === t.key ? 'var(--accent-soft)' : 'transparent',
-              color: tab === t.key ? 'var(--accent-color)' : 'var(--secondary-text)',
-              fontWeight: tab === t.key ? 600 : 500,
-            }}
-          >
-            {t.label}
-          </button>
-        ))}
+      <div style={{ display: 'flex', gap: 6, marginTop: 18, flexWrap: 'wrap' }}>
+        {TABS.map(t => {
+          const isActive = tab === t.key
+          return (
+            <button
+              key={t.key}
+              type="button"
+              className="btn-flush"
+              onClick={() => setTab(t.key)}
+              style={{
+                padding: '6px 14px', fontSize: 13,
+                background: isActive ? 'var(--accent-dim)' : 'transparent',
+                color: isActive ? 'var(--accent)' : 'var(--text-secondary)',
+                border: isActive ? '1px solid rgba(193, 95, 60, 0.25)' : '1px solid var(--border)',
+                fontWeight: isActive ? 600 : 500,
+                borderRadius: 'var(--radius-md, 8px)',
+              }}
+            >
+              {t.label}
+            </button>
+          )
+        })}
       </div>
 
       {/* ── EVENTS ── */}

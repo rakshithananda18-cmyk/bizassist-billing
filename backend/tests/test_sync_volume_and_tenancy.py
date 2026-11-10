@@ -286,13 +286,48 @@ class TestTheAuditLogRecordsTheBizID:
         )
 
     def test_the_insert_statement_writes_the_column(self):
-        """The row is written with raw SQL, so adding the model column is not
-        enough — the INSERT has to name it or the value is silently dropped."""
-        import inspect as _i
-        from database import models
-        src = _i.getsource(models.audit_after_flush)
-        assert "public_id" in src.split("INSERT INTO table_alterations")[1][:400]
-        assert '"public_id": item.get("public_id")' in src
+        """Exercise actual INSERT/UPDATE/DELETE audit writes, including BizID.
+
+        Ownership follows the mutated row, even when a different request actor
+        has its own BizID. Do not pin raw-SQL parameter spelling to prove this.
+        """
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import Session
+        from database.db import current_business_id_var, sync_disabled_var
+        from database.models import Customer, TableAlteration
+        from logging_config import current_bizid_var
+
+        engine = create_engine("sqlite:///:memory:")
+        # Customer deletion inspects its invoice relationship even when empty;
+        # the native probe therefore needs the real related schema too.
+        Base.metadata.create_all(engine)
+        scope = current_business_id_var.set(71)
+        actor = current_bizid_var.set("BA-DIFFERENT-ACTOR")
+        disabled = sync_disabled_var.set(True)
+        try:
+            with Session(engine) as db:
+                db.add(User(id=81, username="native_audit_owner", password="synthetic hash",
+                            role="enterprise", public_id="BA-NATIVE-OWNER"))
+                db.commit()
+                customer = Customer(business_id=81, name="Original")
+                db.add(customer)
+                db.commit()
+                record_id = str(customer.id)
+                customer.name = "Updated"
+                db.commit()
+                db.delete(customer)
+                db.commit()
+                audits = db.query(TableAlteration).filter(
+                    TableAlteration.table_name == "customers", TableAlteration.record_id == record_id
+                ).order_by(TableAlteration.id).all()
+                assert [row.action for row in audits] == ["INSERT", "UPDATE", "DELETE"]
+                assert all(row.business_id == 81 for row in audits)
+                assert all(row.public_id == "BA-NATIVE-OWNER" for row in audits)
+        finally:
+            sync_disabled_var.reset(disabled)
+            current_bizid_var.reset(actor)
+            current_business_id_var.reset(scope)
+            engine.dispose()
 
     def test_a_migration_adds_it_without_inventing_history(self):
         """Historical rows keep NULL. Their BizID cannot be derived — the integer

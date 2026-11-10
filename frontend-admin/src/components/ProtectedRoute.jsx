@@ -1,4 +1,5 @@
-import { Navigate } from 'react-router-dom'
+import { useEffect } from 'react'
+import { Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import PageLoader from './PageLoader'
 
@@ -13,6 +14,12 @@ export function ProtectedRoute({ children }) {
 // Protects admin routes
 export function AdminProtectedRoute({ children }) {
   const { adminUser, loading } = useAuth()
+  const location = useLocation()
+  useEffect(() => {
+    if (!loading && !adminUser && location.pathname.startsWith('/admin/') && location.pathname !== '/admin/login') {
+      sessionStorage.setItem('admin_return_path', location.pathname + location.search + location.hash)
+    }
+  }, [adminUser, loading, location])
   if (loading)    return <PageLoader />
   if (!adminUser) return <Navigate to="/admin/login" replace />
   return children

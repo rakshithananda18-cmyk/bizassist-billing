@@ -1,0 +1,34 @@
+.pos-payment-summary { display: grid; gap: 12px; margin: 0 0 20px; }
+.pos-payment-summary-total { display: flex; justify-content: space-between; gap: 16px; color: var(--text-secondary); font-size: .9rem; }
+.pos-payment-summary-total strong { color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.pos-payment-amount-row {
+  --payment-row-color: var(--accent);
+  --payment-row-bg: var(--accent-dim, var(--bg-3));
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  padding: 16px 18px; border: 1px solid var(--payment-row-color); border-radius: var(--radius-md, 12px);
+  background: var(--payment-row-bg); min-width: 0;
+}
+.pos-payment-amount-row.success { --payment-row-color: var(--success); --payment-row-bg: var(--success-dim, var(--bg-3)); }
+.pos-payment-amount-row.credit { --payment-row-color: var(--warning); --payment-row-bg: var(--warning-dim, var(--bg-3)); }
+.pos-payment-amount-copy { min-width: 0; }
+.pos-payment-amount-label { font-size: .8rem; font-weight: 800; letter-spacing: .045em; text-transform: uppercase; color: var(--payment-row-color); line-height: 1.35; }
+.pos-payment-amount-hint { margin-top: 4px; color: var(--text-secondary); font-size: .76rem; line-height: 1.4; }
+.pos-payment-amount-value { flex-shrink: 0; color: var(--payment-row-color); font-size: 1.85rem; font-weight: 850; line-height: 1.2; font-variant-numeric: tabular-nums; white-space: nowrap; letter-spacing: -.025em; }
+.pos-payment-amount-value:has(.pos-payment-amount-input) { flex: 0 1 55%; min-width: 0; }
+.pos-payment-amount-input { display: flex; align-items: center; min-width: 100px; gap: 4px; color: var(--payment-row-color); }
+.pos-payment-amount-input input { width: 100%; min-width: 0; padding: 0; border: 0; outline: 0; background: transparent; color: inherit; text-align: right; font: inherit; font-variant-numeric: tabular-nums; }
+.pos-payment-amount-row:focus-within { box-shadow: 0 0 0 3px var(--accent-dim, var(--bg-3)); }
+.pos-payment-amount-input input::-webkit-inner-spin-button,
+.pos-payment-amount-input input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.pos-payment-amount-input input { -moz-appearance: textfield; }
+.pos-checkout-actions { display: grid; gap: 8px; margin-top: 4px; }
+.pos-checkout-actions button { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px; min-height: 46px; width: 100%; }
+.pos-confirm-actions { display: grid !important; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px !important; flex-shrink: 0; }
+.pos-confirm-actions button { display: flex; align-items: center; justify-content: center; text-align: center; min-width: 0 !important; min-height: 46px; width: 100%; white-space: normal; line-height: 1.4; }
+.pos-confirm-actions .btn-primary { grid-column: 1 / -1; grid-row: 1; font-size: 1rem; }
+.pos-confirm-actions:not(:has(button:nth-child(3))) .btn-secondary { grid-column: 1 / -1; }
+@media (max-width: 520px) {
+  .pos-payment-amount-row { padding: 13px 14px; gap: 10px; }
+  .pos-payment-amount-value { font-size: 1.55rem; }
+  .pos-payment-amount-label { font-size: .75rem; }
+}

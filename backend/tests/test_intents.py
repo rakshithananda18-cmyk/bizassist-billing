@@ -14,6 +14,7 @@ Run:  pytest tests/test_intents.py -v
 """
 import os
 import sys
+from datetime import date, timedelta
 
 os.environ.setdefault("DATABASE_URL", "sqlite:///./test_intents.db")
 os.environ["GROQ_API_KEY"] = "mock_key"
@@ -56,7 +57,7 @@ def setup_db():
                        invoice_date="2026-04-01", due_date="2026-05-01"))
         db.add(Invoice(business_id=USER_ID, invoice_id="I-003", customer="Cust A",
                        product="P3", amount=2000, status="Pending",
-                       invoice_date="2026-05-15", due_date="2026-06-30"))
+                       invoice_date="2026-05-15", due_date=(date.today() + timedelta(days=30)).isoformat()))
         db.add(Inventory(business_id=USER_ID, product_name="Prod X",
                          stock=5, expiry_date="2026-06-15", supplier="Sup 1"))
         db.commit()

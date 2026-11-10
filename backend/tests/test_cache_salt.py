@@ -109,6 +109,22 @@ def test_invoice_handlers_keyed_on_query_per_entity():
     assert c != d
 
 
+def test_month_and_range_handlers_keyed_on_query():
+    # revenue_month_detail / overdue_range_detail are parameterised by the month
+    # or overdue range in the question. Keyed on the handler alone, "How much did
+    # I sell last month?" was served this month's cached total on the live web
+    # app (2026-10-24), and every dashboard month / range click shared one entry.
+    def salt(q, handler):
+        return _cache_salt(1, "DIRECT", q, "total_revenue", handler_key=handler, day="2026-10-24")
+    months = ["How much did I sell this month?", "How much did I sell last month?",
+              "sales for September 2026", "Tell me about revenue in Oct 25"]
+    assert len({salt(q, "revenue_month_detail") for q in months}) == len(months)
+    ranges = ["Show overdue invoices in range 31-60 days", "Show overdue invoices in range 90+ days"]
+    assert len({salt(q, "overdue_range_detail") for q in ranges}) == len(ranges)
+    # asking the same question again still reuses its own answer
+    assert salt("sales last month", "revenue_month_detail") == salt("  Sales last month ", "revenue_month_detail")
+
+
 def test_ai_simple_catchall_topic_does_not_collide():
     # 'business_summary' is also _detect_topic's safe default, so two unrelated
     # AI_SIMPLE fallbacks must NOT share a cache entry (the 'do yo know Rahul

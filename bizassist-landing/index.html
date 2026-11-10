@@ -3,20 +3,34 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>BizAssist — Billing & POS that never goes offline</title>
+    <title>STATER Bill — Billing, Stock & Payments for Your Shop</title>
     <meta
       name="description"
-      content="BizAssist is a lightning-fast, offline-first billing and POS desktop app with hybrid cloud sync, GST reports and AI-powered insights. Download for Windows and macOS."
+      content="Keep your counter moving with STATER Bill. Barcode billing, stock, purchases and customer payments in one workspace. Explore the real app with sample data or start a 14-day Pro trial."
     />
-    <meta property="og:title" content="BizAssist — Billing & POS that never goes offline" />
-    <meta property="og:description" content="Sub-second billing. 100% offline uptime. Hybrid cloud sync. Download free for Windows & macOS." />
+    <meta property="og:title" content="STATER Bill — Keep Your Counter Moving" />
+    <meta property="og:description" content="Billing, stock, purchases and payments for the shop you run. Watch the real app tour, explore a sample store and find your desktop or cloud setup." />
     <meta property="og:type" content="website" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap"
+      href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800;1,9..40,400&family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&family=Crimson+Pro:ital,wght@0,600;1,400;1,600&display=swap"
       rel="stylesheet"
     />
+    <script>
+      (function () {
+        try {
+          var stored = localStorage.getItem('stater_landing_theme');
+          var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+          if (stored === 'dark' || (!stored && prefersDark)) {
+            document.documentElement.classList.add('dark');
+          } else {
+            document.documentElement.classList.remove('dark');
+          }
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

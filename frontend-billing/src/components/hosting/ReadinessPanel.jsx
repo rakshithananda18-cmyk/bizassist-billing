@@ -1,6 +1,6 @@
 import React from 'react'
 import { SyncIcon } from '../Icons'
-import { CLOUD_URL, LOCAL_URL } from '../../config'
+import { CLOUD_URL, LOCAL_URL, PRIMARY_CLOUD_RUN_URL, SECONDARY_HF_URL } from '../../config'
 
 function StatusDot({ status }) {
   const classMap = {
@@ -35,41 +35,56 @@ function statusColor(status) {
   }
 }
 
-function ProbeRow({ label, sublabel, probe }) {
+function ProbeCard({ label, sublabel, probe }) {
   return (
     <div style={{
-      display: 'flex', alignItems: 'center', gap: 10,
-      padding: '6px 0',
-      borderBottom: '1px solid rgba(255,255,255,0.06)',
+      display: 'flex',
+      flexDirection: 'column',
+      justifyContent: 'space-between',
+      gap: 10,
+      padding: '12px 14px',
+      borderRadius: 10,
+      background: 'rgba(255, 255, 255, 0.025)',
+      border: '1px solid var(--border)',
+      minWidth: 0,
+      boxShadow: 'var(--shadow-sm)',
     }}>
-      <StatusDot status={probe.status} />
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-          {label}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 7, minWidth: 0 }}>
+          <StatusDot status={probe.status} />
+          <span style={{ fontSize: '0.84rem', fontWeight: 700, color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
+            {label}
+          </span>
         </div>
-        {sublabel && (
-          <div style={{
-            fontSize: '0.72rem',
-            color: 'var(--text-muted)',
-            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          }}>
-            {sublabel}
-          </div>
-        )}
+        <span style={{
+          fontSize: '0.74rem',
+          fontWeight: 700,
+          color: statusColor(probe.status),
+          whiteSpace: 'nowrap',
+          padding: '2px 7px',
+          borderRadius: 4,
+          background: `color-mix(in srgb, ${statusColor(probe.status)} 14%, transparent)`,
+        }}>
+          {statusLabel(probe)}
+        </span>
       </div>
-      <div style={{
-        fontSize: '0.78rem',
-        fontWeight: 600,
-        color: statusColor(probe.status),
-        whiteSpace: 'nowrap',
-      }}>
-        {statusLabel(probe)}
-      </div>
+
+      {sublabel && (
+        <div style={{
+          fontSize: '0.72rem',
+          color: 'var(--text-muted)',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+        }}>
+          {sublabel}
+        </div>
+      )}
     </div>
   )
 }
 
-export default function ReadinessPanel({ localProbe, cloudProbe, internetProbe, sseProbe, onRecheck }) {
+export default function ReadinessPanel({ localProbe, googleProbe, hfProbe, cloudProbe, internetProbe, sseProbe, onRecheck }) {
   const now = new Date()
   const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 
@@ -109,28 +124,46 @@ export default function ReadinessPanel({ localProbe, cloudProbe, internetProbe, 
         </button>
       </div>
 
-      <ProbeRow
-        label="Internet"
-        sublabel="dns.google"
-        probe={internetProbe}
-      />
-      <ProbeRow
-        label="Local Backend"
-        sublabel={LOCAL_URL}
-        probe={localProbe}
-      />
-      <ProbeRow
-        label="Cloud Backend"
-        sublabel={CLOUD_URL}
-        probe={cloudProbe}
-      />
-      {sseProbe && (
-        <ProbeRow
-          label="Real-time Sync (SSE)"
-          sublabel={sseProbe.error || "Event stream connection"}
-          probe={sseProbe}
+      {/* 4 horizontal cards */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
+        gap: 12,
+        marginTop: 10,
+        marginBottom: 8,
+      }}>
+        <ProbeCard
+          label="Internet"
+          sublabel="dns.google"
+          probe={internetProbe}
         />
-      )}
+        <ProbeCard
+          label="Local Backend"
+          sublabel={LOCAL_URL}
+          probe={localProbe}
+        />
+        <ProbeCard
+          label="Google Cloud Run (Mumbai)"
+          sublabel="Primary API · asia-south1"
+          probe={googleProbe || cloudProbe}
+        />
+        {/* Hugging Face standby card disabled (uncomment to re-enable):
+        {hfProbe && (
+          <ProbeCard
+            label="Hugging Face Spaces"
+            sublabel="Standby API · Redundant Fallback"
+            probe={hfProbe}
+          />
+        )}
+        */}
+        {sseProbe && (
+          <ProbeCard
+            label="Real-time Sync (SSE)"
+            sublabel={sseProbe.error || "Event stream connection"}
+            probe={sseProbe}
+          />
+        )}
+      </div>
 
       {/* Last checked */}
       <div style={{

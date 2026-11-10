@@ -1,5 +1,16 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react'
-import { API_BASE, updateApiBase, IS_LOCAL_APP, CLOUD_URL, LOCAL_URL } from '../config'
+import React, { useContext, useState, useEffect, useCallback, useRef } from 'react'
+import { authContext as AuthContext } from './contextIdentity'
+import {
+  API_BASE,
+  updateApiBase,
+  IS_LOCAL_APP,
+  CLOUD_URL,
+  LOCAL_URL,
+  FALLBACK_CLOUD_URL,
+  getActiveCloudUrl,
+  switchActiveCloudUrl,
+  getAlternateCloudUrl,
+} from '../config'
 import { resolveHostingMode, shouldPersistMode } from '../utils/resolveHostingMode'
 import { logger, setBizId } from '../utils/logger'
 import { reconcileBizIdOnLogin } from '../utils/loginSync'
@@ -8,9 +19,29 @@ import { discoverLocalBackend, getNetworkMode, clearDiscoveryCache } from '../ut
 import { reconcileDeviceModeOnLogin } from '../utils/deviceMode'
 import { syncManager } from '../sync/syncManager'
 import { tokenStorage } from '../utils/tokenStorage'
+import { clearBillingProfileCache } from '../hooks/useBillingProfile'
+import { notifyAiLogout, getAiDashboardUrl } from '../config/aiDashboard'
+import { sessionFetch, resilientSessionFetch, invalidateSessionRefresh } from '../api/session'
+import { readableError } from '../api/httpErrors'
+import { useSessionRefresh } from '../hooks/useSessionRefresh'
+import {
+  isAuthEntryPath,
+  isDemoRequested,
+  activateDemoSession,
+  clearDemoSession,
+  handleDemoRequest,
+  DEMO_USER,
+  DEMO_TOKEN,
+  DEMO_SETTINGS,
+} from '../demo/demoEngine'
 
-const AuthContext = createContext(null)
 const AUTH_REQUEST_TIMEOUT_MS = 8000
+export const WEB_AUTH_BUDGET_MS = 65000
+function clearPreviewTimers() {
+  try {
+    for (const key of Object.keys(sessionStorage)) if (key.startsWith('bizassist_preview_start:') || key === 'bizassist_session_start_time') sessionStorage.removeItem(key)
+  } catch { /* unavailable storage */ }
+}
 
 // Authentication is a security boundary, but it must also have a bounded wait.
 // An unavailable local service used to leave the login screen spinning forever.
@@ -33,7 +64,73 @@ const authFetchWithTimeout = async (url, options, timeoutMs = AUTH_REQUEST_TIMEO
   }
 }
 
+/**
+ * Dual-Cloud Active Failover:
+ * Transparently retries requests against the backup cloud endpoint
+ * (Cloud Run Mumbai <-> Hugging Face Spaces) if the current cloud endpoint
+ * experiences a timeout, network failure, or HTTP 502/503/504 gateway outage.
+ */
+const authFetchWithFailover = async (url, options, timeoutMs = IS_LOCAL_APP ? AUTH_REQUEST_TIMEOUT_MS : WEB_AUTH_BUDGET_MS) => {
+  const currentCloud = (typeof getActiveCloudUrl === 'function' ? getActiveCloudUrl() : CLOUD_URL) || CLOUD_URL
+  const altCloud = (typeof getAlternateCloudUrl === 'function' ? getAlternateCloudUrl() : FALLBACK_CLOUD_URL) || FALLBACK_CLOUD_URL
+  const canFailover = !IS_LOCAL_APP || (typeof url === 'string' && (url.includes('run.app') || url.includes('hf.space')))
+
+  try {
+    const res = await authFetchWithTimeout(url, options, timeoutMs)
+    if (res.status >= 502 && res.status <= 504 && canFailover && altCloud && altCloud !== currentCloud) {
+      logger.warn(`[FAILOVER] Primary cloud returned HTTP ${res.status}. Attempting backup backend...`)
+      throw new Error(`Server returned HTTP ${res.status}`)
+    }
+    return res
+  } catch (primaryErr) {
+    if (!canFailover || !altCloud || altCloud === currentCloud) {
+      throw primaryErr
+    }
+
+    let fallbackUrl = url
+    if (typeof url === 'string' && currentCloud && url.startsWith(currentCloud)) {
+      fallbackUrl = url.replace(currentCloud, altCloud)
+    } else if (typeof url === 'string' && (url.includes('run.app') || url.includes('hf.space'))) {
+      try {
+        const parsed = new URL(url)
+        fallbackUrl = `${altCloud}${parsed.pathname}${parsed.search}`
+      } catch {
+        throw primaryErr
+      }
+    } else {
+      throw primaryErr
+    }
+
+    logger.warn(`[FAILOVER] Primary endpoint unreachable (${primaryErr.message}). Retrying on fallback: ${fallbackUrl}...`)
+    try {
+      const fallbackRes = await authFetchWithTimeout(fallbackUrl, options, timeoutMs)
+      if (fallbackRes.ok || fallbackRes.status < 500) {
+        if (typeof switchActiveCloudUrl === 'function') {
+          switchActiveCloudUrl(altCloud)
+        }
+        logger.info(`[FAILOVER] Active cloud seamlessly switched to: ${altCloud}`)
+        return fallbackRes
+      }
+      return fallbackRes
+    } catch (fallbackErr) {
+      logger.error(`[FAILOVER] Both primary and fallback backends failed.`, {
+        primary: primaryErr.message,
+        fallback: fallbackErr.message,
+      })
+      throw primaryErr
+    }
+  }
+}
+
 // Decode token payload (base64) client-side to read user_id / public_id without network
+
+const isCloudEndpoint = (u) =>
+  typeof u === 'string' &&
+  (u.includes('run.app') || u.includes('hf.space') || u === CLOUD_URL || u === FALLBACK_CLOUD_URL)
+
+const isSameBackendOrCloudFailover = (a, b) =>
+  a === b || (isCloudEndpoint(a) && isCloudEndpoint(b))
+
 function decodeToken(tok) {
   if (!tok) return null
   try {
@@ -53,12 +150,25 @@ function syncScopeFor(user) {
 }
 
 export function AuthProvider({ children }) {
-  const [user, setUser]   = useState(null)
-  const [token, setToken] = useState(() => tokenStorage.getItem('billing_token') || null)
-  const [loading, setLoading] = useState(true)
-  const [businessConfig, setBusinessConfig] = useState(null)
+  const authGeneration = useRef(0)
+  const reportedLoadErrors = useRef(new Set())
+  const reportLoadError = async (response, path) => {
+    if (response.ok) { reportedLoadErrors.current.delete(path); return }
+    if (reportedLoadErrors.current.has(path) || [401, 403].includes(response.status)) return
+    reportedLoadErrors.current.add(path)
+    const message = readableError(response.status, response.headers?.get?.('content-type'), await response.clone().text())
+    window.dispatchEvent(new CustomEvent('show_toast', { detail: { type: 'warning', msg: message } }))
+  }
+  const demoReq = isDemoRequested()
+  const [user, setUser]   = useState(() => demoReq ? DEMO_USER : null)
+  const [token, setToken] = useState(() => demoReq ? DEMO_TOKEN : (tokenStorage.getItem('billing_token') || null))
+  const [loading, setLoading] = useState(() => !demoReq)
+  const [isDemoMode, setIsDemoMode] = useState(() => demoReq)
+  const demoSessionRef = useRef(demoReq)
+  demoSessionRef.current = Boolean(isDemoMode || user?.is_demo || token === DEMO_TOKEN)
+  const [businessConfig, setBusinessConfig] = useState(() => demoReq ? { demo: true } : null)
   const [attributesSchema, setAttributesSchema] = useState([])
-  const [appReady, setAppReady] = useState(false)
+  const [appReady, setAppReady] = useState(() => isDemoRequested())
   // 'local' — connected to owner's backend on same LAN (fast, offline capable)
   // 'cloud' — connected via cloud (different network or cloud-only mode)
   const [networkMode, setNetworkMode] = useState(() => getNetworkMode())
@@ -67,6 +177,22 @@ export function AuthProvider({ children }) {
   // Restore session from localStorage/tokenStorage on mount
   useEffect(() => {
     try {
+      // A visitor who follows the marketing tour's sign-in/trial links must
+      // enter real authentication, even when this tab previously ran a demo.
+      if (isAuthEntryPath(window.location.pathname)) clearDemoSession()
+      if (isDemoRequested()) {
+        activateDemoSession()
+        setUser(DEMO_USER)
+        setToken(DEMO_TOKEN)
+        setIsDemoMode(true)
+        setBizId(DEMO_USER.public_id)
+        setSettings(DEMO_SETTINGS)
+        setAppReady(true)
+        setLoading(false)
+        logger.info('[DEMO] Activated instant real app demo unit session.')
+        return
+      }
+
       const savedUser = localStorage.getItem('billing_user')
       const savedToken = tokenStorage.getItem('billing_token')
       if (savedUser) {
@@ -98,9 +224,18 @@ export function AuthProvider({ children }) {
   }, [])
 
   const _saveSession = useCallback((data) => {
+    authGeneration.current++
+    invalidateSessionRefresh()
+    reportedLoadErrors.current.clear()
+    clearPreviewTimers()
+    setSettings(null)
+    const savedGeneration = authGeneration.current
+    setProfile(null)
+    syncManager.clearScope()
+    clearBillingProfileCache()
     const tok = data.token || data.access_token
     tokenStorage.setItem('billing_token', tok)
-    
+
     // Auto-resolve user_id / public_id from token payload if not sent in the
     // data response (the JWT carries both).
     let resolvedUserId = data.user_id
@@ -167,6 +302,7 @@ export function AuthProvider({ children }) {
     // This doesn't block login — it runs in the background after session is saved.
     const bizId = userObj.public_id || String(userObj.id)
     discoverLocalBackend(bizId).then(localUrl => {
+      if (savedGeneration !== authGeneration.current) return
       if (localUrl) {
         // Same LAN — switch to local backend for all subsequent requests
         try {
@@ -196,7 +332,10 @@ export function AuthProvider({ children }) {
   const _provisionCloudSyncToken = useCallback(async (username, password, localToken, cloudToken = null) => {
     if (!IS_LOCAL_APP || !localToken) return null
     if (typeof navigator !== 'undefined' && navigator.onLine === false) return null
+    const generation = authGeneration.current
+    const current = () => generation === authGeneration.current && tokenStorage.getItem('billing_token') === localToken
     try {
+      if (!current()) return null
       let token = cloudToken
       if (!token) {
         const res = await fetch(`${CLOUD_URL}/login`, {
@@ -208,12 +347,14 @@ export function AuthProvider({ children }) {
         token = (await res.json())?.token
       }
       if (!token) return null
+      if (!current()) return null
       localStorage.setItem('bizassist_cloud_token', token)
       await fetch(`${LOCAL_URL}/api/sync/cloud-token`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localToken}` },
         body: JSON.stringify({ token }),
       })
+      if (!current()) return null
       logger.info('[SYNC] Cloud sync token provisioned (24h, business-scoped)')
       // Keep the CLOUD record's hosting_mode in step with this device when it's
       // on Local + Cloud, so the Admin Console shows "Local + Cloud" (the sync
@@ -243,15 +384,15 @@ export function AuthProvider({ children }) {
     // 1. Try the platform's primary backend (local on the downloaded app).
     let res
     try {
-      res = await authFetchWithTimeout(`${API_BASE}/login`, {
+      res = await authFetchWithFailover(`${API_BASE}/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password }),
       })
     } catch (err) {
       if (err?.code === 'AUTH_REQUEST_TIMEOUT') {
-        const target = IS_LOCAL_APP && API_BASE === LOCAL_URL ? 'local billing service' : 'sign-in service'
-        throw new Error(`The ${target} is not responding. Wait a moment, then restart BizAssist if it persists.`)
+        if (!IS_LOCAL_APP) throw new Error('The server did not respond. Check your connection and try again.')
+        throw new Error('The local billing service is not responding. Wait a moment, then restart Stater if it persists.')
       }
       throw err
     }
@@ -268,28 +409,16 @@ export function AuthProvider({ children }) {
       return
     }
 
-    // 2. FRESH-DEVICE fallback (downloaded app, online): if there's simply no
-    //    local user yet, authenticate against the CLOUD and create the local
-    //    mirror (identity only — data stays gated, pulled later via "Back up
-    //    now"). We first confirm the local account truly doesn't exist, so a
-    //    wrong password on an existing local account is NEVER masked.
+    // 2. FRESH-DEVICE recovery (downloaded app, online).  Do not preflight a
+    // username: a public existence endpoint is an account-enumeration oracle.
+    // Instead, prove the password with Cloud first, then ask the local service
+    // to reconcile or create the mirror. Those mutations require the verified
+    // credentials and matching BizID, so they do not disclose local accounts.
     if (IS_LOCAL_APP) {
-      // The local identity check works offline (it's localhost).
-      let localExists = true
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+        throw new Error('This account isn’t set up on this device yet. Connect to the internet once to set it up, then it works offline.')
+      }
       try {
-        const c = await fetch(`${LOCAL_URL}/api/biz_id/check`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username }),
-        })
-        if (c.ok) localExists = (await c.json())?.exists === true
-      } catch { /* treat as exists → no fallback */ }
-
-      if (!localExists) {
-        // Fresh device. We need the cloud to set it up — block clearly if offline.
-        if (typeof navigator !== 'undefined' && navigator.onLine === false) {
-          throw new Error('This account isn’t set up on this device yet. Connect to the internet once to set it up, then it works offline.')
-        }
         const cloudRes = await fetch(`${CLOUD_URL}/login`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -297,7 +426,54 @@ export function AuthProvider({ children }) {
         })
         if (cloudRes.ok) {
           const cloudData = await cloudRes.json()
-          // Create the local mirror with the SAME (cloud) BizID — identity only.
+          // If this device already holds the same business, update its local
+          // password and retry. A 404 merely means this is a fresh device.
+          const reconcileRes = await fetch(`${LOCAL_URL}/api/auth/reconcile_password`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, password, public_id: cloudData.public_id }),
+          })
+          if (reconcileRes.ok) {
+            const retryRes = await fetch(`${API_BASE}/login`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ username, password }),
+            })
+            if (retryRes.ok) {
+              const retryData = await retryRes.json()
+              logger.info('[LOGIN] Local password reconciled with cloud and login successful.')
+              _saveSession(retryData)
+              _provisionCloudSyncToken(username, password, retryData.token || retryData.access_token, cloudData.token)
+                .then(cloudTok => reconcileBizIdOnLogin(retryData.token || retryData.access_token, cloudTok))
+              return
+            }
+          } else {
+            const recErr = await reconcileRes.json().catch(() => ({}))
+            if (recErr.detail && recErr.detail.includes('Identity mismatch')) {
+              const reclaimRes = await fetch(`${LOCAL_URL}/api/auth/reclaim_local`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  username,
+                  password,
+                  public_id: cloudData.public_id,
+                  business_name: cloudData.business_name,
+                }),
+              })
+              if (reclaimRes.ok) {
+                const reclaimData = await reclaimRes.json()
+                logger.info('[LOGIN] Orphan reclaimed onto new cloud BizID — logged in locally.')
+                _saveSession(reclaimData)
+                _provisionCloudSyncToken(username, password, reclaimData.token || reclaimData.access_token, cloudData.token)
+                  .then(cloudTok => reconcileBizIdOnLogin(reclaimData.token || reclaimData.access_token, cloudTok))
+                return
+              }
+              const reclaimErr = await reclaimRes.json().catch(() => ({}))
+              throw new Error(reclaimErr.detail || recErr.detail)
+            }
+          }
+
+          // No verified local owner exists, so create an identity-only mirror.
           const mirror = await fetch(`${LOCAL_URL}/signup`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -321,95 +497,16 @@ export function AuthProvider({ children }) {
           logger.error(`[LOGIN] Cloud login ok but local mirror failed: HTTP ${mirror.status}`)
           throw new Error('Signed in, but could not set up this device. Please try again.')
         }
-        // Cloud login also failed → fall through to surface the credential error.
-      } else if (res.status === 401) {
-        // Local account exists but credentials failed locally. Check if cloud has updated credentials.
-        try {
-          if (typeof navigator === 'undefined' || navigator.onLine !== false) {
-            const cloudRes = await fetch(`${CLOUD_URL}/login`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ username, password }),
-            })
-            if (cloudRes.ok) {
-              const cloudData = await cloudRes.json()
-              // Credentials verified on Cloud. Request local backend to reconcile/sync the password.
-              const reconcileRes = await fetch(`${LOCAL_URL}/api/auth/reconcile_password`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  username,
-                  password,
-                  public_id: cloudData.public_id
-                })
-              })
-              if (reconcileRes.ok) {
-                // Retry local login now that local password hash is updated.
-                const retryRes = await fetch(`${API_BASE}/login`, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ username, password }),
-                })
-                if (retryRes.ok) {
-                  const retryData = await retryRes.json()
-                  logger.info('[LOGIN] Local password reconciled with cloud and login successful.')
-                  _saveSession(retryData)
-                  _provisionCloudSyncToken(username, password, retryData.token || retryData.access_token, cloudData.token)
-                    .then(cloudTok => reconcileBizIdOnLogin(retryData.token || retryData.access_token, cloudTok))
-                  return
-                }
-              } else {
-                const recErr = await reconcileRes.json().catch(() => ({}))
-                // Identity mismatch = the local mirror still holds the OLD BizID
-                // (its cloud account was deleted and re-registered with a new one).
-                // reconcile_password refuses this on purpose. The correct recovery
-                // is to RE-KEY the orphaned local row onto the new cloud BizID —
-                // exactly what the signup flow does. Do it here too so a returning
-                // owner logging in isn't dead-ended (and the reclaim's staff-wipe
-                // clears any stale cashiers left under the old identity).
-                if (recErr.detail && recErr.detail.includes('Identity mismatch')) {
-                  logger.warn('[LOGIN] Local account is an orphan on a stale BizID — reclaiming onto the new cloud BizID.')
-                  const reclaimRes = await fetch(`${LOCAL_URL}/api/auth/reclaim_local`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                      username,
-                      password,
-                      public_id: cloudData.public_id,
-                      business_name: cloudData.business_name,
-                    }),
-                  })
-                  if (reclaimRes.ok) {
-                    const reclaimData = await reclaimRes.json()
-                    logger.info('[LOGIN] Orphan reclaimed onto new cloud BizID — logged in locally.')
-                    _saveSession(reclaimData)
-                    _provisionCloudSyncToken(username, password, reclaimData.token || reclaimData.access_token, cloudData.token)
-                      .then(cloudTok => reconcileBizIdOnLogin(reclaimData.token || reclaimData.access_token, cloudTok))
-                    return
-                  }
-                  const rcErr = await reclaimRes.json().catch(() => ({}))
-                  throw new Error(rcErr.detail || recErr.detail)
-                }
-                if (recErr.detail) {
-                  throw new Error(recErr.detail)
-                }
-              }
-            }
-          }
-        } catch (err) {
-          if (err.message && err.message.includes('Identity mismatch')) {
-            logger.error('[LOGIN-RECONCILE] Reconcile mismatch:', err.message)
-            throw err
-          }
-          logger.warn('[LOGIN-RECONCILE] Swallowing non-mismatch reconcile error:', err.message)
-        }
+        // Cloud login also failed → fall through to surface the local error.
+      } catch (err) {
+        logger.warn('[LOGIN-RECOVERY] Cloud-verified device recovery failed:', err?.message)
       }
     }
 
     // 3. No fallback applied → surface the original error.
     const err = await res.json().catch(() => ({}))
     logger.error('Login request failed with status:', res.status, err.detail)
-    throw new Error(err.detail || 'Invalid credentials')
+    throw new Error([400, 401, 403].includes(res.status) ? 'Wrong username or password.' : readableError(res.status, res.headers?.get?.('content-type'), err))
   }, [_saveSession, _provisionCloudSyncToken])
 
   // Staff login (§9.5): staff never use a global username — authenticate scoped to
@@ -421,15 +518,15 @@ export function AuthProvider({ children }) {
     // 1. Try the platform's primary backend (local on the desktop app).
     let res
     try {
-      res = await authFetchWithTimeout(`${API_BASE}/login/staff`, {
+      res = await authFetchWithFailover(`${API_BASE}/login/staff`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body,
       })
     } catch (err) {
       if (err?.code === 'AUTH_REQUEST_TIMEOUT') {
-        const target = IS_LOCAL_APP && API_BASE === LOCAL_URL ? 'local billing service' : 'sign-in service'
-        throw new Error(`The ${target} is not responding. Wait a moment, then restart BizAssist if it persists.`)
+        if (!IS_LOCAL_APP) throw new Error('The server did not respond. Check your connection and try again.')
+        throw new Error('The local billing service is not responding. Wait a moment, then restart Stater if it persists.')
       }
       throw err
     }
@@ -477,7 +574,7 @@ export function AuthProvider({ children }) {
     // 3. No fallback applied → surface the original error.
     const err = await res.json().catch(() => ({}))
     logger.error('Staff login failed:', res.status, err.detail)
-    throw new Error(err.detail || 'Invalid credentials')
+    throw new Error([400, 401, 403].includes(res.status) ? 'Wrong username or password.' : readableError(res.status, res.headers?.get?.('content-type'), err))
   }, [_saveSession])
 
   // Apply the chosen business template on a backend (best-effort).
@@ -497,21 +594,31 @@ export function AuthProvider({ children }) {
   }, [])
 
   const _doSignup = useCallback(async (base, body) => {
-    const res = await fetch(`${base}/signup`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
+    const requestId = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`
+    const send = () => authFetchWithFailover(`${base}/signup`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Client-Request-Id': requestId }, body: JSON.stringify(body),
     })
+    let res
+    try { res = await send() }
+    catch (error) {
+      // A timeout can occur after the account committed. Recover it with proof
+      // of the same credentials before making another signup attempt.
+      const recovered = await authFetchWithFailover(`${base}/login`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: body.username, password: body.password }),
+      })
+      if (recovered.ok) return recovered.json()
+      if (recovered.status === 401) res = await send()
+      else throw new Error(readableError(recovered.status, recovered.headers?.get?.('content-type'), await recovered.text()))
+    }
     if (!res.ok) {
-      const err = await res.json().catch(() => ({}))
-      const e = new Error(err.detail || 'Registration failed')
+      const e = new Error(readableError(res.status, res.headers?.get?.('content-type'), await res.text()))
       e.status = res.status
       throw e
     }
     return res.json()
   }, [])
 
-  const signup = useCallback(async ({ username, password, business_name, template_key, hosting = 'local', phone = null }) => {
+  const signup = useCallback(async ({ username, password, business_name, template_key, hosting = 'local', phone = null, email = null }) => {
     logger.info('Attempting signup for username:', username, 'business:', business_name, 'template:', template_key, 'hosting:', hosting)
 
     // Cloud-authoritative identity (D9): on the downloaded app we register on the
@@ -526,15 +633,23 @@ export function AuthProvider({ children }) {
       // 1. Create the cloud account → mints the BizID.
       let cloudData
       try {
-        cloudData = await _doSignup(CLOUD_URL, { username, password, business_name, phone })
+        cloudData = await _doSignup(CLOUD_URL, { username, password, business_name, phone, email })
       } catch (err) {
-        if (err.status === 400) {
+        if (err.status === 400 && /username|already (?:exists|registered|taken)/i.test(err.message)) {
           // Username already taken on the cloud — most likely the same person.
           throw new Error('An account with this username already exists. Please log in instead.')
         }
         throw err
       }
       const bizId = cloudData.public_id
+      // Local + Cloud is a Pro feature, so it needs the Pro trial the cloud just
+      // granted (or not: one trial per phone, or trials switched off). A cloud
+      // that reports `trial` decides; an older one sends nothing and the choice
+      // stands. Without the trial the business is set up Local instead, and the
+      // caller says so (Register.jsx).
+      const trialKnown = !!cloudData && Object.prototype.hasOwnProperty.call(cloudData, 'trial')
+      const fellBackToLocal = hosting === 'hybrid' && trialKnown && !cloudData.trial
+      const effectiveHosting = fellBackToLocal ? 'local' : hosting
 
       // 2. Mirror locally with the SAME BizID, then log in locally (local-first).
       //    Seed the template ONLY on local (the working copy); the cloud receives
@@ -543,13 +658,13 @@ export function AuthProvider({ children }) {
       let localData
       let didReclaim = false
       try {
-        localData = await _doSignup(LOCAL_URL, { username, password, business_name, public_id: bizId, phone })
+        localData = await _doSignup(LOCAL_URL, { username, password, business_name, public_id: bizId, phone, email })
       } catch (err) {
         // Local orphan: the cloud accepted this username (so its old cloud account
         // was deleted → username free on the cloud), but a stale LOCAL mirror still
         // holds it → the local /signup 400s. Re-key that orphan to the new BizID
-        // instead of failing — same person, same device. (Non-destructive: any
-        // existing local data on the row is kept.)
+        // instead of failing — the backend verifies the new cloud identity and
+        // purges stale data before rekeying this retired local business.
         if (err.status === 400) {
           logger.warn('[SIGNUP] Local username is orphaned — reclaiming it onto the new cloud BizID.')
           const res = await fetch(`${LOCAL_URL}/api/auth/reclaim_local`, {
@@ -585,7 +700,7 @@ export function AuthProvider({ children }) {
       //        still talks to the local backend), so there's nothing to re-login.
       try {
         const localTok = localData.token || localData.access_token
-        if (hosting === 'hybrid') {
+        if (effectiveHosting === 'hybrid') {
           updateApiBase('hybrid')
           await fetch(`${LOCAL_URL}/settings`, {
             method: 'PUT',
@@ -602,25 +717,90 @@ export function AuthProvider({ children }) {
       } catch (e) {
         logger.warn('[SIGNUP] Hosting auto-setup skipped (works, sync self-heals on next login):', e?.message)
       }
-      return
+      if (fellBackToLocal) logger.info('[SIGNUP] No Pro trial for this business - set up Local instead of Local + Cloud.')
+      return { hosting: effectiveHosting, fellBackToLocal, trial: cloudData.trial || null }
     }
 
     // Web: register on the cloud backend (API_BASE = cloud here).
-    const data = await _doSignup(API_BASE, { username, password, business_name, phone })
+    const data = await _doSignup(API_BASE, { username, password, business_name, phone, email })
     await _applyTemplate(API_BASE, data.token || data.access_token, template_key)
     logger.info('Signup successful (web/cloud) for user:', data.username)
     _saveSession(data)
+    return { hosting: 'cloud', trial: data.trial || null,
+      trialUnavailable: Object.prototype.hasOwnProperty.call(data, 'trial') && !data.trial }
   }, [_saveSession, _applyTemplate, _doSignup, _provisionCloudSyncToken])
 
-  const logout = useCallback(() => {
+  const logout = useCallback(async (announce = true) => {
+    // A demo can run beside an owner's saved session. Leaving the sample store
+    // must never revoke that token, erase its credentials, or sign out its tabs.
+    if (demoSessionRef.current || isDemoRequested()) {
+      authGeneration.current++
+      reportedLoadErrors.current.clear()
+      clearDemoSession()
+      demoSessionRef.current = false
+      try {
+        const url = new URL(window.location.href)
+        url.searchParams.delete('demo')
+        url.searchParams.delete('embed')
+        url.searchParams.delete('tour')
+        if (url.pathname.startsWith('/demo')) url.pathname = '/login'
+        window.history.replaceState(window.history.state, '', url.pathname + url.search + url.hash)
+      } catch { /* session state still exits when browser history is unavailable */ }
+      clearBillingProfileCache()
+      setIsDemoMode(false)
+      setToken(null)
+      setUser(null)
+      setSettings(null)
+      setProfile(null)
+      setBusinessConfig(null)
+      setAttributesSchema([])
+      setAppReady(false)
+      setBizId(null)
+      return
+    }
+    authGeneration.current++
+    invalidateSessionRefresh()
+    reportedLoadErrors.current.clear()
+    clearPreviewTimers()
+    notifyAiLogout()
+    const outgoingToken = tokenStorage.getItem('billing_token')
+    if (announce === true && outgoingToken) {
+      const controller = new AbortController()
+      const timeout = setTimeout(() => controller.abort(), 3000)
+      try {
+        await Promise.race([
+          fetch(`${API_BASE}/auth/logout`, { method: 'POST', headers: { Authorization: `Bearer ${outgoingToken}` }, keepalive: true, signal: controller.signal }),
+          new Promise(resolve => setTimeout(resolve, 3000)),
+        ])
+      } catch { /* local logout remains available offline */ }
+      finally { clearTimeout(timeout) }
+      // A new login while the old logout was pending owns the session now.
+      if (tokenStorage.getItem('billing_token') !== outgoingToken) return
+    }
     logger.info('Logging out user, clearing local session token.')
-    
+
+    // Clear billing profile cache so next user does not inherit prior business profile (WEB-07)
+    try {
+      clearBillingProfileCache()
+    } catch (e) {
+      // Ignore
+    }
+
+    // Broadcast logout to all tabs/windows (e.g. open AI tab, WEB-05)
+    if (announce === true && typeof BroadcastChannel !== 'undefined') {
+      try {
+        const bc = new BroadcastChannel('bizassist_auth_channel')
+        bc.postMessage({ type: 'LOGOUT' })
+        bc.close()
+      } catch (e) {
+        // Ignore
+      }
+    }
+
     // Hidden cross-origin iframe to trigger AI dashboard logout synchronously
     try {
-      const { hostname, port } = window.location
-      const aiUrl = import.meta.env.VITE_AI_DASHBOARD_URL || 
-        (port === '8450' ? `http://${hostname}:8451` : `http://${hostname}:5173`)
-        
+      const aiUrl = getAiDashboardUrl()
+
       const iframe = document.createElement('iframe')
       iframe.style.display = 'none'
       iframe.src = `${aiUrl}/?logout=true`
@@ -633,13 +813,41 @@ export function AuthProvider({ children }) {
     tokenStorage.removeItem('billing_token')
     localStorage.removeItem('billing_user')
     tokenStorage.removeItem('bizassist_cloud_token')
+    clearDemoSession()
+    setIsDemoMode(false)
     syncManager.clearScope()
     localStorage.removeItem('bizassist_user_home_mode')  // clear home mode — next user gets their own
+    localStorage.removeItem('pos_upi_vpa')  // clear device payment handle so next business doesn't inherit it
     setToken(null)
     setUser(null)
+    setSettings(null)
+    setProfile(null)
     setAppReady(false)
     setBizId(null)   // stop tagging logs with the signed-out business
   }, [])
+
+  useEffect(() => {
+    if (isDemoMode || user?.is_demo || token === DEMO_TOKEN) return
+    const changed = event => {
+      if (token && (event.key === 'billing_token' || event.key === 'billing_user') && !event.newValue) logout(false)
+      else if (event.key === 'billing_token' && event.newValue) {
+        try {
+          const saved = JSON.parse(localStorage.getItem('billing_user') || 'null')
+          if (saved?.public_id && saved.public_id !== user?.public_id) { window.location.reload(); return }
+        } catch { /* same-session refresh still works */ }
+        setToken(event.newValue)
+      }
+    }
+    window.addEventListener('storage', changed)
+    let channel
+    try {
+      if (typeof BroadcastChannel !== 'undefined') {
+        channel = new BroadcastChannel('bizassist_auth_channel')
+        channel.onmessage = event => { if (event.data?.type === 'LOGOUT') logout(false) }
+      }
+    } catch { /* storage events remain available */ }
+    return () => { window.removeEventListener('storage', changed); channel?.close() }
+  }, [isDemoMode, token, user?.is_demo, user?.public_id, logout])
 
   /**
    * switchMode — change hosting mode and force re-login.
@@ -681,6 +889,7 @@ export function AuthProvider({ children }) {
       logger.warn('[MODE SWITCH] Could not save mode to backend (continuing anyway):', err)
     }
     // 2. Update localStorage so the new API_BASE is effective immediately
+    await logout()
     updateApiBase(newMode)
     // 3. Force logout — clears stale JWT; user will log in against new backend
     localStorage.removeItem('billing_token')
@@ -693,7 +902,7 @@ export function AuthProvider({ children }) {
       detail: { type: 'info', msg: `Switched to ${modeLabel}. Please log in again.` }
     }))
     logger.info(`[MODE SWITCH] Done. API_BASE is now: ${API_BASE}`)
-  }, [token])
+  }, [token, logout])
 
   /**
    * setHostingMode — flip between Local and Local+Cloud (hybrid) WITHOUT a logout.
@@ -742,23 +951,32 @@ export function AuthProvider({ children }) {
     logger.info(`[MODE] Done. API_BASE is now: ${API_BASE}`)
   }, [token])
 
+  useSessionRefresh(isDemoMode || user?.is_demo || token === DEMO_TOKEN ? null : token)
+  useEffect(() => {
+    if (isDemoMode || user?.is_demo || token === DEMO_TOKEN) return
+    const changed = event => { if (event.detail?.token) setToken(event.detail.token) }
+    window.addEventListener('auth_token_refreshed', changed)
+    return () => window.removeEventListener('auth_token_refreshed', changed)
+  }, [isDemoMode, token, user?.is_demo])
+
   const [profile, setProfile] = useState(null)
 
   const fetchProfile = useCallback(async () => {
-    if (!token) return
+    if (!token || isDemoMode || isDemoRequested() || token === DEMO_TOKEN || user?.is_demo) return
+    const backend = API_BASE, generation = authGeneration.current
+    const current = () => generation === authGeneration.current && tokenStorage.getItem('billing_token') === token && isSameBackendOrCloudFailover(API_BASE, backend)
     try {
-      const res = await fetch(`${API_BASE}/profile`, {
+      if (!current()) return
+      const res = await sessionFetch(`${backend}/profile`, {
         headers: {
           Authorization: `Bearer ${token}`
         }
       })
-      if (res.status === 404) {
-        logger.warn('[AUTH] Restored session user not found on active backend. Auto-logging out.')
-        logout()
-        return
-      }
+      if (!current()) return
+      await reportLoadError(res, '/profile')
       if (res.ok) {
         const data = await res.json()
+        if (!current()) return
         setProfile(data)
       }
     } catch (err) {
@@ -766,24 +984,25 @@ export function AuthProvider({ children }) {
     }
   }, [token, logout])
 
-  const [settings, setSettings] = useState(null)
+  const [settings, setSettings] = useState(() => isDemoRequested() ? DEMO_SETTINGS : null)
 
   const fetchSettings = useCallback(async (force = false) => {
-    if (!token) return
+    if (!token || isDemoMode || isDemoRequested() || token === DEMO_TOKEN || user?.is_demo) return
+    const backend = API_BASE, generation = authGeneration.current
+    const current = () => generation === authGeneration.current && tokenStorage.getItem('billing_token') === token && isSameBackendOrCloudFailover(API_BASE, backend)
     try {
-      const url = force ? `${API_BASE}/settings?force=true` : `${API_BASE}/settings`
-      const res = await fetch(url, {
+      if (!current()) return
+      const url = force ? `${backend}/settings?force=true` : `${backend}/settings`
+      const res = await sessionFetch(url, {
         headers: {
           Authorization: `Bearer ${token}`
         }
       })
-      if (res.status === 404) {
-        logger.warn('[AUTH] Restored session settings user not found on active backend. Auto-logging out.')
-        logout()
-        return
-      }
+      if (!current()) return
+      await reportLoadError(res, '/settings')
       if (res.ok) {
         const data = await res.json()
+        if (!current()) return
         // (§9.3a/b) Reconcile the account's saved `general.hosting_mode` to the
         // REAL mode so it can't drift. A stale value (e.g. 'local' persisted on
         // the account from an earlier desktop switch) otherwise mis-tags cloud
@@ -848,7 +1067,8 @@ export function AuthProvider({ children }) {
           // Persisting is what makes it stick server-side; the derivation is
           // deterministic from session facts, so this settles on the first load
           // rather than oscillating the way the old reconcile did.
-          fetch(`${API_BASE}/settings`, {
+          if (!current()) return
+          fetch(`${backend}/settings`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
             body: JSON.stringify({ general: { hosting_mode: realMode } }),
@@ -878,21 +1098,39 @@ export function AuthProvider({ children }) {
     }
   }, [token, logout])
 
+  useEffect(() => {
+    if (!token || settings) return
+    let stopped = false, attempt = 0, timer
+    const schedule = () => {
+      timer = setTimeout(async () => {
+        if (stopped) return
+        await fetchSettings()
+        if (!stopped) schedule()
+      }, [2000, 4000, 8000, 16000][attempt++] || 30000)
+    }
+    schedule()
+    const retry = () => { if (!stopped) void fetchSettings() }
+    window.addEventListener('focus', retry)
+    window.addEventListener('online', retry)
+    return () => { stopped = true; clearTimeout(timer); window.removeEventListener('focus', retry); window.removeEventListener('online', retry) }
+  }, [token, settings, fetchSettings])
+
   const fetchBusinessConfig = useCallback(async () => {
-    if (!token) return
+    if (!token || isDemoMode || isDemoRequested() || token === DEMO_TOKEN || user?.is_demo) return
+    const backend = API_BASE, generation = authGeneration.current
+    const current = () => generation === authGeneration.current && tokenStorage.getItem('billing_token') === token && isSameBackendOrCloudFailover(API_BASE, backend)
     try {
-      const res = await fetch(`${API_BASE}/business/config`, {
+      if (!current()) return
+      const res = await sessionFetch(`${backend}/business/config`, {
         headers: {
           Authorization: `Bearer ${token}`
         }
       })
-      if (res.status === 404) {
-        logger.warn('[AUTH] Restored session business config user not found on active backend. Auto-logging out.')
-        logout()
-        return
-      }
+      if (!current()) return
+      await reportLoadError(res, '/business/config')
       if (res.ok) {
         const data = await res.json()
+        if (!current()) return
         setBusinessConfig(data.config)
         setAttributesSchema(data.attributes_schema || [])
         logger.info('Loaded business config successfully')
@@ -904,6 +1142,9 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     if (token) {
+      if (isDemoMode || isDemoRequested() || token === DEMO_TOKEN || user?.is_demo) {
+        return
+      }
       fetchProfile()
       fetchBusinessConfig()
       fetchSettings()
@@ -975,8 +1216,12 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     const handleUnauthorized = () => {
+      if (isDemoMode || isDemoRequested() || token === DEMO_TOKEN || user?.is_demo) {
+        logger.info('[DEMO] Suppressed unauthorized signal in demo sandbox.')
+        return
+      }
       logger.warn('[AuthContext] auth_unauthorized event triggered. Auto-logging out.')
-      logout()
+      logout(false)
       window.dispatchEvent(new CustomEvent('show_toast', {
         detail: { type: 'error', msg: 'Session expired. Please log in again.' }
       }))
@@ -989,6 +1234,9 @@ export function AuthProvider({ children }) {
 
   // Authenticated fetch helper
   const authFetch = useCallback(async (path, opts = {}) => {
+    const backend = API_BASE, generation = authGeneration.current
+    const current = () => generation === authGeneration.current && isSameBackendOrCloudFailover(API_BASE, backend)
+    if (!current()) throw new Error('Session changed')
     // DELIBERATELY NO ABSOLUTE-URL PASSTHROUGH.
     // A revision that allowed callers to pass a fully-qualified URL here caused
     // a cross-tenant bug: the session token is issued by, and only valid on, the
@@ -1005,8 +1253,13 @@ export function AuthProvider({ children }) {
       apiPath = '/' + apiPath.slice('billing/'.length)
     }
 
+    if (user?.is_demo || isDemoMode || isDemoRequested()) {
+      const mockRes = handleDemoRequest(apiPath, opts)
+      if (mockRes) return mockRes
+    }
+
     logger.debug(`authFetch request started for path: ${path} (mapped to ${apiPath}), method: ${opts.method || 'GET'}`)
-    
+
     const headers = {
       ...(opts.headers || {}),
       Authorization: `Bearer ${token}`
@@ -1017,10 +1270,10 @@ export function AuthProvider({ children }) {
 
     let res
     try {
-      res = await fetch(`${API_BASE}${apiPath}`, {
+      res = await resilientSessionFetch(`${backend}${apiPath}`, {
         ...opts,
         headers
-      })
+      }, { budgetMs: opts.timeoutMs || (apiPath.startsWith('/connections/') && !['GET', 'HEAD'].includes((opts.method || 'GET').toUpperCase()) ? 75000 : 65000) })
     } catch (err) {
       logger.error(`authFetch network failure for path: ${path}`, err)
       window.dispatchEvent(new CustomEvent('show_toast', {
@@ -1029,28 +1282,27 @@ export function AuthProvider({ children }) {
       throw err
     }
 
-    if (res.status === 401) {
-      logger.warn(`authFetch encountered 401 (Unauthorized) for path: ${path}. Auto-logging out.`)
-      logout()
-      throw new Error('Session expired')
-    }
+    if (!current()) throw new Error('Session changed')
+
 
     if (!res.ok) {
-      res.clone().json().then(err => {
-        const detail = err?.detail || `Error: ${res.statusText || res.status}`
-        window.dispatchEvent(new CustomEvent('show_toast', {
-          detail: { type: 'error', msg: detail }
-        }))
-      }).catch(() => {
-        window.dispatchEvent(new CustomEvent('show_toast', {
-          detail: { type: 'error', msg: `Request failed with status ${res.status}` }
-        }))
-      })
+      const message = readableError(res.status, res.headers?.get?.('content-type'), await res.clone().text())
+      window.dispatchEvent(new CustomEvent('show_toast', { detail: { type: 'error', msg: message } }))
     }
 
     logger.debug(`authFetch response status for path ${path}: ${res.status}`)
     return res
   }, [token, logout])
+
+  const enterDemoMode = useCallback(() => {
+    activateDemoSession()
+    setUser(DEMO_USER)
+    setToken(DEMO_TOKEN)
+    setIsDemoMode(true)
+    setBizId(DEMO_USER.public_id)
+    setSettings(DEMO_SETTINGS)
+    setLoading(false)
+  }, [])
 
   return (
     <AuthContext.Provider value={{
@@ -1058,17 +1310,24 @@ export function AuthProvider({ children }) {
       businessConfig, attributesSchema, fetchBusinessConfig, appReady, setAppReady,
       settings, fetchSettings,
       networkMode,   // 'local' | 'cloud' — whether this device is on the same LAN as the owner's backend
+      setSession: _saveSession,
+      isDemoMode,
+      enterDemoMode,
     }}>
       {children}
     </AuthContext.Provider>
   )
 }
 
-export const useAuth = () => useContext(AuthContext)
+export const useAuth = () => {
+  const value = useContext(AuthContext)
+  if (value === null) throw new Error('useAuth must be rendered inside AuthProvider')
+  return value
+}
 
 export const useBusinessConfig = () => {
   const { businessConfig, attributesSchema, fetchBusinessConfig } = useAuth()
-  
+
   const t = useCallback((key, fallback) => {
     if (!businessConfig || !businessConfig.terminology) {
       return fallback || key

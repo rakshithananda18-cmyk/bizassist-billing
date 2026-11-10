@@ -29,6 +29,8 @@ from database.db import SessionLocal
 from database.models import Base, Invoice, Customer, ActionLog, Inventory
 from main_groq import app
 
+from tests.signup_fixture import signup_payload
+
 client = TestClient(app)
 BID = 770022  # only for token unit tests; route tests use a signed-up owner
 
@@ -48,11 +50,11 @@ def _seed_business(bid):
 
 @pytest.fixture()
 def owner():
-    r = client.post("/signup", json={
+    r = client.post("/signup", json=signup_payload({
         "username": f"rails_{uuid.uuid4().hex[:8]}",
         "password": "Password123!",
         "business_name": "Rails Biz",
-    })
+    }))
     assert r.status_code == 200, r.text
     d = r.json()
     _seed_business(d["id"])

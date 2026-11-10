@@ -16,7 +16,8 @@ const fs = require('fs');
 const path = require('path');
 const log = require('electron-log');
 
-const CLOUD_URL = process.env.BIZASSIST_CLOUD_URL || 'https://rakshit-dev-bizassist.hf.space';
+const { resolveCloudApiUrl } = require('./cloudEndpoint');
+const CLOUD_URL = resolveCloudApiUrl(process.env);
 const LOCAL_URL = 'http://127.0.0.1:8001';
 const ENABLED = process.env.TELEMETRY !== '0';
 

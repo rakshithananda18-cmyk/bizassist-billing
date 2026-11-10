@@ -9,6 +9,7 @@ against the owner's shop while staying role-restricted.
 import os
 import sys
 import uuid
+import pytest
 
 os.environ.setdefault("DATABASE_URL", "sqlite:///./test_bizassist.db")
 os.environ.setdefault("GROQ_API_KEY", "mock_groq_api_key")
@@ -21,14 +22,22 @@ from main_groq import app
 from database.db import SessionLocal
 from database.models import Product
 
+from tests.signup_fixture import signup_payload
+
 client = TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def isolate_auth_services(monkeypatch):
+    monkeypatch.setattr("routes.auth.check_ip_rate_limit", lambda *_: {"allowed": True})
+    monkeypatch.setattr("services.brevo_service.is_brevo_configured", lambda: False)
 
 
 def _signup(business_name):
     uname = f"own_{uuid.uuid4().hex[:8]}"
-    r = client.post("/signup", json={
+    r = client.post("/signup", json=signup_payload({
         "username": uname, "password": "TestPass123!", "business_name": business_name,
-    })
+    }))
     assert r.status_code == 200, r.text
     b = r.json()
     return {"headers": {"Authorization": f"Bearer {b['token']}"}, "bid": b["id"], "username": uname}
@@ -37,7 +46,8 @@ def _signup(business_name):
 def _create_staff(owner, username=None, password="CashPass123!", role="cashier"):
     username = username or f"cash_{uuid.uuid4().hex[:8]}"
     r = client.post("/staff", headers=owner["headers"],
-                    json={"username": username, "password": password, "role": role})
+                    json={"username": username, "password": password, "role": role,
+                          "phone": "+919" + str(uuid.uuid4().int % 1_000_000_000).zfill(9)})
     return r, username, password
 
 
@@ -132,7 +142,8 @@ def test_owner_assigns_staff_counter_prefix_carried_to_login():
     uname = f"cash_{uuid.uuid4().hex[:8]}"; pwd = "CashPass123!"
     # Create with a messy prefix → normalised to a bare alnum token.
     r = client.post("/staff", headers=owner["headers"],
-                    json={"username": uname, "password": pwd, "counter_prefix": " c1- "})
+                    json={"username": uname, "password": pwd, "counter_prefix": " c1- ",
+                          "phone": "+919" + str(uuid.uuid4().int % 1_000_000_000).zfill(9)})
     assert r.status_code == 201, r.text
     assert r.json()["counter_prefix"] == "c1"          # trimmed, de-dashed
 

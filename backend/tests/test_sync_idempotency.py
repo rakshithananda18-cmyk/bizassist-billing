@@ -34,6 +34,8 @@ from database.db import SessionLocal
 from database.models import Product, Inventory, User, Invoice, InvoicePayment
 from core.models import IdempotencyKey
 
+from tests.signup_fixture import signup_payload
+
 client = TestClient(app)
 
 HDR = "X-Client-Request-Id"
@@ -48,7 +50,7 @@ def _clear_rate_limit():
 
 def _signup(name="Idem Biz", state="29"):
     uname = f"idem_{uuid.uuid4().hex[:8]}"
-    r = client.post("/signup", json={"username": uname, "password": "TestPass123!", "business_name": name})
+    r = client.post("/signup", json=signup_payload({"username": uname, "password": "TestPass123!", "business_name": name}))
     assert r.status_code == 200, r.text
     b = r.json()
     bid = b["id"]

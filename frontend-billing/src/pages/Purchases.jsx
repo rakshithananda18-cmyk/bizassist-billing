@@ -4,12 +4,13 @@
 //              bills, supports parsing scanned PDFs via Claude/Groq OCR, creates
 //              new batches, and records debit note purchase returns.
 // ============================================================================
-import React, { useEffect, useState, useCallback, useRef } from 'react'
+import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react'
+import { prepareReturnLines } from '../utils/returnPreview'
 import { useSearchParams } from 'react-router-dom'
 import PageShell from '../components/common/PageShell'
 import { useAuth } from '../contexts/AuthContext'
 import { useConfirm } from '../contexts/ConfirmContext'
-import { BillsIcon, CheckIcon, CopyIcon, ChevronLeftIcon, ChevronRightIcon, CloseIcon, DownloadIcon, ImportIcon, InfoIcon, SearchIcon, SyncIcon, UploadIcon, ExpandIcon } from '../components/Icons'
+import { BillsIcon, CheckIcon, CopyIcon, ChevronLeftIcon, ChevronRightIcon, CloseIcon, DownloadIcon, ImportIcon, InfoIcon, SearchIcon, SyncIcon, UploadIcon, ExpandIcon, PlusIcon } from '../components/Icons'
 import CustomSelect from '../components/common/CustomSelect'
 import PurchaseOcrModal from '../components/purchases/PurchaseOcrModal'
 import PurchaseReturnModal from '../components/purchases/PurchaseReturnModal'
@@ -19,6 +20,7 @@ import { usePageLifecycle } from '../hooks/usePageLifecycle'
 import ContextMenu from '../components/common/ContextMenu'
 import UnsavedChangesModal from '../components/common/UnsavedChangesModal'
 import { logger } from '../utils/logger'
+import { readAllPages, readList } from '../utils/readPages'
 
 const fmt = (n) =>
   n != null ? `₹${Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '—'
@@ -46,6 +48,8 @@ export default function Purchases({ embedded = false, headerTabs = null, inlineP
   const [bills, setBills]           = useState([])
   const [debitNotes, setDebitNotes] = useState([])
   const [loading, setLoading]       = useState(true)
+  const [loadError, setLoadError]   = useState(false)
+  const loadGeneration = useRef(0)
   const [activeTab, setActiveTab]   = useState('Pending Review')
   const [isFullScreen, setIsFullScreen] = useState(false)
   // `?vendor=` seeds the search box so Contacts can drill through to a supplier's
@@ -100,14 +104,13 @@ export default function Purchases({ embedded = false, headerTabs = null, inlineP
   }
 
   useEffect(() => {
+    let active = true
     if (showModal && step === 'review') {
-      authFetch('/products?per_page=1000')
-        .then(r => r.ok ? r.json() : { items: [] })
-        .then(data => {
-          setCatalogProducts(data.items || [])
-        })
-        .catch(() => {})
+      readAllPages(authFetch, '/products')
+        .then(data => { if (active) setCatalogProducts(data) })
+        .catch(error => { if (active) setAlert({ type: 'danger', msg: `Product catalogue unavailable: ${error.message}` }) })
     }
+    return () => { active = false }
   }, [showModal, step, authFetch])
 
   const handleHeaderChange = (field, value) => {
@@ -171,7 +174,7 @@ export default function Purchases({ embedded = false, headerTabs = null, inlineP
       if (!prev) return null
       const newItems = [...prev.items]
       const item = { ...newItems[index] }
-      
+
       // Keep keys aligned to schema
       if (field === 'quantity') {
         item.quantity = value;
@@ -190,18 +193,26 @@ export default function Purchases({ embedded = false, headerTabs = null, inlineP
   // ── 3. DATA LOADERS & INITIAL EFFECTS ──
   // ============================================================================
   const load = useCallback(() => {
+    const generation = ++loadGeneration.current
     setLoading(true)
+    setLoadError(false)
     Promise.all([
-      authFetch('/purchases').then(r => r.ok ? r.json() : []),
-      authFetch('/purchases/debit-notes').then(r => r.ok ? r.json() : [])
+      readList(authFetch, '/purchases'),
+      readList(authFetch, '/purchases/debit-notes')
     ])
       .then(([purData, dnData]) => {
+        if (generation !== loadGeneration.current) return
         setBills(Array.isArray(purData) ? purData : [])
         setDebitNotes(Array.isArray(dnData) ? dnData : [])
       })
-      .catch(() => {})
-      .finally(() => setLoading(false))
+      .catch((err) => {
+        if (generation !== loadGeneration.current) return
+        logger.error('[PURCHASES] Failed to load purchase records:', err)
+        setLoadError(true)
+      })
+      .finally(() => { if (generation === loadGeneration.current) setLoading(false) })
   }, [authFetch])
+  useEffect(() => () => { loadGeneration.current++ }, [authFetch])
 
   useEffect(() => {
     load()
@@ -368,7 +379,24 @@ export default function Purchases({ embedded = false, headerTabs = null, inlineP
     setDragOver(false)
   }
 
-  const openModal = () => { resetModal(); setShowModal(true) }
+  const openModal = (manual = false) => {
+    resetModal()
+    if (manual) {
+      setExtracted({
+        supplier_name: '',
+        invoice_number: '',
+        invoice_date: new Date().toISOString().slice(0, 10),
+        due_date: '',
+        total_amount: 0,
+        tax_amount: 0,
+        lines: [
+          { product_name: '', quantity: 1, unit_price: 0, cgst_rate: 0, sgst_rate: 0, igst_rate: 0, total_amount: 0 }
+        ]
+      })
+      setStep('review')
+    }
+    setShowModal(true)
+  }
 
   // Returns logic
   const resetReturnForm = () => {
@@ -388,21 +416,9 @@ export default function Purchases({ embedded = false, headerTabs = null, inlineP
   const handleSelectBillNext = () => {
     const origBill = bills.find(b => String(b.id) === String(returnBillId))
     if (!origBill) return
-    
-    const lines = (origBill.lines || []).map(li => ({
-      product_id: li.product_id,
-      product_name: li.product_name,
-      quantity: 0,
-      max_quantity: li.quantity || 1,
-      unit_price: li.unit_price || 0,
-      cgst_rate: li.cgst_rate || 0,
-      sgst_rate: li.sgst_rate || 0,
-      igst_rate: li.igst_rate || 0,
-      hsn_sac: li.hsn_sac,
-      unit: li.unit || 'Nos',
-      reason: 'Damaged'
-    }))
-    
+
+    const lines = prepareReturnLines(origBill.lines).map(line => ({ ...line, reason: 'Damaged' }))
+
     setReturnLines(lines)
     setReturnStep('enter_items')
   }
@@ -413,7 +429,7 @@ export default function Purchases({ embedded = false, headerTabs = null, inlineP
       setAlert({ type: 'danger', msg: 'Please enter a return quantity greater than zero for at least one item.' })
       return
     }
-    
+
     const invalidLine = activeLines.find(l => l.quantity > l.max_quantity)
     if (invalidLine) {
       setAlert({ type: 'danger', msg: `Return quantity for ${invalidLine.product_name} cannot exceed original quantity (${invalidLine.max_quantity}).` })
@@ -476,6 +492,58 @@ export default function Purchases({ embedded = false, headerTabs = null, inlineP
   // Search box, defined once. It goes INSIDE the workspace toolbar when
   // embedded — otherwise this view spends a whole 48px row on a single input,
   // which is what the other three tabs stopped doing.
+  const isReturnsTab = activeTab === 'Returns (Debit Notes)'
+
+  // Context-aware action buttons aligned to the active purchase sub-view
+  const purchaseActions = useMemo(() => {
+    if (isReturnsTab) {
+      return [
+        {
+          label: '+ Manual Bill',
+          icon: <PlusIcon size={13} />,
+          action: () => openModal(true),
+          secondary: true,
+          title: 'Create purchase bill manually without OCR',
+        },
+        {
+          label: 'Upload Bill',
+          icon: <UploadIcon size={13} />,
+          action: () => openModal(),
+          badge: !isPro ? 'PRO' : null,
+          secondary: true,
+        },
+        {
+          label: 'Record Return',
+          icon: <SyncIcon size={13} />,
+          action: openReturnModal,
+          primary: true,
+        },
+      ]
+    }
+    return [
+      {
+        label: 'Record Return',
+        icon: <SyncIcon size={13} />,
+        action: openReturnModal,
+        secondary: true,
+      },
+      {
+        label: '+ Manual Bill',
+        icon: <PlusIcon size={13} />,
+        action: () => openModal(true),
+        secondary: true,
+        title: 'Create purchase bill manually without OCR',
+      },
+      {
+        label: 'Upload Bill',
+        icon: <UploadIcon size={13} />,
+        action: () => openModal(),
+        primary: true,
+        badge: !isPro ? 'PRO' : null,
+      },
+    ]
+  }, [isReturnsTab, isPro, openReturnModal, openModal])
+
   const searchBox = (
     <div className="search-bar" style={{ margin: 0, height: 34, boxSizing: 'border-box', display: 'flex', alignItems: 'center', flex: '1 1 170px', minWidth: 150, maxWidth: 280 }}>
       <span style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}><SearchIcon size={16} /></span>
@@ -495,18 +563,45 @@ export default function Purchases({ embedded = false, headerTabs = null, inlineP
             a second "Purchases" title under the workspace's own. */}
         {(headerTabs || inlinePage) && (
           <WorkspaceTopBar
+            wrap={inlinePage}
             settingsTab="transactions"
             windowControls={!inlinePage}
             showMinimize={false}
             actions={
               <>
                 {searchBox}
-                <button className="btn btn-secondary btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }} onClick={openReturnModal}>
-                  <SyncIcon size={13} /> Record Return
-                </button>
-                <button className="btn btn-primary btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }} onClick={openModal}>
-                  <UploadIcon size={13} /> Upload Bill
-                  {!isPro && <span className="pro-chip">PRO</span>}
+                {purchaseActions.map((a, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    className={`btn ${a.primary ? 'btn-primary' : 'btn-secondary'} btn-sm ${a.primary ? '' : 'ws-bar-action'}`}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
+                    onClick={a.action}
+                    title={a.title}
+                  >
+                    {a.icon} {a.label}
+                    {a.badge && <span className="pro-chip">{a.badge}</span>}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm ws-bar-more"
+                  title="More actions"
+                  aria-label="More actions"
+                  onClick={e => {
+                    const r = e.currentTarget.getBoundingClientRect()
+                    setCtxMenu({
+                      x: r.right - 210,
+                      y: r.bottom,
+                      items: purchaseActions.filter(a => !a.disabled).map(a => ({
+                        label: a.label,
+                        icon: a.icon,
+                        action: a.action,
+                      })),
+                    })
+                  }}
+                >
+                  &#8943;
                 </button>
               </>
             }
@@ -556,10 +651,13 @@ export default function Purchases({ embedded = false, headerTabs = null, inlineP
               <p className="page-subtitle">Upload and manage supplier bills with AI-powered extraction</p>
             </div>
             <div className="page-actions">
-              <button className="btn btn-secondary" style={{ marginRight: 8 }} onClick={openReturnModal}>
+              <button className={`btn ${isReturnsTab ? 'btn-primary' : 'btn-secondary'}`} style={{ marginRight: 8 }} onClick={openReturnModal}>
                 <SyncIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Record Return
               </button>
-              <button className="btn btn-primary" onClick={openModal}>
+              <button className="btn btn-secondary" style={{ marginRight: 8 }} onClick={() => openModal(true)}>
+                <PlusIcon size={14} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> + Manual Bill
+              </button>
+              <button className={`btn ${isReturnsTab ? 'btn-secondary' : 'btn-primary'}`} onClick={openModal}>
                 ⬆ Upload Bill
                 {!isPro && <span className="pro-chip">PRO</span>}
               </button>
@@ -595,8 +693,15 @@ export default function Purchases({ embedded = false, headerTabs = null, inlineP
 
         {/* Table */}
         {(() => {
+          const emptyContent = filtered.length === 0 ? (
+            <div className="empty-state">
+              <div className="empty-icon">{activeTab === 'Returns (Debit Notes)' ? <SyncIcon size={24} /> : <BillsIcon size={24} />}</div>
+              <h3>{activeTab === 'Returns (Debit Notes)' ? 'No returns found' : 'No bills found'}</h3>
+              <p>{search ? 'Try a different search term.' : (activeTab === 'Returns (Debit Notes)' ? 'Record a return to get started.' : 'Upload a bill to get started.')}</p>
+            </div>
+          ) : null
           const tableContent = (
-            <table className="data-table">
+            <table className="data-table" data-tour="purchase-table">
               <thead><tr>
                 <th className="sortable" onClick={() => handleSort('id_number')}>
                   Bill / Return #
@@ -637,15 +742,7 @@ export default function Purchases({ embedded = false, headerTabs = null, inlineP
                 <th style={{ textAlign: 'right' }}>Actions</th>
               </tr></thead>
               <tbody>
-                {filtered.length === 0 ? (
-                  <tr><td colSpan={7}>
-                    <div className="empty-state">
-                      <div className="empty-icon">{activeTab === 'Returns (Debit Notes)' ? <SyncIcon size={24} /> : <BillsIcon size={24} />}</div>
-                      <h3>{activeTab === 'Returns (Debit Notes)' ? 'No returns found' : 'No bills found'}</h3>
-                      <p>{search ? 'Try a different search term.' : (activeTab === 'Returns (Debit Notes)' ? 'Record a return to get started.' : 'Upload a bill to get started.')}</p>
-                    </div>
-                  </td></tr>
-                ) : filtered.map(b => (
+                {filtered.map(b => (
                   <tr
                     key={b.id}
                     style={{ cursor: 'context-menu' }}
@@ -673,7 +770,7 @@ export default function Purchases({ embedded = false, headerTabs = null, inlineP
                     </td>
                     <td style={{ textAlign: 'right' }}>
                       <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
-                        <button className="btn btn-secondary btn-sm" onClick={() => handleViewDetail(b)}>View</button>
+                        <button data-tour="purchase-view" className="btn btn-secondary btn-sm" onClick={() => handleViewDetail(b)}>View</button>
                       </div>
                     </td>
                   </tr>
@@ -682,6 +779,14 @@ export default function Purchases({ embedded = false, headerTabs = null, inlineP
             </table>
           )
           if (loading) return <div className="page-loader"><span className="spinner" /> Loading bills…</div>
+          if (loadError) return (
+            <div className="empty-state" role="alert" style={{ padding: '3rem 1rem', textAlign: 'center' }}>
+              <div className="empty-icon"><BillsIcon size={28} /></div>
+              <h3>Purchase records are unavailable</h3>
+              <p style={{ color: 'var(--text-muted)', marginBottom: '1rem' }}>Could not reach the server to load purchase bills. Please check your connection.</p>
+              <button onClick={load} className="btn btn-secondary">Retry</button>
+            </div>
+          )
           if (isFullScreen) return (
             <div className="table-fullscreen-overlay" onClick={e => { if (e.target === e.currentTarget) setIsFullScreen(false) }}>
               <div className="table-fullscreen-panel">
@@ -690,6 +795,7 @@ export default function Purchases({ embedded = false, headerTabs = null, inlineP
                   <button type="button" className="table-fullscreen-btn" onClick={() => setIsFullScreen(false)}>✕ Close</button>
                 </div>
                 <div className="data-table-wrap">{tableContent}</div>
+                {emptyContent}
               </div>
             </div>
           )
@@ -699,6 +805,7 @@ export default function Purchases({ embedded = false, headerTabs = null, inlineP
                 <ExpandIcon size={14} />
               </button>
               <div className="data-table-wrap">{tableContent}</div>
+                {emptyContent}
             </div>
           )
         })()}

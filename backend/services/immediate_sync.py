@@ -17,6 +17,7 @@ Both are fire-and-forget (background thread). They never block the HTTP response
 and silently swallow errors (the regular sync cycle is the safety net).
 """
 from __future__ import annotations
+import json
 import logging
 import os
 import threading
@@ -28,42 +29,59 @@ logger = logging.getLogger("bizassist.immediate_sync")
 _IS_LOCAL = os.environ.get("DATABASE_URL", "sqlite").startswith("sqlite")
 
 
-def push_profile_to_cloud(business_id: int, fields: dict) -> None:
+def syncs_to_cloud(business_id: int) -> bool:
     """
-    Fire-and-forget POST /api/sync/profile-push to the cloud with the given
-    profile field dict.  Only non-None values are sent.
+    True only when this business (a staff account's owner, for staff) is on
+    Local + Cloud ('hybrid').
+
+    "Local only" promises that nothing goes to the cloud. Holding a cloud token
+    is not consent: the desktop mints one at sign-up and at every online
+    sign-in, whatever the mode. So every out-of-band push checks this, like the
+    sync queue does (database/models.py `_queue_change`). Data written while
+    Local only reaches the cloud through the one-time move when the owner
+    switches (routes/data_transfer.py carries the profile and staff too).
+    """
+    try:
+        from database.db import SessionLocal
+        from database.models import User
+        with SessionLocal() as s:
+            user = s.query(User).filter(User.id == business_id).first()
+            if user is not None and user.parent_business_id is not None:
+                user = s.query(User).filter(User.id == user.parent_business_id).first()
+            if user is None or not user.settings:
+                return False
+            general = (json.loads(user.settings) or {}).get("general") or {}
+            return general.get("hosting_mode") == "hybrid"
+    except Exception as e:
+        logger.warning("[SYNC] Could not read hosting_mode for biz %s (%s) - nothing sent", business_id, e)
+        return False
+
+
+def push_profile_to_cloud(business_id: int, fields: dict, db=None) -> None:
+    """
+    Durable push: persist profile updates to SyncControlOutbox and trigger async delivery (TS-05).
+    Only non-None values are sent, and only for a Local + Cloud business.
     """
     if not _IS_LOCAL:
+        return
+    if not syncs_to_cloud(business_id):
+        logger.info("[PROFILE-SYNC] biz %s is not on Local + Cloud - profile stays on this device", business_id)
         return
 
     payload = {k: v for k, v in fields.items() if v is not None}
     if not payload:
         return
 
-    def _run():
-        try:
-            import httpx
-            from services.sync_worker import _get_cloud_token, CLOUD_URL
-            token = _get_cloud_token(business_id)
-            if not token:
-                logger.warning("[PROFILE-SYNC] No cloud token for biz %s — skipped", business_id)
-                return
-            resp = httpx.post(
-                f"{CLOUD_URL}/api/sync/profile-push",
-                json=payload,
-                headers={"Authorization": f"Bearer {token}"},
-                timeout=8.0,
-            )
-            if resp.status_code == 200:
-                logger.info("[PROFILE-SYNC] Pushed %s to cloud for biz %s",
-                            list(payload.keys()), business_id)
-            else:
-                logger.warning("[PROFILE-SYNC] Cloud returned %s: %s",
-                               resp.status_code, resp.text[:200])
-        except Exception as e:
-            logger.warning("[PROFILE-SYNC] Push failed (non-critical): %s", e)
+    from services.control_outbox import enqueue_control_event, trigger_control_flush
 
-    threading.Thread(target=_run, daemon=True).start()
+    if db is not None:
+        enqueue_control_event(db, business_id, "profile_update", payload)
+        return
+    from database.db import SessionLocal
+    with SessionLocal() as session:
+        enqueue_control_event(session, business_id, "profile_update", payload)
+        session.commit()
+    trigger_control_flush(business_id)
 
 
 def trigger_data_sync(business_id: int, db) -> None:

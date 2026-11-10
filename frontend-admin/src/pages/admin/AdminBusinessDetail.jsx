@@ -4,7 +4,7 @@
 // sync health (sync doctor verdict + reasons), latest telemetry scoped by
 // BizID, server-log tail filtered to this business, plan & limits at a
 // glance, and the session kill-switch (force logout).
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { useDialog } from '../../contexts/DialogContext'
@@ -36,28 +36,39 @@ export default function AdminBusinessDetail() {
   const [serverLog, setServerLog] = useState('')
   const [limits, setLimits] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(null)
+  const requestRef = useRef(0)
+  const [copiedId, setCopiedId] = useState(false)
+
+  async function copyBusinessId(bizid) {
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('Clipboard is unavailable. Select the BizID and copy it manually.')
+      await navigator.clipboard.writeText(bizid)
+      setCopiedId(true)
+      setTimeout(() => setCopiedId(false), 2000)
+    } catch (error) { await showError(error) }
+  }
 
   const load = useCallback(async () => {
+    const request = ++requestRef.current
     setLoading(true)
+    setLoadError(null)
     try {
       const [bizRes, doctorRes, limitsRes, opsRes] = await Promise.all([
-        authFetch(`${API_BASE}/admin/businesses`),
-        authFetch(`${API_BASE}/admin/sync-doctor`),
+        authFetch(`${API_BASE}/admin/businesses/${id}`),
+        authFetch(`${API_BASE}/admin/sync-doctor?business_id=${encodeURIComponent(id)}`),
         authFetch(`${API_BASE}/admin/rate-limits/${id}`),
         authFetch(`${API_BASE}/admin/business/${id}/ops-health`),
       ])
-      if (opsRes.ok) setOpsHealth(await opsRes.json())
-      let biz = null
-      if (bizRes.ok) {
-        const all = await bizRes.json()
-        biz = all.find(b => String(b.id) === String(id)) || null
-        setBusiness(biz)
-      }
-      if (doctorRes.ok) {
-        const rows = await doctorRes.json()
-        setSyncHealth(rows.find(r => String(r.business_id) === String(id)) || null)
-      }
-      if (limitsRes.ok) setLimits(await limitsRes.json())
+      if (request !== requestRef.current) return
+      if (![bizRes, doctorRes, limitsRes, opsRes].every(response => response.ok)) throw new Error('Business diagnostics are unavailable. Retry when the service is reachable.')
+      const [ops, biz, rows, configuredLimits] = await Promise.all([opsRes.json(), bizRes.json(), doctorRes.json(), limitsRes.json()])
+      if (request !== requestRef.current) return
+      if (!biz || String(biz.id) !== String(id) || !Array.isArray(rows)) throw new Error('Invalid business diagnostics response')
+      setBusiness(biz)
+      setOpsHealth(ops)
+      setSyncHealth(rows.find(row => String(row.business_id) === String(id)) || null)
+      setLimits(configuredLimits)
 
       // Telemetry + logs are scoped by BizID / username, which we only know
       // after the fleet fetch resolves.
@@ -68,28 +79,46 @@ export default function AdminBusinessDetail() {
             : Promise.resolve(null),
           authFetch(`${API_BASE}/admin/server-log?lines=300&q=${encodeURIComponent(biz.bizid || biz.username)}`),
         ])
+        if (request !== requestRef.current) return
         if (telRes && telRes.ok) {
           const t = await telRes.json()
+          if (request !== requestRef.current) return
           setTelemetry(Array.isArray(t) ? t : (t.events || []))
         }
         if (logRes.ok) {
           const l = await logRes.json()
+          if (request !== requestRef.current) return
           setServerLog(typeof l === 'string' ? l : (l.lines || []).join('\n') || l.log || '')
         }
       }
     } catch (err) {
+      if (request !== requestRef.current) return
       logger.error(err)
+      setLoadError(err.message)
     } finally {
-      setLoading(false)
+      if (request === requestRef.current) setLoading(false)
     }
-  }, [id])
+  }, [id, authFetch])
 
-  useEffect(() => { load() }, [load])
+  // WEB-10: Reset state immediately on route ID switch so previous merchant info does not linger
+  useEffect(() => { const requestCounter = requestRef;
+    setBusiness(null)
+    setSyncHealth(null)
+    setOpsHealth(null)
+    setTelemetry([])
+    setServerLog('')
+    setLimits(null)
+    load()
+    return () => { requestCounter.current++ }
+  }, [id, load])
 
   async function handleForceLogout() {
+    const request = requestRef.current
+    if (!business || String(business.id) !== String(id)) return
     if (!(await showConfirm(
       `Revoke ALL active sessions for "${business?.business_name}"? Every logged-in device (owner + staff) will need to sign in again within ~30 seconds.`
     ))) return
+    if (request !== requestRef.current) return
     try {
       const res = await authFetch(`${API_BASE}/admin/force-logout/${id}`, { method: 'POST' })
       const data = await res.json()
@@ -101,9 +130,11 @@ export default function AdminBusinessDetail() {
   }
 
   async function handleFlushCache() {
+    if (!business || String(business.id) !== String(id)) return
     try {
       const res = await authFetch(`${API_BASE}/admin/flush-cache/${id}`, { method: 'POST' })
       const data = await res.json()
+      if (!res.ok) throw new Error(data.detail || data.error || 'Cache flush failed')
       await showAlert(data.message || 'Cache flushed.')
     } catch (err) {
       await showError(err)
@@ -132,44 +163,84 @@ export default function AdminBusinessDetail() {
   return (
     <div className="admin-main" style={{ margin: 0, padding: 0 }}>
       {/* Header */}
-      <div className="admin-header-row" style={{ borderBottom: '1.5px solid var(--border-color)', paddingBottom: 20 }}>
+      <div className="admin-header-row">
         <div className="admin-title-group">
-          <div style={{ fontSize: 12, marginBottom: 6 }}>
-            <Link to="/admin/businesses" style={{ color: 'var(--secondary-text)', textDecoration: 'none' }}>← Businesses</Link>
+          <div style={{ marginBottom: 8 }}>
+            <Link to="/admin/businesses" className="back-to-app" style={{ margin: 0 }}>
+              <Icon name="chevronLeft" size={14} /> Back to Businesses
+            </Link>
           </div>
-          <h1 style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            {business?.business_name || `Business #${id}`}
+          <h1 style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <span>{business?.business_name || `Business #${id}`}</span>
             {business?.plan && (
               <span className="tag" style={{
-                background: business.plan === 'pro' ? 'rgba(58,154,92,0.12)' : 'var(--accent-soft)',
-                color: business.plan === 'pro' ? '#3a9a5c' : 'var(--secondary-text)',
-                fontWeight: 700, textTransform: 'uppercase', fontSize: 10,
+                background: business.plan === 'pro' ? 'var(--success-dim)' : 'var(--accent-dim)',
+                color: business.plan === 'pro' ? 'var(--success)' : 'var(--text-secondary)',
+                border: `1px solid ${business.plan === 'pro' ? 'rgba(31,107,58,0.2)' : 'rgba(193,95,60,0.2)'}`,
               }}>{business.plan}</span>
             )}
             {syncHealth && (
               <span className="tag" title={(syncHealth.reasons || []).join('; ') || 'Sync healthy'} style={{
-                background: `${HEALTH_COLORS[health]}22`, color: HEALTH_COLORS[health],
-                fontWeight: 700, textTransform: 'uppercase', fontSize: 10,
+                background: `${HEALTH_COLORS[health]}18`,
+                color: HEALTH_COLORS[health],
+                border: `1px solid ${HEALTH_COLORS[health]}40`,
               }}>SYNC {health}</span>
             )}
           </h1>
-          <p style={{ fontFamily: "'Geist Mono',monospace", fontSize: 12 }}>
-            {business?.bizid || '—'} · {business?.username || ''} · mode: {business?.hosting_mode || 'local'}
+          <p style={{ fontFamily: "var(--font-mono, monospace)", fontSize: 12, display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
+            <span>BizID: {business?.bizid || '—'}</span>
+            {business?.bizid && (
+              <button
+                type="button"
+                onClick={() => copyBusinessId(business.bizid)}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: copiedId ? 'var(--success)' : 'var(--text-muted)',
+                  padding: '2px',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                }}
+                title={copiedId ? 'Copied!' : 'Copy BizID'}
+              >
+                <Icon name={copiedId ? 'check' : 'copy'} size={13} />
+              </button>
+            )}
+            <span>·</span>
+            <span>@{business?.username || ''}</span>
+            <span>·</span>
+            <span>hosting: {business?.hosting_mode || 'local'}</span>
+            <span>·</span>
+            <span>auth: {business?.login_method === 'google' ? 'Google SSO' : 'Password'}</span>
+            {business?.email && (
+              <>
+                <span>·</span>
+                <span style={{ color: 'var(--text-primary)' }}>{business.email}</span>
+              </>
+            )}
+            {business?.phone && (
+              <>
+                <span>·</span>
+                <span>{business.phone}</span>
+              </>
+            )}
           </p>
         </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <button className="btn-flush" onClick={load}><Icon name="refresh" size={12} /> Refresh</button>
-          <button className="btn-flush" onClick={handleDownloadLogs}>Download logs</button>
-          <button className="btn-flush" onClick={handleFlushCache}>Flush cache</button>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <button className="btn-flush" onClick={load}><Icon name="refresh" size={13} /> Refresh</button>
+          <button className="btn-flush" onClick={handleDownloadLogs}><Icon name="download" size={13} /> Logs</button>
+          <button className="btn-flush" onClick={handleFlushCache}><Icon name="trash" size={13} /> Flush Cache</button>
           <button className="btn-wipe-row" onClick={handleForceLogout} title="Revoke every active session for this business">
-            Force logout
+            <Icon name="logout" size={13} /> Force Logout
           </button>
         </div>
       </div>
 
       {loading && <div className="vskel" style={{ padding: 20, marginTop: 24 }}></div>}
 
-      {!loading && !business && (
+      {loadError && <div role="alert">{loadError} <button onClick={load}>Retry diagnostics</button></div>}
+      {!loading && !loadError && !business && (
         <div style={{ padding: 40, textAlign: 'center', color: 'var(--secondary-text)' }}>
           Business #{id} not found.
         </div>
@@ -178,10 +249,15 @@ export default function AdminBusinessDetail() {
       {!loading && business && (
         <>
           {/* Overview strip */}
-          <div className="widget" style={{ marginTop: 24, display: 'flex', gap: 32, flexWrap: 'wrap' }}>
+          <div className="widget" style={{ marginTop: 24, display: 'flex', gap: 28, flexWrap: 'wrap' }}>
+            <Stat label="Login Method" value={business.login_method === 'google' ? 'Google SSO' : 'Password'} />
+            <Stat label="Google / Email" value={business.email || '—'} mono />
+            <Stat label="Phone" value={business.phone || '—'} mono />
+            <Stat label="Mails Sent" value={business.mails_sent_count ?? (business.mails_sent?.length || 0)} mono />
             <Stat label="Invoices" value={business.invoice_count} />
             <Stat label="Revenue" value={`₹${(business.total_revenue || 0).toLocaleString('en-IN')}`} />
             <Stat label="Inventory items" value={business.inventory_count} />
+            <Stat label="Staff Accounts" value={business.staff_count ?? 0} mono />
             <Stat label="Uploads" value={business.upload_count} />
             <Stat label="Last sync" value={business.last_sync_at ? business.last_sync_at.slice(0, 16).replace('T', ' ') : 'never'} mono />
             <Stat label="Queue depth" value={business.sync_queue_depth ?? 0} mono />
@@ -274,6 +350,53 @@ export default function AdminBusinessDetail() {
                 </tbody>
               </table>
             </div>
+          </Section>
+
+          {/* Email Communications & Mails Sent */}
+          <Section title="Email Communications & Mails Sent" icon={<Icon name="mail" size={16} />} count={business.mails_sent?.length || 0} collapsible style={{ marginTop: 24 }}>
+            {!business.mails_sent || business.mails_sent.length === 0 ? (
+              <div style={{ color: 'var(--secondary-text)', fontSize: 13 }}>No emails recorded for this merchant.</div>
+            ) : (
+              <div className="admin-table-wrap" style={{ overflowX: 'auto', width: '100%' }}>
+                <table className="admin-table" style={{ width: '100%', marginTop: 8 }}>
+                  <thead>
+                    <tr>
+                      <th>Date & Time</th>
+                      <th>Template</th>
+                      <th>Recipient</th>
+                      <th>Subject</th>
+                      <th>Status</th>
+                      <th>Details</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {business.mails_sent.map((m, idx) => (
+                      <tr key={m.id || idx}>
+                        <td style={{ fontFamily: "'Geist Mono',monospace", fontSize: 11.5, whiteSpace: 'nowrap' }}>
+                          {m.sent_at ? new Date(m.sent_at).toLocaleString() : '—'}
+                        </td>
+                        <td>
+                          <span className="tag" style={{ textTransform: 'capitalize' }}>
+                            {m.template || 'email'}
+                          </span>
+                        </td>
+                        <td style={{ fontSize: 12 }}>{m.recipient}</td>
+                        <td style={{ fontWeight: 600, fontSize: 12.5 }}>{m.subject}</td>
+                        <td>
+                          <span className="tag" style={{
+                            background: m.status === 'sent' ? 'rgba(52, 168, 83, 0.12)' : 'var(--accent-dim)',
+                            color: m.status === 'sent' ? 'var(--success)' : 'var(--text-secondary)'
+                          }}>
+                            {m.status}
+                          </span>
+                        </td>
+                        <td style={{ fontSize: 11.5, color: 'var(--secondary-text)' }}>{m.details || '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </Section>
 
           {/* Server log tail */}

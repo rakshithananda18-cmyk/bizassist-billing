@@ -63,7 +63,7 @@ export function LiveViewOverlay({ connectionStatus, liveCounter, onRetry, onExit
             type="button"
             className="btn btn-primary"
             onClick={onRetry}
-            style={{ fontSize: '0.78rem', padding: '6px 14px', background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer' }}
+            style={{ fontSize: '0.78rem', padding: '6px 14px', background: 'var(--accent-solid, var(--accent))', color: 'var(--accent-foreground, #fff)', border: 'none', borderRadius: 4, cursor: 'pointer' }}
           >
             Retry Connection
           </button>
@@ -108,7 +108,7 @@ export function LiveViewBar({ liveCounter, editState, onRequestEdit, onCancelReq
             type="button"
             className="btn btn-primary"
             onClick={onRequestEdit}
-            style={{ fontSize: '0.78rem', padding: '4px 10px', background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer' }}
+            style={{ fontSize: '0.78rem', padding: '4px 10px', background: 'var(--accent-solid, var(--accent))', color: 'var(--accent-foreground, #fff)', border: 'none', borderRadius: 4, cursor: 'pointer' }}
           >
             Request Edit Access
           </button>
@@ -226,8 +226,8 @@ export function ManagedModeOverlay() {
         top: 20,
         left: '50%',
         transform: 'translateX(-50%)',
-        background: 'var(--accent, #f97316)',
-        color: '#fff',
+        background: 'var(--accent-solid, var(--accent, #f97316))',
+        color: 'var(--accent-foreground, #fff)',
         padding: '8px 18px',
         borderRadius: 20,
         fontSize: '0.82rem',

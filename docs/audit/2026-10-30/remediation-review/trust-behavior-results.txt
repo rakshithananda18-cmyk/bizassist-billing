@@ -1,0 +1,76 @@
+.F.F..FFFFFF...                                                          [100%]
+================================== FAILURES ===================================
+___________ test_legacy_worker_timestamp_cursor_does_not_omit_ties ____________
+..\..\docs\audit\2026-10-30\remediation-review\test_trust_behavior.py:77: in test_legacy_worker_timestamp_cursor_does_not_omit_ties
+    assert got == [1, 2, 3], f"Legacy worker permanently omitted rows: {got}"
+E   AssertionError: Legacy worker permanently omitted rows: [1, 2]
+E   assert [1, 2] == [1, 2, 3]
+E
+E     Right contains one more item: 3
+E     Use -v to get more diff
+_______ test_delayed_commit_predating_snapshot_is_eventually_delivered ________
+..\..\docs\audit\2026-10-30\remediation-review\test_trust_behavior.py:109: in test_delayed_commit_predating_snapshot_is_eventually_delivered
+    assert 7 in [r["id"] for r in page2["changes"].get("customers", [])], "Committed row fell behind the timestamp cursor"
+E   AssertionError: Committed row fell behind the timestamp cursor
+E   assert 7 in []
+_________ test_local_delete_payload_passes_cloud_tombstone_validation _________
+..\..\docs\audit\2026-10-30\remediation-review\test_trust_behavior.py:155: in test_local_delete_payload_passes_cloud_tombstone_validation
+    sync_staff.StaffPushRequest(staff=captured)
+E   pydantic_core._pydantic_core.ValidationError: 1 validation error for StaffPushRequest
+E   staff.0.role
+E     Input should be 'cashier' or 'supply adder' [type=literal_error, input_value='', input_type=str]
+E       For further information visit https://errors.pydantic.dev/2.14/v/literal_error
+_____ test_staff_mutation_and_control_event_are_atomic_on_enqueue_failure _____
+..\..\docs\audit\2026-10-30\remediation-review\test_trust_behavior.py:168: in test_staff_mutation_and_control_event_are_atomic_on_enqueue_failure
+    assert not committed_staff or events, "Staff mutation committed with no durable replication event"
+E   AssertionError: Staff mutation committed with no durable replication event
+E   assert (not [<database.models.User object at 0x000002054E645F70>] or [])
+------------------------------ Captured log call ------------------------------
+WARNING  bizassist.core.api.staff:staff.py:80 [STAFF-SYNC] could not enqueue control event: simulated disk/enqueue failure
+____ test_control_outbox_does_not_replay_older_profile_after_newer_success ____
+..\..\docs\audit\2026-10-30\remediation-review\test_trust_behavior.py:189: in test_control_outbox_does_not_replay_older_profile_after_newer_success
+    assert cloud_state["business_name"] == "new", f"Older event reverted cloud: {cloud_state}"
+E   AssertionError: Older event reverted cloud: {'business_name': 'old'}
+E   assert 'old' == 'new'
+E
+E     - new
+E     + old
+------------------------------ Captured log call ------------------------------
+WARNING  bizassist.sync.control_outbox:control_outbox.py:165 [CONTROL-OUTBOX] Event a84a09d1baa14ac9aea10ee46d830f23 failed with 503 (next retry in 10s)
+_____ test_control_event_enqueuing_does_not_commit_unrelated_transaction ______
+..\..\docs\audit\2026-10-30\remediation-review\test_trust_behavior.py:197: in test_control_event_enqueuing_does_not_commit_unrelated_transaction
+    assert db.get(User, 1).business_name == "Audit only", "Enqueue committed caller-owned transaction"
+E   AssertionError: Enqueue committed caller-owned transaction
+E   assert 'uncommitted' == 'Audit only'
+E
+E     - Audit only
+E     + uncommitted
+______ test_control_only_backlog_is_retried_with_periodic_pull_disabled _______
+..\..\docs\audit\2026-10-30\remediation-review\test_trust_behavior.py:213: in test_control_only_backlog_is_retried_with_periodic_pull_disabled
+    assert scheduled.called, "Control backlog is ignored by scheduler idle-skip"
+E   AssertionError: Control backlog is ignored by scheduler idle-skip
+E   assert False
+E    +  where False = <MagicMock name='sync_business' id='2221816709536'>.called
+__________ test_purge_and_rekey_do_not_send_old_tenant_control_event __________
+..\..\docs\audit\2026-10-30\remediation-review\test_trust_behavior.py:235: in test_purge_and_rekey_do_not_send_old_tenant_control_event
+    assert not sends, "Old tenant profile was sent after purge/rekey using the new cloud identity"
+E   AssertionError: Old tenant profile was sent after purge/rekey using the new cloud identity
+E   assert not [{'json': {'business_name': 'OLD TENANT PROFILE'}, 'headers': {'Authorization': 'Bearer FAKE-NEW-IDENTITY-TOKEN'}, 'timeout': 8.0}]
+------------------------------ Captured log call ------------------------------
+WARNING  bizassist.admin_service:admin_service.py:1087 [PURGE] business 1 � data purged; 0 staff account(s) deleted; owner_deleted=False.
+============================== warnings summary ===============================
+: 44 warnings
+  D:\Dev Workspace\ai_agent_lab_google(1)\bizassist-billing\scratch\core-workflow-venv\Lib\site-packages\sqlalchemy\engine\default.py:964: DeprecationWarning: The default datetime adapter is deprecated as of Python 3.12; see the sqlite3 documentation for suggested replacement recipes
+    cursor.execute(statement, parameters)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED ..\..\backend::test_legacy_worker_timestamp_cursor_does_not_omit_ties
+FAILED ..\..\backend::test_delayed_commit_predating_snapshot_is_eventually_delivered
+FAILED ..\..\backend::test_local_delete_payload_passes_cloud_tombstone_validation
+FAILED ..\..\backend::test_staff_mutation_and_control_event_are_atomic_on_enqueue_failure
+FAILED ..\..\backend::test_control_outbox_does_not_replay_older_profile_after_newer_success
+FAILED ..\..\backend::test_control_event_enqueuing_does_not_commit_unrelated_transaction
+FAILED ..\..\backend::test_control_only_backlog_is_retried_with_periodic_pull_disabled
+FAILED ..\..\backend::test_purge_and_rekey_do_not_send_old_tenant_control_event
+8 failed, 7 passed, 44 warnings in 8.29s

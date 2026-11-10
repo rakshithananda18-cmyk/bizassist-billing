@@ -15,6 +15,12 @@ import os
 import json
 import asyncio
 import threading
+import time
+import random
+import hashlib
+import math
+from dataclasses import dataclass, asdict
+from email.utils import parsedate_to_datetime
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Any
 
@@ -38,7 +44,47 @@ from services.dates import utc_now
 
 logger = logging.getLogger("bizassist.sync_worker")
 
-CLOUD_URL = os.environ.get("CLOUD_API_URL") or os.environ.get("VITE_API_URL") or "https://rakshit-dev-bizassist.hf.space"
+from core.cloud_endpoint import CLOUD_URL
+
+
+@dataclass
+class CloudState:
+    state: str
+    retry_after: Optional[float] = None
+    last_probe_at: Optional[float] = None
+    last_success_at: Optional[float] = None
+
+
+_CLOUD_STATE: Dict[int, CloudState] = {}
+_rng = random.Random()
+
+
+def get_cloud_state(business_id):
+    state = _CLOUD_STATE.get(business_id)
+    return asdict(state) if state else None
+
+
+def _parse_retry_after(value, now):
+    try:
+        delay = float(value)
+    except (ValueError, TypeError):
+        try:
+            target = parsedate_to_datetime(value)
+            if target.tzinfo is None:
+                target = target.replace(tzinfo=timezone.utc)
+            stamp = (now if now.tzinfo else now.replace(tzinfo=timezone.utc)).timestamp() if isinstance(now, datetime) else now
+            delay = target.timestamp() - stamp
+        except (ValueError, TypeError, OverflowError):
+            return 30.0
+    if not math.isfinite(delay):
+        return 30.0
+    return min(300.0, max(0.0, delay))
+
+
+def _chunk_request_id(business_id, outbox_ids, payload):
+    body = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    source = json.dumps([business_id, sorted(outbox_ids), hashlib.sha256(body.encode()).hexdigest()], separators=(",", ":"))
+    return hashlib.sha256(source.encode()).hexdigest()
 
 # Keep track of last execution times in-memory
 _LAST_RUN: Dict[int, datetime] = {}
@@ -84,6 +130,7 @@ _PULL_MAX_FAILED_STREAK = 3
 # asked for every row of every table inside 10 s, timed out, correctly refused to
 # advance the cursor, and re-attempted the identical impossible request forever.
 _PULL_PAGE_LIMIT = 1000
+_PARITY_BUDGET_S = 600
 
 # Was 10.0 while the same endpoint was called by the parity audit with 180.0 —
 # the discrepancy was the tell that 10 s never fitted a wide window. Now that
@@ -94,6 +141,7 @@ _PULL_TIMEOUT = 60.0
 # pulls these again on the NEXT tick instead of waiting out cloud_pull_interval,
 # so a backlog drains in seconds rather than one page every two minutes.
 _PULL_MORE_PENDING: set = set()
+_PROTOCOL_BLOCKED: dict = {}
 
 # Sentinel for "this business has been looked up and has no stored cursor", so a
 # genuine absence is not re-queried on every cycle. `None` cannot express it —
@@ -252,7 +300,7 @@ def queue_child_with_parent(db, *, business_id: int, entity: str, row_id: int,
     return queued
 
 
-def find_unqueued_syncable_rows(db, business_id: int, entities=None, limit=200):
+def find_unqueued_syncable_rows(db, business_id: int, entities=None, limit=200, ignore_since=False):
     """Syncable rows this device has NEVER put in the outbox.
 
     THE SAFETY NET FOR M-20a, and deliberately NOT a theory about its cause.
@@ -302,24 +350,29 @@ def find_unqueued_syncable_rows(db, business_id: int, entities=None, limit=200):
         top_level = [e for e in entities if e not in _CHILD_TABLE_PARENT_MAP]
         child     = [e for e in entities if e     in _CHILD_TABLE_PARENT_MAP]
 
-    floor = db.query(func.min(_SQ.id)).filter(_SQ.business_id == business_id).scalar()
-    if floor is None:
-        return out                      # nothing has ever been queued; not our call
-    oldest = db.query(_SQ.created_at).filter(_SQ.id == floor).scalar()
-    if oldest is None:
-        return out
+    oldest = None
+    if not ignore_since:
+        floor = db.query(func.min(_SQ.id)).filter(_SQ.business_id == business_id).scalar()
+        if floor is None:
+            return out                      # nothing has ever been queued; not our call
+        oldest = db.query(_SQ.created_at).filter(_SQ.id == floor).scalar()
+        if oldest is None:
+            return out
 
     # ── Scan top-level tables (direct business_id filter) ─────────────────────
     for entity in top_level:
         try:
+            since_clause = "AND r.created_at >= :since " if oldest is not None else ""
+            params = {"bid": business_id, "ent": entity, "lim": limit}
+            if oldest is not None:
+                params["since"] = oldest
             rows = db.execute(text(
                 f"SELECT r.id FROM {entity} r "
-                f"WHERE r.business_id = :bid AND r.created_at >= :since "
+                f"WHERE r.business_id = :bid {since_clause}"
                 f"AND NOT EXISTS (SELECT 1 FROM sync_queue q "
                 f"                 WHERE q.entity = :ent AND q.entity_id = r.id) "
                 f"ORDER BY r.id LIMIT :lim"),
-                {"bid": business_id, "since": oldest, "ent": entity,
-                 "lim": limit}).fetchall()
+                params).fetchall()
         except Exception as e:
             logger.warning("[SYNC_HEAL] could not scan %s for biz=%s: %s",
                            entity, business_id, e)
@@ -331,15 +384,18 @@ def find_unqueued_syncable_rows(db, business_id: int, entities=None, limit=200):
     for entity in child:
         parent_tbl, fk_col = _CHILD_TABLE_PARENT_MAP[entity]
         try:
+            since_clause = "AND r.created_at >= :since " if oldest is not None else ""
+            params = {"bid": business_id, "ent": entity, "lim": limit}
+            if oldest is not None:
+                params["since"] = oldest
             rows = db.execute(text(
                 f"SELECT r.id FROM {entity} r "
                 f"JOIN {parent_tbl} p ON p.id = r.{fk_col} "
-                f"WHERE p.business_id = :bid AND r.created_at >= :since "
+                f"WHERE p.business_id = :bid {since_clause}"
                 f"AND NOT EXISTS (SELECT 1 FROM sync_queue q "
                 f"                 WHERE q.entity = :ent AND q.entity_id = r.id) "
                 f"ORDER BY r.id LIMIT :lim"),
-                {"bid": business_id, "since": oldest, "ent": entity,
-                 "lim": limit}).fetchall()
+                params).fetchall()
         except Exception as e:
             logger.warning("[SYNC_HEAL] could not scan child table %s for biz=%s: %s",
                            entity, business_id, e)
@@ -449,7 +505,7 @@ _PULL_AUTH_BLOCKED: Dict[int, bool] = {}
 # request mid-apply → "The read operation timed out" → the WHOLE batch was
 # marked failed and re-sent every cycle, so the outbox never drained. Give reads
 # a generous budget and chunk the outbox so each request completes in-window.
-_PUSH_TIMEOUT = httpx.Timeout(connect=10.0, read=120.0, write=60.0, pool=10.0)
+_PUSH_TIMEOUT = httpx.Timeout(connect=10.0, read=100.0, write=30.0, pool=10.0)
 _PUSH_CHUNK_SIZE = 20
 
 # Outbox backoff for rows the cloud HELD (deferred / unaccounted). Doubling from
@@ -631,12 +687,23 @@ def _invalidate_cloud_token(business_id: int):
 # before expiry. A device that is online at least once a day never lapses; one
 # that stays offline past expiry degrades exactly as before — reads from the
 # local mirror, writes refused — and recovers at the next online login.
-_REFRESH_WHEN_UNDER = timedelta(hours=6)
+_REFRESH_WHEN_UNDER = timedelta(hours=12)
 
 # Businesses whose refresh attempt failed recently, so a dead network doesn't
 # mean one refresh POST per scheduler tick.
 _REFRESH_BACKOFF: Dict[int, datetime] = {}
 _REFRESH_RETRY_AFTER = timedelta(minutes=15)
+_REFRESH_RETRY_DELAYS = (60, 120, 240, 480, 900)
+_REFRESH_FAILURES: Dict[int, int] = {}
+
+
+def _defer_refresh(business_id, response=None):
+    failures = _REFRESH_FAILURES.get(business_id, 0)
+    delay = _REFRESH_RETRY_DELAYS[min(failures, len(_REFRESH_RETRY_DELAYS) - 1)]
+    if response is not None and response.status_code in (429, 503):
+        delay = _parse_retry_after(response.headers.get("Retry-After"), utc_now().replace(tzinfo=timezone.utc))
+    _REFRESH_FAILURES[business_id] = failures + 1
+    _REFRESH_BACKOFF[business_id] = utc_now() + timedelta(seconds=delay)
 
 
 def _token_expiry(token: str) -> Optional[datetime]:
@@ -691,10 +758,10 @@ def ensure_fresh_cloud_token(business_id: int) -> Optional[str]:
         resp = httpx.post(
             f"{CLOUD_URL}/auth/refresh",
             headers={"Authorization": f"Bearer {token}"},
-            timeout=10.0,
+            timeout=45.0,
         )
     except Exception as e:
-        _REFRESH_BACKOFF[business_id] = utc_now() + _REFRESH_RETRY_AFTER
+        _defer_refresh(business_id)
         logger.info("[SYNC_WORKER] Cloud token refresh deferred for business %s (offline: %s)",
                     business_id, e)
         return token
@@ -705,10 +772,11 @@ def ensure_fresh_cloud_token(business_id: int) -> Optional[str]:
         # provision a new one.
         _invalidate_cloud_token(business_id)
         _REFRESH_BACKOFF.pop(business_id, None)
+        _REFRESH_FAILURES.pop(business_id, None)
         return None
 
     if resp.status_code != 200:
-        _REFRESH_BACKOFF[business_id] = utc_now() + _REFRESH_RETRY_AFTER
+        _defer_refresh(business_id, resp)
         logger.info("[SYNC_WORKER] Cloud token refresh returned %s for business %s",
                     resp.status_code, business_id)
         return token
@@ -719,11 +787,12 @@ def ensure_fresh_cloud_token(business_id: int) -> Optional[str]:
         fresh = None
 
     if not fresh:
-        _REFRESH_BACKOFF[business_id] = utc_now() + _REFRESH_RETRY_AFTER
+        _defer_refresh(business_id)
         return token
 
     store_cloud_token(business_id, fresh)
     _REFRESH_BACKOFF.pop(business_id, None)
+    _REFRESH_FAILURES.pop(business_id, None)
     logger.info("[SYNC_WORKER] Cloud token refreshed for business %s (slid before expiry)", business_id)
     return fresh
 
@@ -899,6 +968,10 @@ def run_hybrid_sync():
                     )
                 )
 
+                # Control revocations/profile intents have an independent
+                # retry lifecycle, including when normal pull is opted out.
+                from services.control_outbox import flush_control_outbox
+                flush_control_outbox(db, business_id)
                 if pending is None and not due_for_pull:
                     _LAST_RUN[business_id] = now
                     continue
@@ -1021,7 +1094,7 @@ def trigger_sync_run(business_id: int, *, pull: bool = False):
 # ============================================================================
 # ── SYNC BUSINESS TRANSACTION LOGIC ──
 # ============================================================================
-def _heal_unqueued_rows(db: Session, business_id: int) -> int:
+def _heal_unqueued_rows(db: Session, business_id: int, entities=None, ignore_since: bool = False) -> int:
     """Scan for syncable rows that are missing from the outbox and queue them.
 
     Safety net that runs at the top of every push cycle. Catches rows whose
@@ -1038,7 +1111,7 @@ def _heal_unqueued_rows(db: Session, business_id: int) -> int:
     Returns the number of rows queued so the caller can log it.
     """
     from database.models import _serialize_orm_obj
-    missing = find_unqueued_syncable_rows(db, business_id)
+    missing = find_unqueued_syncable_rows(db, business_id, entities=entities, ignore_since=ignore_since)
     if not missing:
         return 0
 
@@ -1584,61 +1657,50 @@ def _cloud_parity_check(db: Session, business_id: int) -> dict:
         logger.warning("[PARITY] biz=%s: no cloud token — skipping", business_id)
         return summary
 
-    # ── The parameter name matters, and it was wrong ──────────────────────────
-    # This read `params={"since": "2020-01-01T00:00:00"}` until 2026-08-01.
-    # `/api/sync/pull` has no `since` parameter — its signature is
-    # `pull_changes(last_sync_at, limit, ...)` — and FastAPI silently drops
-    # unknown query params. So `last_sync_at` arrived as None, the endpoint fell
-    # through to `datetime(1970, 1, 1)`, and the "2020" in that string had never
-    # had any effect in the lifetime of this function.
-    #
-    # The behaviour was accidentally correct (parity DOES want everything, see
-    # below) which is why nothing caught it. It is fixed because the next person
-    # to narrow that window would have watched their change do nothing.
-    #
-    # NO `limit` — deliberate, and the endpoint's own docstring says so. Parity
-    # decides whether a local row is ABSENT from the cloud, and absence cannot
-    # be read off a page that stopped early; the `has_more` guard below refuses
-    # to judge a truncated snapshot for exactly that reason.
-    #
-    # The cost is a large request. It timed out at 180 s against the live Space
-    # on 2026-08-01, which is the same request shape that was failing when the
-    # LCL-OW-0037 payment was lost. `/health` is pinged first so a sleeping HF
-    # Space wakes on a cheap call instead of burning the read budget on a cold
-    # start — the difference between "the Space was asleep" and "the endpoint
-    # cannot answer", which are not the same problem.
-    try:
-        httpx.get(f"{CLOUD_URL}/health", timeout=10.0)
-    except Exception:
-        pass        # best-effort warm-up; the real request reports the failure
-    try:
-        resp = httpx.get(
-            f"{CLOUD_URL}/api/sync/pull",
-            params={"last_sync_at": "1970-01-01T00:00:00"},
-            headers={"Authorization": f"Bearer {token}"},
-            timeout=httpx.Timeout(connect=10.0, read=180.0, write=30.0, pool=10.0),
-        )
-    except Exception as e:
-        summary["errors"].append(f"pull request failed: {e}")
-        logger.warning("[PARITY] biz=%s: pull request failed: %s", business_id, e)
-        return summary
-
-    if resp.status_code != 200:
-        summary["errors"].append(f"pull HTTP {resp.status_code}")
-        logger.warning("[PARITY] biz=%s: pull returned %s", business_id, resp.status_code)
-        return summary
-
-    try:
-        body = resp.json()
-    except Exception as e:
-        summary["errors"].append(f"pull JSON decode failed: {e}")
-        return summary
-
-    # The cloud pull response wraps all table data under a "changes" key
-    # (see sync_worker line: pulled = _resp_json.get("changes", {})).
-    # Reading the top-level body directly returns None for every table lookup,
-    # which caused every local UID to be flagged as MISSING (false positive).
-    cloud_data: dict = body.get("changes", {}) if isinstance(body, dict) else {}
+    # Read the complete commit-ordered feed in bounded pages. A partial snapshot
+    # cannot establish that a UID is absent, so never compare it as complete.
+    started = time.monotonic()
+    cursor = None
+    cloud_rows = {}
+    body = {}
+    while True:
+        if time.monotonic() - started >= _PARITY_BUDGET_S:
+            summary["errors"].append("incomplete: parity time budget exhausted")
+            return summary
+        try:
+            params = {"protocol": 2, "limit": _PULL_PAGE_LIMIT}
+            if cursor:
+                params["cursor"] = cursor
+            resp = httpx.get(f"{CLOUD_URL}/api/sync/pull", params=params,
+                headers={"Authorization": f"Bearer {token}"}, timeout=_PULL_TIMEOUT)
+            if resp.status_code != 200:
+                summary["errors"].append(f"pull HTTP {resp.status_code}")
+                return summary
+            body = resp.json()
+            if not isinstance(body, dict):
+                raise ValueError("invalid pull response")
+            if body.get("failed_tables"):
+                break
+            for entity, rows in body.get("changes", {}).items():
+                table = cloud_rows.setdefault(entity, {})
+                for row in rows:
+                    uid = row.get("uid") or row.get("id")
+                    if row.get("_sync_deleted"):
+                        table.pop(uid, None)
+                    else:
+                        table[uid] = row
+            if not body.get("has_more"):
+                break
+            next_cursor = body.get("cursor")
+            if not next_cursor or next_cursor == cursor:
+                summary["errors"].append("truncated cloud snapshot (has_more; no advancing cursor)")
+                return summary
+            cursor = next_cursor
+        except Exception as exc:
+            summary["errors"].append(f"pull request failed: {type(exc).__name__}")
+            logger.warning("[PARITY] biz=%s pull failed: %s", business_id, exc)
+            return summary
+    cloud_data = {entity:list(rows.values()) for entity, rows in cloud_rows.items()}
 
     # ── 3b. Refuse to judge absence from an INCOMPLETE snapshot ───────────────
     # The pull endpoint reports `failed_tables` precisely because "a table that
@@ -1993,7 +2055,7 @@ def _cloud_parity_check(db: Session, business_id: int) -> dict:
         cloud_inv_id  = inv.get("id")
         inv_uid       = inv.get("uid")
         stored_paid   = float(inv.get("paid_amount") or 0)
-        actual_paid   = round(cloud_pay_sum.get(cloud_inv_id, 0.0), 2)
+        actual_paid   = round(cloud_pay_sum.get(cloud_inv_id, 0.0) + float(inv.get("legacy_paid_baseline") or 0.0), 2)
         total_amount  = float(inv.get("total_amount") or 0)
 
         # ── OVER-PAYMENT on the cloud ─────────────────────────────────────────
@@ -2205,6 +2267,23 @@ def _apply_pulled_row(db, business_id: int, table_name: str, model_cls, record: 
     _conflict_local_ts = None
     rec_uid = record.get("uid")
     rec_id = record.get("id")
+    if record.get("_sync_deleted"):
+        from database.sync_map import APPEND_ONLY_DELETE_BLOCKLIST
+        if table_name in APPEND_ONLY_DELETE_BLOCKLIST:
+            # Retain financial history; a reset/archive cannot erase books on a
+            # different device. The source archive flag travels as an UPDATE.
+            return _Applied("skipped", reason="retained-history")
+        if not rec_uid or not hasattr(model_cls, "uid"):
+            raise ValueError("A deletion requires a durable UID")
+        existing = db.query(model_cls).filter(model_cls.uid == rec_uid).first()
+        if existing is not None:
+            from database.models import _get_business_id
+            if _get_business_id(existing, db.connection()) != business_id:
+                raise ValueError("Cross-business deletion denied")
+            with db.begin_nested():
+                db.delete(existing)
+                db.flush()
+        return _Applied("applied")
     if not rec_id and not rec_uid:
         return _Applied("skipped", reason="no-identity")
 
@@ -2465,6 +2544,8 @@ def _apply_pulled_row(db, business_id: int, table_name: str, model_cls, record: 
         # the source DB's integer id won't exist here.
         if table_name in _USER_FK_REPOINT_ENTITIES and "user_id" in data:
             data["user_id"] = business_id
+        if table_name in {"supplier_payments", "customer_refunds", "customer_credit_allocations"}:
+            data["operator_id"] = business_id
 
         # Resolve foreign keys via the parent's durable uid
         # (shared helper — same logic as push_changes). If a
@@ -2531,6 +2612,8 @@ def _apply_pulled_row(db, business_id: int, table_name: str, model_cls, record: 
             ):
                 _conflicts += 1
 
+        from core.sync.protected_fields import protect_history
+        protect_history(table_name, data, existing)
         target_obj = existing if existing else model_cls()
 
         # If UID is present, we never overwrite or force the integer PK ID
@@ -2575,6 +2658,9 @@ def _apply_pulled_row(db, business_id: int, table_name: str, model_cls, record: 
 
 def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool = False, do_pull: bool = False):
     business_id = user.id
+    cloud_state = _CLOUD_STATE.get(business_id)
+    if cloud_state and cloud_state.retry_after and time.time() < cloud_state.retry_after:
+        return
 
     # ── Lift a stale Pro-plan pause ──────────────────────────────────────────
     # A cloud 402 sets `_PLAN_BLOCKED`, and the gate further down then returns
@@ -2652,11 +2738,26 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
                        business_id, _repair_err)
 
     # 1. Probe cloud endpoint health
+    now = time.time()
+    previous_success = cloud_state.last_success_at if cloud_state else None
     try:
-        resp = httpx.get(f"{CLOUD_URL}/health", timeout=10.0)
-        if resp.status_code != 200 or resp.json().get("status") != "ok":
-            raise Exception("Cloud health probe returned non-ok status")
+        read_timeout = 45.0 if previous_success is None or now - previous_success > 600 else 10.0
+        resp = httpx.get(f"{CLOUD_URL}/health", timeout=httpx.Timeout(connect=10.0, read=read_timeout, write=10.0, pool=10.0))
+        try:
+            healthy = resp.status_code == 200 and resp.json().get("status") == "ok"
+        except (ValueError, AttributeError):
+            healthy = False
+        if not healthy:
+            delay = _parse_retry_after(resp.headers.get("Retry-After"), now)
+            _CLOUD_STATE[business_id] = CloudState("busy", now + delay * (1 + _rng.uniform(0, .2)), now, previous_success)
+            logger.info("[SYNC_WORKER] Cloud busy/starting for business %s (HTTP %s)", business_id, resp.status_code)
+            return
+    except httpx.TimeoutException:
+        _CLOUD_STATE[business_id] = CloudState("waking", None, now, previous_success)
+        logger.info("[SYNC_WORKER] Cloud is starting for business %s; retrying next tick", business_id)
+        return
     except Exception as e:
+        _CLOUD_STATE[business_id] = CloudState("offline", None, now, previous_success)
         logger.warning("[SYNC_WORKER] Cloud unreachable for business %s: %s", business_id, e)
         # (H-2) Only record a SyncLog row on the online→offline transition, so an
         # extended outage doesn't append a row every interval (unbounded growth).
@@ -2673,6 +2774,7 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
         return
 
     # Cloud is reachable — clear the offline flag so the next outage logs once.
+    _CLOUD_STATE[business_id] = CloudState("online", None, now, now)
     _OFFLINE_STATE[business_id] = False
 
     # Pro-plan pause: the cloud already refused this business's sync (402). Don't
@@ -2706,21 +2808,22 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
         logger.warning("[SYNC_WORKER] Business %s has no public_id (BizID) — pausing cloud sync until device is linked", business_id)
         return
 
-    # Prefer the CLOUD-issued token provisioned at login (standard device flow).
-    # Self-signed fallback works only when local & cloud share JWT_SECRET.
+    # A local signing key never confers authority on a different server.
+    # Only the cloud-issued, business-bound credential can upload or download.
     _cloud_token = _get_cloud_token(business_id)
-    used_self_signed = _cloud_token is None
-    if used_self_signed and _SELF_SIGNED_REJECTED.get(business_id):
+    used_self_signed = False
+    if not _cloud_token:
+        _PULL_AUTH_BLOCKED[business_id] = True
         return
-    token = _cloud_token or create_access_token({
-        "id": business_id,
-        "user_id": user.id,
-        "username": user.username,
-        "public_id": user.public_id,
-        "business_name": user.business_name or "Local POS",
-        "role": user.role or "enterprise"
-    })
+    token = _cloud_token
     headers = {"Authorization": f"Bearer {token}"}
+
+    # Flush durable control-plane outbox (staff mutations, profile updates) (TS-05)
+    try:
+        from services.control_outbox import flush_control_outbox
+        flush_control_outbox(db, business_id)
+    except Exception as _ce:
+        logger.warning("[SYNC_WORKER] biz=%s: control outbox flush failed: %s", business_id, _ce)
 
     if queue_items:
         # Build (queue_item -> change) pairs, draining non-syncable / corrupt
@@ -2811,7 +2914,7 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
                 resp = httpx.post(
                     f"{CLOUD_URL}/api/sync/push",
                     json={"changes": chunk_changes},
-                    headers=headers,
+                    headers={**headers, "X-Client-Request-Id": _chunk_request_id(business_id, [it.id for it, _c in chunk], {"changes":chunk_changes})},
                     timeout=_PUSH_TIMEOUT,
                 )
                 if resp.status_code != 200 or resp.json().get("status") != "success":
@@ -2889,18 +2992,38 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
                     # the outbox. Trigger the heal scan for the parent entity types
                     # so the parent is queued in the SAME cycle and unblocks the
                     # child on the next push, instead of deferring indefinitely.
+                    _ENTITY_PARENTS_MAP = {
+                        "invoices": ["register_shifts", "customers"],
+                        "invoice_payments": ["invoices", "register_shifts"],
+                        "invoice_line_items": ["invoices", "products"],
+                        "purchase_invoices": ["vendors"],
+                        "purchase_invoice_line_items": ["purchase_invoices", "products"],
+                        "purchase_orders": ["vendors"],
+                        "purchase_order_line_items": ["purchase_orders", "products"],
+                        "shift_cash_movements": ["register_shifts"],
+                        "stock_transfers": ["godowns"],
+                        "stock_transfer_line_items": ["stock_transfers", "products"],
+                        "stock_ledger": ["products"],
+                        "inventory": ["products"],
+                        "b2b_orders": ["b2b_connections"],
+                        "b2b_order_line_items": ["b2b_orders", "products"],
+                    }
                     _deferred_parents = set()
                     for _d in _deferred:
                         _reason = (_d.get("reason") or "").lower()
-                        # Cloud returns: "parent register_shifts id=X not in this DB yet"
                         for _parent_ent in list(_MODEL_MAP.keys()):
                             if _parent_ent in _reason:
                                 _deferred_parents.add(_parent_ent)
                                 break
+                        _entity = _d.get("entity")
+                        if _entity in _ENTITY_PARENTS_MAP:
+                            for _p in _ENTITY_PARENTS_MAP[_entity]:
+                                _deferred_parents.add(_p)
+
                     if _deferred_parents:
                         try:
                             _parent_missing = find_unqueued_syncable_rows(
-                                db, business_id, entities=list(_deferred_parents))
+                                db, business_id, entities=list(_deferred_parents), ignore_since=True)
                             if _parent_missing:
                                 logger.warning(
                                     "[SYNC_HEAL] biz=%s: auto-heal found %s missing "
@@ -2909,7 +3032,18 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
                                     business_id, len(_parent_missing),
                                     [f"{m['entity']}#{m['row_id']}" for m in _parent_missing[:5]],
                                 )
-                                _heal_unqueued_rows(db, business_id)
+                                _heal_unqueued_rows(db, business_id, entities=list(_deferred_parents), ignore_since=True)
+                                # Clear retry backoff on deferred items so they try again immediately with parent
+                                from database.models import SyncQueue as _SQ
+                                for _d in _deferred:
+                                    _d_ent, _d_id = _d.get("entity"), _d.get("row_id")
+                                    if _d_ent and _d_id:
+                                        db.query(_SQ).filter(
+                                            _SQ.business_id == business_id,
+                                            _SQ.entity == _d_ent,
+                                            _SQ.entity_id == _d_id,
+                                        ).update({"next_attempt_at": None, "attempts": 0}, synchronize_session=False)
+                                db.commit()
                         except Exception as _auto_heal_err:
                             logger.warning(
                                 "[SYNC_HEAL] biz=%s auto-heal for deferred parents failed: %s",
@@ -3200,9 +3334,10 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
             )
             last_sync_str = last_success.synced_at.isoformat() if last_success else None
 
-        params = {"limit": _PULL_PAGE_LIMIT}
+        params = {"limit": _PULL_PAGE_LIMIT, "protocol": 2}
         if last_sync_str:
             params["last_sync_at"] = last_sync_str
+            params["cursor"] = last_sync_str
 
         resp = httpx.get(f"{CLOUD_URL}/api/sync/pull", params=params, headers=headers, timeout=_PULL_TIMEOUT)
         if resp.status_code == 401:
@@ -3218,59 +3353,66 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
                 "dropped and pull is PAUSED for this business. It resumes when "
                 "the owner signs in on this device (which provisions a fresh "
                 "cloud token); it will NOT recover on its own.")
+        if resp.status_code == 426:
+            _PROTOCOL_BLOCKED[business_id] = True
+            raise RuntimeError("Cloud/device sync protocol requires an upgrade; cursor retained")
         if resp.status_code != 200:
             raise Exception(f"HTTP {resp.status_code}: {resp.text}")
 
         _resp_json = resp.json()
+        if _resp_json.get("protocol") != 2:
+            _PROTOCOL_BLOCKED[business_id] = True
+            raise RuntimeError("Cloud sync requires protocol 2. Update the server before resuming; the pull cursor has not advanced.")
+        _PROTOCOL_BLOCKED.pop(business_id, None)
         pulled = _resp_json.get("changes", {})
         # Capture the server's own pull timestamp, but DON'T advance the cursor
         # yet — we advance it only AFTER the batch is applied & committed below
         # (see end of this try). Advancing here risked skipping rows if the apply
         # step failed after the cursor had already moved past them.
-        _cloud_cursor = _resp_json.get("pulled_at")
+        _resp_cursor = _resp_json.get("cursor")
+        _cloud_cursor = _resp_cursor or _resp_json.get("pulled_at")
 
         # ── TRUNCATED PAGE: the cursor must not jump past the tail ────────────
-        # `pulled_at` is the server's clock at response time. Using it after a
-        # truncated page would move the cursor past every row the page cap cut
-        # off, and those rows would never be offered again — the page cap would
-        # have turned a slow pull into silent data loss, which is strictly worse
-        # than the livelock it fixes.
-        #
-        # The safe watermark is the MINIMUM, across truncated tables, of the
-        # newest `updated_at` actually received. Rows are ordered ascending by
-        # `updated_at`, so every table has been read in full up to that instant;
-        # taking the minimum means no table is advanced past what it delivered.
         _pull_has_more = bool(_resp_json.get("has_more"))
         if _pull_has_more:
-            _watermarks = []
-            for _t in (_resp_json.get("truncated_tables") or []):
-                _ts = [
-                    _parse_dt(r.get("updated_at"))
-                    for r in (_resp_json.get("changes", {}).get(_t) or [])
-                    if r.get("updated_at")
-                ]
-                _ts = [t for t in _ts if t]
-                if _ts:
-                    _watermarks.append(max(_ts))
-            if _watermarks:
-                _cloud_cursor = min(_watermarks).isoformat()
+            if _resp_cursor:
+                _cloud_cursor = _resp_cursor
                 _PULL_MORE_PENDING.add(business_id)
                 logger.info(
                     "[SYNC_WORKER] biz=%s: pull truncated at %s row(s)/table; "
-                    "advancing the cursor only to %s (the tail of what actually "
-                    "arrived) and pulling again next tick.",
-                    business_id, _PULL_PAGE_LIMIT, _cloud_cursor,
+                    "using compound cursor and pulling again next tick.",
+                    business_id, _PULL_PAGE_LIMIT,
                 )
             else:
-                # Truncated, but no usable timestamp to advance to. Holding is
-                # the only safe option — advancing would skip the remainder.
-                _cloud_cursor = None
-                _PULL_MORE_PENDING.add(business_id)
-                logger.warning(
-                    "[SYNC_WORKER] biz=%s: pull truncated but no updated_at was "
-                    "usable to compute a safe watermark — HOLDING the cursor.",
-                    business_id,
-                )
+                _watermarks = []
+                for _t in (_resp_json.get("truncated_tables") or []):
+                    _ts = [
+                        _parse_dt(r.get("updated_at"))
+                        for r in (_resp_json.get("changes", {}).get(_t) or [])
+                        if r.get("updated_at")
+                    ]
+                    _ts = [t for t in _ts if t]
+                    if _ts:
+                        _watermarks.append(max(_ts))
+                if _watermarks:
+                    _cloud_cursor = min(_watermarks).isoformat()
+                    _PULL_MORE_PENDING.add(business_id)
+                    logger.info(
+                        "[SYNC_WORKER] biz=%s: pull truncated at %s row(s)/table; "
+                        "advancing the cursor only to %s (the tail of what actually "
+                        "arrived) and pulling again next tick.",
+                        business_id, _PULL_PAGE_LIMIT, _cloud_cursor,
+                    )
+                else:
+                    # Truncated, but no usable timestamp to advance to. Holding is
+                    # the only safe option — advancing would skip the remainder.
+                    _cloud_cursor = None
+                    _PULL_MORE_PENDING.add(business_id)
+                    logger.warning(
+                        "[SYNC_WORKER] biz=%s: pull truncated but no updated_at was "
+                        "usable to compute a safe watermark — HOLDING the cursor.",
+                        business_id,
+                    )
         else:
             _PULL_MORE_PENDING.discard(business_id)
         # Tables the cloud could not read this cycle. An absent table is NOT an
@@ -3536,7 +3678,7 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
         # were never received at all, so there is nothing in the inbox to retry.
         if _cloud_cursor:
             _failed_now = len(_pull_row_failures)
-            if _failed_now:
+            if _failed_now and not _pull_failed_tables:
                 logger.warning(
                     "[SYNC_WORKER] biz=%s: %s row(s) could not be applied this "
                     "cycle. Advancing the cursor anyway — they are held in the "
@@ -3562,6 +3704,9 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
                 # cycle. Unlike a rejected row, this needs no bound: a table that
                 # fails forever is a cloud-side defect that must be fixed, and
                 # re-reading a window costs nothing but a query.
+                #
+                # TS-03 FIX: We MUST hold if _pull_failed_tables is non-empty,
+                # even if _failed_now > 0 (checked via `not _pull_failed_tables` above).
                 logger.error(
                     "[SYNC_WORKER] PARTIAL PULL for biz=%s: the cloud could not "
                     "read %s table(s) — %s. HOLDING the pull cursor so the same "

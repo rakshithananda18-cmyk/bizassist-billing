@@ -51,6 +51,21 @@ def test_owner_wrong_password(client, biz):
     assert r.status_code == 401
 
 
+def test_me_payment_destination_comes_only_from_own_billing_business(client, biz, other_biz):
+    with SessionLocal() as db:
+        owner = db.get(BillingUser, biz.business_id)
+        owner.upi_vpa = "fixture-merchant@bank"
+        db.get(BillingUser, other_biz.business_id).upi_vpa = "other-merchant@bank"
+        db.commit()
+    me = client.get("/api/auth/me", headers=auth(biz.token))
+    assert me.status_code == 200
+    assert me.json()["billing_business"]["upi_vpa"] == "fixture-merchant@bank"
+    with SessionLocal() as db:
+        db.get(BillingUser, biz.business_id).upi_vpa = None
+        db.commit()
+    assert client.get("/api/auth/me", headers=auth(biz.token)).json()["billing_business"]["upi_vpa"] is None
+
+
 def test_billing_cashier_cannot_sign_in_as_owner(client, biz):
     db = SessionLocal()
     name = uniq("cashier")
@@ -60,6 +75,34 @@ def test_billing_cashier_cannot_sign_in_as_owner(client, biz):
     db.close()
     r = client.post("/api/auth/owner/login", json={"username": name, "password": PASSWORD})
     assert r.status_code == 401
+
+
+def test_refused_owner_login_names_only_real_accounts(client):
+    """A password typed into the username box must not land in the logs."""
+    import logging
+
+    class Lines(logging.Handler):
+        def __init__(self):
+            super().__init__(logging.DEBUG)
+            self.lines = []
+
+        def emit(self, record):
+            self.lines.append(record.getMessage())
+
+    typed = f"Pw{uniq('')}!"
+    log, cap = logging.getLogger("bizassist.task.auth"), Lines()
+    level = log.level
+    log.addHandler(cap)
+    log.setLevel(logging.DEBUG)
+    try:
+        r = client.post("/api/auth/owner/login", json={"username": typed, "password": PASSWORD})
+    finally:
+        log.removeHandler(cap)
+        log.setLevel(level)
+    assert r.status_code == 401
+    text = "\n".join(cap.lines)
+    assert typed not in text
+    assert "<unknown username>" in text
 
 
 def test_task_token_is_rejected_by_billing_style_decode(biz):
@@ -120,8 +163,8 @@ def test_billing_handoff_ticket_signs_the_owner_in_once(client, biz):
 
 
 @pytest.mark.parametrize("make", [
-    lambda c: _billing_ticket(c, ttl=-5),                              # expired
-    lambda c: _billing_ticket(c, ttl=3600),                            # not a 30 s hand-off
+    lambda c: _billing_ticket(c, ttl=-16),                             # expired beyond the 15 s clock leeway
+    lambda c: _billing_ticket(c, ttl=3600),                            # beyond the maximum 120 s lifetime
     lambda c: _billing_ticket(c, secret="another-billing-secret-0123456789abcdef"),
     lambda c: (lambda t: t.rsplit(".", 1)[0] + "." + "0" * 64)(_billing_ticket(c)),
     lambda c: "not-a-ticket",

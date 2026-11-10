@@ -1,0 +1,82 @@
+{
+  "stock_null_bucket": {
+    "ledger_total": 11.0,
+    "inventory_sum": 23.0,
+    "inventory_buckets": [
+      {
+        "batch": "B1",
+        "stock": 5.0
+      },
+      {
+        "batch": "B2",
+        "stock": 7.0
+      },
+      {
+        "batch": null,
+        "stock": 11.0
+      }
+    ]
+  },
+  "standalone_advance_replay": {
+    "credit_balance_after_same_key_twice": 200.0,
+    "receipts": 0,
+    "journals": 0
+  },
+  "ai_mark_paid": {
+    "action_ok": true,
+    "status": "Paid",
+    "paid_amount": 0.0,
+    "receipt_count": 0,
+    "journal_entries_added": 0
+  },
+  "hash_tamper_reseal": {
+    "before": {
+      "ok": false,
+      "checked": 0,
+      "broken_at": {
+        "id": 1,
+        "ref_no": "AUDIT-UNPAID",
+        "source_type": "sale",
+        "source_id": 1,
+        "entry_date": "2026-10-30"
+      },
+      "expected_hash": "f84599b6cef4fccecbcc1db62685c2c03f7e79dacca7670e6a37448a381bf25f",
+      "stored_hash": "043f1d76714dc57441a43fd8aabcee35d43aa8577c8ab97436e83af16909250c"
+    },
+    "healed": 1,
+    "after": {
+      "ok": true,
+      "checked": 1,
+      "head": "f84599b6cef4fccecbcc1db62685c2c03f7e79dacca7670e6a37448a381bf25f"
+    }
+  },
+  "purchase_unit_cost": {
+    "purchase_total": 120.0,
+    "stock_units": 12.0,
+    "unit_cost": 120.0,
+    "inventory_value": 1440.0
+  },
+  "catalog_multi_bucket_stock": {
+    "true_total": 12,
+    "catalog_stock": 7.0
+  },
+  "completed_order_rejected": {
+    "status": "rejected",
+    "seller_invoice_id": 2
+  },
+  "b2b_order_gst_mismatch": {
+    "same_state_order_total": 136.0,
+    "final_invoice_total": 118.0
+  },
+  "b2b_catalog_category_bypass": {
+    "catalog_exposes_product": false,
+    "order_accepted_product": "Audit GST item",
+    "order_exposes_unit_price": 100.0
+  },
+  "ai_full_return_metrics": {
+    "actual_net_revenue_added": 0,
+    "tool_revenue_added": 200.0,
+    "actual_cash_added": 0,
+    "tool_collected_added": 100.0
+  }
+}

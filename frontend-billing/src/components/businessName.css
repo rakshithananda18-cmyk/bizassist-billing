@@ -1,0 +1,16 @@
+.business-name-scroll { display: block; width: 100%; overflow: hidden; white-space: nowrap; }
+.business-name-track { display: block; width: max-content; min-width: 100%; }
+.business-name-scroll.is-overflowing:not(:hover):not(:focus-visible) .business-name-track {
+  width: 100%; overflow: hidden; text-overflow: ellipsis;
+}
+.business-name-scroll.is-overflowing:hover .business-name-track,
+.business-name-scroll.is-overflowing:focus-visible .business-name-track {
+  animation: business-name-pan var(--name-duration) linear infinite alternate;
+}
+@keyframes business-name-pan {
+  0%, 8% { transform: translateX(0); }
+  92%, 100% { transform: translateX(var(--name-travel)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .business-name-scroll .business-name-track { animation: none !important; }
+}

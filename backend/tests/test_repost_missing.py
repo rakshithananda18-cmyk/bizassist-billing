@@ -14,6 +14,8 @@ from main_groq import app
 from database.db import SessionLocal
 from core.accounting.repost import repost_unposted_documents
 
+from tests.signup_fixture import signup_payload
+
 client = TestClient(app)
 
 
@@ -22,7 +24,7 @@ def test_repost_missing_endpoint():
     successfully and returns a status 200 with summary counts."""
     # 1. Sign up owner
     owner_uname = f"owner_{uuid.uuid4().hex[:8]}"
-    r_owner = client.post("/signup", json={"username": owner_uname, "password": "OwnerPass123!", "business_name": "Repost Test Biz"})
+    r_owner = client.post("/signup", json=signup_payload({"username": owner_uname, "password": "OwnerPass123!", "business_name": "Repost Test Biz"}))
     assert r_owner.status_code == 200, r_owner.text
     headers = {"Authorization": f"Bearer {r_owner.json()['token']}"}
 

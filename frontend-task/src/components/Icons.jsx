@@ -81,6 +81,15 @@ export function CheckIcon({ size, strokeWidth, className }) {
   )
 }
 
+export function CopyIcon({ size, strokeWidth, className }) {
+  return (
+    <svg {...defaultSvgProps(size, strokeWidth, className)}>
+      <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+    </svg>
+  )
+}
+
 export function CloseIcon({ size, strokeWidth, className }) {
   return (
     <svg {...defaultSvgProps(size, strokeWidth, className)}>
@@ -354,6 +363,65 @@ export function ListIcon({ size, strokeWidth, className }) {
       <line x1="3" y1="6" x2="3.01" y2="6" />
       <line x1="3" y1="12" x2="3.01" y2="12" />
       <line x1="3" y1="18" x2="3.01" y2="18" />
+    </svg>
+  )
+}
+
+export function MenuIcon({ size, strokeWidth, className }) {
+  return (
+    <svg {...defaultSvgProps(size, strokeWidth, className)}>
+      <line x1="3" y1="12" x2="21" y2="12" />
+      <line x1="3" y1="6" x2="21" y2="6" />
+      <line x1="3" y1="18" x2="21" y2="18" />
+    </svg>
+  )
+}
+
+
+export function QrCodeIcon({ size, strokeWidth, className }) {
+  return (
+    <svg {...defaultSvgProps(size, strokeWidth, className)}>
+      <rect x="3" y="3" width="7" height="7" />
+      <rect x="14" y="3" width="7" height="7" />
+      <rect x="3" y="14" width="7" height="7" />
+      <path d="M14 14h3v3h-3z" />
+      <path d="M20 14v3h-3" />
+      <path d="M14 20h7" />
+    </svg>
+  )
+}
+
+export function WhatsAppIcon({ size, strokeWidth, className }) {
+  return (
+    <svg {...defaultSvgProps(size, strokeWidth, className)}>
+      <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+    </svg>
+  )
+}
+
+export function RefreshIcon({ size, strokeWidth, className }) {
+  return (
+    <svg {...defaultSvgProps(size, strokeWidth, className)}>
+      <polyline points="23 4 23 10 17 10" />
+      <polyline points="1 20 1 14 7 14" />
+      <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+    </svg>
+  )
+}
+
+export function CompassIcon({ size, strokeWidth, className }) {
+  return (
+    <svg {...defaultSvgProps(size, strokeWidth, className)}>
+      <circle cx="12" cy="12" r="10" />
+      <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" />
+    </svg>
+  )
+}
+
+export function SparklesIcon({ size, strokeWidth, className }) {
+  return (
+    <svg {...defaultSvgProps(size, strokeWidth, className)}>
+      <path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z" />
     </svg>
   )
 }

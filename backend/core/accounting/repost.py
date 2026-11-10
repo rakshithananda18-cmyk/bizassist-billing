@@ -69,6 +69,9 @@ REPOSTABLE_ENTITIES = frozenset({
     "invoice_payments",
     "purchase_invoices",
     "expenses",
+    "supplier_payments",
+    "customer_refunds",
+    "customer_credit_allocations",
 })
 
 
@@ -182,11 +185,25 @@ def _post_expense(db, exp, *, enforce_period_lock):
     return posting.post_expense(db, exp, enforce_period_lock=enforce_period_lock)
 
 
+def _post_settlement(db, row, *, enforce_period_lock):
+    source_type = row.__tablename__[:-1]
+    debit = posting.ACC_AP if source_type == "supplier_payment" else posting.ACC_AR
+    credit = posting.ACC_AR if source_type == "customer_credit_allocation" else posting.ACC_CASH
+    return posting.post_entry(db, business_id=row.business_id, entry_date=row.payment_date,
+        source_type=source_type, source_id=row.id, ref_no=f"SET-{row.uid}",
+        narration=source_type.replace("_", " ").title(),
+        lines=[(debit, row.amount, 0), (credit, 0, row.amount)],
+        enforce_period_lock=enforce_period_lock)
+
+
 _POSTERS = {
     "invoices": _post_invoice,
     "invoice_payments": _post_payment,
     "purchase_invoices": _post_purchase,
     "expenses": _post_expense,
+    "supplier_payments": _post_settlement,
+    "customer_refunds": _post_settlement,
+    "customer_credit_allocations": _post_settlement,
 }
 
 
@@ -275,44 +292,15 @@ def _source_type_of(entity: str, obj) -> str:
         return "debit_note" if (getattr(obj, "invoice_type", None) or "") == "debit_note" else "purchase"
     if entity == "invoice_payments":
         return "payment"
+    if entity in {"supplier_payments", "customer_refunds", "customer_credit_allocations"}:
+        return entity[:-1]
     return "expense"
 
 
 def heal_hash_chain(db, business_id: int) -> int:
-    """Re-chain any out-of-order or legacy unlinked journal entries to restore hash chain integrity."""
-    from core.models import JournalEntry
-    from core.accounting.posting import _chain_hash, _r2, verify_chain
-    healed_count = 0
-    while True:
-        report = verify_chain(db, business_id)
-        if report.get("ok"):
-            break
-        broken = report.get("broken_at")
-        if not broken or not broken.get("id"):
-            break
-        broken_id = broken["id"]
-        entry = db.query(JournalEntry).filter(JournalEntry.id == broken_id).first()
-        if not entry:
-            break
-        prev_entry = (
-            db.query(JournalEntry)
-            .filter(JournalEntry.business_id == business_id, JournalEntry.id < broken_id)
-            .order_by(JournalEntry.id.asc())
-            .all()
-        )
-        correct_prev_hash = prev_entry[-1].entry_hash if prev_entry else "GENESIS"
-        clean = [(l.account, _r2(l.debit), _r2(l.credit)) for l in sorted(entry.lines, key=lambda x: x.id)]
-        new_hash = _chain_hash(
-            business_id=entry.business_id, entry_date=entry.entry_date,
-            source_type=entry.source_type, source_id=entry.source_id,
-            ref_no=entry.ref_no, narration=entry.narration,
-            clean=clean, prev_hash=correct_prev_hash
-        )
-        entry.prev_hash = correct_prev_hash
-        entry.entry_hash = new_hash
-        db.commit()
-        healed_count += 1
-    return healed_count
+    """Compatibility name: diagnose mismatches without rewriting posted proof."""
+    from services.self_healing import heal_hash_chain as diagnose_chain
+    return diagnose_chain(db, business_id)
 
 
 def repost_unposted_documents(db, business_id: int) -> dict:
@@ -327,6 +315,9 @@ def repost_unposted_documents(db, business_id: int) -> dict:
         ("invoice_payments", db.query(InvoicePayment).filter(InvoicePayment.business_id == business_id).all()),
         ("expenses", db.query(Expense).filter(Expense.business_id == business_id).all()),
     ]
+    from core.accounting.settlement_models import SupplierPayment, CustomerRefund, CustomerCreditAllocation
+    targets.extend((model.__tablename__, db.query(model).filter(model.business_id == business_id).all())
+                   for model in (SupplierPayment, CustomerRefund, CustomerCreditAllocation))
 
     for entity, rows in targets:
         for row in rows:

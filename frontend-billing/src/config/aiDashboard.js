@@ -1,5 +1,5 @@
 /**
- * aiDashboard.js — "Dashboard BIZASSIST" (the frontend-ai analytics app).
+ * aiDashboard.js — "Stater AI" (the frontend-ai analytics app).
  *
  * In the desktop app both frontends are bundled: billing is served on
  * 127.0.0.1:8450 and the AI dashboard on 127.0.0.1:8451 (see desktop/src/main.js).
@@ -7,10 +7,11 @@
  * native app window.
  *
  * On the web (Vercel) the link points to VITE_AI_DASHBOARD_URL if configured,
- * otherwise the item is hidden.
+ * otherwise it uses the production dashboard.
  */
 import { isLocalHost } from '../config'
 import api from '../api/client'
+import { isDemoMode } from '../demo/demoEngine'
 
 /**
  * DEPRECATED (Phase B.5): gating is now driven by the user's real plan.
@@ -28,41 +29,41 @@ export function getAiDashboardUrl() {
     // Anything else (5174 dev, LAN) → Vite dev server on 5173.
     return port === '8450' ? `http://${hostname}:8451` : `http://${hostname}:5173`
   }
-  return import.meta.env.VITE_AI_DASHBOARD_URL || null
+  return import.meta.env.VITE_AI_DASHBOARD_URL || 'https://bizassist-dev-workspace-ai.vercel.app'
 }
 
 // Keep a reference to the opened tab so we can re-use it and postMessage
 // tickets to an already-mounted React app (which won't re-run useEffect on URL change).
 let _aiWindow = null
-
-/** Open the dashboard (desktop shell turns this into a native window). */
-export async function openAiDashboard() {
-  const url = getAiDashboardUrl()
-  if (!url) return
-
-  let ticket = null
-  try {
-    const res = await api.post('/handoff-ticket')
-    if (res && res.ticket) ticket = res.ticket
-  } catch (err) {
-    console.warn('[SSO] Handoff ticket failed, falling back to manual login', err)
-  }
-
-  // Check if the tab is still alive (not closed by the user)
-  const tabAlive = _aiWindow && !_aiWindow.closed
-
-  if (tabAlive) {
-    // Tab is already open — focus it and send the ticket via postMessage.
-    // The AI dashboard AuthContext listens for this message and redeems it
-    // without needing a page reload (the mount useEffect won't re-fire).
-    _aiWindow.focus()
-    if (ticket) {
-      _aiWindow.postMessage({ type: 'SSO_TICKET', ticket }, url)
-    }
-  } else {
-    // Open a new (or named) tab with the ticket in the URL for fresh mount.
-    const target = ticket ? `${url}/?sso=${ticket}` : url
-    _aiWindow = window.open(target, 'ai_dashboard')
+export function notifyAiLogout() {
+  if (_aiWindow && !_aiWindow.closed) {
+    try { _aiWindow.postMessage({ type: 'AUTH_LOGOUT' }, new URL(getAiDashboardUrl()).origin) } catch { /* iframe fallback */ }
   }
 }
 
+/** Open the dashboard (desktop shell turns this into a native window). */
+export async function openAiDashboard({ user } = {}) {
+  // Search and other entry points can call this outside the sidebar guard.
+  if (user?.is_demo || isDemoMode()) return false
+  const url = getAiDashboardUrl()
+  if (!url) return
+  const toast = msg => window.dispatchEvent(new CustomEvent('show_toast', { detail: { type: 'warning', msg } }))
+  // Keep the browser's user activation until the popup has been opened.
+  if (!_aiWindow || _aiWindow.closed) _aiWindow = window.open('', 'ai_dashboard')
+  const win = _aiWindow
+  if (!win) { toast('Your browser blocked the dashboard window. Allow pop-ups for this site, or open the link in a new tab.'); return }
+  win.focus()
+  try { if (!win.location.href || win.location.href === 'about:blank') win.document?.write('<p>Opening Stater AI…</p>') } catch { /* existing dashboard */ }
+  const target = new URL(`${url.replace(/\/+$/, '')}/`)
+  target.searchParams.set('from_billing', '1')
+  target.searchParams.set('billing_origin', window.location.origin)
+  if (user?.public_id) target.searchParams.set('billing_business', user.public_id)
+  try {
+    const res = await api.post('/handoff-ticket', { purpose: 'ai_dashboard' }, { signal: AbortSignal.timeout(65000) })
+    if (res?.ticket) target.searchParams.set('sso', res.ticket)
+    else throw new Error('No handoff ticket')
+  } catch {
+    toast("Couldn't hand over your sign-in. Sign in on Stater AI with the same account.")
+  }
+  try { win.location.href = target.href } catch { toast('Open Stater AI again to continue signing in.') }
+}

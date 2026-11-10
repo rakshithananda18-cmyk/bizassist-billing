@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
-import { API_BASE, updateApiBase } from '../../config'
+import { API_BASE, updateApiBase, CLOUD_URL, LOCAL_URL } from '../../config'
 import { useAuth } from '../../contexts/AuthContext'
 import { logger } from '../../utils/logger'
+import { assertCompleteImport } from '../../utils/dataTransferResult'
 import { CheckIcon, CloseIcon, AlertIcon, SyncIcon, ShieldIcon, LogoutIcon } from '../Icons'
 
 // ── Step definitions ──────────────────────────────────────────────────────────
@@ -101,7 +102,7 @@ export default function MigrationModal({ fromMode, toMode, onComplete, onError, 
   // HTTP 401 — its JWT_SECRET differs). BackupModal carries this same fix;
   // MigrationModal sending the local token to the cloud was the cause of the
   // silent "Local + Cloud" switch failure (import → 401 → modal closed).
-  const CLOUD_BASE = import.meta.env.VITE_API_URL || 'https://rakshit-dev-bizassist.hf.space'
+  const CLOUD_BASE = CLOUD_URL
   const headersFor = useCallback((base) => {
     let cloudTok = null
     try { cloudTok = localStorage.getItem('bizassist_cloud_token') } catch { /* ignore */ }
@@ -124,7 +125,7 @@ export default function MigrationModal({ fromMode, toMode, onComplete, onError, 
 
   async function run() {
     logger.info(`[MIGRATION] Starting hosting mode migration from ${fromMode} to ${toMode}`)
-    const CLOUD_URL = import.meta.env.VITE_API_URL || 'https://rakshit-dev-bizassist.hf.space'
+    // using imported CLOUD_URL
     const LOCAL_URL = 'http://localhost:8001'
     const SOURCE_API_BASE = fromMode === 'cloud' ? CLOUD_URL : LOCAL_URL
     const DEST_API_BASE = (toMode === 'cloud' || toMode === 'hybrid') ? CLOUD_URL : LOCAL_URL
@@ -212,6 +213,7 @@ export default function MigrationModal({ fromMode, toMode, onComplete, onError, 
       if (perTable.length > 0) setTableRows(perTable)
 
       let uploadRes = null
+      let animInterval
       try {
         // Kick off the real import.
         // remap_ids=true is REQUIRED here: the default "mirror" mode upserts by
@@ -229,7 +231,7 @@ export default function MigrationModal({ fromMode, toMode, onComplete, onError, 
 
         // Animate per-table progress while waiting
         let p = 35
-        const animInterval = setInterval(() => {
+        animInterval = setInterval(() => {
           if (cancelledRef.current) { clearInterval(animInterval); return }
           p = Math.min(82, p + 1.5)
           setProgress(p)
@@ -243,14 +245,19 @@ export default function MigrationModal({ fromMode, toMode, onComplete, onError, 
         }, 200)
 
         uploadRes = await importPromise
-        clearInterval(animInterval)
 
-        if (!uploadRes.ok) throw new Error(`Import failed: HTTP ${uploadRes.status}`)
+        if (!uploadRes.ok) {
+          const failure = await uploadRes.json().catch(() => ({}))
+          throw new Error(failure.detail || `Import failed: HTTP ${uploadRes.status}`)
+        }
         const importData = await uploadRes.json()
+        assertCompleteImport(importData)
         if (importData.backup_path && !backupPath) setBackupPath(importData.backup_path)
       } catch (err) {
         if (cancelledRef.current) return
         throw err
+      } finally {
+        clearInterval(animInterval)
       }
 
       if (cancelledRef.current) return
@@ -266,7 +273,8 @@ export default function MigrationModal({ fromMode, toMode, onComplete, onError, 
       let results = []
       try {
         const vres = await fetch(`${DEST_API_BASE}/api/data-transfer/count`, { headers: headersFor(DEST_API_BASE) })
-        if (vres.ok) {
+        if (!vres.ok) throw new Error(`Validation unavailable: HTTP ${vres.status}`)
+        {
           const destCounts = await vres.json()
           const srcTables = exportData?.tables || {}
           results = Object.entries(srcTables)
@@ -274,13 +282,13 @@ export default function MigrationModal({ fromMode, toMode, onComplete, onError, 
               const expected = Array.isArray(rows) ? rows.length : 0
               // Destination may legitimately hold MORE (pre-existing data merged
               // in) — a shortfall is the only red flag.
-              const found = Number(destCounts?.[entity] ?? NaN)
-              return { entity, expected, found, ok: !Number.isFinite(found) || found >= expected }
+              const found = Number.isFinite(Number(destCounts?.[entity])) ? Number(destCounts[entity]) : 0
+              return { entity, expected, found, ok: Number.isFinite(found) && found >= expected }
             })
             .filter(v => v.expected > 0)
         }
       } catch (err) {
-        logger.warn('[MIGRATION] Validation recount unavailable (continuing):', err)
+        throw new Error('Records were imported, but destination validation is unavailable. Hosting mode has not changed. Reconnect and retry.')
       }
       if (cancelledRef.current) return
       setValidation(results)
@@ -319,23 +327,15 @@ export default function MigrationModal({ fromMode, toMode, onComplete, onError, 
     advanceTo(5)
     if (cancelledRef.current) return
 
-    try {
-      updateApiBase(toMode)
-    } catch (err) {
-      logger.error('Failed to call updateApiBase:', err)
-    }
-
     for (const base of [SOURCE_API_BASE, DEST_API_BASE]) {
-      try {
-        await fetch(`${base}/settings`, {
+        const response = await fetch(`${base}/settings`, {
           method: 'PUT',
           headers: headersFor(base),
           body: JSON.stringify({ general: { hosting_mode: toMode } }),
         })
-      } catch (err) {
-        logger.warn(`Failed to update settings on backend (${base}):`, err)
-      }
+        if (!response.ok) throw new Error('Records were imported, but hosting preferences could not be saved. Retry before switching mode.')
     }
+    updateApiBase(toMode)
 
     window.dispatchEvent(new CustomEvent('refresh-settings'))
     if (cancelledRef.current) return
@@ -363,10 +363,16 @@ export default function MigrationModal({ fromMode, toMode, onComplete, onError, 
   }
 
   /** "Continue anyway" after a validation mismatch. */
-  const handleForceFinalize = () => {
+  const handleForceFinalize = async () => {
     logger.warn('[MIGRATION] User chose to finalise despite validation mismatches')
     setValidationPaused(false)
-    doFinalize(basesRef.current.src, basesRef.current.dest, validation)
+    try {
+      await doFinalize(basesRef.current.src, basesRef.current.dest, validation)
+    } catch (err) {
+      markStep(5, 'error')
+      setErrorStep(STEPS[5].label)
+      setErrorMsg(err.message || 'Could not save hosting preferences. Retry.')
+    }
   }
 
   const handleCancel = () => {
@@ -564,7 +570,7 @@ export default function MigrationModal({ fromMode, toMode, onComplete, onError, 
                 {validation.filter(v => !v.ok).map(v => (
                   <div key={v.entity} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.76rem', color: 'var(--text-secondary)' }}>
                     <span>{v.entity}</span>
-                    <span style={{ fontWeight: 700, color: '#f97316' }}>{v.found}/{v.expected}</span>
+                    <span style={{ fontWeight: 700, color: '#f97316' }}>{Number.isFinite(v.found) ? v.found : 0}/{v.expected}</span>
                   </div>
                 ))}
               </div>
@@ -582,7 +588,7 @@ export default function MigrationModal({ fromMode, toMode, onComplete, onError, 
                 onClick={handleRetry}
                 style={{
                   flex: 2, padding: '9px', borderRadius: 8,
-                  background: 'var(--accent)', color: '#fff', border: 'none',
+                  background: 'var(--accent-solid, var(--accent))', color: 'var(--accent-foreground, #fff)', border: 'none',
                   cursor: 'pointer', fontSize: '0.84rem', fontWeight: 700,
                   display: 'inline-flex', alignItems: 'center', gap: 6, justifyContent: 'center',
                 }}
@@ -648,7 +654,7 @@ export default function MigrationModal({ fromMode, toMode, onComplete, onError, 
                 onClick={handleRetry}
                 style={{
                   flex: 2, padding: '9px', borderRadius: 8,
-                  background: 'var(--accent)', color: '#fff', border: 'none',
+                  background: 'var(--accent-solid, var(--accent))', color: 'var(--accent-foreground, #fff)', border: 'none',
                   cursor: 'pointer', fontSize: '0.84rem', fontWeight: 700,
                   display: 'inline-flex', alignItems: 'center', gap: 6, justifyContent: 'center',
                 }}

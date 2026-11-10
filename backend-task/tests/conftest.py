@@ -26,7 +26,21 @@ os.environ["LOG_LEVEL"] = "WARNING"
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
+from app import db as app_db  # noqa: E402
 from app.main import app  # noqa: E402
+from app.timeutil import biz_local_to_utc, biz_today  # noqa: E402
+
+# ── The business clock: midday IST, whatever the wall clock says ─────────────
+# Tests plan today's runs due at 23:59 and work them at once. Near midnight IST
+# that work would be late, or the run would belong to yesterday by the time it
+# is worked. So the app's clock (app.db.utc_now, read by every module and
+# column default) starts at 12:00 IST on today's business date and ticks from
+# there. Tests read "now" and "today" through the app (utc_now, biz_today),
+# never from the OS. Tokens are signed on this clock but PyJWT checks them on
+# the real one; the gap is under 12 h and they live 14 h, so they stay valid.
+if not app_db.CLOCK_OFFSET:  # once: tests import this file again as tests.conftest
+    _real_now = app_db.utc_now()
+    app_db.CLOCK_OFFSET = biz_local_to_utc(biz_today(_real_now), "12:00") - _real_now
 
 # Bengaluru, near a shop pin used across tests.
 SHOP_LAT, SHOP_LNG = 12.971600, 77.594600
@@ -67,10 +81,11 @@ class Biz:
         self.public_id = body["public_id"]
         self.h = auth(self.token)
 
-    def staff(self, name="Ravi", login=None, role="delivery"):
+    def staff(self, name="Ravi", login=None, role="delivery", phone=None):
         login = login or uniq("agent")
+        phone = phone or str(6000000000 + uuid.uuid4().int % 4000000000)
         r = self.c.post("/api/staff", headers=self.h, json={
-            "name": name, "login_name": login, "password": PASSWORD, "role": role,
+            "name": name, "login_name": login, "password": PASSWORD, "role": role, "phone": phone,
         })
         assert r.status_code == 201, r.text
         return r.json()

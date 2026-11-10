@@ -39,25 +39,21 @@ def select(id, label, action_key, options, icon="bell"):
 def signals(user_id: int) -> dict:
     db = SessionLocal()
     try:
-        overdue = db.query(Invoice).filter(Invoice.business_id == user_id, Invoice.status == "Overdue").count()
-        pending = db.query(Invoice).filter(Invoice.business_id == user_id, Invoice.status == "Pending").count()
+        from core.billing.balances import outstanding_rows
+        overdue = len(outstanding_rows(db, user_id, overdue=True))
+        pending = len(outstanding_rows(db, user_id, overdue=False))
         items = db.query(Inventory).filter(Inventory.business_id == user_id).all()
         low_stock = sum(
             1 for i in items
             if i.stock is not None and float(i.stock or 0.0) <= 10
         )
-        # Collection rate for cashflow emergency detection
-        total_rev = db.query(func.sum(Invoice.amount)).filter(Invoice.business_id == user_id).scalar() or 0
-        paid_rev  = db.query(func.sum(Invoice.amount)).filter(Invoice.business_id == user_id, Invoice.status == "Paid").scalar() or 0
-        collection_rate = round((paid_rev / total_rev) * 100) if total_rev else 100
+        # Collection rate for cashflow emergency detection (BD-04)
+        from core.billing.balances import business_revenue_summary
+        metrics = business_revenue_summary(db, user_id)
+        collection_rate = metrics["collection_rate_pct"]
         # Top overdue customers for select-chip options
-        top_overdue_rows = (
-            db.query(Invoice.customer, func.sum(Invoice.amount).label("overdue_total"))
-            .filter(Invoice.business_id == user_id, Invoice.status == "Overdue")
-            .group_by(Invoice.customer)
-            .order_by(func.sum(Invoice.amount).desc())
-            .limit(6).all()
-        )
+        from core.billing.balances import debtor_rows
+        top_overdue_rows = debtor_rows(db, user_id)[:6]
         overdue_options = [
             {"value": r.customer, "label": f"{r.customer} (₹{float(r.overdue_total or 0):,.0f})"}
             for r in top_overdue_rows
@@ -197,12 +193,13 @@ def get_business_snapshot(user_id: int) -> str:
     from datetime import datetime, timedelta
     db = SessionLocal()
     try:
-        total_rev   = _sf(db.query(func.sum(Invoice.amount)).filter(Invoice.business_id == user_id).scalar())
-        paid_rev    = _sf(db.query(func.sum(Invoice.amount)).filter(Invoice.business_id == user_id, Invoice.status == "Paid").scalar())
-        overdue_amt = _sf(db.query(func.sum(Invoice.amount)).filter(Invoice.business_id == user_id, Invoice.status == "Overdue").scalar())
-        overdue_ct  = db.query(Invoice).filter(Invoice.business_id == user_id, Invoice.status == "Overdue").count()
-        pending_ct  = db.query(Invoice).filter(Invoice.business_id == user_id, Invoice.status == "Pending").count()
-        collection  = round((paid_rev / total_rev) * 100) if total_rev else 100
+        from core.billing.balances import business_revenue_summary, outstanding_rows
+        metrics = business_revenue_summary(db, user_id)
+        total_rev, paid_rev = metrics["net_revenue"], metrics["collected_revenue"]
+        overdue_amt = metrics["overdue_revenue"]
+        overdue_ct = len(outstanding_rows(db, user_id, overdue=True))
+        pending_ct = metrics["pending_invoice_count"] - overdue_ct
+        collection = metrics["collection_rate_pct"]
         items       = db.query(Inventory).filter(Inventory.business_id == user_id).all()
         low_stock   = sum(1 for i in items if i.stock is not None and float(i.stock or 0.0) <= 10)
         expiring_7d = 0
@@ -252,8 +249,9 @@ def detect_anomalies(user_id: int) -> list:
     db = SessionLocal()
     alerts = []
     try:
-        total_rev = _sf(db.query(func.sum(Invoice.amount)).filter(Invoice.business_id == user_id).scalar())
-        paid_rev  = _sf(db.query(func.sum(Invoice.amount)).filter(Invoice.business_id == user_id, Invoice.status == "Paid").scalar())
+        from core.billing.balances import business_revenue_summary, debtor_rows
+        metrics = business_revenue_summary(db, user_id)
+        total_rev, paid_rev = metrics["net_revenue"], metrics["collected_revenue"]
         if total_rev > 0:
             rate = round((paid_rev / total_rev) * 100)
             if rate < 60:
@@ -262,11 +260,11 @@ def detect_anomalies(user_id: int) -> list:
                     "message": f"Only {rate}% of revenue collected. Immediate follow-up needed.",
                     "icon": "alert"})
 
-        overdue_total = _sf(db.query(func.sum(Invoice.amount)).filter(Invoice.business_id == user_id, Invoice.status == "Overdue").scalar())
+        overdue_total = metrics["overdue_revenue"]
         if overdue_total > 0:
-            top = (db.query(Invoice.customer, func.sum(Invoice.amount).label("t"))
-                   .filter(Invoice.business_id == user_id, Invoice.status == "Overdue")
-                   .group_by(Invoice.customer).order_by(func.sum(Invoice.amount).desc()).first())
+            ranked = debtor_rows(db, user_id)
+            from types import SimpleNamespace
+            top = SimpleNamespace(customer=ranked[0].customer, t=ranked[0].overdue_total) if ranked else None
             if top and top.t and (_sf(top.t) / overdue_total) > 0.6:
                 pct = round((_sf(top.t) / overdue_total) * 100)
                 alerts.append({"type": "concentration", "severity": "warning",

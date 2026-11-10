@@ -228,6 +228,10 @@ def test_the_column_is_used_ONLY_when_there_are_no_ledger_rows(db):
     must still report what they know rather than claiming zero."""
     inv = _bill(db, 500)
     inv.paid_amount = 300.0
+    # Represent a genuinely old header-only record, rather than changing a
+    # modern authored bill's cumulative projection into evidence of cash.
+    inv.legacy_paid_baseline = None
+    inv.legacy_paid_baseline_source = None
     db.commit()
     assert db.query(InvoicePayment).filter(
         InvoicePayment.invoice_id == inv.id).count() == 0
@@ -292,6 +296,12 @@ def test_an_invoice_number_that_is_a_PREFIX_of_another_does_not_steal_returns(db
     assert _account(db, short.id)["returns"] == [], (
         "ACC-1 claimed ACC-10's credit note — the substring bug is back, and "
         "this is a customer being shown someone else's return")
+    assert _account(db, long.id)["outstanding"] == 150.0
+    assert _account(db, short.id)["outstanding"] == 100.0
+    from core.billing.balances import business_revenue_summary, monthly_revenue_rows, invoice_net_amount
+    assert invoice_net_amount(cn) == -50.0
+    assert business_revenue_summary(db, BID)["net_revenue"] == 250.0
+    assert monthly_revenue_rows(db, BID)[-1]["billed"] == 250.0
 
 
 def test_an_invoice_with_no_number_reports_no_returns_rather_than_matching_all(db):

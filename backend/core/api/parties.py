@@ -22,7 +22,7 @@ import logging
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
@@ -95,7 +95,8 @@ class UpdateVendor(BaseModel):
 
 # ── Serializers ───────────────────────────────────────────────────────────────
 
-def _customer_out(c: Customer, outstanding: float = 0.0, last_invoice_date: Optional[str] = None) -> dict:
+def _customer_out(c: Customer, outstanding: float = 0.0, last_invoice_date: Optional[str] = None,
+                  return_credit: float = 0.0) -> dict:
     return {
         "id": c.id, "name": c.name, "gstin": c.gstin,
         "phone": c.phone, "email": c.email, "address": c.address,
@@ -106,11 +107,13 @@ def _customer_out(c: Customer, outstanding: float = 0.0, last_invoice_date: Opti
         "outstanding_dues": round(outstanding, 2),
         "outstanding_balance": round(outstanding, 2),
         "credit_balance": round(getattr(c, "credit_balance", 0.0) or 0.0, 2),
+        "return_credit": round(return_credit, 2),
         "last_invoice_date": last_invoice_date,
     }
 
 
-def _vendor_out(v: Vendor, outstanding: float = 0.0, last_purchase_date: Optional[str] = None) -> dict:
+def _vendor_out(v: Vendor, outstanding: float = 0.0, last_purchase_date: Optional[str] = None,
+                return_credit: float = 0.0) -> dict:
     return {
         "id": v.id, "name": v.name, "gstin": v.gstin,
         "phone": v.phone, "email": v.email, "address": v.address,
@@ -120,6 +123,7 @@ def _vendor_out(v: Vendor, outstanding: float = 0.0, last_purchase_date: Optiona
         "filing_reliability": v.filing_reliability,
         "is_active": v.is_active,
         "outstanding_balance": round(outstanding, 2),
+        "return_credit": round(return_credit, 2),
         "last_purchase_date": last_purchase_date,
     }
 
@@ -129,35 +133,9 @@ def _compute_vendor_stats(db: Session, business_id: int, vendor_id: int) -> tupl
     Outstanding = SUM(total_amount) for all unpaid/pending purchase invoices.
     Returns (outstanding, last_purchase_date).
     """
-    from database.models import PurchaseInvoice
-    row = (
-        db.query(
-            func.coalesce(func.sum(PurchaseInvoice.total_amount), 0.0),
-            func.max(PurchaseInvoice.invoice_date)
-        )
-        .filter(
-            PurchaseInvoice.business_id == business_id,
-            PurchaseInvoice.supplier_id == vendor_id,
-            PurchaseInvoice.status != "Paid",
-        )
-        .first()
-    )
-    
-    # We also need the MAX(invoice_date) regardless of status
-    last_date_row = (
-        db.query(func.max(PurchaseInvoice.invoice_date))
-        .filter(
-            PurchaseInvoice.business_id == business_id,
-            PurchaseInvoice.supplier_id == vendor_id,
-        )
-        .first()
-    )
-    
-    if not row:
-        return 0.0, None
-    total_unpaid, _ = row
-    last_date = last_date_row[0] if last_date_row else None
-    return float(total_unpaid or 0), last_date
+    from core.billing.balances import party_balance
+    balance = party_balance(db, business_id, vendor_id, purchase=True)
+    return balance["outstanding"], balance["last_date"]
 
 
 def _compute_customer_stats(db: Session, business_id: int, customer_id: int) -> tuple:
@@ -166,23 +144,16 @@ def _compute_customer_stats(db: Session, business_id: int, customer_id: int) -> 
     invoices of this customer. Read-only, deterministic SQL.
     Returns (outstanding, last_invoice_date).
     """
-    row = (
-        db.query(
-            func.coalesce(func.sum(Invoice.total_amount), 0.0),
-            func.coalesce(func.sum(Invoice.paid_amount), 0.0),
-            func.max(Invoice.invoice_date)
-        )
-        .filter(
-            Invoice.business_id == business_id,
-            Invoice.customer_id == customer_id,
-            Invoice.invoice_type != "credit_note",
-        )
-        .first()
-    )
-    if row is None:
-        return 0.0, None
-    total, paid, last_date = row
-    return max(float(total or 0) - float(paid or 0), 0.0), last_date
+    from core.billing.balances import party_balance
+    balance = party_balance(db, business_id, customer_id)
+    return balance["outstanding"], balance["last_date"]
+
+
+def _party_money_out(db, business_id, party, *, purchase=False):
+    from core.billing.balances import party_balance
+    balance = party_balance(db, business_id, party.id, purchase=purchase)
+    serializer = _vendor_out if purchase else _customer_out
+    return serializer(party, balance["outstanding"], balance["last_date"], balance["credit_due"])
 
 
 # ── Customer Routes ───────────────────────────────────────────────────────────
@@ -215,7 +186,7 @@ def list_customers(
     )
     return {
         "total": total, "page": page, "per_page": per_page,
-        "items": [_customer_out(c, *_compute_customer_stats(db, bid, c.id)) for c in items],
+        "items": [_party_money_out(db, bid, c) for c in items],
     }
 
 
@@ -263,8 +234,7 @@ def get_customer(
     ).first()
     if c is None:
         raise HTTPException(status_code=404, detail=f"Customer {customer_id} not found")
-    outstanding, last_date = _compute_customer_stats(db, bid, customer_id)
-    return _customer_out(c, outstanding, last_date)
+    return _party_money_out(db, bid, c)
 
 
 @router.patch("/customers/{customer_id}")
@@ -292,8 +262,7 @@ def update_customer(
     from services.immediate_sync import trigger_data_sync
     trigger_data_sync(bid, db)
     db.refresh(c)
-    outstanding, last_date = _compute_customer_stats(db, bid, customer_id)
-    dto = _customer_out(c, outstanding, last_date)
+    dto = _party_money_out(db, bid, c)
     background_tasks.add_task(
         realtime_manager.broadcast, bid,
         delta_event("party", payload=dto, kind="customer", rid=c.id, uid=getattr(c, "uid", None)),
@@ -326,7 +295,10 @@ def customer_ledger(
     invoices = inv_q.offset((page - 1) * per_page).limit(per_page).all()
 
     entries = []
+    from core.billing.balances import invoice_balances, party_balance, collection_status
+    balances = invoice_balances(db, invoices)
     for inv in invoices:
+        balance = balances[inv.id]
         entries.append({
             "type": "invoice",
             "invoice_no": inv.invoice_id,
@@ -334,16 +306,22 @@ def customer_ledger(
             "date": inv.invoice_date,
             "due_date": inv.due_date,
             "total_amount": inv.total_amount,
-            "paid_amount": inv.paid_amount,
-            "outstanding": max((inv.total_amount or 0) - (inv.paid_amount or 0), 0),
-            "status": inv.status,
+            "paid_amount": balance["paid"],
+            "outstanding": balance["outstanding"],
+            "credited_amount": balance["credited"],
+            "effective_total": balance["effective_total"],
+            "return_credit": balance["credit_due"],
+            "invoice_type": inv.invoice_type,
+            "status": collection_status(balance, inv.status or "Pending") if inv.invoice_type != "credit_note" else inv.status,
         })
 
     outstanding_total, _ = _compute_customer_stats(db, bid, customer_id)
+    credit_due = party_balance(db, bid, customer_id)["credit_due"]
     return {
         "customer_id": customer_id,
         "customer_name": c.name,
         "outstanding_total": round(outstanding_total, 2),
+        "return_credit": credit_due,
         "credit_balance": round(c.credit_balance or 0.0, 2),   # banked advance
         "total": total, "page": page, "per_page": per_page,
         "entries": entries,
@@ -351,7 +329,7 @@ def customer_ledger(
 
 
 class SettleDuesRequest(BaseModel):
-    amount: float
+    amount: float = Field(gt=0, allow_inf_nan=False)
     payment_mode: Optional[str] = None
     payment_date: Optional[str] = None
     note: Optional[str] = None
@@ -387,7 +365,7 @@ def settle_customer_dues(
     # is invisible to shift reconciliation.
     from core.shifts import service as shifts_svc
     operator_id = current_user.get("user_id") or bid
-    active_shift = shifts_svc.get_open_shift(db, business_id=bid, user_id=operator_id)
+    active_shift = shifts_svc.get_open_shift(db, business_id=bid, user_id=operator_id, lock=True)
 
     try:
         result = billing.settle_customer_dues(
@@ -440,7 +418,7 @@ def list_vendors(
     )
     return {
         "total": total, "page": page, "per_page": per_page,
-        "items": [_vendor_out(v, *_compute_vendor_stats(db, bid, v.id)) for v in items],
+        "items": [_party_money_out(db, bid, v, purchase=True) for v in items],
     }
 
 
@@ -487,8 +465,7 @@ def get_vendor(
     ).first()
     if v is None:
         raise HTTPException(status_code=404, detail=f"Vendor {vendor_id} not found")
-    outstanding, last_date = _compute_vendor_stats(db, bid, vendor_id)
-    return _vendor_out(v, outstanding, last_date)
+    return _party_money_out(db, bid, v, purchase=True)
 
 
 @router.patch("/vendors/{vendor_id}")
@@ -516,8 +493,7 @@ def update_vendor(
     from services.immediate_sync import trigger_data_sync
     trigger_data_sync(bid, db)
     db.refresh(v)
-    outstanding, last_date = _compute_vendor_stats(db, bid, vendor_id)
-    dto = _vendor_out(v, outstanding, last_date)
+    dto = _party_money_out(db, bid, v, purchase=True)
     background_tasks.add_task(
         realtime_manager.broadcast, bid,
         delta_event("party", payload=dto, kind="vendor", rid=v.id, uid=getattr(v, "uid", None)),

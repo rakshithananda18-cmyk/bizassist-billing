@@ -58,6 +58,7 @@ from sqlalchemy.orm import Session
 from core.models import B2BConnection, B2BInviteCode
 from core.connection.utils import generate_connection_code
 from database.models import User
+from core.party_archive import require_active_businesses, capture_order_parties
 
 # ── Status vocabulary ────────────────────────────────────────────────────────
 STATUS_PENDING = "pending"
@@ -165,6 +166,7 @@ def is_awaiting(conn: B2BConnection, business_id: int) -> bool:
 
 def create_connection_code(db: Session, seller_business_id: int, expires_in_hours: int = 24) -> B2BInviteCode:
     """Generate a temporary single-use connection code for a seller."""
+    require_active_businesses(db, seller_business_id)
     code_str = generate_connection_code(db)
     expires_at = utc_now() + timedelta(hours=expires_in_hours)
     
@@ -180,6 +182,12 @@ def create_connection_code(db: Session, seller_business_id: int, expires_in_hour
     return code_obj
 
 def redeem_connection_code(db: Session, buyer_business_id: int, code: str) -> B2BConnection:
+    from database.trade_service import trade_session
+    with trade_session(db, actor_id=buyer_business_id, operation="redeem_connection", code=code) as work:
+        return _redeem_connection_code(work, buyer_business_id, code)
+
+
+def _redeem_connection_code(db, buyer_business_id, code):
     """
     Redeem a connection code as a buyer to establish a B2B connection with the seller.
     Automatically accepts the connection link.
@@ -195,6 +203,7 @@ def redeem_connection_code(db: Session, buyer_business_id: int, code: str) -> B2
         raise ValueError("This connection code has expired")
         
     seller_id = code_obj.seller_business_id
+    require_active_businesses(db, buyer_business_id, seller_id)
     if seller_id == buyer_business_id:
         raise ValueError("Cannot connect to your own business")
         
@@ -228,6 +237,8 @@ def redeem_connection_code(db: Session, buyer_business_id: int, code: str) -> B2
         )
         db.add(conn)
 
+    from database.trade_service import business_profile
+    capture_order_parties(db, conn, business_profile(db, id=buyer_business_id), business_profile(db, id=seller_id))
     code_obj.is_used = True
     db.commit()
     db.refresh(conn)
@@ -251,6 +262,7 @@ def update_connection_policy(
     # fetch-by-id — correct, because the seller check below is stricter than
     # is_party, but it was a second copy of the rule and copies drift.
     conn = _load(db, connection_id, business_id=seller_business_id)
+    require_active_businesses(db, conn.seller_business_id, conn.buyer_business_id)
 
     if conn.seller_business_id != seller_business_id:
         raise PermissionError("Only the seller can update connection settings")
@@ -316,9 +328,11 @@ def request_connection(
       · ``rejected``/``revoked`` → re-opens as ``pending``, addressed to the party
         that rejected/revoked. The requester can never self-approve.
     """
-    target = db.query(User).filter(User.public_id == target_bizid).first()
+    from database.trade_service import business_profile
+    target = business_profile(db, bizid=target_bizid)
     if not target:
         raise ValueError("Business with this BizID not found")
+    require_active_businesses(db, initiator_id, target.id)
 
     if target.id == initiator_id:
         raise ValueError("Cannot connect to your own business")
@@ -382,6 +396,8 @@ def request_connection(
         )
         db.add(conn)
 
+    from database.trade_service import business_profile
+    capture_order_parties(db, conn, business_profile(db, id=buyer_id), business_profile(db, id=seller_id))
     db.commit()
     db.refresh(conn)
     return conn
@@ -393,6 +409,7 @@ def approve_connection(db: Session, business_id: int, connection_id: int) -> B2B
     that raised the request cannot approve its own (rule R1).
     """
     conn = _load(db, connection_id, business_id=business_id)
+    require_active_businesses(db, conn.seller_business_id, conn.buyer_business_id)
 
     if not is_party(conn, business_id):
         raise PermissionError("Not authorized to act on this connection")

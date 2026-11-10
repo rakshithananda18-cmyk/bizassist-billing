@@ -57,4 +57,33 @@ describe('Settings subscription row', () => {
     fireEvent.click(await screen.findByRole('button', { name: /check for updates/i }))
     await waitFor(() => expect(fetchSettings).toHaveBeenCalledWith(true))
   })
+
+  // A trial ends; it does not "renew". Saying it renews tells the owner they
+  // will keep Pro without doing anything, which is the opposite of the truth.
+  it('calls a trial a trial, with its end date and days left', async () => {
+    settings = { general: {}, subscription: {
+      plan: 'pro', status: 'trial', trial: true,
+      expires_at: '2099-01-15', ends_at: '2099-01-16T00:00:00Z',
+    } }
+    renderSettings()
+    expect(await screen.findByText(/Current plan: Pro trial/)).toBeInTheDocument()
+    expect(screen.getByText(/ends \d{1,2}\/\d{1,2}\/2099 \(\d+ days left\)/)).toBeInTheDocument()
+    expect(screen.queryByText(/renews/)).toBeNull()
+  })
+
+  it('says when a lapsed trial ended, not a renewal date in the past', async () => {
+    settings = { general: {}, subscription: {
+      plan: 'free', status: 'trial', trial: true, expires_at: '2020-01-15',
+    } }
+    renderSettings()
+    expect(await screen.findByText(/Current plan: Free/)).toBeInTheDocument()
+    expect(screen.getByText(/trial ended/)).toBeInTheDocument()
+    expect(screen.queryByText(/renews/)).toBeNull()
+  })
+
+  it('still shows the renewal date of a paid plan', async () => {
+    settings = { general: {}, subscription: { plan: 'pro', status: 'active', expires_at: '2099-01-15' } }
+    renderSettings()
+    expect(await screen.findByText(/renews \d{1,2}\/\d{1,2}\/2099/)).toBeInTheDocument()
+  })
 })

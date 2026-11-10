@@ -1,6 +1,8 @@
 // src/invoice/templates/ThermalCompact.jsx — dynamic thermal receipt renderer (Phase 2).
 import { inr, n2, qty } from '../formatters'
 import { QRCodeSVG } from 'qrcode.react'
+import DeletedPartyNotice from '../DeletedPartyNotice'
+import SettlementSummary from '../SettlementSummary'
 
 export default function ThermalCompact({ payload }) {
   if (!payload) return null
@@ -29,6 +31,7 @@ export default function ThermalCompact({ payload }) {
 
   return (
     <div style={containerStyle} data-testid="invoice-thermal">
+      <DeletedPartyNotice seller={seller} buyer={buyer} />
       {/* Header */}
       <div style={{ borderBottom: '1px dashed #94a3b8', paddingBottom: '4px', marginBottom: '6px' }}>
         {s.header_layout && s.header_layout.map((row) => {
@@ -168,6 +171,7 @@ export default function ThermalCompact({ payload }) {
         </div>
       </div>
 
+      <SettlementSummary totals={totals} />
       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85em', marginBottom: '4px' }}>
         <span>Qty: {lines.reduce((a, b) => a + parseFloat(b.qty || 0), 0)}</span>
         <span>Items: {lines.length}</span>
@@ -232,7 +236,7 @@ export default function ThermalCompact({ payload }) {
               {footer.customer_signature_label || 'Customer Signature'}
             </div>
           ) : <div />}
-          
+
           {s.print_signature ? (
             <div style={{ borderTop: '1px dashed #64748b', width: '110px', textAlign: 'center', paddingTop: '2px', fontSize: '0.75em' }}>
               {footer.signature_label || 'Authorised Signatory'}

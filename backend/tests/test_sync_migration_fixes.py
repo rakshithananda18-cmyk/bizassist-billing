@@ -39,6 +39,8 @@ from database.db import SessionLocal
 from routes.data_transfer import _resolve_owner_id, _import_with_remap
 from services.realtime import RealtimeManager
 
+from tests.signup_fixture import signup_payload
+
 client = TestClient(app)
 
 
@@ -48,9 +50,9 @@ def _rid() -> int:
 
 def _signup(business_name: str) -> dict:
     uname = f"own_{uuid.uuid4().hex[:8]}"
-    r = client.post("/signup", json={
+    r = client.post("/signup", json=signup_payload({
         "username": uname, "password": "TestPass123!", "business_name": business_name,
-    })
+    }))
     assert r.status_code == 200, r.text
     b = r.json()
     return {"bid": b["id"], "username": uname}

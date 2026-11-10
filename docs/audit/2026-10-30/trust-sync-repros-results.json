@@ -1,0 +1,29 @@
+{
+  "timestamp_boundary_data_loss": {
+    "page1_ids": [
+      1,
+      2
+    ],
+    "has_more": true,
+    "page2_changes": {},
+    "never_delivered_id": 3
+  },
+  "response_end_cursor_race": {
+    "first_ids": [
+      1,
+      2,
+      3
+    ],
+    "next_changes": {},
+    "never_delivered_id": 4
+  },
+  "partial_pull_plus_rejected_row_advances": [
+    "2026-10-30T10:05:00"
+  ],
+  "staff_replication_missing_revocation": {
+    "new_password": "new",
+    "new_role": "cashier",
+    "token_version_after": 0,
+    "old_cloud_tv_claim_still_matches": true
+  }
+}

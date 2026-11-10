@@ -78,7 +78,7 @@ export default function DayBookView({ reportData, fmt }) {
           <div style={{
             fontSize: '1.1rem',
             fontWeight: 700,
-            color: reportData.summary?.net_cash_flow >= 0 ? '#2e7d32' : '#d32f2f',
+            color: reportData.summary?.net_cash_flow >= 0 ? 'var(--success)' : 'var(--danger)',
             marginTop: 4
           }}>
             {fmt(reportData.summary?.net_cash_flow)}

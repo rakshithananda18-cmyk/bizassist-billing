@@ -22,6 +22,8 @@ from core.models import StockLedger, ProductBarcode, InvoicePayment
 from core.stock import ledger as SL
 from tests._fk_cleanup import wipe_all
 
+from tests.signup_fixture import signup_payload
+
 client = TestClient(app)
 
 
@@ -44,14 +46,14 @@ def _ensure_db_schema():
 @pytest.fixture(scope="module")
 def api_auth():
     # Create Business A owner via signup
-    resp_a = client.post("/signup", json={"username": f"ownera_{uuid.uuid4().hex[:6]}", "password": "Password123!", "business_name": "Biz A"})
+    resp_a = client.post("/signup", json=signup_payload({"username": f"ownera_{uuid.uuid4().hex[:6]}", "password": "Password123!", "business_name": "Biz A"}))
     assert resp_a.status_code == 200, resp_a.text
     data_a = resp_a.json()
     token_a = data_a["token"]
     bid_a = data_a["id"]
 
     # Create Business B owner via signup
-    resp_b = client.post("/signup", json={"username": f"ownerb_{uuid.uuid4().hex[:6]}", "password": "Password123!", "business_name": "Biz B"})
+    resp_b = client.post("/signup", json=signup_payload({"username": f"ownerb_{uuid.uuid4().hex[:6]}", "password": "Password123!", "business_name": "Biz B"}))
     assert resp_b.status_code == 200, resp_b.text
     data_b = resp_b.json()
     token_b = data_b["token"]

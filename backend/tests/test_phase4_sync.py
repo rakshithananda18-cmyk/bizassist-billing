@@ -26,6 +26,8 @@ from database.models import User, Product, Invoice, PurchaseInvoice
 from core.models import B2BOrder, JournalEntry, StockLedger
 from core.stock import ledger as SL
 
+from tests.signup_fixture import signup_payload
+
 client = TestClient(app)
 
 
@@ -38,7 +40,7 @@ def _clear_rate_limit():
 
 def _signup(name):
     uname = f"u_{uuid.uuid4().hex[:8]}"
-    r = client.post("/signup", json={"username": uname, "password": "TestPass123!", "business_name": name})
+    r = client.post("/signup", json=signup_payload({"username": uname, "password": "TestPass123!", "business_name": name}))
     assert r.status_code == 200, r.text
     b = r.json()
     return {"headers": {"Authorization": f"Bearer {b['token']}"}, "bid": b["id"]}
@@ -95,6 +97,8 @@ def _place_and_complete(seller, buyer, qty):
     assert place.status_code in (200, 201), place.text
     order_id = place.json()["id"]
     assert client.post(f"/orders/{order_id}/status", headers=seller["headers"], json={"status": "accepted"}).status_code == 200
+    assert client.post(f"/orders/{order_id}/status", headers=seller["headers"], json={"status": "packed"}).status_code == 200
+    assert client.post(f"/orders/{order_id}/status", headers=seller["headers"], json={"status": "dispatched"}).status_code == 200
     done = client.post(f"/orders/{order_id}/status", headers=seller["headers"], json={"status": "completed"})
     assert done.status_code == 200, done.text
     return pid, order_id, place.json()["order_number"]

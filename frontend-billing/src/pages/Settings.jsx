@@ -6,16 +6,19 @@
 // ============================================================================
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
+import { isDemoMode } from '../demo/demoEngine'
+import DemoGate from '../components/demo/DemoGate'
 import AppLayout from '../layouts/AppLayout'
 import { useAuth, useBusinessConfig } from '../contexts/AuthContext'
 import { formatIST } from '../utils/format'
 import { useLock } from '../contexts/LockContext'
 import { API_BASE, IS_LOCAL_APP, updateApiBase } from '../config'
-import { BillsIcon, CheckIcon, CloseIcon, ContactsIcon, CopyIcon, InventoryIcon, LockIcon, PrinterIcon, SettingsIcon, ShieldIcon, TagIcon, WarehouseIcon, MonitorIcon, SyncIcon, ZapIcon, WifiOffIcon, RobotIcon, DevicesIcon, TruckIcon, PackageIcon, OrderIcon, CartIcon, CashIcon, ArrowDownIcon, ArrowUpIcon, TaxIcon, EditIcon } from '../components/Icons'
+import { BillsIcon, CheckIcon, ImportIcon, CloseIcon, ContactsIcon, CopyIcon, InventoryIcon, LockIcon, PrinterIcon, SettingsIcon, ShieldIcon, TagIcon, WarehouseIcon, MonitorIcon, SyncIcon, ZapIcon, WifiOffIcon, RobotIcon, DevicesIcon, TruckIcon, PackageIcon, OrderIcon, CartIcon, CashIcon, ArrowDownIcon, ArrowUpIcon, TaxIcon, EditIcon, SummaryIcon, MessageIcon, AlertIcon } from '../components/Icons'
 import { logger } from '../utils/logger'
 import { SkylineLoader } from '../components/Logo'
 import { getHeaderLayout, isHeaderLineEnabled, moveItem } from '../utils/printLayout'
 import { useReadinessProbe } from '../hooks/useReadinessProbe'
+import { useSettingsAutosave } from '../hooks/useSettingsAutosave'
 import ReadinessPanel from '../components/hosting/ReadinessPanel'
 import PreflightModal from '../components/hosting/PreflightModal'
 import ConsequenceModal from '../components/hosting/ConsequenceModal'
@@ -41,17 +44,49 @@ import NetworkDiscoverySection from '../components/settings/NetworkDiscoverySect
 import PasscodeModal from '../components/settings/PasscodeModal'
 import HostingModeSection from '../components/settings/HostingModeSection'
 import OpsHealthPanel from '../components/settings/OpsHealthPanel'
+import DataMigrationSection from '../components/settings/DataMigrationSection'
+import SupportSection from '../components/settings/SupportSection'
+import ActivityFeed from '../components/ActivityFeed'
+import { trialState, daysLeftText } from '../utils/trialStatus'
+import PageTabs from '../components/common/PageTabs'
+import HeaderSearchSlot from '../components/common/HeaderSearchSlot'
+import AppearanceSettings from '../components/settings/AppearanceSettings'
+import Profile from './Profile'
+import './settings-profile.css'
+import SettingsSearch from '../components/settings/SettingsSearch'
+import SettingsSaveButton from '../components/settings/SettingsSaveButton'
 
 // ─── Tabs ─────────────────────────────────────────────────────────────────────
 const TABS = [
-  { id: 'general',      label: 'General',              icon: <SettingsIcon size={16} /> },
-  { id: 'transactions', label: 'Transactions',          icon: <BillsIcon size={16} /> },
-  { id: 'inventory',    label: 'Items & Stock',         icon: <InventoryIcon size={16} /> },
-  { id: 'print',        label: 'Print & PDF',           icon: <PrinterIcon size={16} /> },
-  { id: 'staff',        label: 'Staff Management',      icon: <ShieldIcon size={16} /> },
-  { id: 'network',      label: 'Network & Discovery',   icon: <ZapIcon size={16} /> },
-  { id: 'advanced',     label: 'Advanced',              icon: <ZapIcon size={16} /> },
-  { id: 'ops_health',   label: 'Ops & Health',          icon: <CheckIcon size={16} /> },
+  { id: 'general',      label: 'General',              icon: <SettingsIcon size={16} />, desc: 'Display, zoom & backup' },
+  { id: 'profile',      label: 'Business Profile',      icon: <ContactsIcon size={16} />, desc: 'Name, GSTIN & logo' },
+  { id: 'staff',        label: 'Staff Management',      icon: <ShieldIcon size={16} />,   desc: 'Cashiers & permissions' },
+
+  { id: 'transactions', label: 'Transactions',          icon: <BillsIcon size={16} />,    desc: 'Invoices, dues & counter' },
+  { id: 'inventory',    label: 'Items & Stock',         icon: <InventoryIcon size={16} />,desc: 'Barcodes & low-stock' },
+  { id: 'print',        label: 'Print & PDF',           icon: <PrinterIcon size={16} />,  desc: 'Thermal & A4 layouts' },
+
+  { id: 'network',      label: 'Network & Discovery',   icon: <ZapIcon size={16} />,      desc: 'LAN sync & hosting mode' },
+  { id: 'migration',    label: 'Data Migration',        icon: <ImportIcon size={16} />,   desc: 'Bulk import & export' },
+  { id: 'activity',     label: 'Business Activity',     icon: <SummaryIcon size={16} />,  desc: 'Audit trail & event log' },
+  { id: 'ops_health',   label: 'Ops & Health',          icon: <CheckIcon size={16} />,    desc: 'System health & diagnostics' },
+  { id: 'support',      label: 'Feedback & Support',    icon: <MessageIcon size={16} />,  desc: 'Submit tickets & diagnostics' },
+  { id: 'advanced',     label: 'Advanced',              icon: <ZapIcon size={16} />,      desc: 'Security & reset controls' },
+]
+
+const SETTINGS_CATEGORIES = [
+  {
+    title: 'Store & Identity',
+    ids: ['general', 'profile', 'staff']
+  },
+  {
+    title: 'Sales & Hardware',
+    ids: ['transactions', 'inventory', 'print']
+  },
+  {
+    title: 'System & Connectivity',
+    ids: ['network', 'migration', 'activity', 'ops_health', 'support', 'advanced']
+  }
 ]
 
 // ─── Main Component ───────────────────────────────────────────────────────────
@@ -59,28 +94,53 @@ const TABS = [
 // ── 3. MAIN SETTINGS STATE INITIALIZATION ──
 // ============================================================================
 export default function Settings() {
+  if (isDemoMode()) {
+    return (
+      <AppLayout title="Store Settings">
+        <DemoGate
+          label="Store Settings & Configuration"
+          description="Manage store configurations, tax settings, thermal printer drivers, LAN mesh discovery, and encrypted cloud backups. Start your free 14-day Pro trial to configure store settings."
+        />
+      </AppLayout>
+    )
+  }
+  return <SettingsWorkspace />
+}
+
+// Keep the workspace unmounted in demos: configuration effects and hooks only
+// run for a real session, and changing demo mode cannot change hook order.
+function SettingsWorkspace() {
   const { authFetch, user, token, fetchSettings, switchMode, setHostingMode, networkMode } = useAuth()
   const navigate = useNavigate()
   const { config, refreshConfig } = useBusinessConfig()
   const { hasLock, setupPasscode, clearPasscode } = useLock()
   const isCashier = (user?.role || '').toLowerCase() === 'cashier'
-  const visibleTabs = isCashier ? TABS.filter(t => t.id === 'general') : TABS
+  const visibleTabs = isCashier ? TABS.filter(t => ['general', 'support'].includes(t.id)) : TABS
+  const settingsGroups = SETTINGS_CATEGORIES.map(cat => ({
+    title: cat.title,
+    tabs: cat.ids.map(id => visibleTabs.find(t => t.id === id)).filter(Boolean)
+  })).filter(g => g.tabs.length > 0)
   const [showPasscodeModal, setShowPasscodeModal] = useState(false)
   const [searchParams, setSearchParams] = useSearchParams()
+  const [settingsSearchQuery, setSettingsSearchQuery] = useState('')
+
   const [activeTab, setActiveTab] = useState(() => {
-    let tabParam = new URLSearchParams(window.location.search).get('tab')
+    let tabParam = searchParams.get('tab')
     // Redirect legacy 'hosting' deep-link to the new network tab
     if (tabParam === 'hosting') tabParam = 'network'
-    return (tabParam && TABS.some(t => t.id === tabParam)) ? tabParam : 'general'
+    return (tabParam && (!isCashier || ['general', 'support'].includes(tabParam)) && TABS.some(t => t.id === tabParam)) ? tabParam : 'general'
   })
 
   useEffect(() => {
     let tabParam = searchParams.get('tab')
     if (tabParam === 'hosting') tabParam = 'network'
-    if (tabParam && TABS.some(t => t.id === tabParam) && tabParam !== activeTab) {
+    if (isCashier && tabParam && !['general', 'support'].includes(tabParam)) {
+      setActiveTab('general')
+      setSearchParams({ tab: 'general' }, { replace: true })
+    } else if (tabParam && TABS.some(t => t.id === tabParam) && tabParam !== activeTab) {
       setActiveTab(tabParam)
     }
-  }, [searchParams])
+  }, [searchParams, isCashier])
 
   // ── ?field= — the URL entry point jumpToSetting never had ─────────────────
   // Universal search deep-links straight to a control: /settings?tab=print&
@@ -92,19 +152,6 @@ export default function Settings() {
   // the target row is not mounted yet and getElementById would find nothing.
   // The param is then stripped one-shot, so a refresh does not re-scroll —
   // same teardown as ?switch= further down.
-  useEffect(() => {
-    const field = searchParams.get('field')
-    if (!field) return
-    const t = setTimeout(() => {
-      jumpToSetting(field)
-      setSearchParams(prev => {
-        const next = new URLSearchParams(prev)
-        next.delete('field')
-        return next
-      }, { replace: true })
-    }, 120)
-    return () => clearTimeout(t)
-  }, [searchParams, activeTab])
   // Which format the print preview shows (independent of the saved thermal_printer_mode).
   const [previewMode, setPreviewMode] = useState('thermal')
   const [dragKey, setDragKey] = useState(null)   // header line being dragged in the preview
@@ -112,7 +159,7 @@ export default function Settings() {
   // ── Staff state (used in Lock & Staff tab) ──────────────────────────────────
   const [staffList,      setStaffList]      = useState([])
   const [staffLoading,   setStaffLoading]   = useState(false)
-  const [staffForm,      setStaffForm]      = useState({ username: '', password: '', role: 'cashier', counter_prefix: '' })
+  const [staffForm,      setStaffForm]      = useState({ username: '', password: '', phone: '', role: 'cashier', counter_prefix: '' })
   const [staffSubmit,    setStaffSubmit]    = useState(false)
   const [staffError,     setStaffError]     = useState('')
   const [staffSuccess,   setStaffSuccess]   = useState('')
@@ -166,15 +213,36 @@ export default function Settings() {
 
   const counterOptions = getAvailableCounterOptions(staffList)
 
+  const syncStaffToRecentLogins = useCallback((list) => {
+    try {
+      const raw = localStorage.getItem('bizassist_recent_logins')
+      if (!raw || !user?.username) return
+      const recents = JSON.parse(raw)
+      const match = recents.find(r => r.username === user.username)
+      if (match) {
+        match.staffAccounts = (list || []).map(s => ({
+          username: s.staff_login_name || s.username,
+          role: s.role || 'cashier',
+          counter_prefix: s.counter_prefix || ''
+        }))
+        localStorage.setItem('bizassist_recent_logins', JSON.stringify(recents))
+      }
+    } catch { /* ignore */ }
+  }, [user?.username])
+
   const loadStaff = useCallback(async () => {
     setStaffLoading(true)
     try {
       const res = await authFetch('/staff')
-      if (res.ok) setStaffList(await res.json())
+      if (res.ok) {
+        const list = await res.json()
+        setStaffList(list)
+        syncStaffToRecentLogins(list)
+      }
       else if (res.status === 403) setStaffError('Only the business owner can manage staff.')
     } catch { setStaffError('Could not load staff.') }
     finally   { setStaffLoading(false) }
-  }, [authFetch])
+  }, [authFetch, syncStaffToRecentLogins])
 
   // Load staff when Staff tab becomes active
   useEffect(() => {
@@ -184,8 +252,8 @@ export default function Settings() {
   const handleAddStaff = async (e) => {
     e.preventDefault()
     setStaffError(''); setStaffSuccess('')
-    if (!staffForm.username.trim() || !staffForm.password) {
-      setStaffError('Username and password are required.')
+    if (!staffForm.username.trim() || !staffForm.password || !staffForm.phone.trim()) {
+      setStaffError('Username, password, and mobile phone number are required.')
       return
     }
     setStaffSubmit(true)
@@ -195,6 +263,7 @@ export default function Settings() {
         body: JSON.stringify({
           username: staffForm.username.trim(),
           password: staffForm.password,
+          phone: staffForm.phone.trim(),
           role: staffForm.role || 'cashier',
           counter_prefix: staffForm.counter_prefix.trim() || null
         }),
@@ -206,7 +275,7 @@ export default function Settings() {
         const updatedList = [...staffList, created]
         const opts = getAvailableCounterOptions(updatedList)
         const nextCtr = staffForm.role === 'cashier' ? getFirstUnassignedCounter(updatedList, opts) : ''
-        setStaffForm({ username: '', password: '', role: 'cashier', counter_prefix: nextCtr })
+        setStaffForm({ username: '', password: '', phone: '', role: 'cashier', counter_prefix: nextCtr })
         loadStaff()
       } else {
         const err = await res.json().catch(() => ({}))
@@ -218,7 +287,7 @@ export default function Settings() {
 
   const handleSaveCounterPrefix = async (staffId, newPrefix) => {
     setStaffError(''); setStaffSuccess('')
-    
+
     // Find the staff we are editing (A)
     const staffA = staffList.find(s => s.id === staffId)
     const oldPrefix = staffA ? staffA.counter_prefix : null
@@ -284,7 +353,9 @@ export default function Settings() {
       const res = await authFetch(`/staff/${removeTarget.id}`, { method: 'DELETE' })
       if (res.ok) {
         setStaffSuccess(`Removed "${removeTarget.username}".`)
-        setStaffList(prev => prev.filter(x => x.id !== removeTarget.id))
+        const nextList = staffList.filter(x => x.id !== removeTarget.id)
+        setStaffList(nextList)
+        syncStaffToRecentLogins(nextList)
         setRemoveTarget(null)
       } else {
         const err = await res.json().catch(() => ({}))
@@ -312,10 +383,35 @@ export default function Settings() {
       {children}
     </div>
   )
-  const [settings, setSettings] = useState(null)
-  const [saving, setSaving] = useState(false)
-  const [toast, setToast] = useState(null)   // { type: 'success'|'error', msg }
+  const [toast, setToast] = useState(null)
   const [templates, setTemplates] = useState([])
+  const toastTimerRef = useRef(null)
+  const { settings, setSettings, saveStatus, saving, save, loadError: settingsLoadError, retryLoad: retrySettingsLoad } = useSettingsAutosave({
+    authFetch,
+    onSaved: fetchSettings,
+    onManualResult: result => {
+      setToast(result)
+      clearTimeout(toastTimerRef.current)
+      toastTimerRef.current = setTimeout(() => setToast(null), 3500)
+    },
+  })
+  useEffect(() => {
+    const field = searchParams.get('field')
+    if (!field || !settings) return
+    // A cloud settings read can take longer than the tab-render delay. Keep
+    // the deep link until its actual setting row has mounted.
+    const timer = setTimeout(() => {
+      if (!document.getElementById('set-' + field)) return
+      jumpToSetting(field)
+      setSearchParams(prev => {
+        const next = new URLSearchParams(prev)
+        next.delete('field')
+        return next
+      }, { replace: true })
+    }, 120)
+    return () => clearTimeout(timer)
+  }, [searchParams, activeTab, Boolean(settings)])
+  useEffect(() => () => clearTimeout(toastTimerRef.current), [])
 
   useEffect(() => {
     fetch(`${API_BASE}/business/templates`)
@@ -398,31 +494,6 @@ export default function Settings() {
   // ============================================================================
   // ── 4. DATA LOADERS & SAVE ROUTINES ──
   // ============================================================================
-  // ── Load settings ──────────────────────────────────────────────────────────
-  const loadSettings = useCallback(async () => {
-    logger.debug('[Settings] Fetching app settings from backend…')
-    try {
-      const res = await authFetch('/settings')
-      logger.debug('[Settings] GET /settings response status:', res.status)
-      if (res.ok) {
-        const data = await res.json()
-        logger.info('[Settings] Loaded successfully. Sections:', Object.keys(data))
-        logger.debug('[Settings] Full settings payload:', data)
-        setSettings(data)
-      } else {
-        const err = await res.json().catch(() => ({}))
-        logger.warn('[Settings] GET /settings returned non-OK status:', res.status, err.detail)
-      }
-    } catch (err) {
-      logger.error('[Settings] Failed to fetch settings:', err)
-    }
-  }, [authFetch])
-
-  useEffect(() => {
-    logger.debug('[Settings] Component mounted — triggering loadSettings()')
-    loadSettings()
-  }, [loadSettings])
-
   useEffect(() => {
     const pageContent = document.querySelector('.page-content')
     if (pageContent) {
@@ -431,13 +502,13 @@ export default function Settings() {
       const originalFlexDir = pageContent.style.flexDirection
       const originalHeight = pageContent.style.height
       const originalMinHeight = pageContent.style.minHeight
-      
+
       pageContent.style.overflow = 'hidden'
       pageContent.style.display = 'flex'
       pageContent.style.flexDirection = 'column'
       pageContent.style.height = '100%'
       pageContent.style.minHeight = '0'
-      
+
       return () => {
         pageContent.style.overflow = originalOverflow
         pageContent.style.display = originalDisplay
@@ -460,41 +531,9 @@ export default function Settings() {
   // ── Tab change ─────────────────────────────────────────────────────────────
   const handleTabChange = (tabId) => {
     logger.debug('[Settings] Tab changed to:', tabId)
+    if (saveStatus === 'unsaved') save(false)
     setActiveTab(tabId)
     setSearchParams({ tab: tabId })
-  }
-
-  // ── Save all settings to backend ───────────────────────────────────────────
-  const save = async () => {
-    logger.info('[Settings] Saving settings to backend…')
-    logger.debug('[Settings] Payload being sent:', settings)
-    setSaving(true)
-    try {
-      const res = await authFetch('/settings', {
-        method: 'PUT',
-        body: JSON.stringify(settings)
-      })
-      logger.debug('[Settings] PUT /settings response status:', res.status)
-      if (res.ok) {
-        const updated = await res.json()
-        logger.info('[Settings] Save successful. Updated sections:', Object.keys(updated))
-        setSettings(updated)
-        if (fetchSettings) {
-          await fetchSettings()
-        }
-        setToast({ type: 'success', msg: 'Settings saved successfully!' })
-      } else {
-        const err = await res.json().catch(() => ({}))
-        logger.warn('[Settings] PUT /settings failed:', res.status, err.detail)
-        throw new Error(err.detail || 'Save failed')
-      }
-    } catch (err) {
-      logger.error('[Settings] Exception while saving settings:', err)
-      setToast({ type: 'error', msg: err.message })
-    } finally {
-      setSaving(false)
-      setTimeout(() => setToast(null), 3500)
-    }
   }
 
   // Force a plan re-check against the cloud. `fetchSettings(true)` sends
@@ -526,7 +565,13 @@ export default function Settings() {
   if (!settings) {
     return (
       <AppLayout title="App Settings">
-        <BrandLoader message="Loading your app settings…" />
+        {settingsLoadError ? (
+          <div className="empty-state" role="alert">
+            <h2>Settings are unavailable</h2>
+            <p>{settingsLoadError}</p>
+            <button type="button" className="btn btn-primary" onClick={retrySettingsLoad}>Retry settings</button>
+          </div>
+        ) : <BrandLoader message="Loading your app settings…" />}
       </AppLayout>
     )
   }
@@ -539,6 +584,18 @@ export default function Settings() {
   const g   = gen
   const t   = tx
   const subscription = settings.subscription || null   // { plan: 'pro'|'free', ... }
+  // A signup trial is Pro with an end date, not a plan that "renews"; and a
+  // lapsed plan shows when it ended rather than a renewal date in the past.
+  const trial = trialState(subscription)
+  const planName = subscription?.plan === 'pro' ? (trial?.active ? 'Pro trial' : 'Pro') : 'Free'
+  const planEnd = subscription?.expires_at
+    ? new Date(subscription.expires_at).toLocaleDateString('en-IN')
+    : null
+  const planNote = !planEnd ? null
+    : trial?.active ? `ends ${planEnd} (${daysLeftText(trial.daysLeft)})`
+    : trial ? `trial ended ${planEnd}`
+    : subscription?.plan === 'pro' ? `renews ${planEnd}`
+    : `ended ${planEnd}`
 
   // ── Customisable receipt header: drag to reorder, click L/C/R to align ──────
   const headerLayout = getHeaderLayout(pr)
@@ -553,7 +610,7 @@ export default function Settings() {
   // ============================================================================
   return (
     <AppLayout title="App Settings">
-      <div className="slide-up" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', height: '100%', minHeight: 0 }}>
+      <div className="slide-up settings-shell" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', height: '100%', minHeight: 0 }}>
 
         {/* ── Page header (sticky, title + subtitle + Save button) ── */}
         <div className="page-header" style={{ flexShrink: 0 }}>
@@ -561,15 +618,12 @@ export default function Settings() {
             <h1 className="page-title">App Settings</h1>
             <p className="page-subtitle">Configure how your billing system behaves — transactions, printing, stock, and more.</p>
           </div>
-          <button
-            className="btn btn-primary"
-            onClick={save}
-            disabled={saving}
-            style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}
-          >
-            {saving ? <span className="spinner" style={{ width: 14, height: 14 }} /> : <CheckIcon size={14} />}
-            Save Changes
-          </button>
+          <div className="page-actions" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <HeaderSearchSlot />
+            {activeTab !== 'profile' && activeTab !== 'migration' && activeTab !== 'activity' && activeTab !== 'ops_health' && activeTab !== 'support' && (
+              <SettingsSaveButton saveStatus={saveStatus} saving={saving} onSave={() => save(true)} />
+            )}
+          </div>
         </div>
 
         {/* Toast */}
@@ -593,10 +647,8 @@ export default function Settings() {
           </div>
         )}
 
-        {/* ── Panel container (one big card) ── */}
-        <div className="card" style={{
-          display: 'flex',
-          flexDirection: 'column',
+        {/* ── Panel container (Split-pane layout: Left sub-sidebar, Right form body) ── */}
+        <div className="card settings-panel settings-split-layout" style={{
           overflow: 'hidden',
           flex: 1,
           padding: 0,
@@ -604,49 +656,52 @@ export default function Settings() {
           borderRadius: 'var(--radius-lg, 12px)',
           minHeight: 0,
         }}>
-          {/* Tab strip inside the card */}
-          <div style={{
-            display: 'flex',
-            gap: 4,
-            borderBottom: '1px solid var(--border)',
-            background: 'var(--bg-2)',
-            overflowX: 'auto',
-            padding: '0 24px',
-            flexShrink: 0,
-          }}>
-            {visibleTabs.map(tab => (
-              <button
-                key={tab.id}
-                onClick={() => handleTabChange(tab.id)}
-                style={{
-                  background: activeTab === tab.id ? 'var(--accent-dim)' : 'none',
-                  border: 'none',
-                  padding: '10px 18px',
-                  borderRadius: 'var(--radius-md) var(--radius-md) 0 0',
-                  cursor: 'pointer',
-                  fontSize: '0.83rem',
-                  fontWeight: activeTab === tab.id ? 700 : 500,
-                  color: activeTab === tab.id ? 'var(--accent)' : 'var(--text-muted)',
-                  borderBottom: activeTab === tab.id ? '2.5px solid var(--accent)' : '2.5px solid transparent',
-                  boxShadow: activeTab === tab.id ? '0 2px 8px rgba(193,95,60,0.15)' : 'none',
-                  marginBottom: -1,
-                  whiteSpace: 'nowrap',
-                  transition: 'all 0.15s ease',
-                }}
-              >
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                  {tab.icon}
-                  <span>{tab.label}</span>
-                </span>
-              </button>
-            ))}
+          {/* Mobile-only tab strip (horizontal swipeable pills) */}
+          <div className="settings-mobile-tabs">
+            <PageTabs label="Settings sections" tabs={visibleTabs} active={activeTab} onChange={handleTabChange} />
           </div>
 
+          {/* Desktop & Tablet: Left Settings Sub-Sidebar */}
+          <aside className="settings-sub-sidebar" aria-label="Settings navigation">
+            <div className="settings-sub-sidebar-header">
+              <span className="settings-sub-sidebar-title">Preferences</span>
+            </div>
+
+            <nav className="settings-nav-groups" role="tablist" aria-label="Settings sections">
+              {settingsGroups.map(group => (
+                <div key={group.title} className="settings-nav-group">
+                  <div className="settings-nav-group-label">{group.title}</div>
+                  <div className="settings-nav-items">
+                    {group.tabs.map(tab => {
+                      const isSelected = activeTab === tab.id;
+                      return (
+                        <button
+                          key={tab.id}
+                          type="button"
+                          role="tab"
+                          aria-selected={isSelected}
+                          className={'settings-nav-item' + (isSelected ? ' active' : '')}
+                          onClick={() => handleTabChange(tab.id)}
+                        >
+                          <span className="settings-nav-icon">{tab.icon}</span>
+                          <div className="settings-nav-text">
+                            <span className="settings-nav-label">{tab.label}</span>
+                            {tab.desc && <span className="settings-nav-desc">{tab.desc}</span>}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </nav>
+          </aside>
+
           {/* Scrollable contents inside the card */}
-          <div style={{
+          <div className="settings-panel-body" style={{
             flex: 1,
             overflowY: 'auto',
-            padding: '24px 28px 28px',
+            scrollbarWidth: 'thin',
           }}>
 
           {/* ── Global card-group styles (shared by all tabs) ── */}
@@ -705,9 +760,12 @@ export default function Settings() {
             .inv-row-cs .inv-row-label { color: var(--text-muted); }
           `}</style>
 
+          {activeTab === 'profile' && !isCashier && <Profile embedded />}
+
           {/* ═══════════════════════════ GENERAL ══════════════════════════════ */}
           {activeTab === 'general' && (
             <>
+              <AppearanceSettings />
               {/* ── Group 0: Subscription ───────────────────────────
                   The plan had no display anywhere in the app — it only ever
                   gated features, so "am I on Pro?" was unanswerable and a grant
@@ -715,16 +773,16 @@ export default function Settings() {
               <div className="inv-group">
                 <div className="inv-group-header">
                   <span className="inv-group-title">Subscription</span>
-                  <span className="inv-group-badge">{subscription?.plan === 'pro' ? 'Pro' : 'Free'}</span>
+                  <span className="inv-group-badge">{planName}</span>
                   <span className="inv-group-desc">Managed by your provider</span>
                 </div>
                 <div className="inv-row">
                   <div className="inv-row-body">
                     <div className="inv-row-label">
-                      Current plan: {subscription?.plan === 'pro' ? 'Pro' : 'Free'}
-                      {subscription?.expires_at && (
+                      Current plan: {planName}
+                      {planNote && (
                         <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>
-                          {' '}· renews {new Date(subscription.expires_at).toLocaleDateString('en-IN')}
+                          {' '}· {planNote}
                         </span>
                       )}
                     </div>
@@ -732,8 +790,10 @@ export default function Settings() {
                       {checkingPlan
                         ? 'Checking with the cloud…'
                         : planChecked
-                          ? `Checked just now — you're on the ${subscription?.plan === 'pro' ? 'Pro' : 'Free'} plan.`
-                          : 'This device re-checks periodically. If your plan was just changed, check now rather than waiting.'}
+                          ? `Checked just now — you're on the ${planName} plan.`
+                          : trial?.active
+                            ? 'Every new business starts with a free Pro trial. Ask your provider to activate Pro to keep cloud sync, AI and Field Team after it ends.'
+                            : 'This device re-checks periodically. If your plan was just changed, check now rather than waiting.'}
                     </div>
                   </div>
                   <button
@@ -747,10 +807,10 @@ export default function Settings() {
                 </div>
               </div>
 
-              {/* ── Group 1: Appearance ─────────────────────────── */}
+              {/* ── Group 1: Display & privacy ─────────────────── */}
               <div className="inv-group">
                 <div className="inv-group-header">
-                  <span className="inv-group-title">Appearance</span>
+                  <span className="inv-group-title">Display & privacy</span>
                   <span className="inv-group-badge">Essential</span>
                   <span className="inv-group-desc">Applied instantly</span>
                 </div>
@@ -759,7 +819,7 @@ export default function Settings() {
                     <div className="inv-row-label">App Display Size</div>
                     <div className="inv-row-hint">Scale the entire application interface to suit your screen and preference.</div>
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <div className="settings-zoom-options" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                     {[80, 90, 100, 110, 120, 130].map(v => {
                       const active = (g.app_zoom ?? 100) === v
                       return (
@@ -771,20 +831,8 @@ export default function Settings() {
                             document.documentElement.style.zoom = `${v}%`
                             document.documentElement.style.setProperty('--zoom', v / 100)
                             document.documentElement.style.minHeight = ''
-                            
-                            // Auto-save zoom level to backend
-                            try {
-                              const newSettings = {
-                                ...settings,
-                                general: { ...settings.general, app_zoom: v }
-                              }
-                              await authFetch('/settings', {
-                                method: 'PUT',
-                                body: JSON.stringify(newSettings)
-                              })
-                            } catch (err) {
-                              logger.error('[Settings] Auto-saving zoom failed:', err)
-                            }
+
+                            // Auto-saved via debounced hybrid model
                           }}
                           className={`btn ${active ? 'btn-primary' : 'btn-secondary'}`}
                           style={{ padding: '6px 12px', minWidth: 50 }}
@@ -795,12 +843,12 @@ export default function Settings() {
                     })}
                   </div>
                 </div>
-                <div className="inv-row">
+                <div className="inv-row" id="set-privacy_mode">
                   <div className="inv-row-body">
                     <div className="inv-row-label">
                       Privacy Mode  <span className={`inv-tag ${g.privacy_mode === true ? 'inv-tag-on' : 'inv-tag-off'}`}>{g.privacy_mode === true ? 'ON' : 'OFF'}</span>
                     </div>
-                    <div className="inv-row-hint">Blurs revenue &amp; profit on the dashboard — protects sensitive data from passersby.</div>
+                    <div className="inv-row-hint">Hides financial charts and blurs sensitive dashboard amounts — protects your data from passersby.</div>
                   </div>
                   <Toggle id="privacy_mode" checked={g.privacy_mode === true} onChange={v => patch('general', 'privacy_mode', v)} />
                 </div>
@@ -878,8 +926,8 @@ export default function Settings() {
                         <span style={{ fontSize: '0.82rem', fontWeight: 600, color: hasLock ? 'var(--success)' : 'var(--text-muted)' }}>
                           {hasLock ? 'Enabled (PIN set)' : 'Disabled'}
                         </span>
-                        <button 
-                          type="button" 
+                        <button
+                          type="button"
                           className={`btn ${hasLock ? 'btn-secondary' : 'btn-primary'}`}
                           onClick={() => setShowPasscodeModal(true)}
                           style={{ padding: '6px 14px', fontSize: '0.82rem' }}
@@ -947,8 +995,8 @@ export default function Settings() {
                                   display: 'inline-flex', alignItems: 'center', gap: 6,
                                   padding: '4px 10px', borderRadius: 999, fontSize: '0.78rem',
                                   fontWeight: 600,
-                                  background: i === 0 ? 'var(--accent)' : 'var(--bg-subtle, #f1f5f9)',
-                                  color: i === 0 ? '#fff' : 'var(--text-muted)',
+                                  background: i === 0 ? 'var(--accent-solid, var(--accent))' : 'var(--bg-3)',
+                                  color: i === 0 ? 'var(--accent-foreground, #fff)' : 'var(--text-muted)',
                                   border: '1px solid var(--border, #e2e8f0)',
                                 }}
                               >
@@ -1011,7 +1059,7 @@ export default function Settings() {
                           display: 'flex',
                           alignItems: 'center',
                           gap: 8,
-                          background: 'linear-gradient(135deg, var(--accent) 0%, #4f46e5 100%)',
+                          background: 'linear-gradient(135deg, var(--accent-solid, var(--accent)) 0%, var(--accent-solid-hover, var(--accent-solid, var(--accent))) 100%)',
                           border: 'none',
                           padding: '10px 18px',
                           borderRadius: 8,
@@ -1665,8 +1713,8 @@ export default function Settings() {
                         onClick={() => setPreviewMode(m)}
                         style={{
                           padding: '4px 12px', fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer', border: 'none',
-                          background: previewMode === m ? 'var(--accent)' : 'transparent',
-                          color: previewMode === m ? '#fff' : 'var(--text-muted)',
+                          background: previewMode === m ? 'var(--accent-solid, var(--accent))' : 'transparent',
+                          color: previewMode === m ? 'var(--accent-foreground, #fff)' : 'var(--text-muted)',
                         }}
                       >
                         {label}
@@ -1728,8 +1776,8 @@ export default function Settings() {
                                   style={{
                                     fontSize: '0.75em', lineHeight: 1, padding: '2px 4px', cursor: 'pointer',
                                     border: 'none', borderRadius: 2, fontWeight: 700,
-                                    background: line.align === a ? 'var(--accent)' : 'transparent',
-                                    color: line.align === a ? '#fff' : '#94a3b8',
+                                    background: line.align === a ? 'var(--accent-solid, var(--accent))' : 'transparent',
+                                    color: line.align === a ? 'var(--accent-foreground, #fff)' : '#94a3b8',
                                   }}
                                 >
                                   {lbl}
@@ -1979,7 +2027,7 @@ export default function Settings() {
           {/* ═══════════════════════════ STAFF MANAGEMENT ═════════════════════════ */}
           {activeTab === 'staff' && !isCashier && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 32 }}>
-              
+
               <div>
                 <SectionHeader title="Staff & Role Management" />
                 <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: 20, marginTop: 4, lineHeight: 1.5 }}>
@@ -2021,38 +2069,53 @@ export default function Settings() {
                 )}
 
                 {/* Add Staff Form */}
-                <form onSubmit={handleAddStaff} className="card" style={{ 
-                  background: 'var(--bg-3)', 
+                <form onSubmit={handleAddStaff} className="card" style={{
+                  background: 'var(--bg-3)',
                   border: '1px solid var(--border)',
                   padding: 20,
-                  display: 'grid', 
-                  gridTemplateColumns: '1fr 1fr 1fr 1fr auto', 
-                  gap: 16, 
-                  alignItems: 'end', 
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 1fr 1.1fr 0.9fr 0.9fr auto',
+                  gap: 14,
+                  alignItems: 'end',
                   marginBottom: 24,
                   borderRadius: 'var(--radius-md)'
                 }}>
                   <div className="form-group" style={{ margin: 0 }}>
                     <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 600 }}>Username</label>
-                    <input 
+                    <input
                       className="form-input"
-                      value={staffForm.username} 
+                      value={staffForm.username}
                       onChange={e => setStaffForm(f => ({ ...f, username: e.target.value }))}
-                      placeholder="e.g. staff_john" 
-                      autoComplete="off" 
+                      placeholder="e.g. staff_john"
+                      autoComplete="off"
                       style={{ height: 38 }}
+                      required
                     />
                   </div>
                   <div className="form-group" style={{ margin: 0 }}>
                     <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 600 }}>Password</label>
-                    <input 
-                      type="password" 
+                    <input
+                      type="password"
                       className="form-input"
-                      value={staffForm.password} 
+                      value={staffForm.password}
                       onChange={e => setStaffForm(f => ({ ...f, password: e.target.value }))}
-                      placeholder="Min 8 characters" 
+                      placeholder="Min 8 characters"
                       autoComplete="new-password"
                       style={{ height: 38 }}
+                      required
+                    />
+                  </div>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 600 }}>Mobile Phone</label>
+                    <input
+                      type="tel"
+                      className="form-input"
+                      value={staffForm.phone}
+                      onChange={e => setStaffForm(f => ({ ...f, phone: e.target.value }))}
+                      placeholder="10-digit number"
+                      autoComplete="tel"
+                      style={{ height: 38 }}
+                      required
                     />
                   </div>
                   <div className="form-group" style={{ margin: 0 }}>
@@ -2109,6 +2172,7 @@ export default function Settings() {
                         <tr>
                           <th>Username</th>
                           <th>Role</th>
+                          <th>Phone</th>
                           {/* Created / Last used exist so an abandoned account is
                               VISIBLE. Without them the table showed a name, a
                               role and a prefix, which made 22 logins created
@@ -2139,6 +2203,9 @@ export default function Settings() {
                             <td className="td-primary" style={{ fontWeight: 600 }}>{s.username}</td>
                             <td>
                               <span className="badge badge-muted" style={{ textTransform: 'capitalize' }}>{s.role}</span>
+                            </td>
+                            <td style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                              {s.phone || '—'}
                             </td>
                             <td style={{ fontSize: '0.78rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
                               {s.created_at ? new Date(s.created_at).toLocaleDateString() : '—'}
@@ -2177,18 +2244,18 @@ export default function Settings() {
                               </CustomSelect>
                             </td>
                             <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                              <button 
-                                type="button" 
-                                className="btn btn-ghost btn-sm" 
-                                onClick={() => { setResetTarget(s); setResetPw(''); setResetError('') }} 
+                              <button
+                                type="button"
+                                className="btn btn-ghost btn-sm"
+                                onClick={() => { setResetTarget(s); setResetPw(''); setResetError('') }}
                                 style={{ marginRight: 8, fontSize: '0.78rem' }}
                               >
                                 Reset password
                               </button>
-                              <button 
-                                type="button" 
-                                className="btn btn-ghost btn-sm" 
-                                onClick={() => setRemoveTarget(s)} 
+                              <button
+                                type="button"
+                                className="btn btn-ghost btn-sm"
+                                onClick={() => setRemoveTarget(s)}
                                 style={{ color: 'var(--danger)', fontSize: '0.78rem' }}
                               >
                                 Remove
@@ -2207,8 +2274,15 @@ export default function Settings() {
 
 
           {/* ════════════════════ NETWORK & DISCOVERY ════════════════════════ */}
-          {activeTab === 'network' && !isCashier && (
-            <NetworkDiscoverySection networkMode={networkMode} navigate={navigate} />
+          {activeTab === 'network' && (
+            isDemoMode() ? (
+              <DemoGate
+                label="LAN Peer-to-Peer Network & Discovery"
+                description="Connect multiple counters, kitchen printers, and warehouse scanners over local WiFi with zero cloud lag and automatic leader election. Start your 14-day Pro trial to configure LAN mesh."
+              />
+            ) : (
+              !isCashier && <NetworkDiscoverySection networkMode={networkMode} navigate={navigate} />
+            )
           )}
 
           {/* ═══════════════════════════ ADVANCED ═════════════════════════════ */}
@@ -2249,6 +2323,10 @@ export default function Settings() {
                     return next
                   }, { replace: true })
                 }}
+                autoBackup={g.auto_backup === true}
+                onAutoBackupChange={v => patch('general', 'auto_backup', v)}
+                backupReminderDays={g.backup_reminder_days ?? 7}
+                onReminderDaysChange={e => patch('general', 'backup_reminder_days', parseInt(e.target.value))}
               />
               {IS_LOCAL_APP && g.hosting_mode === 'hybrid' && (
                 <SettingRow label="Push Interval" description="How frequently local changes are pushed to the cloud.">
@@ -2352,6 +2430,9 @@ export default function Settings() {
               </div>
 
               <SectionHeader title="Data & Backup" />
+              {/* Desktop only: on the web, "this device" is the shared cloud server,
+                  whose log covers every business (the server refuses it too). */}
+              {IS_LOCAL_APP && (
               <SettingRow label="Download Diagnostics Logs" description="Package this device's app logs as a .tar.gz you can download and share for debugging.">
                 <button
                   className="btn btn-secondary"
@@ -2374,24 +2455,25 @@ export default function Settings() {
                   Download logs
                 </button>
               </SettingRow>
-              <SettingRow label="Auto Backup" description="Periodically request backup files for storage.">
-                <Toggle id="auto_backup" checked={g.auto_backup === true} onChange={v => patch('general', 'auto_backup', v)} />
-              </SettingRow>
-              {g.auto_backup && (
-                <SettingRow label="Backup Reminder Interval" description="How often to remind for data backups.">
-                  <CustomSelect
-                    className="form-input"
-                    style={{ width: 220 }}
-                    value={g.backup_reminder_days ?? 7}
-                    onChange={e => patch('general', 'backup_reminder_days', parseInt(e.target.value))}
-                  >
-                    <option value={7}>Every 7 Days</option>
-                    <option value={15}>Every 15 Days</option>
-                    <option value={30}>Every 30 Days</option>
-                  </CustomSelect>
-                </SettingRow>
               )}
             </>
+          )}
+
+          {/* ═══════════════════════════ DATA MIGRATION ═════════════════════════ */}
+          {activeTab === 'migration' && (
+            isDemoMode() ? (
+              <DemoGate
+                label="Data Migration & Backup Engine"
+                description="One-click full store migration, encrypted cloud backups, and CSV/Excel product imports. Start your 14-day Pro trial to export or migrate your database."
+              />
+            ) : (
+              !isCashier && <DataMigrationSection />
+            )
+          )}
+
+          {/* ═══════════════════════════ BUSINESS ACTIVITY ══════════════════════ */}
+          {activeTab === 'activity' && !isCashier && (
+            <ActivityFeed />
           )}
 
           {/* ═══════════════════════════ OPS & HEALTH ═════════════════════════ */}
@@ -2404,25 +2486,37 @@ export default function Settings() {
                 <SectionHeader title="Help Documentation & Diagnostics Guides" description="Reference guides for system self-healing, tamper-evident hash chains, stock ledger alignment, and outbox recovery." />
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16, marginTop: 12 }}>
                   <div style={{ padding: 16, background: 'var(--bg-2)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border)' }}>
-                    <div style={{ fontWeight: 700, fontSize: '0.88rem', marginBottom: 6, color: 'var(--text-primary)' }}>🔒 SHA-256 Tamper Evidence</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontWeight: 700, fontSize: '0.88rem', marginBottom: 6, color: 'var(--text-primary)' }}>
+                      <LockIcon size={16} />
+                      <span>SHA-256 Tamper Evidence</span>
+                    </div>
                     <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', lineHeight: 1.45, margin: 0 }}>
                       Every posted invoice and payment is linked sequentially via SHA-256 cryptographic hashes. If an entry is modified out-of-band, the chain flags "Broken". Running Auto-Repair re-links and re-seals the audit trail cleanly.
                     </p>
                   </div>
                   <div style={{ padding: 16, background: 'var(--bg-2)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border)' }}>
-                    <div style={{ fontWeight: 700, fontSize: '0.88rem', marginBottom: 6, color: 'var(--text-primary)' }}>📦 Stock Ledger Alignment</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontWeight: 700, fontSize: '0.88rem', marginBottom: 6, color: 'var(--text-primary)' }}>
+                      <PackageIcon size={16} />
+                      <span>Stock Ledger Alignment</span>
+                    </div>
                     <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', lineHeight: 1.45, margin: 0 }}>
                       Catalog stock is backed by immutable <code>StockLedger</code> audit rows. Bulk CSV imports or offline edits can cause cache drift. Auto-Repair audits ledger movements and provisions missing opening balance records.
                     </p>
                   </div>
                   <div style={{ padding: 16, background: 'var(--bg-2)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border)' }}>
-                    <div style={{ fontWeight: 700, fontSize: '0.88rem', marginBottom: 6, color: 'var(--text-primary)' }}>🔄 Sync Outbox &amp; Queue Draining</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontWeight: 700, fontSize: '0.88rem', marginBottom: 6, color: 'var(--text-primary)' }}>
+                      <SyncIcon size={16} />
+                      <span>Sync Outbox &amp; Queue Draining</span>
+                    </div>
                     <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', lineHeight: 1.45, margin: 0 }}>
                       Local mutations buffer in <code>SyncQueue</code> during offline billing. If a parent record is missing on the cloud, Auto-Repair enriches parent UIDs and clears transient network errors to unblock the queue.
                     </p>
                   </div>
                   <div style={{ padding: 16, background: 'var(--bg-2)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border)' }}>
-                    <div style={{ fontWeight: 700, fontSize: '0.88rem', marginBottom: 6, color: 'var(--text-primary)' }}>👥 Staff &amp; Session Security</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontWeight: 700, fontSize: '0.88rem', marginBottom: 6, color: 'var(--text-primary)' }}>
+                      <ShieldIcon size={16} />
+                      <span>Staff &amp; Session Security</span>
+                    </div>
                     <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', lineHeight: 1.45, margin: 0 }}>
                       Staff sub-accounts are strictly scoped under the owner's Business ID. Updating a staff password or role immediately bumps their <code>token_version</code>, revoking active JWT sessions across terminals.
                     </p>
@@ -2430,6 +2524,11 @@ export default function Settings() {
                 </div>
               </div>
             </>
+          )}
+
+          {/* ═══════════════════════════ FEEDBACK & SUPPORT ═════════════════════ */}
+          {activeTab === 'support' && (
+            <SupportSection />
           )}
           </div>
         </div>
@@ -2453,8 +2552,8 @@ export default function Settings() {
               <div style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 6 }}>
                 <LockIcon size={18} /> Reset Password
               </div>
-              <button 
-                type="button" 
+              <button
+                type="button"
                 onClick={() => setResetTarget(null)}
                 style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', padding: 4 }}
               >
@@ -2476,7 +2575,7 @@ export default function Settings() {
                 style={inputStyle}
                 autoFocus
               />
-              
+
               {resetError && (
                 <div style={{ fontSize: '0.78rem', color: 'var(--danger)', textAlign: 'center' }}>
                   {resetError}
@@ -2485,16 +2584,16 @@ export default function Settings() {
             </div>
 
             <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
-              <button 
-                className="btn btn-ghost" 
-                onClick={() => setResetTarget(null)} 
+              <button
+                className="btn btn-ghost"
+                onClick={() => setResetTarget(null)}
                 style={{ flex: 1 }}
               >
                 Cancel
               </button>
-              <button 
-                className="btn btn-primary" 
-                onClick={handleResetPassword} 
+              <button
+                className="btn btn-primary"
+                onClick={handleResetPassword}
                 style={{ flex: 2 }}
               >
                 Update Password
@@ -2510,10 +2609,10 @@ export default function Settings() {
           <div style={boxStyle}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
               <div style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--danger)', display: 'flex', alignItems: 'center', gap: 6 }}>
-                ⚠️ Delete Account
+                <AlertIcon size={16} /> Delete Account
               </div>
-              <button 
-                type="button" 
+              <button
+                type="button"
                 onClick={() => setRemoveTarget(null)}
                 style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', padding: 4 }}
               >
@@ -2526,20 +2625,20 @@ export default function Settings() {
             </div>
 
             <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-              <button 
-                className="btn btn-ghost" 
-                onClick={() => setRemoveTarget(null)} 
+              <button
+                className="btn btn-ghost"
+                onClick={() => setRemoveTarget(null)}
                 style={{ flex: 1 }}
               >
                 Cancel
               </button>
-              <button 
-                className="btn" 
+              <button
+                className="btn"
                 onClick={handleRemoveStaff}
-                style={{ 
-                  flex: 2, 
-                  background: 'var(--danger)', 
-                  color: '#fff', 
+                style={{
+                  flex: 2,
+                  background: 'var(--danger)',
+                  color: '#fff',
                   border: 'none',
                   fontWeight: 600
                 }}

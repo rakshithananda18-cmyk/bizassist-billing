@@ -6,12 +6,12 @@
 // ============================================================================
 import React, { useEffect, useState, useCallback, useRef } from 'react'
 import AppLayout from '../layouts/AppLayout'
-import ActivityFeed from '../components/ActivityFeed'
-import NotificationBell from '../components/NotificationBell'
+import HeaderSearchSlot from '../components/common/HeaderSearchSlot'
 import { useAuth } from '../contexts/AuthContext'
 import { useNavigate } from 'react-router-dom'
 import { logger } from '../utils/logger'
 import InvoiceViewerModal from '../components/invoice/InvoiceViewerModal'
+import DashboardChartPanel from '../components/dashboard/DashboardChartPanel'
 import {
   SummaryIcon,
   CounterIcon,
@@ -26,6 +26,8 @@ import {
 import { usePageLifecycle } from '../hooks/usePageLifecycle'
 import ContextMenu from '../components/common/ContextMenu'
 import { useDocLabels } from '../hooks/useDocLabels'
+import { isProtectedTourPreview } from '../demo/tourPrivacy'
+import TourPrivatePreview, { TourPrivateValue } from '../demo/TourPrivatePreview'
 
 function StatCard({ icon, label, value, sub, variant = 'accent', badge, badgeType }) {
   return (
@@ -42,7 +44,8 @@ function StatCard({ icon, label, value, sub, variant = 'accent', badge, badgeTyp
 }
 
 export default function Dashboard() {
-  const { authFetch, profile, settings } = useAuth()
+  const { authFetch, profile, settings, user } = useAuth()
+  const protectTour = isProtectedTourPreview(user)
   const privacyMode = settings?.general?.privacy_mode === true
   const label = useDocLabels()
 
@@ -54,7 +57,10 @@ export default function Dashboard() {
   const navigate = useNavigate()
   const [stats, setStats]       = useState(null)
   const [payments, setPayments] = useState([])
+  const [chartsData, setChartsData] = useState(null)
   const [loading, setLoading]   = useState(true)
+  const [summaryError, setSummaryError] = useState(false)
+  const [paymentsError, setPaymentsError] = useState(false)
   const [viewingInvoiceNo, setViewingInvoiceNo] = useState(null)
   const [ctxMenu, setCtxMenu]   = useState(null)
 
@@ -62,19 +68,45 @@ export default function Dashboard() {
   // of sync events, or a slow cloud response), don't stack another pair of
   // requests on top — that's what produced the "hundreds of pending calls".
   const loadingRef = useRef(false)
+  const loadedRef = useRef(false)
+  const requestScopeRef = useRef(0)
   const load = useCallback(() => {
     if (loadingRef.current) return
     loadingRef.current = true
-    setLoading(true)
+    const scope = requestScopeRef.current
+    // Keep the chart panel mounted during background refreshes so an explicit
+    // temporary privacy reveal lasts for this dashboard visit.
+    setLoading(!loadedRef.current)
     Promise.all([
-      authFetch('/dashboard-summary').then(r => r.ok ? r.json() : null).catch(() => null),
+      authFetch('/dashboard-summary').then(r => r.ok ? r.json() : undefined).catch(() => undefined),
       // Dashboard only shows the 5 most recent — don't pull the whole history.
-      authFetch('/payments?limit=5').then(r => r.ok ? r.json() : []).catch(() => [])
-    ]).then(([summaryData, paymentsData]) => {
+      authFetch('/payments?limit=5').then(r => r.ok ? r.json() : undefined).catch(() => undefined),
+      protectTour ? Promise.resolve(null) : authFetch('/dashboard-charts').then(r => r.ok ? r.json() : null).catch(() => null),
+    ]).then(([summaryData, paymentsData, chartData]) => {
+      if (scope !== requestScopeRef.current) return
+      setSummaryError(!summaryData)
+      setPaymentsError(paymentsData == null)
+      if (!summaryData || paymentsData == null) logger.warn('[DASHBOARD] Summary or payment activity is unavailable; showing a retry state')
       setStats(summaryData)
       setPayments(Array.isArray(paymentsData) ? paymentsData : (paymentsData?.items ?? []))
-    }).finally(() => { setLoading(false); loadingRef.current = false })
-  }, [authFetch])
+      setChartsData(chartData)
+    }).finally(() => {
+      if (scope !== requestScopeRef.current) return
+      loadedRef.current = true; setLoading(false); loadingRef.current = false
+    })
+  }, [authFetch, user?.id, protectTour])
+
+  useEffect(() => {
+    requestScopeRef.current++
+    loadedRef.current = false
+    loadingRef.current = false
+    setStats(null)
+    setPayments([])
+    setChartsData(null)
+    setSummaryError(false)
+    setPaymentsError(false)
+    return () => { requestScopeRef.current++ }
+  }, [authFetch, user?.id])
 
   // Page lifecycle: refresh when tab regains focus (onResume)
   // Must be declared AFTER load() to avoid TDZ ReferenceError.
@@ -116,7 +148,7 @@ export default function Dashboard() {
     s.recent_invoices.forEach(inv => {
       feedItems.push({
         type:         'invoice',
-        icon:         <CounterIcon size={14} />,
+        icon:         <CounterIcon size={13} />,
         bg:           'var(--accent-dim)',
         color:        'var(--text-primary)',
         title:        `${label('sale')} ${inv.invoice_number || `#${inv.id}`}`,
@@ -124,7 +156,11 @@ export default function Dashboard() {
         amount:       inv.total_amount,
         amountPrefix: '+',
         amountColor:  'var(--text-primary)',
-        timestamp:    'Recent'
+        timestamp:    'Recent',
+        onClick:      () => {
+          if (inv.invoice_number) setViewingInvoiceNo(inv.invoice_number)
+          else navigate('/parties/invoices')
+        },
       })
     })
   }
@@ -133,7 +169,7 @@ export default function Dashboard() {
     const isReceived = pay.type === 'received'
     feedItems.push({
       type:         'payment',
-      icon:         <CashIcon size={14} />,
+      icon:         <CashIcon size={13} />,
       bg:           isReceived ? 'var(--success-dim)' : 'var(--danger-dim)',
       color:        isReceived ? 'var(--success)' : 'var(--danger)',
       title:        isReceived ? 'Payment Received' : 'Payment Made',
@@ -141,7 +177,8 @@ export default function Dashboard() {
       amount:       parseFloat(pay.amount),
       amountPrefix: isReceived ? '+' : '-',
       amountColor:  isReceived ? 'var(--success)' : 'var(--danger)',
-      timestamp:    pay.date ? new Date(pay.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : 'Recent'
+      timestamp:    pay.date ? new Date(pay.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : 'Recent',
+      onClick:      () => navigate('/parties/payments'),
     })
   })
 
@@ -149,13 +186,14 @@ export default function Dashboard() {
     s.low_stock_items.forEach(item => {
       feedItems.push({
         type:      'warning',
-        icon:      <AlertIcon size={14} />,
+        icon:      <AlertIcon size={13} />,
         bg:        'var(--warning-dim)',
         color:     'var(--warning)',
         title:     'Low Stock Alert',
         desc:      `${item.name} is running low (${item.quantity} left)`,
         amount:    null,
-        timestamp: 'Alert'
+        timestamp: 'Alert',
+        onClick:   () => navigate('/stock'),
       })
     })
   }
@@ -175,18 +213,24 @@ export default function Dashboard() {
                 : 'Live business overview — transactions, stock & payments'}
             </p>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div className="page-actions">
+            <HeaderSearchSlot />
             {isRefreshing && (
               <span className="toolbar-refresh-spinner">
                 <span className="spin" /> Refreshing…
               </span>
             )}
-            <NotificationBell />
           </div>
         </div>
 
         {loading ? (
           <div className="page-loader"><span className="spinner" />Loading business summary…</div>
+        ) : summaryError ? (
+          <div className="empty-state" role="alert">
+            <h2>Business summary is unavailable</h2>
+            <p>Totals could not be loaded. Retry before relying on dashboard figures.</p>
+            <button type="button" className="btn btn-primary" onClick={load}>Retry dashboard</button>
+          </div>
         ) : (
           <>
             {/* KPI Summary Strip 1 — every card is CLICKABLE and jumps to its data */}
@@ -199,7 +243,7 @@ export default function Dashboard() {
                   tabIndex={to ? 0 : undefined}
                   title={to ? 'Click to open the underlying data' : undefined}
                   onClick={() => to && navigate(to)}
-                  onKeyDown={e => { if (to && (e.key === 'Enter' || e.key === ' ')) navigate(to) }}
+                  onKeyDown={e => { if (to && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); navigate(to) } }}
                   onMouseEnter={e => { if (to) e.currentTarget.style.transform = 'translateY(-1px)' }}
                   onMouseLeave={e => { if (to) e.currentTarget.style.transform = 'none' }}
                 >
@@ -211,60 +255,109 @@ export default function Dashboard() {
                       ...(sensitive && privacyMode ? { filter: 'blur(8px)', userSelect: 'none', transition: 'filter 0.2s' } : {})
                     }}
                     title={sensitive && privacyMode ? 'Privacy Mode is ON — go to Settings > General to disable' : undefined}
-                  >{value}</div>
-                  <div className="vsummary-sub">{sub}</div>
+                  >{protectTour && label === 'Gross Margin' ? <TourPrivateValue /> : value}</div>
+                  <div className="vsummary-sub">{protectTour && label === 'Gross Margin' ? 'Available after sign-in' : sub}</div>
                 </div>
               )
               return (
                 <>
                   <div className="vsummary-strip mb-6">
-                    {kpiCard('Total Revenue', fmt(s.total_revenue), `${s.invoice_count || 0} invoices — view all`, 'var(--accent)', '/payments', {}, true)}
-                    {kpiCard('Pending', s.pending_count ?? 0, s.pending_amount ? `${fmt(s.pending_amount)} outstanding` : 'invoices awaiting', '#c97c22', '/payments', {}, true)}
-                    {kpiCard('Overdue', fmt(s.overdue_amount), `${s.overdue_count ?? 0} invoices at risk`, '#c02a2a', '/payments', { color: '#c02a2a' }, true)}
+                    {kpiCard('Total Revenue', fmt(s.total_revenue), `${s.invoice_count || 0} invoices — view all`, 'var(--accent)', '/parties/invoices', {}, true)}
+                    {kpiCard('Pending', s.pending_count ?? 0, s.pending_amount ? `${fmt(s.pending_amount)} outstanding` : 'invoices awaiting', '#c97c22', '/parties/invoices', {}, true)}
+                    {kpiCard('Overdue', fmt(s.overdue_amount), `${s.overdue_count ?? 0} invoices at risk`, '#c02a2a', '/parties/invoices', { color: '#c02a2a' }, true)}
                     {kpiCard('Inventory', s.inventory_count ?? 0, 'products tracked — open', '#3a9a5c', '/stock')}
                   </div>
                   <div className="vsummary-strip mb-6">
                     {kpiCard('Low Stock Items', s.low_stock_count ?? 0, 'need restocking — open', '#c97c22', '/stock')}
-                    {kpiCard('Purchases (30d)', fmt(s.purchases_30d), 'total purchase value — open', 'var(--accent)', '/purchases', {}, true)}
+                    {kpiCard('Purchases (30d)', fmt(s.purchases_30d), 'total purchase value — open', 'var(--accent)', '/stock/purchase', {}, true)}
                     {kpiCard('Active Customers', s.active_customers ?? 0, 'in last 30 days — open', '#3a9a5c', '/parties')}
-                    {kpiCard('Gross Margin', s.gross_margin ? `${s.gross_margin}%` : '—', 'estimated margin — reports', 'var(--accent)', '/reports', {}, true)}
+                    {kpiCard('Gross Margin', s.gross_margin == null ? 'Unavailable' : `${s.gross_margin}%`, s.gross_margin == null ? 'Historical cost needs reconciliation' : 'estimated margin — reports', 'var(--accent)', '/reports', {}, true)}
                   </div>
                 </>
               )
             })()}
 
-            {/* Feed & Alerts grid */}
-            <div className="dashboard-grid">
+            {/* Visual Analytics */}
+            {protectTour ? <TourPrivatePreview /> : <DashboardChartPanel
+              key={`${user?.public_id || user?.id || 'workspace'}:${privacyMode}`}
+              chartData={chartsData}
+              privacyMode={privacyMode}
+              onRetry={load}
+            />}
 
-              {/* Business Day Feed */}
-              <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '16px', minHeight: '400px' }}>
-                <div className="flex items-center justify-between" style={{ borderBottom: '1px solid var(--border)', paddingBottom: '12px', marginBottom: '14px' }}>
-                  <h2>Live Business Day Feed</h2>
-                  <span className="badge badge-accent" style={{ fontSize: '0.7rem' }}>Real-time Feed</span>
+            {/* Feed & Alerts grid */}
+            <div className="dashboard-grid" style={{ alignItems: 'stretch' }}>
+
+              {/* Business Day Feed — Height aligned to right cards, compact spacing, dynamic navigation */}
+              <div className="card" style={{ display: 'flex', flexDirection: 'column', height: '100%', padding: '16px', boxSizing: 'border-box' }}>
+                <div className="flex items-center justify-between" style={{ borderBottom: '1px solid var(--border)', paddingBottom: '10px', marginBottom: '10px' }}>
+                  <h2 style={{ fontSize: '0.98rem', fontWeight: 700, margin: 0 }}>Live Business Day Feed</h2>
+                  <span className="badge badge-accent" style={{ fontSize: '0.68rem', fontWeight: 600 }}>Real-time Feed</span>
                 </div>
-                {dayFeed.length === 0 ? (
+                {paymentsError && (
+                  <p role="status">Payment activity couldn&apos;t refresh. <button type="button" className="btn btn-secondary btn-sm" onClick={load}>Retry activity</button></p>
+                )}
+                {dayFeed.length === 0 ? paymentsError ? null : (
                   <div className="empty-state" style={{ flex: 1 }}>
                     <div className="empty-icon"><SummaryIcon size={20} /></div>
                     <h3>No recent activity</h3>
                     <p>Transactions and stock updates will appear here.</p>
                   </div>
                 ) : (
-                  <div className="timeline-container" style={{ overflowY: 'auto', flex: 1, minHeight: 0, paddingRight: '4px' }}>
+                  <div className="timeline-container" style={{ overflowY: 'auto', flex: 1, minHeight: 0, paddingRight: '4px', gap: '8px', scrollbarWidth: 'thin', overscrollBehavior: 'auto' }}>
                     {dayFeed.map((item, idx) => (
-                      <div key={idx} className="timeline-item">
-                        <div className="timeline-marker" style={{ background: item.bg, color: item.color, borderColor: item.color }}>
+                      <div
+                        key={idx}
+                        className="timeline-item"
+                        role={item.onClick ? 'button' : undefined}
+                        tabIndex={item.onClick ? 0 : undefined}
+                        style={{ cursor: item.onClick ? 'pointer' : 'default' }}
+                        onClick={item.onClick}
+                        onKeyDown={event => {
+                          if (item.onClick && (event.key === 'Enter' || event.key === ' ')) {
+                            event.preventDefault()
+                            item.onClick()
+                          }
+                        }}
+                        title={item.title ? `Click to view ${item.title}` : undefined}
+                      >
+                        <div
+                          className="timeline-marker"
+                          style={{
+                            background: item.bg,
+                            color: item.color,
+                            borderColor: item.color,
+                            width: 18,
+                            height: 18,
+                            left: -28,
+                            top: 6,
+                          }}
+                        >
                           {item.icon}
                         </div>
-                        <div className="timeline-card">
-                          <div style={{ flex: 1, textAlign: 'left' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-                              <span style={{ fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-primary)' }}>{item.title}</span>
-                              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{item.timestamp}</span>
+                        <div
+                          className="timeline-card"
+                          style={{
+                            padding: '7px 11px',
+                            gap: '8px',
+                            borderRadius: 'var(--radius-md, 8px)',
+                            background: 'var(--bg-2)',
+                            transition: 'all 0.15s ease',
+                          }}
+                        >
+                          <div style={{ flex: 1, textAlign: 'left', minWidth: 0 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 6 }}>
+                              <span style={{ fontWeight: 600, fontSize: '0.82rem', color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                {item.title}
+                              </span>
+                              <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', flexShrink: 0 }}>{item.timestamp}</span>
                             </div>
-                            <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: '2px' }}>{item.desc}</div>
+                            <div style={{ fontSize: '0.74rem', color: 'var(--text-secondary)', marginTop: '2px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {item.desc}
+                            </div>
                           </div>
                           {item.amount !== null && (
-                            <div style={{ fontWeight: 700, fontSize: '0.88rem', color: item.amountColor, whiteSpace: 'nowrap', marginLeft: '8px' }}>
+                            <div style={{ fontWeight: 700, fontSize: '0.82rem', color: item.amountColor, whiteSpace: 'nowrap', marginLeft: '6px' }}>
                               {item.amountPrefix} ₹{item.amount.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
                             </div>
                           )}
@@ -275,17 +368,17 @@ export default function Dashboard() {
                 )}
               </div>
 
-              {/* Right stacked */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              {/* Right stacked — 2 cards matching feed height */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', height: '100%' }}>
 
                 {/* Low Stock */}
-                <div className="card" style={{ padding: '16px' }}>
-                  <div className="flex items-center justify-between" style={{ marginBottom: '14px' }}>
-                    <h2>Low Stock Warnings</h2>
+                <div className="card" style={{ padding: '16px', flex: 1, display: 'flex', flexDirection: 'column', boxSizing: 'border-box' }}>
+                  <div className="flex items-center justify-between" style={{ marginBottom: '12px' }}>
+                    <h2 style={{ fontSize: '0.98rem', fontWeight: 700, margin: 0 }}>Low Stock Warnings</h2>
                     <a href="/stock" style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 600 }}>View Catalog</a>
                   </div>
                   {s.low_stock_items?.length ? (
-                    <div className="data-table-wrap">
+                    <div className="data-table-wrap" style={{ flex: 1, overflowY: 'auto' }}>
                       <table className="data-table" style={{ fontSize: '0.8rem' }}>
                         <thead><tr><th>Product</th><th>Stock</th><th>Min</th></tr></thead>
                         <tbody>
@@ -300,21 +393,21 @@ export default function Dashboard() {
                       </table>
                     </div>
                   ) : (
-                    <div className="empty-state" style={{ minHeight: '120px', padding: '20px' }}>
-                      <div className="empty-icon" style={{ width: '36px', height: '36px' }}><InventoryIcon size={16} /></div>
+                    <div className="empty-state" style={{ flex: 1, minHeight: '100px', padding: '16px' }}>
+                      <div className="empty-icon" style={{ width: '32px', height: '32px' }}><InventoryIcon size={16} /></div>
                       <p style={{ fontSize: '0.78rem', margin: 0 }}>All stock levels are safe.</p>
                     </div>
                   )}
                 </div>
 
                 {/* Recent Invoices */}
-                <div className="card" style={{ padding: '16px' }}>
-                  <div className="flex items-center justify-between" style={{ marginBottom: '14px' }}>
-                    <h2>Recent Invoices</h2>
+                <div className="card" style={{ padding: '16px', flex: 1, display: 'flex', flexDirection: 'column', boxSizing: 'border-box' }}>
+                  <div className="flex items-center justify-between" style={{ marginBottom: '12px' }}>
+                    <h2 style={{ fontSize: '0.98rem', fontWeight: 700, margin: 0 }}>Recent Invoices</h2>
                     <a href="/sales" style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 600 }}>Billing Counter</a>
                   </div>
                   {s.recent_invoices?.length ? (
-                    <div className="data-table-wrap">
+                    <div className="data-table-wrap" style={{ flex: 1, overflowY: 'auto' }}>
                       <table className="data-table" style={{ fontSize: '0.8rem' }}>
                         <thead>
                           <tr><th>Bill No</th><th>Amount</th><th>Status</th></tr>
@@ -355,19 +448,14 @@ export default function Dashboard() {
                       </table>
                     </div>
                   ) : (
-                    <div className="empty-state" style={{ minHeight: '120px', padding: '20px' }}>
-                      <div className="empty-icon" style={{ width: '36px', height: '36px' }}><CounterIcon size={16} /></div>
+                    <div className="empty-state" style={{ flex: 1, minHeight: '100px', padding: '16px' }}>
+                      <div className="empty-icon" style={{ width: '32px', height: '32px' }}><CounterIcon size={16} /></div>
                       <p style={{ fontSize: '0.78rem', margin: 0 }}>No recent invoices.</p>
                     </div>
                   )}
                 </div>
 
               </div>
-            </div>
-
-            {/* Business activity — compact card + wide "View full" button (v2) */}
-            <div style={{ marginTop: 20 }}>
-              <ActivityFeed compact recentCount={6} />
             </div>
           </>
         )}

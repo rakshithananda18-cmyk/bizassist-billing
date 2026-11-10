@@ -20,6 +20,7 @@ psycopg2-binary>=2.9.0         # PostgreSQL driver for Supabase
 # ── Auth ───────────────────────────────────────────────────────
 bcrypt>=4.0.0
 pyjwt>=2.6.0
+google-auth[requests]>=2.37,<3
 
 # ── Data / file parsing ────────────────────────────────────────
 pandas>=2.0.0
@@ -59,3 +60,5 @@ tzdata>=2024.1                 # zoneinfo tz database for slim images: services.
 # ── Billing / invoicing ────────────────────────────────────────
 qrcode[pil]>=7.4.0             # QR code on thermal bills (requires Pillow, already listed)
 weasyprint>=60.0               # optional: PDF export of public invoices (try/except guarded)
+
+psutil>=5.9.0  # optional runtime process diagnostics

@@ -9,12 +9,14 @@ All business logic lives in services/ and routes/.
 from __future__ import annotations  # PEP 604 (X | Y) on Python 3.9 dev venvs
 from contextlib import asynccontextmanager
 from sqlalchemy import text
+from sqlalchemy.exc import TimeoutError as DatabasePoolTimeout
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from dotenv import load_dotenv
 import os
+import time
 
 from services.errors import AskError
 
@@ -39,6 +41,7 @@ from routes.sync_staff import router as sync_staff_router  # immediate staff syn
 from routes.sync_profile import router as sync_profile_router  # immediate profile sync to cloud
 from routes.campaigns import router as campaigns_router  # promotions/offers + sync doctor (Admin Console growth half)
 from routes.activity import router as activity_router  # owner activity feed (audit trail → human summaries)
+from routes.internal_cron import router as internal_cron_router
 from core.api import core_router          # billing ecosystem — wired from core/
 
 from database.db import engine, SessionLocal, DATABASE_URL
@@ -86,13 +89,20 @@ if _workers and str(_workers).strip().isdigit() and int(_workers) > 1:
     )
 
 # ── DB ────────────────────────────────────────────────────────────────────────
-Base.metadata.create_all(bind=engine)
+def _create_tables_at_import(target_engine):
+    if target_engine.dialect.name != "postgresql":
+        Base.metadata.create_all(bind=target_engine)
+
+
+_create_tables_at_import(engine)
 run_migrations_and_seed()
 
 @asynccontextmanager
 async def lifespan(_app):
     """Startup/shutdown lifecycle handler."""
     import asyncio
+    from core.cloud_endpoint import CLOUD_URL, CLOUD_URL_SOURCE
+    logger.info("[CLOUD] cloud API = %s (from %s)", CLOUD_URL, CLOUD_URL_SOURCE)
     from services.realtime import realtime_manager
     realtime_manager.set_loop(asyncio.get_running_loop())
 
@@ -152,7 +162,7 @@ async def lifespan(_app):
         if _db_url.startswith("postgresql"):
             return   # Cloud backend — skip (we ARE the registry, not a registrant)
 
-        CLOUD_URL = os.getenv("CLOUD_URL", "https://rakshit-dev-bizassist.hf.space")
+        from core.cloud_endpoint import CLOUD_URL
         INTERVAL = 30 * 60   # renew every 30 minutes
 
         async def _register_once():
@@ -193,7 +203,7 @@ async def lifespan(_app):
                         "SELECT id, public_id FROM users "
                         "WHERE parent_business_id IS NULL AND public_id IS NOT NULL"
                     )).fetchall()
-                    biz_ids = [str(r[1]).strip() for r in rows if r[1]]
+                    biz_records = [(int(r[0]), str(r[1]).strip()) for r in rows if r[1]]
                     missing = db.execute(text(
                         "SELECT COUNT(*) FROM users "
                         "WHERE parent_business_id IS NULL AND public_id IS NULL"
@@ -209,12 +219,21 @@ async def lifespan(_app):
                 finally:
                     db.close()
 
-                for biz_id in biz_ids:
+                from services.sync_worker import _get_cloud_token
+                for business_id, biz_id in biz_records:
                     try:
+                        # The cloud verifies this owner token and binds the
+                        # registry update to its public_id.  A public BizID by
+                        # itself must never authorize a discovery mutation.
+                        token = _get_cloud_token(business_id)
+                        if not token:
+                            logger.debug("[DISCOVER] No cloud token for biz %s; registration deferred", biz_id)
+                            continue
                         async with httpx.AsyncClient(timeout=5.0) as client:
                             resp = await client.post(
                                 f"{CLOUD_URL}/discover/register",
-                                json={"ip": local_ip, "port": 8001, "biz_id": biz_id}
+                                json={"ip": local_ip, "port": 8001, "biz_id": biz_id},
+                                headers={"Authorization": f"Bearer {token}"},
                             )
                         logger.info("[DISCOVER] Registered %s for biz %s → %s", local_ip, biz_id, resp.status_code)
                     except Exception as e:
@@ -230,15 +249,29 @@ async def lifespan(_app):
             await asyncio.sleep(INTERVAL)
             await _register_once()
 
-    asyncio.create_task(_discovery_registration_loop())
+    discovery_task = asyncio.create_task(_discovery_registration_loop())
 
     start_scheduler()
     preload_model_async()
-    yield
-    
-    watcher_task.cancel()
-    realtime_manager.shutdown()
-    stop_scheduler()
+    try:
+        yield
+    finally:
+        try:
+            watcher_task.cancel()
+        except Exception:
+            pass
+        try:
+            discovery_task.cancel()
+        except Exception:
+            pass
+        try:
+            realtime_manager.shutdown()
+        except Exception:
+            pass
+        try:
+            stop_scheduler()
+        except Exception:
+            pass
 
 
 # ── CORS ──────────────────────────────────────────────────────────────────────
@@ -246,24 +279,18 @@ async def lifespan(_app):
 # it would let any locally-saved HTML file call the API. If you need it for
 # local file testing, add it explicitly via ALLOWED_ORIGINS.
 _default_origins = (
-    "http://localhost:5500,http://127.0.0.1:5500,"
-    "http://localhost:3000,"
-    "http://localhost:5173,http://127.0.0.1:5173,"
-    "http://localhost:5174,http://127.0.0.1:5174,"
-    "http://localhost:5175,http://127.0.0.1:5175,"
-    # Packaged desktop app serves its renderer on these loopback ports
-    # (desktop/src/main.js: BILLING_PORT 8450, AI_PORT 8451). The regex below
-    # also covers any 127.0.0.1:PORT, but list them explicitly so the app's
-    # allowed origin is obvious and greppable.
-    "http://127.0.0.1:8450,http://localhost:8450,"
-    "http://127.0.0.1:8451,http://localhost:8451,"
-    "https://bizassist-react.vercel.app,"
-    "https://bizassist.vercel.app,"
-    "https://rakshit-dev-bizassist.hf.space"
+    "https://bizassist-billing.vercel.app,"
+    "https://staterbill.com,"
+    "https://www.staterbill.com,"
+    "https://app.staterbill.com,"
+    "https://admin.staterbill.com,"
+    "https://task.staterbill.com,"
+    "https://bizassist-task.vercel.app,"
+    "https://bizassist-dev-workspace-ai.vercel.app"
 )
-_allowed_origins = [
-    o.strip() for o in os.getenv("ALLOWED_ORIGINS", _default_origins).split(",") if o.strip()
-]
+_allowed_origins = list(dict.fromkeys(
+    o.strip() for o in (_default_origins + "," + os.getenv("ALLOWED_ORIGINS", "")).split(",") if o.strip()
+))
 
 # ── App ───────────────────────────────────────────────────────────────────────
 app = FastAPI(title="BizAssist API", lifespan=lifespan)
@@ -294,11 +321,24 @@ app.add_middleware(
     allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2[0-9]|3[0-1])\.\d+\.\d+)(:\d+)?$",
     allow_credentials=False,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "X-Client-Request-Id"],
-    expose_headers=["X-Total-Count"],
+    allow_headers=["Authorization", "Content-Type", "X-Client-Request-Id", "Last-Event-ID"],
+    expose_headers=["X-Total-Count", "WWW-Authenticate", "Retry-After"],
 )
 
 # ── Error contract ────────────────────────────────────────────────────────────
+from fastapi.exceptions import RequestValidationError
+
+
+@app.exception_handler(RequestValidationError)
+async def _request_validation_handler(_request: Request, exc: RequestValidationError):
+    # Pydantic error inputs may contain NaN/Infinity or private form values.
+    # Neither belongs in a JSON response; nonfinite inputs otherwise turn a
+    # deliberate validation rejection into a JSON serialization 500.
+    detail = [{"loc": list(error.get("loc", ())), "msg": error.get("msg", "Invalid value"),
+               "type": error.get("type", "value_error")} for error in exc.errors()]
+    return JSONResponse(status_code=422, content={"detail": detail})
+
+
 @app.exception_handler(AskError)
 async def _ask_error_handler(_request: Request, exc: AskError):
     """Render AskError as a real HTTP status code with the canonical envelope (H1)."""
@@ -360,13 +400,51 @@ async def _set_rls_business_id(request: Request, call_next):
     t_uname = current_username_var.set(username)
     t_bizid = current_bizid_var.set(biz_id or "-")
 
+    start_t = time.monotonic()
+    status_code = 500
+    err_msg = None
     try:
-        return await call_next(request)
+        response = await call_next(request)
+        status_code = response.status_code
+        return response
+    except Exception as exc:
+        err_msg = str(exc)
+        raise
     finally:
+        dur_ms = (time.monotonic() - start_t) * 1000
+        client_ip = request.client.host if request.client else "127.0.0.1"
+        user_agent = request.headers.get("user-agent")
+        try:
+            from services.api_tracer import record_request
+            record_request(
+                method=request.method,
+                path=str(request.url.path),
+                status_code=status_code,
+                duration_ms=dur_ms,
+                ip=client_ip,
+                biz_id=biz_id,
+                user_id=user_id,
+                user_agent=user_agent,
+                error=err_msg
+            )
+        except Exception:
+            pass
         current_business_id_var.reset(t_biz)
         current_user_id_var.reset(t_uid)
         current_username_var.reset(t_uname)
         current_bizid_var.reset(t_bizid)
+
+
+@app.exception_handler(DatabasePoolTimeout)
+async def database_pool_timeout_handler(request: Request, exc: DatabasePoolTimeout):
+    # Capacity exhaustion is temporary. Expose a retry signal without leaking
+    # driver/connection details or logging the same multi-page traceback per poll.
+    logger.warning("Database connection capacity exhausted for %s %s", request.method, request.url.path)
+    return JSONResponse(
+        status_code=503,
+        content={"detail": "Database is busy. Please retry shortly."},
+        headers={"Retry-After": "5"},
+    )
 
 
 @app.exception_handler(Exception)
@@ -377,7 +455,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
     logger.error("Unhandled exception during request %s %s: %s", request.method, request.url, exc, exc_info=True)
     return JSONResponse(
         status_code=500,
-        content={"detail": "Internal Server Error", "error": str(exc)}
+        content={"detail": "Internal Server Error"}
     )
 
 
@@ -468,5 +546,6 @@ app.include_router(sync_staff_router)     # Phase 5 - Immediate staff sync
 app.include_router(sync_profile_router)   # Phase 5 - Immediate profile sync
 app.include_router(campaigns_router)      # Promotions & offers + sync doctor (REVIEW_1 §4.2-4.3)
 app.include_router(activity_router)       # Owner activity feed — every action, human-readable
+app.include_router(internal_cron_router)
 app.include_router(b2b_status_router)   # B2B link state, so the UI can explain a degraded mode
 app.include_router(core_router)           # billing ecosystem (sales + business templates + future)

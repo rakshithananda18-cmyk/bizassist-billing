@@ -12,15 +12,16 @@
 //  outline icons in ./icons.)
 // ============================================================================
 import { logger } from '../utils/logger'
+import { Icon } from './icons'
 
 export function PageHeader({ title, subtitle, actions, badge, style }) {
   return (
     <div className="vheader" style={{ marginBottom: 16, ...style }}>
       <div>
-        <div className="vheader-title">
+        <h1 className="vheader-title">
           {title}
           {badge != null && badge !== '' && <span className="vbadge">{badge}</span>}
-        </div>
+        </h1>
         {subtitle && <div className="vheader-sub">{subtitle}</div>}
       </div>
       {actions && (
@@ -37,7 +38,7 @@ export function Card({ title, actions, children, className = '', style }) {
     <div className={`widget ${className}`.trim()} style={style}>
       {(title || actions) && (
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-          {title ? <div className="widget-title" style={{ margin: 0 }}>{title}</div> : <span />}
+          {title ? <h2 className="widget-title" style={{ margin: 0 }}>{title}</h2> : <span />}
           {actions && <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>{actions}</div>}
         </div>
       )}
@@ -200,26 +201,26 @@ export function Section({
             style={{
               background: 'transparent',
               border: 'none',
-              padding: '4px 8px',
-              fontSize: 16,
+              padding: '4px 6px',
               cursor: 'pointer',
-              color: 'var(--secondary-text)',
+              color: 'var(--text-muted)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               flexShrink: 0,
               lineHeight: 1,
-              transition: 'color 0.2s ease',
+              transition: 'color 0.15s ease',
             }}
-            onMouseOver={e => e.currentTarget.style.color = 'var(--accent-color)'}
-            onMouseOut={e => e.currentTarget.style.color = 'var(--secondary-text)'}
+            onMouseOver={e => e.currentTarget.style.color = 'var(--accent)'}
+            onMouseOut={e => e.currentTarget.style.color = 'var(--text-muted)'}
           >
             <span style={{
-              display: 'inline-block',
+              display: 'inline-flex',
               transition: 'transform 0.22s ease',
               transform: open ? 'rotate(0deg)' : 'rotate(180deg)',
-              fontWeight: 600,
-            }}>^</span>
+            }}>
+              <Icon name="chevronDown" size={14} />
+            </span>
           </button>
         )}
       </div>

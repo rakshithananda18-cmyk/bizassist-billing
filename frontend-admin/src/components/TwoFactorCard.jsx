@@ -87,7 +87,7 @@ export default function TwoFactorCard() {
   )
 
   return (
-    <Section title="Admin sign-in security (2FA)" icon={<Icon name="settings" size={16} />} collapsible style={{ marginTop: 24 }}>
+    <Section title="Admin sign-in security (2FA)" icon={<Icon name="shield" size={16} />} collapsible style={{ marginTop: 24 }}>
       {status === null ? (
         <div className="vskel" style={{ padding: 10 }}></div>
       ) : status.enabled ? (
@@ -106,7 +106,7 @@ export default function TwoFactorCard() {
       ) : setup ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div style={{ fontSize: 13 }}>
-            Add this key to Google Authenticator / Authy / 1Password (choose "enter a setup key", account name <b>BizAssist Admin</b>, time-based):
+            Add this key to Google Authenticator / Authy / 1Password (choose "enter a setup key", account name <b>Stater Admin</b>, time-based):
           </div>
           <div style={{
             display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
@@ -141,8 +141,9 @@ export default function TwoFactorCard() {
         </div>
       )}
       {msg && (
-        <div style={{ marginTop: 10, fontSize: 12.5, fontWeight: 600, color: msg.ok ? '#3a9a5c' : '#c53030' }}>
-          {msg.ok ? '✓ ' : ''}{msg.text}
+        <div style={{ marginTop: 10, fontSize: 12.5, fontWeight: 600, color: msg.ok ? 'var(--success)' : 'var(--danger)', display: 'flex', alignItems: 'center', gap: 6 }}>
+          {msg.ok && <Icon name="check" size={14} />}
+          <span>{msg.text}</span>
         </div>
       )}
     </Section>

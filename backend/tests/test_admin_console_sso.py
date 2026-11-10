@@ -32,6 +32,8 @@ from fastapi.testclient import TestClient
 from main_groq import app
 from services.auth import create_access_token, create_sse_ticket
 
+from tests.signup_fixture import signup_payload
+
 client = TestClient(app)
 
 OWNER = {"username": "own_sso_owner", "password": "Password123", "business_name": "SSO Test Store"}
@@ -45,7 +47,7 @@ def clear_rate_limit_windows():
 
 
 def _signup_or_login(creds):
-    r = client.post("/signup", json=creds)
+    r = client.post("/signup", json=signup_payload(creds))
     if r.status_code != 200:
         r = client.post("/login", json={"username": creds["username"], "password": creds["password"]})
     assert r.status_code == 200, r.text
@@ -164,6 +166,10 @@ def test_admin_businesses_has_fleet_fields():
 
 
 def test_admin_telemetry_viewer_roundtrip(tmp_path, monkeypatch):
+    import routes.telemetry as telemetry_routes
+    # Exercise local ingest explicitly even when the isolated runner disables
+    # telemetry globally. This does not enable any remote relay or cloud write.
+    monkeypatch.setattr(telemetry_routes, "TELEMETRY_ENABLED", True)
     monkeypatch.chdir(tmp_path)   # telemetry writes logs/ relative to CWD
     batch = {
         "source": "desktop-shell", "device_id": "test-device-123",

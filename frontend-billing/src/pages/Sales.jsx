@@ -6,7 +6,7 @@
 // ============================================================================
 import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { useNavigate, useSearchParams, useLocation } from 'react-router-dom'
-import { IS_LOCAL_APP } from '../config'
+import { API_BASE, IS_LOCAL_APP } from '../config'
 import AppLayout from '../layouts/AppLayout'
 import { useAuth, useBusinessConfig } from '../contexts/AuthContext'
 import { useConfirm } from '../contexts/ConfirmContext'
@@ -18,6 +18,8 @@ import { getTodayDateStr, getFromDateStr } from '../utils/format'
 // Invoice money-math (line totals, intra/inter GST split, change due) — pure + tested.
 import { lineTotal, computeInvoiceTotals, changeDue, buildInvoicePayload, columnTotals, suggestedTenders, schemeDiscount } from '../utils/invoiceMath'
 import { logger } from '../utils/logger'
+import { resolvePaymentVpa } from '../utils/share'
+import { readAllPages } from '../utils/readPages'
 import { getCached, setCached, invalidateCache } from '../utils/sessionCache'
 import { useBillingProfile } from '../hooks/useBillingProfile'
 import TotalBreakupModal from '../components/sales/TotalBreakupModal'
@@ -26,6 +28,7 @@ import InvoiceBreakdownCard from '../components/sales/InvoiceBreakdownCard'
 import TenderChips from '../components/sales/TenderChips'
 import CheckoutModal from '../components/sales/CheckoutModal'
 import ThermalReceipt from '../components/sales/ThermalReceipt'
+import PrintReceiptModal from '../components/sales/PrintReceiptModal'
 import PosTopBar from '../components/sales/PosTopBar'
 import ProductSearchBar from '../components/sales/ProductSearchBar'
 import CartTableHeader from '../components/sales/CartTableHeader'
@@ -48,6 +51,8 @@ import ContextMenu from '../components/common/ContextMenu'
 import { DEFAULT_FUNC_KEYS as defaultFuncKeys, loadFuncKeys, matchesKey } from '../lib/posKeys'
 import { getPriceOptions as buildPriceOptions, withQty as withQtyFor } from '../lib/priceOptions'
 import { nextInvoiceNo, syncTabNames as syncTabNamesFor } from '../lib/posInvoiceNumbers'
+import { playScanBeep, playErrorTone } from '../utils/posAudio'
+import { isProtectedTourPreview } from '../demo/tourPrivacy'
 
 // ============================================================================
 // ── 2. GLOBAL DEFAULTS & VALUE SCHEMAS ──
@@ -256,7 +261,7 @@ export default function Sales(props = {}) {
           let newPrice = price
           let newDiscount = 0
           const qty = parseFloat(item.qty) || 1
-          
+
           if (p && parseFloat(p.mrp) > 0 && price <= parseFloat(p.mrp)) {
              newPrice = parseFloat(p.mrp)
              newDiscount = schemeDiscount(p.mrp, price, qty)
@@ -406,13 +411,13 @@ export default function Sales(props = {}) {
 
         const inv = payload.invoice
         const lines = payload.lines || []
-        
+
         // Map payload items back to POS form structure
         const cartItems = lines.map(line => {
            // We might not have full product data in payload, but we have enough for POS
            return {
              ...emptyItem(),
-             product_id: '', 
+             product_id: '',
              product: line.name || '',
              qty: line.qty ? parseFloat(line.qty) : 1,
              rate: line.rate ? parseFloat(line.rate) : 0,
@@ -432,7 +437,7 @@ export default function Sales(props = {}) {
            gst_enabled: !!(payload.seller?.gstin),
            notes: creditNoteFrom ? `Credit Note for Invoice ${sourceInvoice}` : '',
         }
-        
+
         // Create new tab
         const newId = Math.random().toString(36).substring(7)
         setTabs(prev => [
@@ -611,7 +616,7 @@ export default function Sales(props = {}) {
             timestamp: remoteTimestamp
           }
           localStorage.setItem(`pos_cart_updated_at_${uid}`, remoteTimestamp.toString())
-          
+
           if (Array.isArray(remoteTabs) && remoteTabs.length > 0) {
             setTabs(remoteTabs)
           }
@@ -676,7 +681,7 @@ export default function Sales(props = {}) {
       requestCart()
       // Retry once after 2.5 seconds if no cart received (fallback if network transient)
       const retryTimer = setTimeout(requestCart, 2500)
-      
+
       // Set timeout warning after 8 seconds
       const timeoutTimer = setTimeout(() => {
         setConnectionStatus(prev => prev === 'connecting' ? 'timeout' : prev)
@@ -873,15 +878,13 @@ export default function Sales(props = {}) {
       window.dispatchEvent(new Event('pos_minimized_changed'))
     }
   }, [user?.user_id, user?.id])
-  
+
   const [productBatches, setProductBatches] = useState({})
-  
+
   // Prefer the merchant's explicit, editable UPI handle (Profile → UPI ID). Fall
   // back to a device-local override, then to a phone-derived guess. A real VPA is
   // often NOT number@upi, so the profile field is the source of truth.
-  const upiVpa = (profile?.upi_vpa && profile.upi_vpa.trim())
-    || (typeof localStorage !== 'undefined' && localStorage.getItem('pos_upi_vpa'))
-    || (profile?.phone ? `${profile.phone}@upi` : 'bizassist@upi')
+  const upiVpa = resolvePaymentVpa({ profile, user })
   const [merchantState, setMerchantState] = useState(() => localStorage.getItem('pos_merchant_state') || '37')
 
   const barcodeRef = useRef(null)
@@ -926,13 +929,14 @@ export default function Sales(props = {}) {
   const setFormRef = useRef(setForm)
   const getNextInvoiceNoRef = useRef(getNextInvoiceNo)
   const userRoleRef = useRef(user?.role)
-  const userIdRef   = useRef(user?.id || user?.user_id)   // stable userId for cache keys
+  const cacheIdentity = `${API_BASE}|${user?.public_id || user?.username || ''}|${user?.user_id || user?.id || ''}`
+  const userIdRef   = useRef(cacheIdentity)
   const productsRef = useRef([])
   useEffect(() => { authFetchRef.current = authFetch }, [authFetch])
   useEffect(() => { setFormRef.current = setForm }, [setForm])
   useEffect(() => { getNextInvoiceNoRef.current = getNextInvoiceNo }, [getNextInvoiceNo])
   useEffect(() => { userRoleRef.current = user?.role }, [user?.role])
-  useEffect(() => { userIdRef.current = user?.id || user?.user_id }, [user?.id, user?.user_id])
+  useEffect(() => { userIdRef.current = cacheIdentity }, [cacheIdentity])
 
   const isLoadingRef = useRef(false)
   const lastLoadRef = useRef(0)
@@ -1001,7 +1005,7 @@ export default function Sales(props = {}) {
       }
       // Full fetch needed (cold start or meta mismatch).
       const [prod, meta] = await Promise.all([
-        _authFetch('/products?per_page=1000').then(r => r.ok ? r.json() : { items: [] }).catch(() => ({ items: [] })),
+        readAllPages(_authFetch, '/products').then(items => ({ items })),
         _authFetch('/billing/products/meta').then(r => r.ok ? r.json() : null).catch(() => null),
       ])
       const items = prod?.items || []
@@ -1010,9 +1014,7 @@ export default function Sales(props = {}) {
     }
 
     const fetchCustomers = () =>
-      _authFetch('/billing/customers?per_page=500')
-        .then(r => r.ok ? r.json() : [])
-        .catch(() => [])
+      readAllPages(_authFetch, '/billing/customers')
         .then(c => {
           const items = Array.isArray(c) ? c : (c?.items || [])
           setCached('customers', userId, items, 15 * 60 * 1000) // 15 min TTL
@@ -1036,8 +1038,7 @@ export default function Sales(props = {}) {
 
     // Invoices are NOT cached in sessionStorage — they change on every bill save.
     const fetchInvoices = () =>
-      _authFetch(`/billing/invoices?from_date=${fromDate}&per_page=500&sort=desc`)
-        .then(r => r.ok ? r.json() : []).catch(() => [])
+      readAllPages(_authFetch, `/billing/invoices?from_date=${fromDate}&sort=desc`)
 
     Promise.all([
       fetchCustomers(),
@@ -1059,6 +1060,9 @@ export default function Sales(props = {}) {
       setDbInvoices(invs)
       setStaffList(staff)
       setTabs(prev => syncTabNames(prev, mergePending(invs)))
+    }).catch(error => {
+      logger.error('[SALES] Required counter data unavailable', error)
+      setAlert({ type: 'danger', msg: 'Counter data could not refresh. Check the connection and retry; cached data may be out of date.' })
     }).finally(() => {
       lastLoadRef.current = Date.now()
       isLoadingRef.current = false
@@ -1121,9 +1125,7 @@ export default function Sales(props = {}) {
         syncDebounceTimer = setTimeout(async () => {
           try {
             const fromDate = getFromDateStr(7)
-            const invs = await authFetchRef.current(
-              `/billing/invoices?from_date=${fromDate}&per_page=500&sort=desc`
-            ).then(r => r.ok ? r.json() : null)
+            const invs = await readAllPages(authFetchRef.current, `/billing/invoices?from_date=${fromDate}&sort=desc`)
             if (invs) {
               setDbInvoices(invs)
               setTabs(prev => syncTabNames(prev, mergePending(invs)))
@@ -1352,13 +1354,13 @@ export default function Sales(props = {}) {
   }
 
 
-  
+
   useEffect(() => {
     if (!form.customer_id || customers.length === 0) return
     const cust = customers.find(c => String(c.id) === String(form.customer_id))
     if (cust) {
       setField('gst_enabled', !!cust.gstin)
-      
+
       const tier = cust.price_tier || 'standard'
       setForm(f => {
         const items = f.items.map(it => {
@@ -1371,14 +1373,14 @@ export default function Sales(props = {}) {
           } else if (tier === 'distributor') {
             basePrice = prod.distributor_price || basePrice
           }
-          
+
           let finalPrice = basePrice
           let finalDiscount = 0
           if (prod.mrp && parseFloat(prod.mrp) > 0 && basePrice <= parseFloat(prod.mrp)) {
             finalPrice = parseFloat(prod.mrp)
             finalDiscount = finalPrice - basePrice
           }
-          
+
           return { ...it, price: finalPrice, discount: finalDiscount }
         })
         return { ...f, items }
@@ -1390,7 +1392,7 @@ export default function Sales(props = {}) {
     if (isLiveView && editState !== 'granted') return
     setForm(f => ({ ...f, [k]: v }))
   }
-  
+
   const setItem = (i, kOrUpdates, v) => {
     if (isLiveView && editState !== 'granted') return
     setForm(f => {
@@ -1399,13 +1401,13 @@ export default function Sales(props = {}) {
       if (item) {
         const updates = typeof kOrUpdates === 'object' ? kOrUpdates : { [kOrUpdates]: v }
         const updatedItem = { ...item, ...updates }
-        
+
         const qty = parseFloat(updatedItem.qty) || 0
         const mrpFieldVal = parseFloat(updatedItem.price) || 0
         const selPrice = parseFloat(updatedItem.selected_price) || 0
         const p = products.find(prod => prod.id === updatedItem.product_id)
         const mrp = p ? (parseFloat(p.mrp) || 0) : mrpFieldVal
-        
+
         if (updatedItem.product_id) {
           if (mrp > 0 && selPrice <= mrp) {
             updatedItem.price = mrp
@@ -1419,13 +1421,13 @@ export default function Sales(props = {}) {
             updatedItem.price = parseFloat(updatedItem.selected_price) || 0
           }
         }
-        
+
         items[i] = updatedItem
       }
       return { ...f, items }
     })
   }
-  
+
   const addCustomItemToCart = useCallback(() => {
     if (isLiveView && editState !== 'granted') return
     setForm(f => {
@@ -1480,7 +1482,27 @@ export default function Sales(props = {}) {
   // discount, payable === grandTotal, so this is unchanged for existing flows.
   const changeToReturn = changeDue(amountReceivedNum, payable)
 
+  const [receiptSnapshot, setReceiptSnapshot] = useState(null)
+  const liveReceipt = {
+    settings, profile, activeTab, form, customers, user, isIntrastate,
+    subtotal, billDiscountAmt, cgstAmt, sgstAmt, igstAmt, cashDiscountAmt,
+    roundOff, grandTotal, payable, changeToReturn, colFooter,
+  }
+  const preserveReceipt = ({ invoiceNo, form: savedForm }) => {
+    setReceiptSnapshot({
+      ...liveReceipt,
+      activeTab: { ...activeTab, name: invoiceNo },
+      form: { ...savedForm, items: savedForm.items.map(item => ({ ...item })) },
+      changeToReturn: changeDue(parseFloat(savedForm.amount_received) || 0, payable),
+    })
+  }
+  const clearReceipt = useCallback(() => setReceiptSnapshot(null), [])
+
   const {
+    printJob,
+    printSavedInvoice,
+    prepareSavedPdf,
+    closePrintJob,
     showPaymentPopup,
     setShowPaymentPopup,
     paymentFocusTarget,
@@ -1509,6 +1531,8 @@ export default function Sales(props = {}) {
     setSubmitting,
     barcodeRef,
     enqueueOffline,
+    onReceiptReady: preserveReceipt,
+    onReceiptClosed: clearReceipt,
   })
 
   // Live Counters presence (plan §9.2 Stage 1): publish a lightweight READ-ONLY
@@ -1592,7 +1616,7 @@ export default function Sales(props = {}) {
     setForm(f => {
       const cust = customers.find(c => String(c.id) === String(f.customer_id))
       let tier = cust ? (cust.price_tier || 'standard') : 'standard'
-      
+
       if (tier === 'standard') {
         let businessDefaultTier = 'standard'
         const bizCategory = (profile?.business_category || profile?.business_type || profile?.category || '').toLowerCase()
@@ -1675,10 +1699,10 @@ export default function Sales(props = {}) {
       }
       return { ...f, items }
     })
-    
+
     setSearchQuery('')
     setSelectedIndex(-1)
-    
+
     // Check if there are extra prices apart from standard 4 base prices
     const standardBasePrices = [
       parseFloat(product.selling_price),
@@ -1994,7 +2018,7 @@ export default function Sales(props = {}) {
 
       if (showSettingsModal || showBreakupModal) return
 
-      if (showPaymentPopup) {
+      if (showPaymentPopup || printJob) {
         return
       }
 
@@ -2040,11 +2064,11 @@ export default function Sales(props = {}) {
         const activeEl = document.activeElement
         const isSearchInput = activeEl === barcodeRef.current
         const isBody = activeEl === document.body || !activeEl || activeEl.tagName === 'BUTTON' || activeEl.className === 'pos-hotkey-btn'
-        
+
         if (isSearchInput || isBody) {
           e.preventDefault()
           e.stopPropagation()
-          
+
           setForm(f => {
             if (f.items.length === 0) return f
             const items = [...f.items]
@@ -2053,7 +2077,7 @@ export default function Sales(props = {}) {
             items[lastIdx] = withQty(items[lastIdx], currentQty + 1)
             return { ...f, items }
           })
-          
+
           // Clear any + character typed in search input
           setSearchQuery(prev => prev.replace('+', ''))
           setTimeout(() => barcodeRef.current?.focus(), 50)
@@ -2121,14 +2145,14 @@ export default function Sales(props = {}) {
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [showSettingsModal, showBreakupModal, settingsInitialTab, showPayConfirmModal, searchQuery, handleSaveInvoice, activeTabId, closeTab, handleNewBill, funcKeys, bindingAction, priceSelectorIndex, selectedPriceOptIndex, form.items, matchesKey, showPaymentPopup, openPaymentFlow, executeSaveInvoice])
+  }, [showSettingsModal, showBreakupModal, settingsInitialTab, showPayConfirmModal, searchQuery, handleSaveInvoice, activeTabId, closeTab, handleNewBill, funcKeys, bindingAction, priceSelectorIndex, selectedPriceOptIndex, form.items, matchesKey, showPaymentPopup, openPaymentFlow, executeSaveInvoice, printJob])
 
   // Auto refocus barcode input when modals close
   useEffect(() => {
-    if (!showPaymentPopup && !showSettingsModal && !showBreakupModal) {
+    if (!showPaymentPopup && !showSettingsModal && !showBreakupModal && !printJob) {
       setTimeout(() => barcodeRef.current?.focus(), 100)
     }
-  }, [showPaymentPopup, showSettingsModal, showBreakupModal])
+  }, [showPaymentPopup, showSettingsModal, showBreakupModal, printJob])
 
   // ── Fold-collapsible columns (paper-fold strips) ──────────────────────────
   // Collapse ≠ hide: hiding lives in Settings; collapsing is the cashier's
@@ -2219,7 +2243,7 @@ export default function Sales(props = {}) {
   return (
     <AppLayout title="POS Counter">
       <div style={{ height: '100%', display: 'flex', flexDirection: 'column', position: 'relative' }}>
-        
+
         {isLiveView && isRemoteCartLoading && (
           <LiveViewOverlay
             connectionStatus={connectionStatus}
@@ -2339,10 +2363,10 @@ export default function Sales(props = {}) {
             opacity: (isLiveView && editState !== 'granted') ? 0.95 : 1,
           }}
         >
-          
+
           {/* Left Pane (72% width) */}
           <div className="pos-left-pane">
-            
+
             {pendingSync.length > 0 && (
               <div
                 role="status"
@@ -2453,6 +2477,7 @@ export default function Sales(props = {}) {
 
               {priceSelectorIndex !== null && (
                 <PriceSelectorModal
+                  protectTour={isProtectedTourPreview(user)}
                   productName={form.items[priceSelectorIndex]?.product}
                   options={getPriceOptions(form.items[priceSelectorIndex])}
                   selectedIndex={selectedPriceOptIndex}
@@ -2536,6 +2561,8 @@ export default function Sales(props = {}) {
         funcKeys={funcKeys}
       />
 
+      <PrintReceiptModal job={printJob} onPrint={printSavedInvoice} onPreparePdf={prepareSavedPdf} onDone={closePrintJob} />
+
       {/* Main Settings Modal */}
       {showSettingsModal && (
         <PosCounterSettingsModal
@@ -2552,33 +2579,15 @@ export default function Sales(props = {}) {
           funcKeys={funcKeys}
           setFuncKeys={setFuncKeys}
           onAdvancedSettings={() => { setShowSettingsModal(false); navigate('/settings?tab=transactions'); }}
+          onPaymentSettings={() => { setShowSettingsModal(false); navigate('/settings?tab=profile'); }}
           defaultFuncKeys={defaultFuncKeys}
           initialTab={settingsInitialTab}
         />
       )}
 
-      
+
       {/* Print-only thermal receipt container rendered via Portal directly in document.body */}
-      <ThermalReceipt
-        settings={settings}
-        profile={profile}
-        activeTab={activeTab}
-        form={form}
-        customers={customers}
-        user={user}
-        isIntrastate={isIntrastate}
-        subtotal={subtotal}
-        billDiscountAmt={billDiscountAmt}
-        cgstAmt={cgstAmt}
-        sgstAmt={sgstAmt}
-        igstAmt={igstAmt}
-        cashDiscountAmt={cashDiscountAmt}
-        roundOff={roundOff}
-        grandTotal={grandTotal}
-        payable={payable}
-        changeToReturn={changeToReturn}
-        colFooter={colFooter}
-      />
+      <ThermalReceipt {...(receiptSnapshot || liveReceipt)} />
 
       {showRemoteRequestModal && (
         <RemoteEditRequestModal

@@ -10,10 +10,10 @@ def test_owner_creates_staff_with_password(client, biz):
 
 
 def test_weak_password_and_duplicate_login(client, biz):
-    r = client.post("/api/staff", headers=biz.h, json={"name": "A", "login_name": "anil", "password": "weak"})
+    r = client.post("/api/staff", headers=biz.h, json={"name": "A", "login_name": "anil", "password": "weak", "phone": "9876543210"})
     assert r.status_code == 400
     biz.staff(login="anil")
-    r = client.post("/api/staff", headers=biz.h, json={"name": "B", "login_name": "ANIL", "password": PASSWORD})
+    r = client.post("/api/staff", headers=biz.h, json={"name": "B", "login_name": "ANIL", "password": PASSWORD, "phone": "9876543210"})
     assert r.status_code == 400
 
 

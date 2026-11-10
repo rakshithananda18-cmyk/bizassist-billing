@@ -36,7 +36,17 @@ class BillingUser(BillingBase):
     parent_business_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
     public_id = Column(String, unique=True, index=True, nullable=True)  # BizID BA-XXXXXX
     phone = Column(String, nullable=True)
+    # Billing owns linking and profile updates. Read these only to resolve the
+    # same owner across password and Google sign-in.
+    email = Column(String, nullable=True)
+    google_id = Column(String, nullable=True)
+    # Billing owns this configured merchant payee. Field collections must never
+    # substitute a staff member's account or a guessed application-wide VPA.
+    upi_vpa = Column(String, nullable=True)
     token_version = Column(Integer, default=0, nullable=False, server_default="0")
+    # JSON. Read for one key only: `subscription` (the owner's plan, written by
+    # billing's admin console) — see app/plan.py. Never written here.
+    settings = Column(Text, nullable=True)
     last_login = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=utc_now, nullable=True)
     updated_at = Column(DateTime, default=utc_now, onupdate=utc_now, nullable=True)
@@ -74,9 +84,24 @@ class BillingInvoice(BillingBase):
     invoice_date = Column(String, nullable=True)  # YYYY-MM-DD
     status = Column(String, index=True, nullable=True)  # Pending | Partial | Paid
     invoice_type = Column(String, nullable=True)  # B2B | B2C | … | credit_note
+    parent_invoice_id = Column(Integer, nullable=True, index=True)
     amount = Column(Float, nullable=True)  # legacy total (CSV imports set only this)
     total_amount = Column(Float, nullable=True, default=0.0)
     paid_amount = Column(Float, nullable=True, default=0.0)
+
+
+class BillingInvoicePayment(BillingBase):
+    """`invoice_payments` — billing's append-only receipts. Read to show which
+    field collections the owner has confirmed in billing (app/collections.py)."""
+    __tablename__ = "invoice_payments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    business_id = Column(Integer, index=True, nullable=False)
+    invoice_id = Column(Integer, ForeignKey("invoices.id"), nullable=False, index=True)
+    amount_paid = Column(Float, nullable=False)
+    payment_mode = Column(String, nullable=True)
+    payment_date = Column(String, nullable=True)
+    idempotency_key = Column(String, nullable=True, index=True)
 
 
 class BillingInvoiceLine(BillingBase):

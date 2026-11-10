@@ -4,10 +4,12 @@
 // (FIFO) via POST /customers/:id/settle, then shows the per-invoice allocation
 // and any advance banked as credit for the next bill.
 // ============================================================================
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useRef } from 'react'
 import CustomSelect from '../common/CustomSelect'
 import { CheckIcon, CloseIcon, PrinterIcon } from '../Icons'
 import { useDocLabels } from '../../hooks/useDocLabels'
+import { readAllPages } from '../../utils/readPages'
+import { paymentIntent } from '../../utils/paymentIntent'
 
 const fmt = (n) => `₹${Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`
 
@@ -22,14 +24,17 @@ export default function SettleDuesModal({ authFetch, onClose, onDone, presetCust
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
   const [result, setResult] = useState(null)
+  const intent = useRef(null)
+  const saving = useRef(false)
+  const active = useRef(true)
+  useEffect(() => { active.current = true; return () => { active.current = false } }, [])
 
   useEffect(() => {
     // Case 1: customer id already known — lock it, skip list fetch
     if (presetCustomerId) return
     // Case 2: only name known — fetch list and auto-select by name
     let cancelled = false
-    authFetch('/customers?per_page=500')
-      .then(r => r.ok ? r.json() : null)
+    readAllPages(authFetch, '/customers')
       .then(data => {
         if (cancelled || !data) return
         const list = Array.isArray(data) ? data : (data.customers || data.items || [])
@@ -42,17 +47,23 @@ export default function SettleDuesModal({ authFetch, onClose, onDone, presetCust
           if (match) setCustomerId(String(match.id))
         }
       })
-      .catch(() => {})
+      .catch(failure => { if (!cancelled) setError(`Customer records are unavailable. ${failure.message}`) })
     return () => { cancelled = true }
   }, [authFetch, presetCustomerId, presetCustomerName])
 
   const selected = customers.find(c => String(c.id) === String(customerId))
 
   const submit = async () => {
+    if (saving.current) return
     setError('')
     const amt = parseFloat(amount)
     if (!customerId) { setError('Choose a customer.'); return }
     if (!amt || amt <= 0) { setError('Enter an amount greater than 0.'); return }
+    const signature = JSON.stringify([customerId, amt, method])
+    try {
+      if (intent.current?.signature !== signature) intent.current = { signature, ...paymentIntent(`/customers/${customerId}/settle`, { amount: amt, payment_mode: method }) }
+    } catch { setError('Enable browser storage before recording this payment.'); return }
+    saving.current = true
     setSubmitting(true)
     try {
       // Don't send a client-computed date: the browser's local/UTC "today" can
@@ -62,17 +73,20 @@ export default function SettleDuesModal({ authFetch, onClose, onDone, presetCust
         method: 'POST',
         body: JSON.stringify({
           amount: amt, payment_mode: method,
-          idempotency_key: `settle-${customerId}-${Date.now()}`,
+          idempotency_key: intent.current.key,
         }),
       })
       const data = await res.json().catch(() => ({}))
+      if (!active.current) return
       if (!res.ok) { setError(data.detail || 'Could not settle dues.'); return }
+      intent.current.clear()
       setResult(data)
       onDone && onDone(data)
     } catch {
-      setError('Network error — please try again.')
+      if (active.current) setError('Network error — retry the same entry to check its saved result.')
     } finally {
-      setSubmitting(false)
+      saving.current = false
+      if (active.current) setSubmitting(false)
     }
   }
 

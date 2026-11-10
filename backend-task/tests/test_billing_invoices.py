@@ -3,21 +3,18 @@
 Billing rows are written straight into billing's tables (the mirror on SQLite,
 billing's real schema in the contract job), the way billing itself would have.
 """
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, timedelta
 
 import pytest
 
-from app.billing_models import BillingCustomer, BillingInvoice, BillingInvoiceLine
+from tests.billing_fixture_models import BillingCustomer, BillingInvoice, BillingInvoiceLine
 from app.db import SessionLocal
+from app.timeutil import biz_today
 from tests.conftest import check_in, geo
 
 
-def _today():
-    return datetime.now(timezone(timedelta(hours=5, minutes=30))).date().isoformat()
-
-
 def _days_ago(n):
-    return (date.fromisoformat(_today()) - timedelta(days=n)).isoformat()
+    return (date.fromisoformat(biz_today()) - timedelta(days=n)).isoformat()
 
 
 def _customer(business_id, name="Sri Balaji Medicals"):
@@ -95,7 +92,7 @@ def test_run_stop_from_invoices_plans_delivery_and_collection(client, biz, linke
     s, h = biz.staff_session("Kiran")
     pick = [ids["boxes"], ids["strips"]]
     r = client.post("/api/runs", headers=biz.h, json={
-        "run_date": _today(), "staff_id": s["id"], "due_time": "23:59",
+        "run_date": biz_today(), "staff_id": s["id"], "due_time": "23:59",
         "stops": [{"shop_id": shop["id"], "invoice_ids": pick, "collect_due": True}],
     })
     assert r.status_code == 201, r.text
@@ -126,7 +123,7 @@ def test_run_stop_from_invoices_plans_delivery_and_collection(client, biz, linke
 def test_a_bill_is_delivered_once_until_its_task_is_cancelled(client, biz, linked):
     shop, _, ids = linked
     s = biz.staff()
-    plan = {"run_date": _today(), "staff_id": s["id"],
+    plan = {"run_date": biz_today(), "staff_id": s["id"],
             "stops": [{"shop_id": shop["id"], "invoice_ids": [ids["boxes"]]}]}
     run = client.post("/api/runs", headers=biz.h, json=plan).json()
     again = client.post("/api/runs", headers=biz.h, json=plan)
@@ -184,7 +181,7 @@ def test_invoices_need_a_linked_shop(client, biz, linked):
         "title": "Deliver", "task_type": "delivery", "staff_id": s["id"], "invoice_ids": [ids["boxes"]]})
     assert r.status_code == 422
     r = client.post("/api/runs", headers=biz.h, json={
-        "run_date": _today(), "staff_id": s["id"], "stops": [{"shop_id": manual["id"], "collect_due": True}]})
+        "run_date": biz_today(), "staff_id": s["id"], "stops": [{"shop_id": manual["id"], "collect_due": True}]})
     assert r.status_code == 422
 
 
@@ -200,7 +197,10 @@ def test_link_an_existing_shop_to_a_billing_customer(client, biz, other_biz, lin
     # Editing other fields leaves the link alone; null unlinks.
     assert client.patch(f"/api/shops/{shop['id']}", headers=biz.h, json={"area": "Jayanagar"}).json()["customer_id"] == cid
     assert client.patch(f"/api/shops/{shop['id']}", headers=biz.h, json={"customer_id": None}).json()["customer_id"] is None
-    assert client.patch(f"/api/shops/{imported['id']}", headers=biz.h, json={"name": "Renamed"}).json()["customer_id"] == linked_cid
+    # The identity remains owned by Billing after linking; route-only details
+    # are editable here without creating a conflicting second customer name.
+    refused = client.patch(f"/api/shops/{imported['id']}", headers=biz.h, json={"name": "Renamed"})
+    assert refused.status_code == 422 and "managed in BizAssist Billing" in refused.json()["detail"]
 
 
 def test_other_business_cannot_see_or_use_the_bills(client, biz, other_biz, linked):

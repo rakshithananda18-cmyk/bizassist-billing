@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useCallback, useState, useEffect } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
 import { logger } from '../../utils/logger'
 import { useDialog } from '../../contexts/DialogContext'
@@ -11,11 +11,9 @@ export default function AdminCache() {
   const [cacheStats, setCacheStats] = useState({ context_cache: [], query_cache: [] })
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    loadCache()
-  }, [])
 
-  async function loadCache() {
+
+  const loadCache = useCallback(async () => {
     setLoading(true)
     try {
       const res = await authFetch(`${API_BASE}/admin/cache-stats`)
@@ -27,13 +25,18 @@ export default function AdminCache() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [authFetch])
+
+  useEffect(() => {
+    loadCache()
+  }, [loadCache])
 
   async function handleFlushAll() {
     if (!(await showConfirm('Flush context and query response caches for all users?'))) return
     try {
       const res = await authFetch(`${API_BASE}/admin/flush-all-cache`, { method: 'POST' })
       const data = await res.json()
+      if (!res.ok) throw new Error(data.detail || data.error || 'Cache flush failed')
       await showAlert(data.message || 'All caches flushed successfully.')
       loadCache()
     } catch (err) {
@@ -46,6 +49,7 @@ export default function AdminCache() {
     try {
       const res = await authFetch(`${API_BASE}/admin/reset-chroma-documents`, { method: 'POST' })
       const data = await res.json()
+      if (!res.ok) throw new Error(data.detail || data.error || 'Chroma reset failed')
       await showAlert(data.message || 'Chroma documents reset successfully.')
       loadCache()
     } catch (err) {
@@ -56,28 +60,31 @@ export default function AdminCache() {
   return (
     <div className="admin-main" style={{ margin: 0, padding: 0 }}>
       {/* Header */}
-      <div className="admin-header-row" style={{ borderBottom: '1.5px solid var(--border-color)', paddingBottom: 20 }}>
+      <div className="admin-header-row">
         <div className="admin-title-group">
-          <h1>✦ CACHE & TELEMETRY MONITOR</h1>
-          <p>Inspect in-memory context caches and saved model prompt answer collections</p>
+          <h1 style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Icon name="trash" size={22} style={{ color: 'var(--accent)' }} />
+            <span>Cache & Memory Diagnostics</span>
+          </h1>
+          <p>Inspect in-memory context caches, purge query responses, and reset Chroma vector collections</p>
         </div>
         <div className="admin-header-actions">
-          <button className="btn-flush" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }} onClick={handleFlushAll}>
-            <Icon name="refresh" size={13} /> Flush All Caches
+          <button className="btn-flush" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }} onClick={handleFlushAll}>
+            <Icon name="trash" size={13} /> <span>Flush Caches</span>
           </button>
-          <button className="btn-flush" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }} onClick={handleResetChroma}>
-            <Icon name="brain" size={13} /> Reset Chroma
+          <button className="btn-flush" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }} onClick={handleResetChroma}>
+            <Icon name="brain" size={13} /> <span>Reset Chroma</span>
           </button>
-          <button className="btn-flush" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }} onClick={loadCache}>
-            Refresh Stats <Icon name="refresh" size={13} />
+          <button className="btn-flush" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }} onClick={loadCache}>
+            <Icon name="refresh" size={13} /> <span>Refresh</span>
           </button>
         </div>
       </div>
 
       {/* Monitor Widget */}
-      <div className="admin-table-widget" style={{ marginTop: 24 }}>
+      <div className="admin-table-widget" style={{ marginTop: 20 }}>
         <div className="admin-table-title" style={{ marginBottom: 16 }}>System Cache Telemetry</div>
-        
+
         {loading ? (
           <div className="vskel"></div>
         ) : (

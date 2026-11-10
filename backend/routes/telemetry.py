@@ -22,10 +22,11 @@ import os
 import re
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Type, TypeVar
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Header, HTTPException, Request
 from pydantic import BaseModel, Field
+from services.auth import get_active_user
 from services.dates import utc_now
 
 router = APIRouter()
@@ -34,6 +35,8 @@ logger = logging.getLogger("bizassist.telemetry")
 TELEMETRY_ENABLED = os.getenv("TELEMETRY_ENABLED", "1") != "0"
 _MAX_EVENTS_PER_BATCH = 50
 _MAX_PAYLOAD_CHARS = 4000  # keep log lines sane
+_MAX_LOG_REQUEST_BYTES = 256 * 1024
+_MAX_IMPORT_REQUEST_BYTES = 2 * 1024 * 1024
 
 
 class TelemetryEvent(BaseModel):
@@ -49,7 +52,71 @@ class TelemetryBatch(BaseModel):
     app_version: Optional[str] = Field(None, max_length=20)
     platform: Optional[str] = Field(None, max_length=20)
     bizid: Optional[str] = Field(None, max_length=64)   # business public_id (stable across cloud/local)
-    events: List[TelemetryEvent]
+    events: List[TelemetryEvent] = Field(..., min_length=1, max_length=_MAX_EVENTS_PER_BATCH)
+
+
+TModel = TypeVar("TModel", bound=BaseModel)
+
+
+def _is_cloud_backend() -> bool:
+    """The shared Postgres deployment must not accept anonymous writes."""
+    from database.db import engine
+    return engine.dialect.name == "postgresql"
+
+
+def _bound_cloud_bizid(authorization: Optional[str]) -> Optional[str]:
+    """Authenticate cloud telemetry and derive its tenant from the JWT."""
+    if not _is_cloud_backend():
+        return None
+    current_user = get_active_user(authorization=authorization)
+    bizid = _safe_bizid(current_user.get("public_id"))
+    if not bizid:
+        raise HTTPException(status_code=403, detail="Authenticated telemetry requires a business identity.")
+    return bizid
+
+
+async def _parse_bounded_json(request: Request, model: Type[TModel], maximum: int) -> TModel:
+    """Enforce a byte ceiling while reading, before JSON/Pydantic processing."""
+    declared = request.headers.get("content-length")
+    try:
+        if declared and int(declared) > maximum:
+            raise HTTPException(status_code=413, detail="Telemetry request exceeds the allowed size.")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid Content-Length header.")
+
+    chunks: List[bytes] = []
+    total = 0
+    async for chunk in request.stream():
+        total += len(chunk)
+        if total > maximum:
+            raise HTTPException(status_code=413, detail="Telemetry request exceeds the allowed size.")
+        chunks.append(chunk)
+    raw = b"".join(chunks)
+    try:
+        if hasattr(model, "model_validate_json"):
+            return model.model_validate_json(raw)  # Pydantic v2
+        return model.parse_raw(raw)                # Pydantic v1
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail="Invalid telemetry payload.") from exc
+
+
+def _payload_text(payload: object) -> Optional[str]:
+    """Serialize once, preventing free-form nested values from reaching storage."""
+    if payload is None:
+        return None
+    try:
+        return json.dumps(payload, default=str, ensure_ascii=False)[:_MAX_PAYLOAD_CHARS]
+    except Exception:
+        return str(payload)[:_MAX_PAYLOAD_CHARS]
+
+
+def _request_bizid(claimed: object, bound: Optional[str]) -> Optional[str]:
+    supplied = _safe_bizid(claimed)
+    if bound:
+        if supplied and supplied != bound:
+            raise HTTPException(status_code=403, detail="Telemetry BizID does not match the authenticated business.")
+        return bound
+    return supplied
 
 
 def _jsonl_path() -> Path:
@@ -126,45 +193,22 @@ def _persist_records_to_db(records: List[Dict[str, Any]]) -> int:
 
 
 @router.post("/api/telemetry/log")
-def ingest_telemetry(batch: TelemetryBatch):
-    """
-    Unauthenticated by design: boot failures happen BEFORE login, and events
-    carry no business data — only app/install diagnostics. Batch size is capped.
-    The optional bizid is advisory (diagnostics grouping only) — it grants
-    nothing and is sanitized before touching the filesystem.
-    """
+async def ingest_telemetry(
+    request: Request,
+    authorization: Optional[str] = Header(None),
+):
+    """Record a bounded telemetry batch; cloud persistence requires a JWT."""
     if not TELEMETRY_ENABLED:
         return {"status": "disabled"}
 
+    bound_bizid = _bound_cloud_bizid(authorization)
+    batch = await _parse_bounded_json(request, TelemetryBatch, _MAX_LOG_REQUEST_BYTES)
+    bizid = _request_bizid(batch.bizid, bound_bizid)
     received_at = datetime.now(timezone.utc).isoformat()
-    events = batch.events[:_MAX_EVENTS_PER_BATCH]
-    bizid = _safe_bizid(batch.bizid) if batch.bizid else None
     db_records = []
 
-    for ev in events:
-        payload_str = ""
-        if ev.payload is not None:
-            try:
-                payload_str = json.dumps(ev.payload, default=str)[:_MAX_PAYLOAD_CHARS]
-            except Exception:
-                payload_str = str(ev.payload)[:_MAX_PAYLOAD_CHARS]
-
-        line = (
-            f"[TELEMETRY][CLIENT:{ev.level}] {batch.source} v{batch.app_version or '?'} "
-            f"({batch.platform or '?'}, device {batch.device_id[:12]}"
-            f"{', biz ' + bizid if bizid else ''}) "
-            f"{ev.event}: {payload_str}"
-        )
-        # A CLIENT-reported error (expired token, flaky network, SSE drop) is a
-        # client condition, NOT a backend fault — it must not masquerade as a
-        # server ERROR and trip error dashboards/alerts. Mirror it to the server
-        # log at a CAPPED, clearly client-attributed level (client error → WARN,
-        # client warn → INFO). The original client level is preserved verbatim in
-        # the persisted telemetry record and in the [CLIENT:<level>] tag above.
-        log_fn = {"error": logger.warning, "warn": logger.info}.get(ev.level, logger.info)
-        log_fn(line)
-
-        # Clean record: only meaningful fields, no None-padding.
+    for ev in batch.events:
+        payload_str = _payload_text(ev.payload)
         record = {
             "received_at": received_at,
             "source": batch.source,
@@ -172,29 +216,32 @@ def ingest_telemetry(batch: TelemetryBatch):
             "level": ev.level,
             "event": ev.event,
         }
-        if ev.at:              record["at"] = ev.at
-        if batch.app_version:  record["app_version"] = batch.app_version
-        if batch.platform:     record["platform"] = batch.platform
-        if bizid:              record["bizid"] = bizid
-        if ev.payload:         record["payload"] = ev.payload
+        if ev.at:
+            record["at"] = ev.at
+        if batch.app_version:
+            record["app_version"] = batch.app_version
+        if batch.platform:
+            record["platform"] = batch.platform
+        if bizid:
+            record["bizid"] = bizid
+        if payload_str:
+            record["payload"] = payload_str
+        # Client-reported errors should not masquerade as server failures.
+        log_fn = {"error": logger.warning, "warn": logger.info}.get(ev.level, logger.info)
+        log_fn("[TELEMETRY][CLIENT:%s] %s: %s", ev.level, ev.event, payload_str or "")
         db_records.append(record)
-
-        # Append JSONL for grep-able post-mortems (best-effort) — global stream
-        # plus the per-business mirror when the batch carries a bizid.
         try:
-            data = json.dumps(record, default=str) + "\n"
+            data = json.dumps(record, default=str, ensure_ascii=False) + "\n"
             with _jsonl_path().open("a", encoding="utf-8") as f:
                 f.write(data)
             if bizid:
                 with _business_jsonl_path(bizid).open("a", encoding="utf-8") as f:
                     f.write(data)
         except Exception:
-            pass  # read-only FS (HF) — logger output above still lands
+            pass  # read-only FS (HF) — DB persistence below remains best-effort
 
-    # Durable copy (survives HF Space restarts) — best-effort.
     _persist_records_to_db(db_records)
-
-    return {"status": "ok", "accepted": len(events)}
+    return {"status": "ok", "accepted": len(db_records)}
 
 
 class TelemetryImport(BaseModel):
@@ -208,33 +255,47 @@ _MAX_IMPORT_RECORDS = 500
 
 
 @router.post("/api/telemetry/import")
-def import_telemetry(body: TelemetryImport):
-    """
-    Bulk-import relayed records (local install → cloud). Same trust model as
-    /api/telemetry/log (unauthenticated, capped, diagnostics only). Records are
-    stamped `relayed_at` and mirrored into per-business folders by bizid.
-    """
+async def import_telemetry(
+    request: Request,
+    authorization: Optional[str] = Header(None),
+):
+    """Import local telemetry, binding all cloud records to the bearer BizID."""
     if not TELEMETRY_ENABLED:
         return {"status": "disabled"}
 
+    bound_bizid = _bound_cloud_bizid(authorization)
+    body = await _parse_bounded_json(request, TelemetryImport, _MAX_IMPORT_REQUEST_BYTES)
     relayed_at = datetime.now(timezone.utc).isoformat()
     accepted = 0
     db_records = []
-    for rec in body.records[:_MAX_IMPORT_RECORDS]:
-        if not isinstance(rec, dict) or not rec.get("event") or not rec.get("device_id"):
-            continue                              # skip malformed lines silently
-        rec = dict(rec)
-        rec["relayed_at"] = relayed_at
+    for incoming in body.records:
+        if not isinstance(incoming, dict) or not incoming.get("event") or not incoming.get("device_id"):
+            continue
+        bizid = _request_bizid(incoming.get("bizid"), bound_bizid)
+        rec = {
+            "received_at": incoming.get("received_at") or relayed_at,
+            "source": str(incoming.get("source") or "unknown")[:40],
+            "device_id": str(incoming.get("device_id") or "unknown")[:64],
+            "level": str(incoming.get("level") or "info")[:10],
+            "event": str(incoming.get("event") or "unknown")[:80],
+            "relayed_at": relayed_at,
+        }
+        if incoming.get("at"):
+            rec["at"] = str(incoming["at"])[:64]
+        if incoming.get("app_version"):
+            rec["app_version"] = str(incoming["app_version"])[:20]
+        if incoming.get("platform"):
+            rec["platform"] = str(incoming["platform"])[:20]
+        payload = _payload_text(incoming.get("payload"))
+        if payload:
+            rec["payload"] = payload
         if body.relay_device:
             rec["relay_device"] = body.relay_device
-        bizid = _safe_bizid(rec.get("bizid")) if rec.get("bizid") else None
         if bizid:
             rec["bizid"] = bizid
-        else:
-            rec.pop("bizid", None)
         db_records.append(rec)
         try:
-            data = json.dumps(rec, default=str)[:_MAX_PAYLOAD_CHARS * 2] + "\n"
+            data = json.dumps(rec, default=str, ensure_ascii=False) + "\n"
             with _jsonl_path().open("a", encoding="utf-8") as f:
                 f.write(data)
             if bizid:
@@ -242,13 +303,9 @@ def import_telemetry(body: TelemetryImport):
                     f.write(data)
             accepted += 1
         except Exception:
-            pass  # read-only FS — nothing to do
+            pass
 
-    # Durable copy (survives HF Space restarts) — best-effort. Counts as
-    # accepted even when the FS copy failed (read-only container FS).
     persisted = _persist_records_to_db(db_records)
     accepted = max(accepted, persisted)
-
-    logger.info(f"[TELEMETRY] Imported {accepted} relayed records"
-                f"{' from ' + body.relay_device if body.relay_device else ''}")
+    logger.info("[TELEMETRY] Imported %s relayed records", accepted)
     return {"status": "ok", "accepted": accepted}

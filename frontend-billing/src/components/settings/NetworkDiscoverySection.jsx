@@ -166,7 +166,7 @@ export default function NetworkDiscoverySection({ networkMode, navigate }) {
                 If you're on the same WiFi as the owner's machine, it will be detected within a few seconds.
               </div>
               <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
-                Tip: Make sure the owner's machine is running BizAssist and is on the same WiFi network.
+                Tip: Make sure the owner's machine is running Stater and is on the same WiFi network.
               </div>
             </div>
           )}

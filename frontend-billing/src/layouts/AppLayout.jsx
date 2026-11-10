@@ -1,3 +1,4 @@
+import { planGate, previewTimerKey } from '../utils/planGates'
 import React from 'react'
 import { createPortal } from 'react-dom'
 import { NavLink, Link, useNavigate, useLocation } from 'react-router-dom'
@@ -9,39 +10,69 @@ import { logger } from '../utils/logger'
 import { formatIST } from '../utils/format'
 import { resolveHostingMode } from '../utils/resolveHostingMode'
 import { getAiDashboardUrl, openAiDashboard } from '../config/aiDashboard'
-import { getFieldTeamUrl, openFieldTeam } from '../config/fieldTeam'
+import { fieldTeamNeedsCloudData, fieldTeamLaunchUrl, getFieldTeamUrl, openFieldTeam } from '../config/fieldTeam'
+import { applyNavOrder, navOrderKeys } from './navOrder'
 import { IS_DESKTOP_APP, openDownloadPage } from '../config/downloadApp'
 import { BuildingMark } from '../components/Logo'
 import PageLoader from '../components/PageLoader'
 import PageHelp from '../components/PageHelp'
 import UniversalSearch from '../components/UniversalSearch'
+import NotificationBell from '../components/NotificationBell'
+import BusinessName from '../components/BusinessName'
+import { useAppearance } from '../hooks/useAppearance'
 import SyncNudgeModal from '../components/hosting/SyncNudgeModal'
 import WebLocalOnlyNotice from '../components/hosting/WebLocalOnlyNotice'
 import SidebarContextMenu from '../components/layout/SidebarContextMenu'
 import ToastContainer from '../components/layout/ToastContainer'
+import GlobalShortcutsModal from '../components/layout/GlobalShortcutsModal'
+import SmartHelpCenterModal from '../components/help/SmartHelpCenterModal'
+import WorkspaceSwitcher from '../components/layout/WorkspaceSwitcher'
 import SessionExpiredModal from '../components/layout/SessionExpiredModal'
+import TrialEndedModal from '../components/layout/TrialEndedModal'
+import { trialState } from '../utils/trialStatus'
 import { useDocLabels } from '../hooks/useDocLabels'
 import { HALT_COPY, resolveHaltReason } from '../utils/syncHalt'
 // HostingOnboardingModal removed: hosting is now chosen once, in Register.
 // The post-login onboarding pop-up duplicated that choice and was intrusive.
-import { BillsIcon, CashIcon, ChevronDownIcon, CloseIcon, ConnectionIcon, ContactsIcon, CounterIcon, DashboardIcon, HomeIcon, ImportIcon, InventoryIcon, LockIcon, LogoutIcon, OrderIcon, ReportsIcon, SettingsIcon, SummaryIcon, TaxIcon, TruckIcon, ZapIcon, SunIcon, MoonIcon, MonitorIcon, UserIcon, CheckIcon, AlertIcon, SyncIcon, DownloadIcon, PlusIcon } from '../components/Icons'
+import { BillsIcon, CashIcon, ChevronDownIcon, CloseIcon, ConnectionIcon, ContactsIcon, CounterIcon, DashboardIcon, HomeIcon, ImportIcon, InventoryIcon, LockIcon, LogoutIcon, OrderIcon, ReportsIcon, SettingsIcon, SummaryIcon, TaxIcon, TruckIcon, ZapIcon, SunIcon, MoonIcon, MonitorIcon, UserIcon, CheckIcon, AlertIcon, SyncIcon, DownloadIcon, PlusIcon, MessageIcon } from '../components/Icons'
 
 
 // Separate apps opened from the sidebar — a NAV item's `external` names one.
 // Each runs on its own origin; its opener hands the owner's session over with
-// a 30-second /handoff-ticket. `proOnly` applies the plan gate below.
+// a short-lived /handoff-ticket. `gate` applies the server plan gate below;
+// `needsCloudData` stops a desktop on Local only opening a cloud app empty.
 const EXTERNAL_APPS = {
-  ai:        { getUrl: getAiDashboardUrl, open: openAiDashboard, proOnly: true },
-  fieldTeam: { getUrl: getFieldTeamUrl,   open: openFieldTeam,   proOnly: false },
+  ai:        { getUrl: getAiDashboardUrl, open: openAiDashboard, gate: 'ai' },
+  // Pro, like the AI dashboard. Field Team's own server enforces it too
+  // (backend-task/app/plan.py); this only shows the badge and the upgrade note.
+  fieldTeam: { getUrl: getFieldTeamUrl,   open: openFieldTeam,   gate: 'field_team', needsCloudData: fieldTeamNeedsCloudData },
 }
 
 const NAV = [
   {
     section: 'Supply & Inflow',
     items: [
-      { to: '/stock',     icon: <InventoryIcon size={16} className="nav-anim-inventory" />, label: 'Stock & Purchases' },
-      { to: '/b2b', icon: <OrderIcon size={16} className="nav-anim-b2border" />, label: 'B2B' },
-      { to: '/import', icon: <ImportIcon size={16} className="nav-anim-import" />, label: 'Data Migration' },
+      {
+        to: '/stock',
+        icon: <InventoryIcon size={16} className="nav-anim-inventory" />,
+        label: 'Stock & Purchases',
+        children: [
+          { to: '/stock/inventory', label: 'Stock & Items' },
+          { to: '/stock/purchase', label: 'Purchases', id: 'purchase', ownerOnly: true },
+        ],
+      },
+      {
+        to: '/b2b',
+        icon: <OrderIcon size={16} className="nav-anim-b2border" />,
+        label: 'B2B',
+        demoProtected: true,
+        children: [
+          { to: '/b2b?tab=order', label: 'Order' },
+          { to: '/b2b?tab=outgoing', label: 'Outgoing Orders' },
+          { to: '/b2b?tab=incoming', label: 'Incoming Orders' },
+          { to: '/b2b?tab=connections', label: 'Connections' },
+        ],
+      },
     ]
   },
   {
@@ -51,20 +82,28 @@ const NAV = [
       { to: '/dashboard', icon: <DashboardIcon size={16} className="nav-anim-dash" />, label: 'Dashboard' },
       // External: the bundled frontend-ai app (opens in its own window in the
       // desktop app). Pro plan only — see EXTERNAL_APPS.
-      { external: 'ai', ownerOnly: true, icon: <ZapIcon size={16} />, label: 'Dashboard BIZASSIST' },
-      // External: BizAssist Task (field staff, routes, deliveries) on its own
+      { external: 'ai', ownerOnly: true, icon: <ZapIcon size={16} />, label: 'Stater AI', demoProtected: true },
+      // External: Stater Task (field staff, routes, deliveries) on its own
       // Vercel project — see fieldTeam.js. Hidden until VITE_FIELD_TEAM_URL is set.
-      { external: 'fieldTeam', ownerOnly: true, icon: <TruckIcon size={16} />, label: 'Field Team' },
+      { external: 'fieldTeam', ownerOnly: true, icon: <TruckIcon size={16} />, label: 'Field Team', demoProtected: true },
     ]
   },
   {
     section: 'Sales & Operations',
     items: [
       { to: '/sales',    icon: <CounterIcon size={16} className="nav-anim-bill" />,   label: 'Billing Counter' },
-      { to: '/pos-live-counter', icon: <MonitorIcon size={16} />,   label: 'POS Live Counter' },
-      // Contacts & Payments workspace: Contacts · Transactions · Invoices tabs
-      { to: '/parties',  icon: <ContactsIcon size={16} className="nav-anim-contact" />,  label: 'Contacts & Payments' },
-      // /money routes preserved for backward-compat but removed from nav
+      { to: '/pos-live-counter', icon: <MonitorIcon size={16} />,   label: 'POS Live Counter', demoProtected: true },
+      {
+        to: '/parties',
+        icon: <ContactsIcon size={16} className="nav-anim-contact" />,
+        label: 'Contacts & Payments',
+        children: [
+          { to: '/parties/contacts', label: 'Contacts' },
+          { to: '/parties/payments', label: 'Transactions' },
+          { to: '/parties/invoices', label: 'Invoices' },
+          { to: '/parties/field', label: 'Field Collections', ownerOnly: true },
+        ],
+      },
       { to: '/reports',  icon: <ReportsIcon size={16} className="nav-anim-report" />,   label: 'GST & Tax Reports' },
     ]
   }
@@ -99,21 +138,34 @@ const PAGE_TITLES = {
 // a list of ROUTES, not of nav objects: the icon and label are looked up from
 // the sidebar's own nav list at render time, so this can never drift into
 // showing a tab the sidebar has renamed or the plan has hidden.
-// Workspaces that open with the sidebar collapsed to its rail. Stock is a wide
-// data grid built as a full-bleed POS surface; the nav costs it 240px it has a
-// real use for. Prefix match, so /stock/inventory, /stock/purchases and any
-// future tab inherit it.
-const AUTO_COLLAPSE_ROUTES = ['/stock']
+// Settings and Reports have their own section navigation. Open the main
+// sidebar as a rail to leave room for those workspaces, restoring the saved
+// preference when the user leaves.
+const AUTO_COLLAPSE_ROUTES = ['/settings', '/reports', '/stock', '/purchases']
 
 const BOTTOM_BAR_ROUTES = ['/', '/sales', '/stock', '/parties', '/reports']
 
 export default function AppLayout({ children, title }) {
-  const { user, logout, profile, token, businessConfig, appReady, setAppReady, settings, fetchSettings } = useAuth()
+  const { user, logout, profile, token, businessConfig, appReady, setAppReady, settings, fetchSettings, isDemoMode } = useAuth()
+  const isDemoSession = Boolean(user?.is_demo || isDemoMode)
   const { hasLock, lock, resetInactivityTimer } = useLock()
   const confirm = useConfirm()
   const navigate = useNavigate()
   const location = useLocation()
   const label = useDocLabels()
+  const pageContentRef = React.useRef(null)
+  const sidebarNavRef = React.useRef(null)
+
+  React.useLayoutEffect(() => {
+    const content = pageContentRef.current
+    const header = content?.querySelector('.page-header')
+    if (!header) return
+    const measure = () => content.style.setProperty('--page-header-h', `${header.offsetHeight}px`)
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(header)
+    return () => { observer.disconnect(); content.style.removeProperty('--page-header-h') }
+  }, [location.pathname])
 
   // Quick actions surfaced in the sidebar right-click menu.
   // Each entry: { label, icon: <SvgComponent />, action(navigate) }
@@ -151,7 +203,7 @@ export default function AppLayout({ children, title }) {
       { label: 'Connections',          icon: <ConnectionIcon size={14} />, action: () => nav('/b2b?tab=connections') },
     ],
     '/import':      (nav) => [
-      { label: 'Data Migration',       icon: <ImportIcon size={14} />,    action: () => nav('/import') },
+      { label: 'Data Migration',       icon: <ImportIcon size={14} />,    action: () => nav('/settings?tab=migration') },
     ],
     '/pos-live-counter': (nav) => [
       { label: 'Open Live Counter',    icon: <MonitorIcon size={14} />,   action: () => nav('/pos-live-counter') },
@@ -174,10 +226,50 @@ export default function AppLayout({ children, title }) {
   // response carries the business's real plan + whether enforcement is live.
   // Replaces the old hardcoded AI_DASHBOARD_GATED const.
   const subscription = settings?.subscription
-  const aiGated = !subscription?.plan || subscription?.plan !== 'pro'
+  const planKnown = typeof subscription?.plan === 'string'
+  const gate = name => planGate(subscription, name)
 
-  const isFreePlan = !subscription?.plan || subscription?.plan !== 'pro'
+  const handleOpenExternal = async (external, navLabel) => {
+    if (['cashier', 'supply_adder'].includes(user?.role)) return
+    if (user?.is_demo || isDemoMode) {
+      navigate(`/demo-preview/${external === 'fieldTeam' ? 'field-team' : 'ai'}`)
+      return
+    }
+    const app = EXTERNAL_APPS[external]
+    if (!app?.getUrl()) return
+    if (gate(app.gate)) {
+      confirm({
+        mode: 'alert',
+        title: 'Pro plan feature',
+        message: `${navLabel} is part of the Pro plan. Contact your provider to upgrade.`,
+      })
+      return
+    }
+    if (app.needsCloudData?.({ isLocalApp: IS_LOCAL_APP, effectiveMode })) {
+      const go = await confirm({
+        mode: 'update',
+        title: `${navLabel} needs Local + Cloud`,
+        message: `${navLabel} runs in the cloud and works from your customers and bills there. This device is set to Local only, so local changes are not automatically available there. Switch to Local + Cloud: your data stays on this computer too.`,
+        confirmText: 'Switch to Local + Cloud',
+        cancelText: 'Not now',
+      })
+      // The same guarded switch flow as the sync popover's button.
+      if (go) navigate('/settings?tab=advanced&switch=hybrid')
+      return
+    }
+    app.open({ user })
+  }
 
+  const isFreePlan = planKnown && subscription.plan !== 'pro'
+
+  // A lapsed signup trial on the WEB gets its own screen, shown at once (with a
+  // way to look around first) and again in place of the 5-minute lock. Their
+  // data is in the cloud, so the generic "upgrade or sign out" would strand it.
+  const trialEnded = !IS_LOCAL_APP && user?.role !== 'admin'
+    && trialState(subscription)?.active === false
+  const [trialNoticeDismissed, setTrialNoticeDismissed] = React.useState(() => {
+    try { return sessionStorage.getItem('bizassist_trial_ended_dismissed') === '1' } catch { return false }
+  })
 
   const [sessionExpired, setSessionExpired] = React.useState(false)
   const [checkingPlan, setCheckingPlan] = React.useState(false)
@@ -202,13 +294,13 @@ export default function AppLayout({ children, title }) {
 
     // Allow admins to bypass
     const isOwnerOrStaff = user?.role !== 'admin'
-    const isFree = !subscription?.plan || subscription?.plan !== 'pro'
+    const isFree = gate('web_preview') && !trialEnded
     
     if (isOwnerOrStaff && isFree) {
-      let sessionStart = sessionStorage.getItem('bizassist_session_start_time')
+      let sessionStart = sessionStorage.getItem(previewTimerKey(user))
       if (!sessionStart) {
         sessionStart = String(Date.now())
-        sessionStorage.setItem('bizassist_session_start_time', sessionStart)
+        sessionStorage.setItem(previewTimerKey(user), sessionStart)
       }
       
       const checkExpiry = () => {
@@ -224,7 +316,7 @@ export default function AppLayout({ children, title }) {
     } else {
       setSessionExpired(false)
     }
-  }, [user, subscription])
+  }, [user, subscription, trialEnded])
 
   const [queueDepth, setQueueDepth] = React.useState({
     pending_count: 0,
@@ -232,6 +324,22 @@ export default function AppLayout({ children, title }) {
     last_status: 'idle',
     last_error: null
   })
+  const [cloudStatus, setCloudStatus] = React.useState(null)
+  React.useEffect(() => {
+    if (isDemoSession || !token || !IS_LOCAL_APP || ['cashier', 'supply_adder'].includes(user?.role)) return
+    let stopped = false
+    const load = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/sync/status`, { headers: { Authorization: `Bearer ${token}` } })
+        if (res.ok && !stopped) setCloudStatus(await res.json())
+      } catch { /* existing sync diagnostics remain available */ }
+    }
+    load()
+    const timer = setInterval(load, 30000)
+    return () => { stopped = true; clearInterval(timer) }
+  }, [isDemoSession, token, user?.role])
+  const accountUpdates = queueDepth.control_outbox
+  const totalPendingSync = Number(queueDepth.pending_count || 0) + Number(accountUpdates?.pending || 0) + Number(accountUpdates?.failed || 0)
 
   // ── Why sync stopped, from the SERVER ────────────────────────────────────
   // `queue-depth` now reports the worker's actual halt state. Before this the
@@ -278,7 +386,7 @@ export default function AppLayout({ children, title }) {
   // owner to pick a direction asked them to know which side was stale — which
   // is the app's job, not theirs.
   const handleSyncNow = React.useCallback(async () => {
-    if (!token || syncing) return
+    if (isDemoSession || !token || syncing) return
     setSyncing(true)
     try {
       // ?pull=true is REQUIRED — without it the backend only flushes the outbox
@@ -304,10 +412,10 @@ export default function AppLayout({ children, title }) {
       logger.error('Pull from cloud failed:', err)
       setSyncing(false)
     }
-  }, [token, syncing, pullIntervalSec])
+  }, [isDemoSession, token, syncing, pullIntervalSec])
 
   React.useEffect(() => {
-    if (effectiveMode !== 'hybrid' || !token) return
+    if (isDemoSession || effectiveMode !== 'hybrid' || !token) return
 
     const fetchQueueDepth = async () => {
       try {
@@ -354,13 +462,13 @@ export default function AppLayout({ children, title }) {
       window.removeEventListener('sync-flushed', handleSyncFlushed)
       window.removeEventListener('sync-event', handleDataChanged)
     }
-  }, [effectiveMode, token])
+  }, [isDemoSession, effectiveMode, token])
 
   // ── Pull countdown tick ───────────────────────────────────────────────────
   // Counts down to the next periodic pull cycle based on pullIntervalSec (default 120s).
   // Resets cleanly when manual pull/flush is triggered.
   React.useEffect(() => {
-    if (effectiveMode !== 'hybrid') return
+    if (isDemoSession || effectiveMode !== 'hybrid') return
     const tick = () => {
       if (syncing) {
         setNextPullIn(0)
@@ -377,7 +485,7 @@ export default function AppLayout({ children, title }) {
     tick()
     const t = setInterval(tick, 1000)
     return () => clearInterval(t)
-  }, [effectiveMode, queueDepth.last_sync_time, pullIntervalSec, syncing])
+  }, [isDemoSession, effectiveMode, queueDepth.last_sync_time, pullIntervalSec, syncing])
 
   const userId = user?.id || 'default'
 
@@ -523,7 +631,7 @@ export default function AppLayout({ children, title }) {
     let maxElapsed = false
 
     const checkReady = () => {
-      const dataLoaded = token ? (profile !== null && businessConfig !== null) : true
+      const dataLoaded = token ? ((user?.is_demo || isDemoMode) ? true : (profile !== null && businessConfig !== null)) : true
       if ((dataLoaded && minElapsed) || maxElapsed) {
         setAppReady(true)
       }
@@ -577,10 +685,71 @@ export default function AppLayout({ children, title }) {
   }, [isCashier, isSupplyAdder, location.pathname, navigate, OWNER_ONLY_PATHS, SUPPLY_ADDER_PATHS])
 
   const visibleNav = isCashier
-    ? NAV.map(s => ({ ...s, items: s.items.filter(i => !OWNER_ONLY_PATHS.has(i.to) && !i.ownerOnly) })).filter(s => s.items.length > 0)
+    ? NAV.map(s => ({
+        ...s,
+        items: s.items
+          .filter(i => !OWNER_ONLY_PATHS.has(i.to) && !i.ownerOnly)
+          .map(i => ({
+            ...i,
+            children: i.children
+              ? i.children.filter(c => !OWNER_ONLY_PATHS.has(c.to) && !c.ownerOnly)
+              : undefined
+          }))
+      })).filter(s => s.items.length > 0)
     : isSupplyAdder
-      ? NAV.map(s => ({ ...s, items: s.items.filter(i => SUPPLY_ADDER_PATHS.has(i.to)) })).filter(s => s.items.length > 0)
+      ? NAV.map(s => ({
+          ...s,
+          items: s.items
+            .filter(i => SUPPLY_ADDER_PATHS.has(i.to))
+            .map(i => ({
+              ...i,
+              children: i.children
+                ? i.children.filter(c => SUPPLY_ADDER_PATHS.has(c.to) || SUPPLY_ADDER_PATHS.has(i.to))
+                : undefined
+            }))
+        })).filter(s => s.items.length > 0)
       : NAV
+
+  const isItemActive = React.useCallback((to) => {
+    if (to === '/') return location.pathname === '/'
+    if (to === '/stock') return location.pathname.startsWith('/stock')
+    if (to === '/parties') return location.pathname.startsWith('/parties') || location.pathname.startsWith('/money')
+    if (to === '/b2b') return location.pathname.startsWith('/b2b')
+    return location.pathname.startsWith(to)
+  }, [location.pathname])
+
+  const isChildActive = React.useCallback((childTo) => {
+    const currentSearch = new URLSearchParams(location.search)
+    if (childTo.includes('?')) {
+      const [childPath, childQuery] = childTo.split('?')
+      if (location.pathname !== childPath) return false
+      const childParams = new URLSearchParams(childQuery)
+      for (const [key, val] of childParams.entries()) {
+        const cur = currentSearch.get(key)
+        if (key === 'tab' && !cur && val === 'order') continue
+        if (cur !== val) return false
+      }
+      return true
+    }
+
+    if (location.pathname === childTo) return true
+
+    if (location.pathname === '/stock') {
+      const activeTab = currentSearch.get('tab') || (() => {
+        try { return localStorage.getItem('last_stock_tab') } catch { return null }
+      })() || 'inventory'
+      return childTo === `/stock/${activeTab}`
+    }
+
+    if (location.pathname === '/parties') {
+      const activeTab = currentSearch.get('tab') || (() => {
+        try { return localStorage.getItem('last_parties_tab') } catch { return null }
+      })() || 'contacts'
+      return childTo === `/parties/${activeTab}`
+    }
+
+    return false
+  }, [location.pathname, location.search])
 
   const visibleSubnav = isCashier
     ? SUBNAV.filter(item => !OWNER_ONLY_PATHS.has(item.to))
@@ -609,7 +778,7 @@ export default function AppLayout({ children, title }) {
   // { x, y, item: { to, label }, flatIndex: number } | null
   const [sidebarCtxMenu, setSidebarCtxMenu] = React.useState(null)
 
-  // Flat ordered list of nav item `to` keys — user can reorder via ctx menu.
+  // Flat ordered list of nav item keys (navOrder.js) — user can reorder via ctx menu.
   // Derived from visibleNav on first load; persisted to localStorage.
   const [navOrder, setNavOrder] = React.useState(() => {
     try {
@@ -623,18 +792,11 @@ export default function AppLayout({ children, title }) {
   const orderedVisibleNav = React.useMemo(() => {
     // Collect all items from visibleNav into a flat list
     const flat = visibleNav.flatMap(s => s.items.map(item => ({ ...item, section: s.section })))
-    if (!navOrder) return flat
-    // Sort by the saved order; items not in the saved list go at the end
-    const orderMap = Object.fromEntries(navOrder.map((key, i) => [key, i]))
-    return [...flat].sort((a, b) => {
-      const ai = orderMap[a.to] ?? 9999
-      const bi = orderMap[b.to] ?? 9999
-      return ai - bi
-    })
+    return applyNavOrder(flat, navOrder)
   }, [visibleNav, navOrder])
 
   const saveNavOrder = (flat) => {
-    const keys = flat.map(i => i.to).filter(Boolean)
+    const keys = navOrderKeys(flat)
     setNavOrder(keys)
     try { localStorage.setItem('sidebar_nav_order', JSON.stringify(keys)) } catch { /* ignore */ }
   }
@@ -680,47 +842,7 @@ export default function AppLayout({ children, title }) {
   }, [location.pathname])
 
   // Theme support
-  const [theme, setTheme] = React.useState(() => {
-    // Default to 'system' so the app follows the OS light/dark setting out of the
-    // box (matches the boot script in index.html). Explicit choices still win.
-    return localStorage.getItem('billing_theme') || 'system'
-  })
-
-  React.useEffect(() => {
-    const root = document.documentElement
-    root.classList.remove('dark-mode')
-    
-    const applyTheme = (t) => {
-      if (t === 'dark') {
-        root.classList.add('dark-mode')
-      } else if (t === 'light') {
-        root.classList.remove('dark-mode')
-      } else if (t === 'system') {
-        const isSystemDark = window.matchMedia('(prefers-color-scheme: dark)').matches
-        if (isSystemDark) {
-          root.classList.add('dark-mode')
-        } else {
-          root.classList.remove('dark-mode')
-        }
-      }
-    }
-    
-    applyTheme(theme)
-    localStorage.setItem('billing_theme', theme)
-    
-    if (theme === 'system') {
-      const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
-      const handler = (e) => {
-        if (e.matches) {
-          root.classList.add('dark-mode')
-        } else {
-          root.classList.remove('dark-mode')
-        }
-      }
-      mediaQuery.addEventListener('change', handler)
-      return () => mediaQuery.removeEventListener('change', handler)
-    }
-  }, [theme])
+  const { theme, setTheme } = useAppearance()
 
   // One-time notice the first time the app auto-adopts the OS theme (i.e. the
   // user never picked one). Captured before the theme effect persists 'system'.
@@ -746,6 +868,7 @@ export default function AppLayout({ children, title }) {
   // Profile popover menu
   const [showProfileMenu, setShowProfileMenu] = React.useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false)
+  const mobileSidebarRef = React.useRef(null)
 
   // Whole-sidebar collapse (icon rail) — see BOTTOM_BAR_ROUTES near the bottom
   // bar for the mobile half of the same navigation problem. Distinct from `collapsed` above, which
@@ -757,6 +880,94 @@ export default function AppLayout({ children, title }) {
     try { return localStorage.getItem('billing_sidebar_collapsed') === 'true' }
     catch { return false }
   })
+  const [isMobileViewport, setIsMobileViewport] = React.useState(() =>
+    window.matchMedia('(max-width: 768px)').matches
+  )
+  React.useEffect(() => {
+    const media = window.matchMedia('(max-width: 768px)')
+    const update = () => setIsMobileViewport(media.matches)
+    update()
+    media.addEventListener('change', update)
+    return () => media.removeEventListener('change', update)
+  }, [])
+  // The mobile drawer always opens at full width, retaining the desktop choice.
+  const sidebarInRailMode = sidebarCollapsed && !isMobileViewport
+
+// ── Auto-scroll active nav item / expanded sub-tree into view ─────────────
+  // When a user selects a main page lower in the panel (e.g. Contacts & Payments, B2B),
+  // this smoothly ensures the active parent and its newly expanded sub-tree
+  // are brought into view without manual scrolling.
+  React.useEffect(() => {
+    if (sidebarInRailMode) return
+
+    const timer = setTimeout(() => {
+      const nav = sidebarNavRef.current
+      if (!nav) return
+
+      const activeLink = nav.querySelector('.nav-link.active')
+      if (!activeLink) return
+
+      const subTree = activeLink.nextElementSibling?.classList.contains('nav-sub-tree')
+        ? activeLink.nextElementSibling
+        : null
+
+      const targetElem = subTree || activeLink
+
+      const navRect = nav.getBoundingClientRect()
+      const activeLinkRect = activeLink.getBoundingClientRect()
+      const targetRect = targetElem.getBoundingClientRect()
+
+      // If the entire group exceeds container height, align top of activeLink with top of nav
+      if (targetRect.bottom - activeLinkRect.top > navRect.height) {
+        if (activeLinkRect.top < navRect.top || activeLinkRect.top > navRect.top + 50) {
+          activeLink.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        }
+      } else {
+        // If bottom extends below visible nav area, smoothly scroll into view
+        if (targetRect.bottom > navRect.bottom - 10) {
+          targetElem.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+        } else if (activeLinkRect.top < navRect.top + 10) {
+          activeLink.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+        }
+      }
+    }, 120)
+
+    return () => clearTimeout(timer)
+  }, [location.pathname, location.search, sidebarInRailMode])
+
+  React.useEffect(() => {
+    if (!isMobileViewport || !mobileMenuOpen) return undefined
+    const previousFocus = document.activeElement
+    const sidebar = mobileSidebarRef.current
+    const focusTimer = window.setTimeout(() => sidebar?.querySelector('[aria-label="Close menu"]')?.focus(), 0)
+    const onKeyDown = event => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        setMobileMenuOpen(false)
+        return
+      }
+      if (event.key !== 'Tab' || !sidebar) return
+      const controls = [...sidebar.querySelectorAll('a[href], button:not([disabled]), [tabindex="0"]')]
+        .filter(control => control.getClientRects().length > 0)
+      if (!controls.length) { event.preventDefault(); sidebar.focus(); return }
+      const first = controls[0]
+      const last = controls[controls.length - 1]
+      if (!sidebar.contains(document.activeElement)) {
+        event.preventDefault()
+        ;(event.shiftKey ? last : first).focus()
+      } else if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault(); last.focus()
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault(); first.focus()
+      }
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      window.clearTimeout(focusTimer)
+      document.removeEventListener('keydown', onKeyDown)
+      if (previousFocus?.isConnected) previousFocus.focus()
+    }
+  }, [isMobileViewport, mobileMenuOpen])
 
   // Routes that want the width more than they want the nav. Entering one
   // collapses the rail; LEAVING restores whatever the owner's saved preference
@@ -907,7 +1118,7 @@ export default function AppLayout({ children, title }) {
 
   React.useEffect(() => {
     if (title) {
-      document.title = `${title} | BizAssist`
+      document.title = `${title} | Stater Bill`
     }
   }, [title])
 
@@ -951,6 +1162,22 @@ export default function AppLayout({ children, title }) {
 
   // ── Global Toast Notifications ─────────────────────────────────────────────
   const [toasts, setToasts] = React.useState([])
+  const [showHelpCenter, setShowHelpCenter] = React.useState(false)
+  const [isFirstTimeOnboarding, setIsFirstTimeOnboarding] = React.useState(false)
+
+  React.useEffect(() => {
+    try {
+      const completed = localStorage.getItem('staterbill_onboarding_completed')
+      if (!completed) {
+        setShowHelpCenter(true)
+        setIsFirstTimeOnboarding(true)
+      }
+    } catch {}
+
+    const handleOpenHelp = () => setShowHelpCenter(true)
+    window.addEventListener('open_smart_help', handleOpenHelp)
+    return () => window.removeEventListener('open_smart_help', handleOpenHelp)
+  }, [])
 
   React.useEffect(() => {
     const handleToast = (e) => {
@@ -980,7 +1207,7 @@ export default function AppLayout({ children, title }) {
   // carrying an exception for the page that superseded it — /parties and /stock
   // are both ordinary pages now, and only the counter is full-bleed.
   const isSalesPage = location.pathname === '/sales'
-  const pageTitle = title || PAGE_TITLES[location.pathname] || 'BizAssist'
+  const pageTitle = title || PAGE_TITLES[location.pathname] || 'Stater Bill'
 
   return (
     <div className={`app-shell ${isSalesPage ? 'pos-layout-shell' : ''}`}>
@@ -1009,20 +1236,30 @@ export default function AppLayout({ children, title }) {
 
       {/* ── Sidebar ── */}
       {!isSalesPage && (
-        <aside className={`sidebar ${mobileMenuOpen ? 'open' : ''} ${sidebarCollapsed ? 'collapsed' : ''}`}>
+        <aside ref={mobileSidebarRef} id="mobile-navigation"
+          className={`sidebar ${mobileMenuOpen ? 'open' : ''} ${sidebarInRailMode ? 'collapsed' : ''}`}
+          role={isMobileViewport ? 'dialog' : undefined}
+          aria-label={isMobileViewport ? 'Navigation menu' : undefined}
+          aria-modal={isMobileViewport && mobileMenuOpen ? true : undefined}
+          aria-hidden={isMobileViewport && !mobileMenuOpen ? true : undefined}
+          inert={isMobileViewport && !mobileMenuOpen ? '' : undefined}
+          tabIndex={isMobileViewport ? -1 : undefined}>
           {/* Collapse to an icon rail — same affordance as frontend-ai's
               AppLayout. Hidden on mobile, where the drawer and the bottom bar
               already handle navigation and a rail would just be a third way to
               do the same thing. */}
           <button
             type="button"
-            className="sidebar-collapse-btn hide-on-mobile"
+            className="sidebar-collapse-btn"
             onClick={toggleSidebarCollapsed}
             aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
             aria-expanded={!sidebarCollapsed}
             title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           >
-            {sidebarCollapsed ? '›' : '‹'}
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+              <rect x="3" y="3" width="18" height="18" rx="2" />
+              <line x1="9" y1="3" x2="9" y2="21" />
+            </svg>
           </button>
           {/* Brand */}
           <div className="sidebar-brand">
@@ -1032,7 +1269,7 @@ export default function AppLayout({ children, title }) {
               <BuildingMark size={30} />
             )}
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div className="brand-name">{profile?.business_name || user?.business_name || 'BizAssist'}</div>
+              <div className="brand-name"><BusinessName>{profile?.business_name || user?.business_name || 'Stater'}</BusinessName></div>
               {isSyncOn && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <div
@@ -1056,17 +1293,17 @@ export default function AppLayout({ children, title }) {
                       transition: 'all 0.2s ease',
                       backgroundColor: haltTint
                         || (effectiveMode === 'hybrid'
-                            ? (queueDepth.last_status === 'failed' && queueDepth.pending_count > 0 ? 'rgba(239, 68, 68, 0.1)' :
-                               queueDepth.pending_count > 0 ? 'rgba(245, 158, 11, 0.1)' :
+                            ? (queueDepth.last_status === 'failed' && totalPendingSync > 0 ? 'rgba(239, 68, 68, 0.1)' :
+                               totalPendingSync > 0 ? 'rgba(245, 158, 11, 0.1)' :
                                !syncHealth.isOnline ? 'rgba(255, 255, 255, 0.05)' : 'rgba(34, 197, 94, 0.1)')
                             : (syncHealth.status === 'connected' ? 'rgba(34, 197, 94, 0.1)' :
                                syncHealth.status === 'connecting' ? 'rgba(245, 158, 11, 0.1)' :
                                'rgba(239, 68, 68, 0.1)')),
                       color: haltTone
                         || (effectiveMode === 'hybrid'
-                            ? (queueDepth.last_status === 'failed' && queueDepth.pending_count > 0 ? 'var(--danger, #ef4444)' :
-                               queueDepth.pending_count > 0 ? 'var(--warning, #f59e0b)' :
-                               !syncHealth.isOnline ? 'var(--text-muted)' : 'var(--success, #22c55e)')
+                            ? (queueDepth.last_status === 'failed' && totalPendingSync > 0 ? 'var(--danger, #ef4444)' :
+                               totalPendingSync > 0 ? 'var(--warning, #f59e0b)' :
+                                !syncHealth.isOnline ? 'var(--sidebar-muted, var(--text-muted))' : 'var(--success, #22c55e)')
                             : (syncHealth.status === 'connected' ? 'var(--success, #22c55e)' :
                                syncHealth.status === 'connecting' ? 'var(--warning, #f59e0b)' :
                                'var(--danger, #ef4444)')),
@@ -1094,15 +1331,15 @@ export default function AppLayout({ children, title }) {
                             <AlertIcon size={10} strokeWidth={2.5} />
                             <span>Sync Offline</span>
                           </>
-                        ) : queueDepth.last_status === 'failed' && queueDepth.pending_count > 0 ? (
+                        ) : queueDepth.last_status === 'failed' && totalPendingSync > 0 ? (
                           <>
                             <AlertIcon size={10} strokeWidth={2.5} />
                             <span>Sync Error</span>
                           </>
-                        ) : queueDepth.pending_count > 0 ? (
+                        ) : totalPendingSync > 0 ? (
                           <>
                             <span className="sync-spinner-small" />
-                            <span>{queueDepth.pending_count} pending</span>
+                            <span>{totalPendingSync} pending</span>
                           </>
                         ) : (
                           <>
@@ -1165,9 +1402,9 @@ export default function AppLayout({ children, title }) {
                     }}
                     style={{
                       background: 'rgba(255, 255, 255, 0.05)',
-                      border: '1px solid var(--border)',
+                      border: '1px solid var(--sidebar-border, var(--border))',
                       padding: '3px',
-                      color: 'var(--text-muted, #718096)',
+                      color: 'var(--sidebar-muted, var(--text-muted, #718096))',
                       cursor: 'pointer',
                       display: 'inline-flex',
                       alignItems: 'center',
@@ -1177,11 +1414,11 @@ export default function AppLayout({ children, title }) {
                       marginTop: '4px'
                     }}
                     onMouseEnter={(e) => {
-                      e.currentTarget.style.color = 'var(--text-primary)'
+                      e.currentTarget.style.color = 'var(--sidebar-text, var(--text-primary))'
                       e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.15)'
                     }}
                     onMouseLeave={(e) => {
-                      e.currentTarget.style.color = 'var(--text-muted)'
+                      e.currentTarget.style.color = 'var(--sidebar-muted, var(--text-muted))'
                       e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.05)'
                     }}
                     title="Refresh Page Content"
@@ -1194,16 +1431,17 @@ export default function AppLayout({ children, title }) {
             
             {/* Close button for mobile drawer */}
             <button
+              type="button"
               className="mobile-drawer-close"
               onClick={() => setMobileMenuOpen(false)}
               aria-label="Close menu"
               style={{
                 background: 'none',
                 border: 'none',
-                color: 'var(--text-muted)',
+                color: 'var(--sidebar-muted, var(--text-muted))',
                 cursor: 'pointer',
                 padding: '4px',
-                display: 'none',
+                display: isMobileViewport ? 'inline-flex' : 'none',
                 alignItems: 'center',
                 justifyContent: 'center',
                 marginLeft: '8px',
@@ -1275,16 +1513,16 @@ export default function AppLayout({ children, title }) {
                       fontWeight: '700',
                       color: haltTone
                         || (effectiveMode === 'hybrid'
-                            ? (queueDepth.last_status === 'failed' && queueDepth.pending_count > 0 ? 'var(--danger)' :
-                               queueDepth.pending_count > 0 ? 'var(--warning)' : 'var(--success)')
+                            ? (queueDepth.last_status === 'failed' && totalPendingSync > 0 ? 'var(--danger)' :
+                               totalPendingSync > 0 ? 'var(--warning)' : 'var(--success)')
                             : (syncHealth.status === 'connected' ? 'var(--success)' :
                                syncHealth.status === 'connecting' ? 'var(--warning)' : 'var(--danger)'))
                     }}>
                       {haltCopy
                         ? haltCopy.title
                         : (effectiveMode === 'hybrid'
-                            ? (queueDepth.last_status === 'failed' && queueDepth.pending_count > 0 ? 'Sync Error' :
-                               queueDepth.pending_count > 0 ? 'Syncing...' : 'Synced')
+                            ? (queueDepth.last_status === 'failed' && totalPendingSync > 0 ? 'Sync Error' :
+                               totalPendingSync > 0 ? 'Syncing...' : 'Synced')
                             : (syncHealth.status === 'connected' ? 'Connected' :
                                syncHealth.status === 'connecting' ? 'Reconnecting...' : 'Error / Offline'))}
                     </span>
@@ -1341,7 +1579,7 @@ export default function AppLayout({ children, title }) {
                               fontWeight: '600',
                               color: (haltReason && haltReason !== 'auth_expired')
                                 ? haltTone
-                                : (queueDepth.pending_count > 0 ? 'var(--warning)' : 'var(--success)')
+                                : (totalPendingSync > 0 ? 'var(--warning)' : 'var(--success)')
                             }}>
                               {/* `auth_expired` is deliberately absent: it blocks
                                   the PULL only, so the outbox really is draining
@@ -1349,7 +1587,7 @@ export default function AppLayout({ children, title }) {
                               {haltReason === 'plan_required' ? 'Paused — Pro Required'
                                 : haltReason === 'offline' ? 'Waiting — offline'
                                 : haltReason === 'secret_mismatch' ? 'Held — sign in again'
-                                : (queueDepth.pending_count > 0 ? `${queueDepth.pending_count} pending` : 'Fully Synced')}
+                                : (totalPendingSync > 0 ? `${totalPendingSync} pending` : 'Fully Synced')}
                             </span>
                           </div>
 
@@ -1528,6 +1766,11 @@ export default function AppLayout({ children, title }) {
                     </div>
                   )}
 
+                  {effectiveMode === 'hybrid' && accountUpdates && (accountUpdates.pending > 0 || accountUpdates.failed > 0) && (
+                    <div role="status" style={{ color: accountUpdates.failed > 0 ? 'var(--danger)' : 'var(--warning)', fontSize: '0.76rem', padding: '6px 12px' }}>
+                      Staff/profile updates: {accountUpdates.pending} waiting · {accountUpdates.failed} need attention. Your account changes remain queued.
+                    </div>
+                  )}
                   {effectiveMode === 'hybrid' && queueDepth.last_sync_time && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', borderTop: '1px solid var(--border)', paddingTop: '6px' }}>
                       <span style={{ color: 'var(--text-secondary)' }}>Last Synced At</span>
@@ -1537,6 +1780,12 @@ export default function AppLayout({ children, title }) {
                     </div>
                   )}
 
+                  {cloudStatus?.cloud_state && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }} title={cloudStatus.cloud_url || undefined}>
+                      <span>Cloud service</span>
+                      <span>{({ online: 'Online', waking: 'Starting…', busy: 'Busy — retrying…', offline: 'Unreachable' })[cloudStatus.cloud_state] || 'Unavailable'}</span>
+                    </div>
+                  )}
                   {/* ── Cloud pull row (hybrid only, Pro only) ───────────────── */}
                   {effectiveMode === 'hybrid' && (() => {
                     const isPro = subscription?.plan === 'pro'
@@ -1663,7 +1912,7 @@ export default function AppLayout({ children, title }) {
                         Sign out and sign back in on this device to reconnect.
                         <div style={{ fontWeight: 400, color: 'var(--text-secondary)', marginTop: 2 }}>
                           This device&apos;s cloud access expired. Nothing is lost —
-                          the {queueDepth.pending_count ?? 0} waiting change(s) stay
+                          the {totalPendingSync ?? 0} waiting change(s) stay
                           in the outbox and upload once you&apos;re signed in again.
                         </div>
                       </div>
@@ -1750,12 +1999,12 @@ export default function AppLayout({ children, title }) {
                       <span style={{
                         fontWeight: 700,
                         fontVariantNumeric: 'tabular-nums',
-                        color: (queueDepth.pending_count || 0) > 0
+                        color: (totalPendingSync || 0) > 0
                           ? 'var(--warning, #f59e0b)'
                           : 'var(--success, #22c55e)'
                       }}>
-                        {queueDepth.pending_count || 0}
-                        {(queueDepth.pending_count || 0) === 0 && ' — all synced'}
+                        {totalPendingSync || 0}
+                        {(totalPendingSync || 0) === 0 && ' — all synced'}
                       </span>
                     </div>
 
@@ -1784,10 +2033,10 @@ export default function AppLayout({ children, title }) {
                         {/* Only for halts that actually stop the upload. Under
                             `auth_expired` the outbox is still draining, so a
                             "waiting" count would read as stuck data. */}
-                        {haltReason !== 'auth_expired' && (queueDepth.pending_count || 0) > 0 && (
+                        {haltReason !== 'auth_expired' && (totalPendingSync || 0) > 0 && (
                           <div style={{ color: 'var(--text-muted)', marginTop: 2 }}>
-                            {queueDepth.pending_count} change
-                            {queueDepth.pending_count === 1 ? '' : 's'} waiting — nothing is lost.
+                            {totalPendingSync} change
+                            {totalPendingSync === 1 ? '' : 's'} waiting — nothing is lost.
                           </div>
                         )}
                       </div>
@@ -1812,6 +2061,7 @@ export default function AppLayout({ children, title }) {
                         // action at all — offering the wrong one is what made
                         // the 401 loop unreadable.
                         if (haltReason === 'plan_required') handleCheckPlan(e)
+                        else if (haltReason === 'protocol_upgrade_required') openDownloadPage()
                         else if (haltReason === 'auth_expired' || haltReason === 'secret_mismatch') logout()
                         else handleSyncNow()
                       }}
@@ -1849,6 +2099,8 @@ export default function AppLayout({ children, title }) {
                           <span className={checkingPlan ? 'sync-spinner-small' : ''} />
                           {checkingPlan ? 'Checking…' : 'Check plan status'}
                         </>
+                      ) : haltReason === 'protocol_upgrade_required' ? (
+                        <>Get the sync update</>
                       ) : haltReason === 'auth_expired' || haltReason === 'secret_mismatch' ? (
                         <>Sign in again</>
                       ) : haltReason === 'offline' ? (
@@ -1983,8 +2235,8 @@ export default function AppLayout({ children, title }) {
                     style={{
                       width: '100%',
                       padding: '6px 12px',
-                      backgroundColor: 'var(--accent, #3b82f6)',
-                      color: '#fff',
+                      backgroundColor: 'var(--accent-solid, var(--accent, #3b82f6))',
+                      color: 'var(--accent-foreground, #fff)',
                       border: 'none',
                       borderRadius: 'var(--radius-sm, 4px)',
                       cursor: 'pointer',
@@ -2045,7 +2297,7 @@ export default function AppLayout({ children, title }) {
           </div>
 
           {/* Nav — flat ordered list, regrouped by section label */}
-          <nav className="sidebar-nav">
+          <nav ref={sidebarNavRef} className="sidebar-nav">
             {(() => {
               // Group back into sections while preserving custom order
               const groups = []
@@ -2069,7 +2321,7 @@ export default function AppLayout({ children, title }) {
                       <span style={{
                         display: 'flex',
                         alignItems: 'center',
-                        color: 'var(--text-secondary)',
+                        color: 'var(--sidebar-muted, var(--text-secondary))',
                         transition: 'transform var(--dur) var(--ease)',
                         transform: isCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)'
                       }}>
@@ -2077,73 +2329,88 @@ export default function AppLayout({ children, title }) {
                       </span>
                     </div>
 
-                    {!isCollapsed && items.map(({ item: { to, icon, label, external }, flatIndex }) => {
+                    {!isCollapsed && items.map(({ item: { to, icon, label: navLabel, external, children, demoProtected }, flatIndex }) => {
+                      const protectedDemo = isDemoSession && demoProtected
+                      const protectedBadge = protectedDemo && <span className="nav-demo-protected-badge" aria-hidden="true"><LockIcon size={11} /><span>Protected</span></span>
                       const handleCtxMenu = (e) => {
                         e.preventDefault()
-                        setSidebarCtxMenu({ x: e.clientX, y: e.clientY, to, label, flatIndex })
+                        setSidebarCtxMenu({ x: e.clientX, y: e.clientY, to, label: navLabel, flatIndex })
                       }
                       if (external) {
+                        if (protectedDemo) return <NavLink key={external} to={`/demo-preview/${external === 'fieldTeam' ? 'field-team' : 'ai'}`} className={({ isActive }) => `nav-link is-demo-protected${isActive ? ' active' : ''}`} data-label={`${navLabel} — Protected`} aria-label={`${navLabel} — Protected demo view`} onClick={() => setMobileMenuOpen(false)}>
+                          <span className="nav-icon">{icon}</span><span className="nav-label">{navLabel}</span>{protectedBadge}
+                        </NavLink>
                         const app = EXTERNAL_APPS[external]
-                        const href = app?.getUrl()
+                        const href = external === 'fieldTeam' ? fieldTeamLaunchUrl(user) : app?.getUrl()
                         if (!href) return null
-                        const gated = app.proOnly && aiGated
+                        const gated = gate(app.gate)
                         return (
                           <a
-                            key={label}
+                            key={navLabel}
                             href={href}
                             className="nav-link"
-                            data-label={label}
+                            data-label={navLabel}
                             onContextMenu={handleCtxMenu}
-                            onClick={(e) => {
+                            onClick={async (e) => {
+                              if (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey || e.button !== 0) return
                               e.preventDefault()
                               setMobileMenuOpen(false)
-                              if (gated) {
-                                confirm({
-                                  mode: 'alert',
-                                  title: 'Pro plan feature',
-                                  message: `${label} is part of the Pro plan. Contact your provider to upgrade.`,
-                                })
-                                return
-                              }
-                              app.open()
+                              await handleOpenExternal(external, navLabel)
                             }}
                           >
                             <span className="nav-icon">{icon}</span>
-                            {/* Wrapped like the NavLink below. As a bare text
-                                node this was the one label the collapsed rail
-                                could not hide, so "Dashboard BIZASSIST" spilled
-                                out of the 56px rail. */}
-                            <span className="nav-label">{label}</span>
-                            {gated && !sidebarCollapsed && (
+                            <span className="nav-label">{navLabel}</span>
+                            {gated && !sidebarInRailMode && (
                               <span style={{
                                 marginLeft: 'auto', fontSize: '0.6rem', fontWeight: 800,
                                 letterSpacing: '0.08em', padding: '2px 6px', borderRadius: 6,
-                                background: 'var(--accent)', color: '#fff'
+                                background: 'var(--accent-solid, var(--accent))', color: 'var(--accent-foreground, #fff)'
                               }}>PRO</span>
                             )}
                           </a>
                         )
                       }
+
+                      const active = isItemActive(to)
+                      const hasChildren = Array.isArray(children) && children.length > 0
+
                       return (
-                        <NavLink
-                          key={to}
-                          to={to}
-                          end={to === '/'}
-                          onClick={() => setMobileMenuOpen(false)}
-                          onContextMenu={handleCtxMenu}
-                          className={({ isActive }) =>
-                            'nav-link' + (isActive ? ' active' : '')
-                          }
-                          // Read by the collapsed rail's hover tooltip. The
-                          // label text itself is hidden when collapsed, so
-                          // without this the rail is a row of unnamed icons.
-                          data-label={label}
-                        >
-                          <span className="nav-icon">{icon}</span>
-                          {/* Wrapped so the rail can hide the text without
-                              hiding the icon. It was a bare text node. */}
-                          <span className="nav-label">{label}</span>
-                        </NavLink>
+                        <React.Fragment key={to}>
+                          <NavLink
+                            to={to}
+                            end={to === '/'}
+                            onClick={() => setMobileMenuOpen(false)}
+                            onContextMenu={handleCtxMenu}
+                            className={({ isActive }) =>
+                              'nav-link' + (isActive || active ? ' active' : '') + (protectedDemo ? ' is-demo-protected' : '')
+                            }
+                            data-label={protectedDemo ? `${navLabel} — Protected` : navLabel}
+                            aria-label={protectedDemo ? `${navLabel} — Protected demo view` : undefined}
+                          >
+                            <span className="nav-icon">{icon}</span>
+                            <span className="nav-label">{navLabel}</span>
+                            {protectedBadge}
+                          </NavLink>
+
+                          {hasChildren && active && !sidebarInRailMode && !protectedDemo && (
+                            <div className="nav-sub-tree" role="group" aria-label={`${navLabel} sub-pages`}>
+                              {children.map(child => {
+                                const childActive = isChildActive(child.to)
+                                const childText = child.id === 'purchase' ? (label('purchase') + 's') : child.label
+                                return (
+                                  <Link
+                                    key={child.to}
+                                    to={child.to}
+                                    onClick={() => setMobileMenuOpen(false)}
+                                    className={`nav-sub-link ${childActive ? 'active' : ''}`}
+                                  >
+                                    <span className="nav-sub-label">{childText}</span>
+                                  </Link>
+                                )
+                              })}
+                            </div>
+                          )}
+                        </React.Fragment>
                       )
                     })}
                   </React.Fragment>
@@ -2171,14 +2438,14 @@ export default function AppLayout({ children, title }) {
                 }}
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--accent)', letterSpacing: '0.02em' }}>
-                    <ZapIcon size={14} style={{ color: 'var(--accent)', marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Minimized Invoice
+                  <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--sidebar-text, var(--text-primary))', letterSpacing: '0.02em' }}>
+                    <ZapIcon size={14} style={{ color: 'inherit', marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Minimized Invoice
                   </span>
                   <button
                     style={{
                       background: 'none',
                       border: 'none',
-                      color: 'var(--text-muted)',
+                      color: 'var(--sidebar-muted, var(--text-muted))',
                       cursor: 'pointer',
                       fontSize: '0.75rem',
                       padding: '2px 4px',
@@ -2207,10 +2474,10 @@ export default function AppLayout({ children, title }) {
                     }}
                    aria-label="Close"><CloseIcon size={16} /></button>
                 </div>
-                <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--sidebar-text, var(--text-primary))' }}>
                   {minimizedBill.name} {minimizedBill.tabsCount > 1 ? `(+${minimizedBill.tabsCount - 1} tabs)` : ''}
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', color: 'var(--text-secondary)', marginTop: 2 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', color: 'var(--sidebar-muted, var(--text-secondary))', marginTop: 2 }}>
                   <span>{minimizedBill.itemsCount} items</span>
                   <span style={{ fontWeight: 700, color: 'var(--success)' }}>
                     ₹{minimizedBill.totalAmt.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
@@ -2236,14 +2503,14 @@ export default function AppLayout({ children, title }) {
                 }}
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--accent)', letterSpacing: '0.02em' }}>
-                    <ZapIcon size={14} style={{ color: 'var(--accent)', marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Live View: {minimizedLive.counter}
+                  <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--sidebar-text, var(--text-primary))', letterSpacing: '0.02em' }}>
+                    <ZapIcon size={14} style={{ color: 'inherit', marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Live View: {minimizedLive.counter}
                   </span>
                   <button
                     style={{
                       background: 'none',
                       border: 'none',
-                      color: 'var(--text-muted)',
+                      color: 'var(--sidebar-muted, var(--text-muted))',
                       cursor: 'pointer',
                       fontSize: '0.75rem',
                       padding: '2px 4px',
@@ -2274,10 +2541,10 @@ export default function AppLayout({ children, title }) {
                     }}
                    aria-label="Close"><CloseIcon size={16} /></button>
                 </div>
-                <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--sidebar-text, var(--text-primary))' }}>
                   {minimizedLive.name}
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', color: 'var(--text-secondary)', marginTop: 2 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', color: 'var(--sidebar-muted, var(--text-secondary))', marginTop: 2 }}>
                   <span>{minimizedLive.itemsCount} items</span>
                   <span style={{ fontWeight: 700, color: 'var(--success)' }}>
                     ₹{minimizedLive.totalAmt.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
@@ -2286,21 +2553,17 @@ export default function AppLayout({ children, title }) {
               </div>
             )}
             
-            {/* Where UniversalSearch puts its sidebar row once the floating
-                trigger is dismissed — directly above the profile. Empty until
-                then; the component portals into it, so the search state stays
-                in one file. */}
-            <div id="usearch-slot" />
-
             {showProfileMenu && (
               <div className="profile-menu" ref={profileMenuRef} onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}>
                 <div className="profile-menu-header">
-                  <div className="profile-menu-biz">{profile?.business_name || user?.username || 'BizAssist User'}</div>
+                  <div className="profile-menu-biz">{profile?.business_name || user?.username || 'Stater User'}</div>
                   <div className="profile-menu-sub">Enterprise Account</div>
                 </div>
                 <div className="profile-menu-sep" />
-                <Link className="profile-menu-item" to="/profile" onClick={() => setShowProfileMenu(false)}>
-                  <UserIcon size={14} /> My Profile
+                <div style={{ padding: "8px 12px", display: "flex", justifyContent: "center" }}><WorkspaceSwitcher activeWorkspace="billing" user={user} isDemoSession={isDemoSession} onFieldTeam={() => handleOpenExternal('fieldTeam', 'Field Team')} /></div>
+                <div className="profile-menu-sep" />
+                <Link className="profile-menu-item" to="/settings?tab=profile" onClick={() => setShowProfileMenu(false)}>
+                  <UserIcon size={14} /> Business Profile
                 </Link>
                 <Link className="profile-menu-item" to="/settings" onClick={() => setShowProfileMenu(false)}>
                   <SettingsIcon size={14} /> App Settings
@@ -2325,10 +2588,10 @@ export default function AppLayout({ children, title }) {
                 </button>
                 <button
                   className="profile-menu-item"
-                  onClick={() => { setShowProfileMenu(false); navigate('/support'); }}
+                  onClick={() => { setShowProfileMenu(false); navigate('/settings?tab=support'); }}
                   style={{ display: 'flex', alignItems: 'center', gap: 8 }}
                 >
-                  <AlertIcon size={14} /> Feedback & Support
+                  <MessageIcon size={14} /> Feedback & Support
                 </button>
                 {!IS_DESKTOP_APP && (
                   <button
@@ -2339,7 +2602,7 @@ export default function AppLayout({ children, title }) {
                     <DownloadIcon size={14} /> Download Desktop App
                   </button>
                 )}
-                <button className="profile-menu-item logout" onClick={() => { setShowProfileMenu(false); logout(); navigate('/login'); }}>
+                <button className="profile-menu-item logout" onClick={async () => { setShowProfileMenu(false); await logout(); navigate('/login'); }}>
                   <LogoutIcon size={14} /> Sign Out
                 </button>
                 <div className="profile-menu-theme">
@@ -2359,20 +2622,27 @@ export default function AppLayout({ children, title }) {
               </div>
             )}
 
-            <div className="user-chip" title="Settings & Profile" ref={userChipRef} onClick={() => setShowProfileMenu(!showProfileMenu)}>
-              <div className="user-avatar">
-                {profile?.logo ? (
-                  <img src={profile.logo} alt="Logo" />
-                ) : (
-                  initials
-                )}
-              </div>
-              <div className="user-info">
-                <div className="user-name">{profile?.business_name || user?.username || 'User'}</div>
-                <div className="user-role">
-                  Settings Menu
+            <div className="sidebar-profile-row">
+              <div className="user-chip" title="Settings & Profile" ref={userChipRef} onClick={() => setShowProfileMenu(!showProfileMenu)}>
+                <div className="user-avatar">
+                  {profile?.logo ? (
+                    <img src={profile.logo} alt="Logo" />
+                  ) : (
+                    initials
+                  )}
+                </div>
+                <div className="user-info">
+                  <div className="user-name"><BusinessName>{profile?.business_name || user?.username || 'User'}</BusinessName></div>
+                  <div className="user-role">
+                    Settings Menu
+                  </div>
                 </div>
               </div>
+              {!isCashier && !isSupplyAdder && !isMobileViewport && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <NotificationBell placement="sidebar" onOpen={() => setShowProfileMenu(false)} />
+                </div>
+              )}
             </div>
           </div>
         </aside>
@@ -2436,6 +2706,8 @@ export default function AppLayout({ children, title }) {
             className="mobile-menu-toggle"
             onClick={() => setMobileMenuOpen(true)}
             aria-label="Open menu"
+            aria-controls="mobile-navigation"
+            aria-expanded={mobileMenuOpen}
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <line x1="3" y1="12" x2="21" y2="12"></line>
@@ -2451,10 +2723,14 @@ export default function AppLayout({ children, title }) {
               <BuildingMark size={22} />
             )}
             <span className="mobile-brand-name">
-              {profile?.business_name || user?.business_name || 'BizAssist'}
+              <BusinessName>{profile?.business_name || user?.business_name || 'Stater'}</BusinessName>
             </span>
           </div>
 
+          <div className="mobile-profile-actions">
+          {isMobileViewport && !isCashier && !isSupplyAdder && (
+            <NotificationBell onOpen={() => setShowProfileMenu(false)} />
+          )}
           <div className="mobile-user-avatar-wrapper" ref={userChipRef}>
             <div
               className="mobile-user-avatar"
@@ -2471,12 +2747,14 @@ export default function AppLayout({ children, title }) {
             {showProfileMenu && (
               <div className="profile-menu mobile-dropdown" ref={profileMenuRef} onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}>
                 <div className="profile-menu-header">
-                  <div className="profile-menu-biz">{profile?.business_name || user?.username || 'BizAssist User'}</div>
+                  <div className="profile-menu-biz">{profile?.business_name || user?.username || 'Stater User'}</div>
                   <div className="profile-menu-sub">Enterprise Account</div>
                 </div>
                 <div className="profile-menu-sep" />
-                <Link className="profile-menu-item" to="/profile" onClick={() => setShowProfileMenu(false)}>
-                  <UserIcon size={14} /> My Profile
+                <div style={{ padding: "8px 12px", display: "flex", justifyContent: "center" }}><WorkspaceSwitcher activeWorkspace="billing" user={user} isDemoSession={isDemoSession} onFieldTeam={() => handleOpenExternal('fieldTeam', 'Field Team')} /></div>
+                <div className="profile-menu-sep" />
+                <Link className="profile-menu-item" to="/settings?tab=profile" onClick={() => setShowProfileMenu(false)}>
+                  <UserIcon size={14} /> Business Profile
                 </Link>
                 <Link className="profile-menu-item" to="/settings" onClick={() => setShowProfileMenu(false)}>
                   <SettingsIcon size={14} /> App Settings
@@ -2500,10 +2778,10 @@ export default function AppLayout({ children, title }) {
                 </button>
                 <button
                   className="profile-menu-item"
-                  onClick={() => { setShowProfileMenu(false); navigate('/support'); }}
+                  onClick={() => { setShowProfileMenu(false); navigate('/settings?tab=support'); }}
                   style={{ display: 'flex', alignItems: 'center', gap: 8 }}
                 >
-                  <AlertIcon size={14} /> Feedback & Support
+                  <MessageIcon size={14} /> Feedback & Support
                 </button>
                 {!IS_DESKTOP_APP && (
                   <button
@@ -2514,7 +2792,7 @@ export default function AppLayout({ children, title }) {
                     <DownloadIcon size={14} /> Download Desktop App
                   </button>
                 )}
-                <button className="profile-menu-item logout" onClick={() => { setShowProfileMenu(false); logout(); navigate('/login'); }}>
+                <button className="profile-menu-item logout" onClick={async () => { setShowProfileMenu(false); await logout(); navigate('/login'); }}>
                   <LogoutIcon size={14} /> Sign Out
                 </button>
                 <div className="profile-menu-theme">
@@ -2534,6 +2812,7 @@ export default function AppLayout({ children, title }) {
               </div>
             )}
           </div>
+          </div>
         </header>
       )}
 
@@ -2547,15 +2826,14 @@ export default function AppLayout({ children, title }) {
 
       {/* ── Main area ── */}
       <div className="main-area">
-
         {/* ── Page content ── */}
-        <main className="page-content" style={{ position: 'relative' }}>
+        <main ref={pageContentRef} className="page-content" style={{ position: 'relative' }}>
           {/* ⓘ page help — one mount point, per-route content (config/helpContent.js) */}
           <PageHelp />
           {/* Beside PageHelp deliberately: this mount point is NOT gated on
               `!isSalesPage`, so search survives on /sales where the sidebar,
               bottom bar and mobile header are all hidden. */}
-          <UniversalSearch />
+          <UniversalSearch hideTrigger={location.pathname === '/'} />
           {children}
         </main>
       </div>
@@ -2565,15 +2843,40 @@ export default function AppLayout({ children, title }) {
         toasts={toasts}
         onDismiss={(id) => setToasts(prev => prev.filter(t => t.id !== id))}
       />
-      {sessionExpired && (
-        <SessionExpiredModal
-          onSignOut={() => {
+      {trialEnded && (sessionExpired || !trialNoticeDismissed) ? (
+        <TrialEndedModal
+          isOwner={!isCashier && !isSupplyAdder}
+          token={token}
+          bizId={profile?.public_id || user?.public_id || ''}
+          onCheckPlan={handleCheckPlan}
+          checkingPlan={checkingPlan}
+          // Once the preview is used up there is nothing behind it to look at.
+          onDismiss={sessionExpired ? null : () => {
+            try { sessionStorage.setItem('bizassist_trial_ended_dismissed', '1') } catch { /* ignore */ }
+            setTrialNoticeDismissed(true)
+          }}
+          onSignOut={async () => {
             sessionStorage.removeItem('bizassist_session_start_time')
-            logout()
+            sessionStorage.removeItem('bizassist_trial_ended_dismissed')
+            await logout()
+            navigate('/login')
+          }}
+        />
+      ) : sessionExpired && !trialEnded && (
+        <SessionExpiredModal
+          onSignOut={async () => {
+            sessionStorage.removeItem('bizassist_session_start_time')
+            await logout()
             navigate('/login')
           }}
         />
       )}
+
+      <SmartHelpCenterModal
+        isOpen={showHelpCenter}
+        onClose={() => setShowHelpCenter(false)}
+        isFirstTime={isFirstTimeOnboarding}
+      />
     </div>
   )
 }

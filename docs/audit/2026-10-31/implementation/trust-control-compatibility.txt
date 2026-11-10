@@ -1,0 +1,10 @@
+....................................F.                                   [100%]
+================================== FAILURES ===================================
+_____________________________ test_sync_lifecycle _____________________________
+tests\test_sync.py:232: in test_sync_lifecycle
+    assert len(pull_data["changes"]["customers"]) == 1
+E   AssertionError: assert 4 == 1
+E    +  where 4 = len([{'name': 'Bob Sync Tester', 'gstin': None, 'phone': '1111111111', 'email': None, ...}, {'name': 'Bob Sync Tester', 'g...111111111', 'email': None, ...}, {'name': 'Bob Sync Tester', 'gstin': None, 'phone': '1111111111', 'email': None, ...}])
+=========================== short test summary info ===========================
+FAILED tests/test_sync.py::test_sync_lifecycle - AssertionError: assert 4 == 1
+1 failed, 37 passed in 52.86s

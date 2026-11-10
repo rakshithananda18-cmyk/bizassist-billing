@@ -31,13 +31,15 @@ from database.models import User, Product, Invoice, PurchaseInvoice, Customer, V
 from core.models import B2BConnection, B2BOrder, B2BOrderLineItem
 from core.order import service as order_svc
 
+from tests.signup_fixture import signup_payload
+
 client = TestClient(app)
 
 
 def _signup(prefix):
     username = f"{prefix}_{uuid.uuid4().hex[:8]}"
-    r = client.post("/signup", json={"username": username, "password": "TestPass123!",
-                                     "business_name": f"{prefix.title()} Traders"})
+    r = client.post("/signup", json=signup_payload({"username": username, "password": "TestPass123!",
+                                     "business_name": f"{prefix.title()} Traders"}))
     assert r.status_code == 200, r.text
     return r.json()["id"]
 

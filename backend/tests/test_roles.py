@@ -27,14 +27,16 @@ from main_groq import app
 from database.db import SessionLocal
 from database.models import User, Product
 
+from tests.signup_fixture import signup_payload
+
 client = TestClient(app)
 
 
 def _signup(business_name):
     uname = f"u_{uuid.uuid4().hex[:8]}"
-    r = client.post("/signup", json={
+    r = client.post("/signup", json=signup_payload({
         "username": uname, "password": "TestPass123!", "business_name": business_name,
-    })
+    }))
     assert r.status_code == 200, r.text
     b = r.json()
     return {"headers": {"Authorization": f"Bearer {b['token']}"}, "bid": b["id"], "username": uname}

@@ -1,0 +1,21 @@
+// Audit-only reproduction. Moved to docs/audit after isolated execution.
+import { describe, it, expect, vi, afterEach } from 'vitest'
+import { renderHook, act, cleanup } from '@testing-library/react'
+vi.mock('../contexts/AuthContext', () => ({ useAuth: () => ({ user: { business_name: 'Business B' }, profile: { upi_vpa: 'business-b@bank' } }) }))
+vi.mock('../components/invoice/InvoiceViewerModal', () => ({ default: () => null }))
+vi.mock('../components/parties/SaleReturnModal', () => ({ default: () => null }))
+vi.mock('../components/payments/RecordPaymentModal', () => ({ default: () => null }))
+import useInvoiceActions from '../hooks/useInvoiceActions'
+afterEach(() => { cleanup(); vi.restoreAllMocks(); localStorage.clear() })
+describe('Audit reproduction: invoice share money contract', () => {
+  it('CURRENT BUG: ignores server outstanding after a credit and the current business profile VPA', () => {
+    localStorage.setItem('pos_upi_vpa', 'previous-business-a@bank')
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null)
+    const { result } = renderHook(() => useInvoiceActions(vi.fn()))
+    act(() => result.current.share({ invoice_no: 'INV-1', total_amount: 100, paid_amount: 0, credited_amount: 40, outstanding: 60, customer_phone: '9876543210' }))
+    const message = new URL(open.mock.calls[0][0]).searchParams.get('text')
+    expect(message).toContain('Balance Due: ₹100')
+    expect(message).toContain('pa=previous-business-a@bank')
+    expect(message).not.toContain('business-b@bank')
+  })
+})

@@ -14,7 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.orm import Session
-from database.db import get_db
+from database.admin_service import get_admin_db
 from services.auth import get_active_user
 from services.context_cache import invalidate, invalidate_user_cache, get_cache_stats
 import services.admin_service as svc
@@ -22,6 +22,10 @@ from services.dates import utc_now
 
 router = APIRouter()
 logger = logging.getLogger("bizassist.routes.admin")
+
+# Every route in this module is a platform-admin route. This local alias keeps
+# the route definitions uniform while using the separately authorized service.
+get_db = get_admin_db
 
 
 # ── Pydantic schemas ──────────────────────────────────────────────────────────
@@ -44,6 +48,16 @@ class AdminUpdateUserRequest(BaseModel):
     username:      Optional[str] = None
     password:      Optional[str] = None
     business_name: Optional[str] = None
+    email:         Optional[str] = None
+    phone:         Optional[str] = None
+    address:       Optional[str] = None
+    gstin:         Optional[str] = None
+    state_code:    Optional[str] = None
+    pan:           Optional[str] = None
+    upi_vpa:       Optional[str] = None
+    logo:          Optional[str] = None
+    counter_prefix: Optional[str] = None
+    hosting_mode:  Optional[str] = None
 
 
 class RouterModeRequest(BaseModel):
@@ -80,13 +94,13 @@ def set_router_mode(req: RouterModeRequest,
     """
     Switch routing LIVE — no restart. legacy = exact previous behaviour;
     shadow = legacy answers + LLM comparison logging; new = LLM router steers
-    (legacy stays as automatic fallback). Resets to the .env default on restart.
+    (legacy stays as automatic fallback). Overrides persist across restarts.
     """
     try:
         svc.require_admin(current_user["id"], db, action="set_router_mode", details={"mode": req.mode})
         from services.router_mode import set_mode, pretty
         try:
-            mode = set_mode(req.mode)
+            mode = set_mode(req.mode, updated_by=current_user["id"])
         except ValueError as ve:
             raise HTTPException(status_code=422, detail=str(ve))
         return {"status": "success", "mode": pretty(mode),
@@ -107,6 +121,17 @@ def admin_businesses(current_user: dict = Depends(get_active_user), db: Session 
     except HTTPException: raise
     except Exception as e:
         logger.error("admin/businesses: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+@router.get("/admin/deleted-businesses")
+def admin_deleted_businesses(current_user: dict = Depends(get_active_user), db: Session = Depends(get_db)):
+    """Tombstone monitor: list all deleted / wiped businesses for audit trail."""
+    try:
+        svc.require_admin(current_user["id"], db)
+        return svc.list_deleted_businesses(db)
+    except HTTPException: raise
+    except Exception as e:
+        logger.error("admin/deleted-businesses: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @router.delete("/admin/wipe-all-data")
@@ -249,7 +274,7 @@ def flush_all_cache(current_user: dict = Depends(get_active_user), db: Session =
     try:
         svc.require_admin(current_user["id"], db, action="flush_all_cache")
         invalidate()
-        return {"status": "success", "message": "Global query response cache flushed."}
+        return {"status": "success", "message": "Global query response cache flushed.", "instance": svc.instance_info()}
     except HTTPException: raise
     except Exception as e:
         logger.error("admin/flush-all-cache: %s", e, exc_info=True)
@@ -269,17 +294,17 @@ def reset_chroma_documents(current_user: dict = Depends(get_active_user), db: Se
 def get_admin_cache_stats(current_user: dict = Depends(get_active_user), db: Session = Depends(get_db)):
     try:
         svc.require_admin(current_user["id"], db)
-        return get_cache_stats()
+        return dict(get_cache_stats(), instance=svc.instance_info())
     except HTTPException: raise
     except Exception as e:
         logger.error("admin/cache-stats: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @router.get("/admin/business-details/{user_id}")
-def get_business_details(user_id: int, current_user: dict = Depends(get_active_user), db: Session = Depends(get_db)):
+def get_business_details(user_id: int, section: Optional[str] = None, limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0), current_user: dict = Depends(get_active_user), db: Session = Depends(get_db)):
     try:
         svc.require_admin(current_user["id"], db)
-        return svc.business_details(user_id, db)
+        return svc.business_details(user_id, db, section=section, limit=limit, offset=offset)
     except HTTPException: raise
     except Exception as e:
         logger.error("admin/business-details/%s: %s", user_id, e, exc_info=True)
@@ -294,6 +319,11 @@ def download_business_logs(user_id: int, current_user: dict = Depends(get_active
     from fastapi.responses import FileResponse
     try:
         svc.require_admin(current_user["id"], db, action="download_business_logs", details={"target": user_id})
+        from database.models import ClientLogArchive
+        from fastapi.responses import Response
+        archive = db.query(ClientLogArchive).filter(ClientLogArchive.business_id == user_id).order_by(ClientLogArchive.created_at.desc(), ClientLogArchive.id.desc()).first()
+        if archive:
+            return Response(content=archive.content, media_type="application/gzip", headers={"Content-Disposition": f'attachment; filename="{archive.filename}"'})
         upload_dir = os.path.join("logs", "remote_clients", str(user_id))
         files = sorted(glob.glob(os.path.join(upload_dir, "*")), key=os.path.getmtime, reverse=True)
         files = [f for f in files if os.path.isfile(f)]
@@ -312,6 +342,9 @@ def get_rate_limits(user_id: int, current_user: dict = Depends(get_active_user),
         svc.require_admin(current_user["id"], db)
         return svc.get_rate_limit_config(user_id, db)
     except HTTPException: raise
+    except Exception:
+        logger.exception("admin/rate-limits")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 @router.post("/admin/rate-limits/{user_id}")
 def set_rate_limits(user_id: int, body: RateLimitRequest, current_user: dict = Depends(get_active_user), db: Session = Depends(get_db)):
@@ -326,8 +359,13 @@ def set_rate_limits(user_id: int, body: RateLimitRequest, current_user: dict = D
 
 @router.get("/admin/usage-stats")
 def get_all_usage_stats(current_user: dict = Depends(get_active_user), db: Session = Depends(get_db)):
-    svc.require_admin(current_user["id"], db)
-    return svc.all_usage_stats(db)
+    try:
+        svc.require_admin(current_user["id"], db)
+        return svc.all_usage_stats(db)
+    except HTTPException: raise
+    except Exception:
+        logger.exception("admin/usage-stats")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @router.post("/admin/create-user")
@@ -582,7 +620,11 @@ def download_feedback_logs(feedback_id: int, current_user: dict = Depends(get_ac
     """Download the zipped logs associated with a merchant feedback submission."""
     try:
         svc.require_admin(current_user["id"], db)
-        from database.models import UserFeedback
+        from database.models import UserFeedback, ClientLogArchive
+        from fastapi.responses import Response
+        archive = db.query(ClientLogArchive).filter(ClientLogArchive.feedback_id == feedback_id).first()
+        if archive:
+            return Response(content=archive.content, media_type="application/gzip", headers={"Content-Disposition": f'attachment; filename="{archive.filename}"'})
         feedback = db.query(UserFeedback).filter(UserFeedback.id == feedback_id).first()
         if not feedback or not feedback.log_file_path:
             raise HTTPException(status_code=404, detail="Feedback or log file not found.")
@@ -613,4 +655,122 @@ def get_admin_table_alterations(limit: int = Query(100, ge=1, le=1000), current_
     except Exception as e:
         logger.error("admin/table-alterations: %s", e, exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server error")
-# (end of admin routes)
+
+@router.get("/admin/infrastructure-metrics")
+def get_admin_infrastructure_metrics(refresh: bool = False, current_user: dict = Depends(get_active_user), db: Session = Depends(get_db)):
+    try:
+        svc.require_admin(current_user["id"], db)
+        from services.admin_infrastructure import metrics
+        return metrics(db, refresh=refresh)
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("admin/infrastructure-metrics")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.get("/admin/session")
+def admin_session(current_user: dict = Depends(get_active_user), db: Session = Depends(get_db)):
+    try:
+        admin = svc.require_admin(current_user["id"], db)
+        return {"id": admin.id, "username": admin.username, "role": admin.role}
+    except HTTPException: raise
+    except Exception:
+        logger.exception("admin/session")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.get("/admin/businesses/{business_id}")
+def admin_business(business_id: int, current_user: dict = Depends(get_active_user), db: Session = Depends(get_db)):
+    try:
+        svc.require_admin(current_user["id"], db)
+        rows = svc.list_businesses(db, business_id=business_id)
+        if not rows:
+            raise HTTPException(status_code=404, detail="Business not found")
+        return rows[0]
+    except HTTPException: raise
+    except Exception:
+        logger.exception("admin/business")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.get("/admin/bi-dashboard")
+def get_admin_bi_dashboard(
+    days: int = 30,
+    current_user: dict = Depends(get_active_user),
+    db: Session = Depends(get_db)
+):
+    """Dynamic platform Business Intelligence (BI) Dashboard."""
+    try:
+        svc.require_admin(current_user["id"], db)
+        from services.bi_analytics import get_bi_dashboard_metrics
+        return get_bi_dashboard_metrics(db, days=max(1, min(365, days)))
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("admin/bi-dashboard")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.get("/admin/console-metrics")
+def get_admin_console_metrics(
+    current_user: dict = Depends(get_active_user),
+    db: Session = Depends(get_db)
+):
+    """Mini Google Cloud Console observability metrics and cost estimator."""
+    try:
+        svc.require_admin(current_user["id"], db)
+        from services.api_tracer import get_console_metrics
+        return get_console_metrics()
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("admin/console-metrics")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.get("/admin/api-traces")
+def get_admin_api_traces(
+    limit: int = 50,
+    status: str = None,
+    method: str = None,
+    search: str = None,
+    current_user: dict = Depends(get_active_user),
+    db: Session = Depends(get_db)
+):
+    """Retrieve in-memory live API call traces with filtering."""
+    try:
+        svc.require_admin(current_user["id"], db)
+        from services.api_tracer import get_recent_traces
+        return get_recent_traces(
+            limit=max(1, min(500, limit)),
+            status_filter=status,
+            method_filter=method,
+            search=search
+        )
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("admin/api-traces")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.get("/admin/api-traces/{trace_id}")
+def get_admin_api_trace_detail(
+    trace_id: str,
+    current_user: dict = Depends(get_active_user),
+    db: Session = Depends(get_db)
+):
+    """Inspect full details for an individual API call trace."""
+    try:
+        svc.require_admin(current_user["id"], db)
+        from services.api_tracer import get_trace_by_id
+        t = get_trace_by_id(trace_id)
+        if not t:
+            raise HTTPException(status_code=404, detail="Trace not found or expired from ring buffer")
+        return t
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("admin/api-traces/{trace_id}")
+        raise HTTPException(status_code=500, detail="Internal server error")

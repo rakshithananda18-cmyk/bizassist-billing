@@ -20,7 +20,7 @@ def get_my_bizid(current_user: dict = Depends(restrict_cashier), db: Session = D
     """Get the logged-in user's own public BizID."""
     user = db.query(User).filter(User.id == current_user["id"]).first()
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(status_code=404, detail="User not found", headers={"WWW-Authenticate": 'Bearer error="invalid_token"'})
     return {"public_id": user.public_id}
 
 
@@ -30,13 +30,20 @@ def lookup_bizid(code: str, current_user: dict = Depends(restrict_cashier), db: 
     Public lookup for a BizID. Returns ONLY safe public profile data.
     Leaks NO transactional data or cost margins.
     """
-    target = db.query(User).filter(User.public_id == code).first()
+    from database.trade_service import business_profile
+    target = business_profile(db, bizid=code)
     if not target:
         raise HTTPException(status_code=404, detail="BizID not found")
+    from core.party_archive import is_business_deleted
+    if is_business_deleted(db, target.id):
+        return {"public_id": target.public_id, "business_name": target.business_name,
+                "account_deleted": True, "accepts_orders": False, "connected": False,
+                "reachable": False, "network_mode": "retired", "address": None,
+                "phone": None, "email": None, "state_code": target.state_code,
+                "business_type": "retired"}
 
     # Find business type
-    settings = db.query(BusinessSettings).filter(BusinessSettings.business_id == target.id).first()
-    biz_type = settings.template_key if settings else "general"
+    biz_type = target.business_type
 
     # Privacy gate: contact details are revealed only once an accepted connection exists.
     me = current_user["id"]
@@ -60,13 +67,7 @@ def lookup_bizid(code: str, current_user: dict = Depends(restrict_cashier), db: 
     #
     # `reachable` is deliberately coarse and non-identifying — it says whether
     # this business can receive network traffic, nothing about its data.
-    hosting_mode = "local"
-    try:
-        import json as _json
-        blob = _json.loads(target.settings) if target.settings else {}
-        hosting_mode = (blob.get("general") or {}).get("hosting_mode") or "local"
-    except Exception:
-        pass
+    hosting_mode = target.hosting_mode
     reachable = hosting_mode in ("hybrid", "cloud")
 
     out = {

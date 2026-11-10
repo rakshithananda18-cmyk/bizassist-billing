@@ -108,10 +108,14 @@ export default function Upload() {
       {/* DROP ZONE */}
       <div
         className={`drop-zone ${dragging ? 'dragging' : ''} ${uploading ? 'uploading' : ''}`}
+        role="button"
+        tabIndex={uploading ? -1 : 0}
+        aria-label="Select a file to upload"
         onDragOver={onDragOver}
         onDragLeave={onDragLeave}
         onDrop={onDrop}
         onClick={() => !uploading && inputRef.current?.click()}
+        onKeyDown={e => { if (!uploading && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); inputRef.current?.click() } }}
         style={{ marginBottom: 16 }}
       >
         <input

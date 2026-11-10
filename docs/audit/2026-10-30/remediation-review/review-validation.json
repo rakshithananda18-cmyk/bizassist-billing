@@ -1,0 +1,12 @@
+{
+  "date": "2026-10-30",
+  "issues_checked": 40,
+  "checks": [
+    "complete original-ID coverage",
+    "CSV/JSON parity",
+    "current source bounds",
+    "review links",
+    "review Python/JSON syntax"
+  ],
+  "errors": []
+}

@@ -4,6 +4,7 @@
 // so the JSX body is byte-identical to the original.
 // ============================================================================
 import React from 'react'
+import { estimateReturn } from '../../utils/returnPreview'
 import CustomSelect from '../common/CustomSelect'
 import { CheckIcon, ChevronLeftIcon, ChevronRightIcon, CloseIcon, SyncIcon } from '../Icons'
 import { useDocLabels } from '../../hooks/useDocLabels'
@@ -84,7 +85,7 @@ export default function PurchaseReturnModal({ setShowReturnModal, returnStep, se
                       <thead>
                         <tr>
                           <th>Item Name</th>
-                          <th style={{ width: 80, textAlign: 'center' }}>Original Qty</th>
+                          <th style={{ width: 80, textAlign: 'center' }}>Available Qty</th>
                           <th style={{ width: 100, textAlign: 'center' }}>Return Qty</th>
                           <th>Return Reason</th>
                           <th style={{ width: 90, textAlign: 'right' }}>Price</th>
@@ -145,23 +146,17 @@ export default function PurchaseReturnModal({ setShowReturnModal, returnStep, se
 
                   {/* Return Summary */}
                   {(() => {
-                    let sub = 0, tax = 0
-                    returnLines.forEach(l => {
-                      const qty = parseFloat(l.quantity) || 0
-                      const p = parseFloat(l.unit_price) || 0
-                      const taxable = qty * p
-                      sub += taxable
-                      tax += taxable * (((parseFloat(l.cgst_rate) || 0) + (parseFloat(l.sgst_rate) || 0) + (parseFloat(l.igst_rate) || 0)) / 100)
-                    })
-                    const total = sub + tax
+                    const original = bills.find(b => String(b.id) === String(returnBillId))
+                    const { subtotal: sub, tax, total } = estimateReturn(returnLines, original)
                     return (
                       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 20, fontSize: '0.85rem', fontWeight: 600, borderTop: '1px solid var(--border)', paddingTop: 10 }}>
                         <div>Return Subtotal: <span style={{ color: 'var(--text-secondary)' }}>{fmt(sub)}</span></div>
                         <div>Return Tax: <span style={{ color: 'var(--text-secondary)' }}>{fmt(tax)}</span></div>
-                        <div>Grand Total: <span style={{ color: 'var(--accent)', fontWeight: 700 }}>{fmt(total)}</span></div>
+                        <div>Estimated Total: <span style={{ color: 'var(--accent)', fontWeight: 700 }}>{fmt(total)}</span></div>
                       </div>
                     )
                   })()}
+                  <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>Estimate from the original purchase. The saved debit note applies original discounts, taxes, previous returns and rounding; its recorded total is final.</p>
 
                   <div className="form-group">
                     <label className="form-label" style={{ fontWeight: 600 }}>Remarks / Reason for Return</label>

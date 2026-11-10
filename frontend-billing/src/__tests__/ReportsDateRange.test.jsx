@@ -5,6 +5,7 @@
 // shown, and exported, under a period they don't cover.
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
 import Reports from '../pages/Reports'
 
 vi.mock('../layouts/AppLayout', () => ({
@@ -30,7 +31,7 @@ beforeEach(() => { authFetch.mockClear(); localStorage.clear() })
 
 describe('Reports date range', () => {
   it('drops the previous result when the range changes', async () => {
-    render(<Reports />)
+    render(<MemoryRouter><Reports /></MemoryRouter>)
 
     fireEvent.click(screen.getByText('Day Book'))
     await screen.findByText('INV-1')          // report ran for the original range

@@ -3,20 +3,27 @@
 // Description: User session authentication page. Supports merchant owner credentials
 //              as well as cashier staff login credentials, storing tokens in localStorage.
 // ============================================================================
-import React, { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import React, { useState, useEffect, useRef } from 'react'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { logger } from '../utils/logger'
 import { BuildingMark } from '../components/Logo'
+import AuthRoadmap from '../components/auth/AuthRoadmap'
+import AuthThemeToggle from '../components/auth/AuthThemeToggle'
 import { API_BASE, CLOUD_URL, IS_LOCAL_APP } from '../config'
 import CustomSelect from '../components/common/CustomSelect'
 import BootHealthCheck from '../components/BootHealthCheck'
+import ForgotPasswordModal from '../components/auth/ForgotPasswordModal'
+import GoogleOnboardingModal from '../components/auth/GoogleOnboardingModal'
+import { renderGoogleButton } from '../utils/googleAuth'
 
 const RECENT_STAFF_TIMEOUT_MS = 1500
 
 export default function Login() {
-  const { login, staffLogin } = useAuth()
+  const { login, staffLogin, setSession } = useAuth()
   const navigate  = useNavigate()
+  const location = useLocation()
+  const lookupRequest = useRef(0)
 
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -24,15 +31,82 @@ export default function Login() {
   const [error,    setError]    = useState('')
   const [loading,  setLoading]  = useState(false)
   const [rememberMe, setRememberMe] = useState(true)
+  const [waking, setWaking] = useState(false)
+
+  // Auth Enhancements: Forgot Password & Google Sign-In state
+  const [showForgotModal, setShowForgotModal] = useState(false)
+  const [showGoogleModal, setShowGoogleModal] = useState(false)
+  const [googleCredential, setGoogleCredential] = useState('')
+  const [googleLinkCredential, setGoogleLinkCredential] = useState('')
+  const [googleOnboardingData, setGoogleOnboardingData] = useState(null)
+  const googleBtnRef = useRef(null)
+
+  const handleGoogleCredential = async (credential) => {
+    setError('')
+    setLoading(true)
+    try {
+      const res = await fetch(`${API_BASE}/api/auth/google/verify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ credential }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data?.detail || 'Google sign-in failed.')
+
+      if (data.action === 'login' && data.token) {
+        setSession(data)
+        navigate('/', { replace: true })
+      } else if (data.status === 'needs_link') {
+        setGoogleLinkCredential(credential)
+        setUsername(data.email)
+        setBusinessInfo({ ...data, has_staff: false })
+        setAvailableStaff([])
+        setPassword('')
+        setView('standard')
+        setStandardStep('owner')
+      } else if (data.status === 'needs_onboarding') {
+        setGoogleCredential(credential)
+        setGoogleOnboardingData(data)
+        setShowGoogleModal(true)
+      }
+    } catch (err) {
+      setError(err?.message || 'Google authentication error')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleGoogleRegisterSuccess = (data) => {
+    if (data?.token) {
+      setSession(data)
+      navigate('/', { replace: true })
+    }
+  }
+
+  const handleForgotSuccess = (data) => {
+    if (data?.token) {
+      setSession(data)
+      navigate('/', { replace: true })
+    }
+  }
+  useEffect(() => {
+    setWaking(false)
+    if (!loading || IS_LOCAL_APP) return
+    const timer = setTimeout(() => setWaking(true), 4000)
+    return () => clearTimeout(timer)
+  }, [loading])
+  useEffect(() => {
+    if (!IS_LOCAL_APP) void fetch(`${API_BASE}/health`, { mode: 'no-cors' }).catch(() => {})
+  }, [])
 
   // Reset root document zoom to prevent browser positioning alignment bugs on logout
   useEffect(() => {
     const originalZoom = document.documentElement.style.zoom
     const originalZoomVar = document.documentElement.style.getPropertyValue('--zoom')
-    
+
     document.documentElement.style.zoom = ''
     document.documentElement.style.removeProperty('--zoom')
-    
+
     return () => {
       if (originalZoom) document.documentElement.style.zoom = originalZoom
       if (originalZoomVar) document.documentElement.style.setProperty('--zoom', originalZoomVar)
@@ -67,7 +141,7 @@ export default function Login() {
       return []
     }
   })
-  
+
   // View states: 'recent' | 'password' | 'staff' | 'standard'
   const [view, setView] = useState(() => {
     try {
@@ -81,12 +155,48 @@ export default function Login() {
   // Selected owner/business for quick login
   const [selectedOwner, setSelectedOwner] = useState(null)
   const [selectedStaffUser, setSelectedStaffUser] = useState('')
+  const [businessInfo, setBusinessInfo] = useState(null)
+  const [availableStaff, setAvailableStaff] = useState([])
 
-  // Other-Business (standard) flow is OWNER-GATED (§9.5): type the business owner
-  // username → choose Owner Login (password) or Staff Login (counter dropdown +
-  // password). Staff are never logged in by a global username directly.
+  // Other-Business flow: type the business owner username, then choose owner or
+  // staff sign-in. Staff enter their assigned login name; the server verifies
+  // it with the owner and password without exposing a public staff directory.
   const [standardStep, setStandardStep] = useState('username')  // username | choose | owner | staff
-  const [bizLookup, setBizLookup] = useState(null)              // { business_name, staff:[{login_name, counter_prefix, role}] }
+
+  useEffect(() => {
+    const pending = location.state?.googleLink
+    if (!pending?.credential) return
+    setGoogleLinkCredential(pending.credential)
+    setUsername(pending.email || '')
+    setBusinessInfo({ ...pending, has_staff: false })
+    setAvailableStaff([])
+    setPassword('')
+    setView('standard')
+    setStandardStep('owner')
+    navigate(location.pathname, { replace: true, state: null })
+  }, [location.state, location.pathname, navigate])
+
+  function changeBusinessIdentifier(value) {
+    lookupRequest.current += 1
+    setUsername(value)
+    setBusinessInfo(null)
+    setAvailableStaff([])
+    setSelectedStaffUser('')
+    setPassword('')
+    setGoogleLinkCredential('')
+    setError('')
+    setLoading(false)
+  }
+
+
+  useEffect(() => {
+    if (view === 'standard' && standardStep === 'username' && googleBtnRef.current) {
+      renderGoogleButton(googleBtnRef.current, {
+        onCredential: handleGoogleCredential,
+        text: 'signin_with',
+      })
+    }
+  }, [view, standardStep])
 
   // A saved-login shortcut must never hold up a successful sign-in.  The staff
   // list is only convenience metadata; authentication and navigation do not
@@ -109,14 +219,56 @@ export default function Login() {
     }
   }
 
+  // The counter this device last signed in to for a business, if it still
+  // exists there; otherwise the first saved one.
+  const defaultStaffFor = (owner) => {
+    const accounts = owner?.staffAccounts || []
+    const last = owner?.lastStaff
+    if (last && accounts.some(s => s.username === last)) return last
+    return accounts[0]?.username || ''
+  }
+
+  // A counter signed in by typing is saved like the owner's list, so next time
+  // on this device it is a tap rather than typing the name again.
+  const rememberStaffLogin = (ownerUsername, staffName) => {
+    try {
+      const loggedUser = JSON.parse(localStorage.getItem('billing_user') || 'null')
+      const recent = readRecentLogins()
+      const entry = recent.find(item => item.username === ownerUsername) || {
+        username: ownerUsername,
+        businessName: loggedUser?.business_name || 'My Business',
+        staffAccounts: [],
+      }
+      const existing = entry.staffAccounts.find(s => s.username === staffName)
+      if (!existing) {
+        entry.staffAccounts.push({
+          username: staffName,
+          role: loggedUser?.role || 'cashier',
+          counter_prefix: loggedUser?.counter_prefix || ''
+        })
+      } else if (loggedUser?.counter_prefix) {
+        existing.counter_prefix = loggedUser.counter_prefix
+      }
+      entry.lastStaff = staffName
+      saveRecentLogins([entry, ...recent.filter(item => item.username !== ownerUsername)])
+    } catch { /* a saved shortcut must never hold up a sign-in */ }
+  }
+
   const rememberOwnerLogin = (loggedUser, token) => {
     const saveOwner = (staffAccounts) => {
       const recent = readRecentLogins()
+      const previous = recent.find(item => item.username === loggedUser.username)
       const updatedRecent = recent.filter(item => item.username !== loggedUser.username)
       updatedRecent.unshift({
         username: loggedUser.username,
         businessName: loggedUser.business_name || 'My Business',
-        staffAccounts: staffAccounts.map(s => ({ username: s.username, role: s.role }))
+        staffAccounts: staffAccounts.map(s => ({
+          username: s.username || s.staff_login_name,
+          role: s.role || 'cashier',
+          counter_prefix: s.counter_prefix || ''
+        })),
+        // The counter last used here survives the owner signing in.
+        ...(previous?.lastStaff ? { lastStaff: previous.lastStaff } : {}),
       })
       saveRecentLogins(updatedRecent)
     }
@@ -169,10 +321,21 @@ export default function Login() {
     e.preventDefault()
     setError('')
     setLoading(true)
-    logger.debug('Login submit triggered for username:', username)
+    const loginTarget = businessInfo?.owner_username || username.trim()
+    logger.debug('Login submit triggered for username:', loginTarget)
     try {
-      await login(username, password)
-      
+      if (googleLinkCredential) {
+        const response = await fetch(`${API_BASE}/api/auth/google/verify`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ credential: googleLinkCredential, password }),
+        })
+        const linked = await response.json()
+        if (!response.ok || !linked.token) throw new Error(linked.detail || 'Could not connect your Google sign-in.')
+        setSession(linked)
+      } else {
+        await login(loginTarget, password)
+      }
+
       // Save recent login info if successful
       const savedUserStr = localStorage.getItem('billing_user')
       const token = localStorage.getItem('billing_token')
@@ -202,7 +365,7 @@ export default function Login() {
         } else {
           // Remove from recent logins if not checked
           const recent = JSON.parse(localStorage.getItem('bizassist_recent_logins') || '[]')
-          const updatedRecent = recent.filter(item => item.username !== username)
+          const updatedRecent = recent.filter(item => item.username !== loginTarget)
           localStorage.setItem('bizassist_recent_logins', JSON.stringify(updatedRecent))
         }
       }
@@ -243,69 +406,62 @@ export default function Login() {
     }
   }
 
-  // Other-Business: resolve the typed owner username → business + counters.
   async function handleOwnerContinue(e) {
     e.preventDefault()
+    const ident = username.trim()
+    if (!ident) { setError('Enter your business username, email, phone number, or BizID.'); return }
+    const requestId = ++lookupRequest.current
     setError('')
-    const owner = username.trim()
-    if (!owner) { setError('Enter the business owner username.'); return }
+    setBusinessInfo(null)
+    setAvailableStaff([])
+    setSelectedStaffUser('')
+    setPassword('')
+    setGoogleLinkCredential('')
     setLoading(true)
     try {
-      // Resolve owner → business + staff. On the desktop app the LOCAL backend is
-      // only an identity mirror on a fresh device (business/staff rows are gated),
-      // so a local lookup returns 404 or an empty staff list and the Staff button
-      // never appears — even though staff exist on the cloud. So: query local
-      // first, and if it can't tell us about staff, fall back to the CLOUD (which
-      // is the identity + staff authority). This makes the Owner/Staff picker work
-      // on Windows exactly like it does on the web.
-      const lookup = async (base) => {
-        const res = await fetch(`${base}/staff-counters?owner=${encodeURIComponent(owner)}`)
-        if (!res.ok) return null
-        return res.json()
-      }
-
       let data = null
-      try { data = await lookup(API_BASE) } catch { data = null }
-
-      const localHasStaff = data && Array.isArray(data.staff) && data.staff.length > 0
-      if (IS_LOCAL_APP && CLOUD_URL !== API_BASE && !localHasStaff &&
-          (typeof navigator === 'undefined' || navigator.onLine !== false)) {
+      let lookupError = null
+      const bases = [...new Set([API_BASE, ...(IS_LOCAL_APP && CLOUD_URL ? [CLOUD_URL] : [])])]
+      for (const base of bases) {
         try {
-          const cloudData = await lookup(CLOUD_URL)
-          if (cloudData && Array.isArray(cloudData.staff) && cloudData.staff.length > 0) {
-            data = cloudData
-          } else if (!data && cloudData) {
-            data = cloudData
-          }
-        } catch { /* cloud unreachable — keep whatever local gave us */ }
+          const res = await fetch(`${base}/api/auth/lookup-business`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ identifier: ident }), signal: AbortSignal.timeout(12000),
+          })
+          const result = await res.json()
+          if (requestId !== lookupRequest.current) return
+          if (res.ok && result.found) { data = result; break }
+          lookupError = new Error(result?.detail || result?.message || 'No business found. Check the owner details or use its BizID.')
+          if ([400, 422, 429].includes(res.status)) { lookupError.stopLookup = true; throw lookupError }
+        } catch (err) {
+          lookupError = err
+          if (requestId !== lookupRequest.current) return
+          if (err.stopLookup) throw err
+        }
       }
-
-      if (data) {
-        setBizLookup(data)
-        // If the business has staff, offer the choice; else go straight to owner password.
-        setStandardStep((data.staff && data.staff.length > 0) ? 'choose' : 'owner')
-      } else {
-        // Owner not found on either backend (typo / brand-new account) — still allow
-        // an owner password attempt (login() will validate); no staff option.
-        setBizLookup(null)
-        setStandardStep('owner')
-      }
-    } catch {
-      setBizLookup(null)
-      setStandardStep('owner')
+      if (!data) throw lookupError || new Error('Could not find this business. Check the owner details or use its BizID.')
+      const roster = Array.isArray(data.staff) ? data.staff : []
+      setBusinessInfo(data)
+      setAvailableStaff(roster)
+      setSelectedStaffUser(roster[0]?.username || '')
+      setStandardStep(roster.length ? 'choose' : 'owner')
+    } catch (err) {
+      if (requestId === lookupRequest.current) setError(err?.name === 'TimeoutError' ? 'Business lookup took too long. Please try again.' : err?.message || 'Could not verify business details.')
     } finally {
-      setLoading(false)
+      if (requestId === lookupRequest.current) setLoading(false)
     }
   }
 
-  // Other-Business: staff sign-in (owner username + selected counter + password).
+  // Other-Business: staff sign-in (owner identifier + selected cashier + password).
   async function handleStandardStaffLogin(e) {
     e.preventDefault()
-    if (!selectedStaffUser) { setError('Select a counter.'); return }
+    if (!selectedStaffUser.trim()) { setError('Please select or enter your staff login name.'); return }
     setError('')
     setLoading(true)
+    const ownerToUse = businessInfo?.owner_username || username.trim()
     try {
-      await staffLogin(username.trim(), selectedStaffUser, password)
+      await staffLogin(ownerToUse, selectedStaffUser.trim(), password)
+      rememberStaffLogin(ownerToUse, selectedStaffUser.trim())
       navigate('/', { replace: true })
     } catch (err) {
       setError(err.message || 'Invalid password. Please try again.')
@@ -325,7 +481,7 @@ export default function Login() {
     setLoading(true)
     try {
       await staffLogin(selectedOwner.username, selectedStaffUser, password)
-      
+
       // Self-register/persist this staff user in the owner's list in localStorage
       const savedUserStr = localStorage.getItem('billing_user')
       if (savedUserStr && selectedOwner) {
@@ -340,9 +496,12 @@ export default function Login() {
               username: loggedUser.username,
               role: loggedUser.role || 'cashier'
             })
-            recent[ownerIndex] = ownerEntry
-            localStorage.setItem('bizassist_recent_logins', JSON.stringify(recent))
           }
+          // Preselect this counter next time on this device: staff no longer
+          // get a public list of a business's counters to choose from.
+          ownerEntry.lastStaff = selectedStaffUser
+          recent[ownerIndex] = ownerEntry
+          localStorage.setItem('bizassist_recent_logins', JSON.stringify(recent))
         }
       }
 
@@ -357,7 +516,13 @@ export default function Login() {
 
   // Reusable show/hide password toggle (same SVGs as the other login views).
   const pwToggleBtn = (
-    <button type="button" className="password-toggle-btn" onClick={() => setShowPw(v => !v)} aria-label="Toggle password visibility">
+    <button
+      type="button"
+      className="password-toggle-btn"
+      onClick={() => setShowPw(v => !v)}
+      aria-label={showPw ? 'Hide password' : 'Show password'}
+      aria-pressed={showPw}
+    >
       {showPw ? (
         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" />
@@ -375,61 +540,14 @@ export default function Login() {
 
   return (
     <>
-    <div className="login-backdrop" aria-hidden="true">
-      <aside className="lb-sidebar">
-        <div className="lb-logo" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><BuildingMark size={18} /> BizAssist</div>
-        <div className="lb-nav-section">Supply & Inflow</div>
-        <div className="lb-navitem">Supplier Orders</div>
-        <div className="lb-navitem">Purchase Bills</div>
-        <div className="lb-navitem">Store Sync</div>
-        <div className="lb-navitem">Data Migration</div>
-        <div className="lb-nav-section">Hub</div>
-        <div className="lb-navitem active">Home</div>
-        <div className="lb-navitem">Dashboard</div>
-        <div className="lb-nav-section">Sales & Operations</div>
-        <div className="lb-navitem">Billing Counter</div>
-        <div className="lb-navitem">Cash Book</div>
-        <div className="lb-navitem">Contacts & Dues</div>
-        <div className="lb-navitem">GST & Tax Reports</div>
-      </aside>
-      <main className="lb-main" style={{ flex: 1, padding: '24px 32px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
-        <div className="lb-h1" style={{ fontSize: '1.5rem', fontWeight: 700 }}>Home</div>
-        
-        {/* KPI Grid (4 cards) */}
-        <div className="lb-grid-4" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px' }}>
-          <div className="lb-card" style={{ height: '80px', borderRadius: '8px', background: 'var(--bg-2)', border: '1px solid var(--border)' }} />
-          <div className="lb-card" style={{ height: '80px', borderRadius: '8px', background: 'var(--bg-2)', border: '1px solid var(--border)' }} />
-          <div className="lb-card" style={{ height: '80px', borderRadius: '8px', background: 'var(--bg-2)', border: '1px solid var(--border)' }} />
-          <div className="lb-card" style={{ height: '80px', borderRadius: '8px', background: 'var(--bg-2)', border: '1px solid var(--border)' }} />
-        </div>
-
-        {/* Second Row Grid (4 cards) */}
-        <div className="lb-grid-4" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px' }}>
-          <div className="lb-card" style={{ height: '80px', borderRadius: '8px', background: 'var(--bg-2)', border: '1px solid var(--border)' }} />
-          <div className="lb-card" style={{ height: '80px', borderRadius: '8px', background: 'var(--bg-2)', border: '1px solid var(--border)' }} />
-          <div className="lb-card" style={{ height: '80px', borderRadius: '8px', background: 'var(--bg-2)', border: '1px solid var(--border)' }} />
-          <div className="lb-card" style={{ height: '80px', borderRadius: '8px', background: 'var(--bg-2)', border: '1px solid var(--border)' }} />
-        </div>
-
-        {/* Bottom Two Columns Grid */}
-        <div className="lb-bottom-split" style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: '20px', flex: 1 }}>
-          {/* Feed */}
-          <div className="lb-card" style={{ borderRadius: '8px', background: 'var(--bg-2)', border: '1px solid var(--border)' }} />
-          {/* Warnings & Invoices */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <div className="lb-card" style={{ flex: 1, borderRadius: '8px', background: 'var(--bg-2)', border: '1px solid var(--border)' }} />
-            <div className="lb-card" style={{ flex: 1, borderRadius: '8px', background: 'var(--bg-2)', border: '1px solid var(--border)' }} />
-          </div>
-        </div>
-      </main>
-    </div>
-
-    <div className="login-container" id="login-container">
-      <div className="login-card" style={{ boxSizing: 'border-box' }}>
+    <div className="login-container roadmap-auth" id="login-container">
+      <AuthThemeToggle />
+      <div className="login-card">
+        {waking && <p role="status" className="login-waking">Waking up the server… this can take up to a minute.</p>}
         <div className="login-glow"></div>
         <div className="login-symbol"><BuildingMark size={42} /></div>
-        <h1 className="login-title">BIZASSIST</h1>
-        <p className="login-subtitle">ADVANCED BILLING SYSTEM</p>
+        <h1 className="login-title" style={{ letterSpacing: '0.07em', fontWeight: 900 }}>STATER <span style={{ color: 'var(--accent)', fontWeight: 600, letterSpacing: 'normal' }}>Bill</span></h1>
+        <p className="login-subtitle" style={{ letterSpacing: '0.12em', fontSize: '0.72rem' }}>στατήρ • THE GOLD STANDARD IN POS</p>
 
         {/* Post-migration greeting — the sign-out was intentional (JWT swap) */}
         {migrationNote && (
@@ -480,53 +598,12 @@ export default function Login() {
                 <div key={idx} style={{ position: 'relative' }}>
                 <button
                   type="button"
-                  onClick={async () => {
+                  onClick={() => {
                     setSelectedOwner(item)
                     setPassword('')
                     setError('')
                     const hasCachedStaff = item.staffAccounts && item.staffAccounts.length > 0
                     setView(hasCachedStaff ? 'recent-choose' : 'password')
-                    try {
-                      // Resolve the owner's staff. On the desktop app the LOCAL
-                      // backend is only an identity mirror on a fresh device, so
-                      // /staff-counters returns an empty list there even when
-                      // staff exist on the cloud — which used to hide (and wipe)
-                      // the Owner/Staff choice. So query local first, then fall
-                      // back to the CLOUD (the staff authority) if local has none.
-                      const lookup = async (base) => {
-                        const r = await fetch(`${base}/staff-counters?owner=${encodeURIComponent(item.username)}`)
-                        if (!r.ok) return null
-                        return r.json()
-                      }
-                      const toStaff = (data) => (data?.staff || []).map(s => ({ username: s.login_name, role: s.role }))
-
-                      let liveStaff = toStaff(await lookup(API_BASE).catch(() => null))
-                      if (IS_LOCAL_APP && CLOUD_URL !== API_BASE && liveStaff.length === 0 &&
-                          (typeof navigator === 'undefined' || navigator.onLine !== false)) {
-                        const cloudStaff = toStaff(await lookup(CLOUD_URL).catch(() => null))
-                        if (cloudStaff.length > 0) liveStaff = cloudStaff
-                      }
-
-                      // IMPORTANT: never DOWNGRADE on an empty result — an offline
-                      // local lookup must not wipe cached staff or hide the choice.
-                      if (liveStaff.length > 0) {
-                        setSelectedOwner(prev =>
-                          (prev && prev.username === item.username) ? { ...prev, staffAccounts: liveStaff } : prev
-                        )
-                        const recent = JSON.parse(localStorage.getItem('bizassist_recent_logins') || '[]')
-                        const idx = recent.findIndex(r => r.username === item.username)
-                        if (idx !== -1) {
-                          recent[idx].staffAccounts = liveStaff
-                          localStorage.setItem('bizassist_recent_logins', JSON.stringify(recent))
-                        }
-                        setView(prev => (prev === 'recent' || prev === 'recent-choose') ? 'recent-choose' : prev)
-                      } else if (!hasCachedStaff) {
-                        // No staff anywhere and nothing cached → owner password.
-                        setView(prev => (prev === 'recent' || prev === 'recent-choose') ? 'password' : prev)
-                      }
-                    } catch (err) {
-                      logger.error('Failed to fetch live staff list for quick login:', err)
-                    }
                   }}
                   style={{
                     display: 'flex',
@@ -582,8 +659,13 @@ export default function Login() {
                     <div style={{ fontSize: '0.92rem', fontWeight: 700, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {item.businessName}
                     </div>
-                    <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      Owner: {item.username}
+                    <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span>Owner: {item.username}</span>
+                      {item.staffAccounts && item.staffAccounts.length > 0 && (
+                        <span style={{ fontSize: '0.7rem', color: 'var(--accent)', fontWeight: 600, background: 'var(--accent-dim)', padding: '1px 6px', borderRadius: 4 }}>
+                          {item.staffAccounts.length} Staff {item.staffAccounts.length === 1 ? 'Counter' : 'Counters'}
+                        </span>
+                      )}
                     </div>
                   </div>
 
@@ -617,7 +699,7 @@ export default function Login() {
                 </div>
               ))}
             </div>
-            
+
             <button
               type="button"
               className="btn btn-ghost"
@@ -704,7 +786,7 @@ export default function Login() {
               onClick={() => {
                 setError('')
                 setPassword('')
-                setSelectedStaffUser(selectedOwner?.staffAccounts?.[0]?.username || '')
+                setSelectedStaffUser(defaultStaffFor(selectedOwner))
                 setView('staff')
               }}
               style={{
@@ -823,6 +905,24 @@ export default function Login() {
               </div>
             </div>
 
+            <div style={{ textAlign: 'right', marginTop: 4 }}>
+              <button
+                type="button"
+                onClick={() => setShowForgotModal(true)}
+                style={{
+                  fontSize: '0.78rem',
+                  color: 'var(--accent)',
+                  fontWeight: 500,
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  padding: 0
+                }}
+              >
+                Forgot password?
+              </button>
+            </div>
+
             {error && <div className="login-error" style={{ marginTop: '10px' }}>{error}</div>}
 
             <button type="submit" className="login-submit-btn" disabled={loading} style={{ marginTop: 10 }}>
@@ -830,26 +930,24 @@ export default function Login() {
             </button>
 
             {/* Inline Staff Login Mention */}
-            {selectedOwner?.staffAccounts && selectedOwner.staffAccounts.length > 0 && (
-              <div style={{ textAlign: 'center', marginTop: 8 }}>
-                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginRight: 6 }}>
-                  Are you a staff member?
-                </span>
-                <button
-                  type="button"
-                  className="btn btn-ghost"
-                  onClick={() => {
-                    setSelectedStaffUser(selectedOwner.staffAccounts[0]?.username || '')
-                    setPassword('')
-                    setError('')
-                    setView('staff')
-                  }}
-                  style={{ fontSize: '0.8rem', color: 'var(--accent)', fontWeight: 600, padding: 0, border: 'none', background: 'none', cursor: 'pointer' }}
-                >
-                  Staff Login
-                </button>
-              </div>
-            )}
+            <div style={{ textAlign: 'center', marginTop: 8 }}>
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginRight: 6 }}>
+                Are you a staff member?
+              </span>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={() => {
+                  setSelectedStaffUser(defaultStaffFor(selectedOwner))
+                  setPassword('')
+                  setError('')
+                  setView('staff')
+                }}
+                style={{ fontSize: '0.8rem', color: 'var(--accent)', fontWeight: 600, padding: 0, border: 'none', background: 'none', cursor: 'pointer' }}
+              >
+                Staff Login
+              </button>
+            </div>
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
               <button
@@ -927,18 +1025,32 @@ export default function Login() {
             </div>
 
             <div className="form-group" style={{ width: '100%', boxSizing: 'border-box' }}>
-              <label htmlFor="staff-user-select" style={{ fontSize: '10.5px' }}>Select Staff User</label>
-              <CustomSelect
-                id="staff-user-select"
-                value={selectedStaffUser}
-                onChange={e => setSelectedStaffUser(e.target.value)}
-              >
-                {selectedOwner?.staffAccounts?.map((s, idx) => (
-                  <option key={idx} value={s.username}>
-                    {s.username} ({s.role || 'cashier'})
-                  </option>
-                ))}
-              </CustomSelect>
+              <label htmlFor="staff-user-select" style={{ fontSize: '10.5px' }}>Select Staff User & Counter</label>
+              {selectedOwner?.staffAccounts && selectedOwner.staffAccounts.length > 0 ? (
+                <CustomSelect
+                  id="staff-user-select"
+                  value={selectedStaffUser}
+                  onChange={e => setSelectedStaffUser(e.target.value)}
+                >
+                  {selectedOwner.staffAccounts.map((s, idx) => {
+                    const counterLabel = s.counter_prefix ? ` — Counter: ${s.counter_prefix}` : ''
+                    return (
+                      <option key={idx} value={s.username}>
+                        {s.username}{counterLabel} ({s.role || 'cashier'})
+                      </option>
+                    )
+                  })}
+                </CustomSelect>
+              ) : (
+                <input
+                  type="text"
+                  id="staff-user-select"
+                  value={selectedStaffUser}
+                  onChange={e => setSelectedStaffUser(e.target.value)}
+                  required
+                  autoFocus
+                />
+              )}
             </div>
 
             <div className="form-group" style={{ marginTop: '10px', width: '100%', boxSizing: 'border-box' }}>
@@ -1028,50 +1140,142 @@ export default function Login() {
         {/* ── View 4: Standard Form (First-time / Other Login) ── */}
         {view === 'standard' && (
           <div style={{ width: '100%', boxSizing: 'border-box' }}>
-            {/* Business header */}
-            <div style={{ display: 'flex', alignItems: 'center', padding: '12px 14px', borderRadius: 12, background: 'var(--bg-3)', border: '1px solid var(--border)', marginBottom: 20, gap: 12, width: '100%', boxSizing: 'border-box' }}>
-              <div style={{ width: 34, height: 34, borderRadius: 8, background: 'var(--bg-2)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent)', flexShrink: 0 }}>
+            {/* A compact, explicit progress cue makes the secure three-step sign-in flow predictable. */}
+            <div className="auth-flow-header">
+              <div className="auth-flow-icon" aria-hidden="true">
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
                   <polyline points="9 22 9 12 15 12 15 22"></polyline>
                 </svg>
               </div>
-              <div style={{ textAlign: 'left', minWidth: 0 }}>
-                <div style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {standardStep === 'username' ? 'Other Business Login' : (bizLookup?.business_name || 'Business Login')}
+              <div className="auth-flow-copy">
+                <div className="auth-flow-title">
+                  {standardStep === 'username' ? 'Sign in to your business' : 'Business sign-in'}
                 </div>
-                <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', marginTop: 1 }}>
-                  {standardStep === 'username' && 'Enter the business owner username'}
+                <div className="auth-flow-description">
+                  {standardStep === 'username' && 'Find your business, then sign in'}
                   {standardStep === 'choose' && 'Choose how to sign in'}
-                  {standardStep === 'owner' && 'Owner Login'}
+                  {standardStep === 'owner' && (googleLinkCredential ? 'Confirm your password to connect Google' : 'Owner Login')}
                   {standardStep === 'staff' && 'Staff Login'}
                 </div>
               </div>
+              <span className="auth-flow-count" aria-label={`Step ${standardStep === 'username' ? 1 : standardStep === 'choose' ? 2 : 3} of 3`}>
+                {standardStep === 'username' ? '1 of 3' : standardStep === 'choose' ? '2 of 3' : '3 of 3'}
+              </span>
             </div>
+            <ol className="auth-progress" aria-label="Sign-in progress">
+              <li aria-label="1. Business" aria-current={standardStep === 'username' ? 'step' : undefined} className={standardStep === 'username' ? 'is-current' : 'is-complete'}><span>1</span><small>Business</small></li>
+              <li aria-label="2. Role" aria-current={standardStep === 'choose' ? 'step' : undefined} className={standardStep === 'choose' ? 'is-current' : ['owner', 'staff'].includes(standardStep) ? 'is-complete' : ''}><span>2</span><small>Role</small></li>
+              <li aria-label="3. Sign in" aria-current={['owner', 'staff'].includes(standardStep) ? 'step' : undefined} className={['owner', 'staff'].includes(standardStep) ? 'is-current' : ''}><span>3</span><small>Sign in</small></li>
+            </ol>
 
             {/* STEP 1 — owner username */}
             {standardStep === 'username' && (
               <form onSubmit={handleOwnerContinue} style={{ width: '100%' }}>
-                <div className="form-group" style={{ width: '100%', boxSizing: 'border-box' }}>
-                  <label htmlFor="owner-username">Business Owner Username</label>
-                  <input type="text" id="owner-username" placeholder="e.g. store_owner" value={username} onChange={e => setUsername(e.target.value)} required autoFocus autoComplete="username" />
+                {/* Google Sign In Container */}
+                <div style={{ marginBottom: 16 }}>
+                  <div ref={googleBtnRef} style={{ display: 'flex', justifyContent: 'center', minHeight: 44 }} />
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    margin: '14px 0 10px',
+                    gap: 12
+                  }}>
+                    <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+                    <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                      or with store credentials
+                    </span>
+                    <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+                  </div>
                 </div>
-                {error && <div className="login-error" style={{ marginTop: 14 }}>{error}</div>}
+
+                <div className="form-group" style={{ width: '100%', boxSizing: 'border-box' }}>
+                  <label htmlFor="owner-username">Owner username, email, phone or BizID</label>
+                  <input
+                    type="text"
+                    id="owner-username"
+                    aria-label="Business Owner Username"
+                    value={username}
+                    onChange={e => changeBusinessIdentifier(e.target.value)}
+                    required
+                    autoFocus
+                    autoComplete="username"
+                  />
+                </div>
+                {error && <div className="login-error" role="alert" style={{ marginTop: 14 }}>{error}</div>}
                 <button type="submit" className="login-submit-btn" disabled={loading} style={{ marginTop: 14 }}>
                   {loading ? 'Checking…' : 'Continue'}
                 </button>
-                <div style={{ textAlign: 'center', marginTop: 10 }}>
-                  <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginRight: 6 }}>Don't have an account?</span>
-                  <button type="button" onClick={() => navigate('/register')} style={{ fontSize: '0.8rem', color: 'var(--accent)', fontWeight: 600, padding: 0, border: 'none', background: 'none', cursor: 'pointer' }}>Register</button>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12 }}>
+                  <div>
+                    <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginRight: 6 }}>Don't have an account?</span>
+                    <button type="button" onClick={() => navigate('/register')} style={{ fontSize: '0.8rem', color: 'var(--accent)', fontWeight: 600, padding: 0, border: 'none', background: 'none', cursor: 'pointer' }}>Register</button>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowForgotModal(true)}
+                    style={{
+                      fontSize: '0.8rem',
+                      color: 'var(--accent)',
+                      fontWeight: 600,
+                      padding: 0,
+                      border: 'none',
+                      background: 'none',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Forgot password?
+                  </button>
                 </div>
+                <p className="login-reassurance">
+                  <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                  Your business data stays private until you sign in.
+                </p>
+
               </form>
             )}
 
-            {/* STEP 2 — choose owner vs staff */}
+            {/* STEP 2 — choose owner vs staff with verified business details */}
             {standardStep === 'choose' && (
               <div style={{ width: '100%' }}>
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 12,
+                  marginBottom: 16,
+                  padding: '12px 14px',
+                  background: 'var(--bg-2)',
+                  borderRadius: 12,
+                  border: '1.5px solid var(--border)',
+                  textAlign: 'left'
+                }}>
+                  <div style={{
+                    width: 38,
+                    height: 38,
+                    borderRadius: 8,
+                    background: 'var(--accent-dim, rgba(182, 85, 54, 0.1))',
+                    color: 'var(--accent)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0
+                  }}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                  </div>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ fontSize: '0.92rem', fontWeight: 700, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {businessInfo?.business_name || username}
+                    </div>
+                    <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)', display: 'flex', gap: 8, marginTop: 2 }}>
+                      <span>BizID: <strong>{businessInfo?.public_id || 'Verified'}</strong></span>
+                      <span>•</span>
+                      <span>Owner: {businessInfo?.owner_username || username}</span>
+                    </div>
+                  </div>
+                </div>
+
                 <button type="button" className="login-submit-btn" onClick={() => { setError(''); setPassword(''); setStandardStep('owner') }} style={{ width: '100%' }}>Owner Login</button>
-                <button type="button" className="login-submit-btn" disabled={!(bizLookup?.staff?.length)} onClick={() => { setError(''); setPassword(''); setSelectedStaffUser(bizLookup?.staff?.[0]?.login_name || ''); setStandardStep('staff') }} style={{ width: '100%', marginTop: 10, background: 'var(--bg-2)', color: 'var(--text-primary)', border: '1px solid var(--border)' }}>Staff Login</button>
+                <button type="button" aria-label="Staff Login" className="login-submit-btn" onClick={() => { setError(''); setPassword(''); setStandardStep('staff') }} style={{ width: '100%', marginTop: 10, background: 'var(--bg-2)', color: 'var(--text-primary)', border: '1px solid var(--border)' }}><span>Staff Login</span> <span aria-hidden="true">({availableStaff.length} available)</span></button>
                 <button type="button" onClick={() => { setError(''); setStandardStep('username') }} style={{ width: '100%', marginTop: 14, fontSize: '0.82rem', fontWeight: 600, color: 'var(--accent)', border: 'none', background: 'none', cursor: 'pointer' }}>← Back</button>
               </div>
             )}
@@ -1079,6 +1283,28 @@ export default function Login() {
             {/* STEP 3 — owner password */}
             {standardStep === 'owner' && (
               <form onSubmit={handleSubmitStandard} style={{ width: '100%' }}>
+                {businessInfo && (
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 10,
+                    marginBottom: 14,
+                    padding: '8px 12px',
+                    borderRadius: 8,
+                    background: 'var(--bg-2)',
+                    border: '1px solid var(--border)',
+                    fontSize: '0.82rem',
+                    textAlign: 'left'
+                  }}>
+                    <span style={{ color: '#10b981', fontWeight: 700 }}>✓</span>
+                    <span style={{ fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {businessInfo.business_name}
+                    </span>
+                    <span style={{ color: 'var(--text-muted)', fontSize: '0.74rem', marginLeft: 'auto' }}>
+                      ({businessInfo.public_id})
+                    </span>
+                  </div>
+                )}
                 <div className="form-group" style={{ width: '100%', boxSizing: 'border-box' }}>
                   <label htmlFor="owner-password">Owner Password</label>
                   <div className="password-wrapper">
@@ -1086,28 +1312,94 @@ export default function Login() {
                     {pwToggleBtn}
                   </div>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12, userSelect: 'none' }}>
-                  <input type="checkbox" id="remember-me" checked={rememberMe} onChange={e => setRememberMe(e.target.checked)} style={{ width: 'auto', margin: 0, cursor: 'pointer' }} />
-                  <label htmlFor="remember-me" style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', cursor: 'pointer', margin: 0, textTransform: 'none', fontWeight: 500, letterSpacing: 'normal' }}>Remember me</label>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 12, userSelect: 'none' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <input type="checkbox" id="remember-me" checked={rememberMe} onChange={e => setRememberMe(e.target.checked)} style={{ width: 'auto', margin: 0, cursor: 'pointer' }} />
+                    <label htmlFor="remember-me" style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', cursor: 'pointer', margin: 0, textTransform: 'none', fontWeight: 500, letterSpacing: 'normal' }}>Remember me</label>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowForgotModal(true)}
+                    style={{
+                      fontSize: '0.78rem',
+                      color: 'var(--accent)',
+                      fontWeight: 500,
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      padding: 0
+                    }}
+                  >
+                    Forgot password?
+                  </button>
                 </div>
                 {error && <div className="login-error" style={{ marginTop: 14 }}>{error}</div>}
                 <button type="submit" className="login-submit-btn" disabled={loading} style={{ marginTop: 14 }}>{loading ? 'Signing in…' : 'Sign In as Owner'}</button>
-                <button type="button" onClick={() => { setError(''); setStandardStep(bizLookup?.staff?.length ? 'choose' : 'username') }} style={{ width: '100%', marginTop: 12, fontSize: '0.82rem', fontWeight: 600, color: 'var(--accent)', border: 'none', background: 'none', cursor: 'pointer' }}>← Back</button>
+                <button type="button" onClick={() => { setError(''); setStandardStep(businessInfo?.has_staff ? 'choose' : 'username') }} style={{ width: '100%', marginTop: 12, fontSize: '0.82rem', fontWeight: 600, color: 'var(--accent)', border: 'none', background: 'none', cursor: 'pointer' }}>← Back</button>
               </form>
             )}
 
-            {/* STEP 4 — staff (counter dropdown) */}
+            {/* STEP 4 — staff login (with dropdown when available so manual typing is skipped) */}
             {standardStep === 'staff' && (
               <form onSubmit={handleStandardStaffLogin} style={{ width: '100%' }}>
+                {businessInfo && (
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 10,
+                    marginBottom: 14,
+                    padding: '8px 12px',
+                    borderRadius: 8,
+                    background: 'var(--bg-2)',
+                    border: '1px solid var(--border)',
+                    fontSize: '0.82rem',
+                    textAlign: 'left'
+                  }}>
+                    <span style={{ color: '#10b981', fontWeight: 700 }}>✓</span>
+                    <span style={{ fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {businessInfo.business_name}
+                    </span>
+                    <span style={{ color: 'var(--text-muted)', fontSize: '0.74rem', marginLeft: 'auto' }}>
+                      ({businessInfo.public_id})
+                    </span>
+                  </div>
+                )}
                 <div className="form-group" style={{ width: '100%', boxSizing: 'border-box' }}>
-                  <label htmlFor="std-staff-select">Select Counter</label>
-                  <CustomSelect id="std-staff-select" value={selectedStaffUser} onChange={e => setSelectedStaffUser(e.target.value)}>
-                    {(bizLookup?.staff || []).map((s, idx) => (
-                      <option key={idx} value={s.login_name}>
-                        {s.login_name}{s.counter_prefix ? ` · ${s.counter_prefix}` : ''} ({s.role || 'cashier'})
-                      </option>
-                    ))}
-                  </CustomSelect>
+                  <label htmlFor={availableStaff.length ? "std-staff-select" : "std-staff-login"} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span>Staff Account</span>
+                    {availableStaff.length > 0 && (
+                      <span style={{ fontSize: '0.72rem', color: 'var(--accent)', fontWeight: 600 }}>
+                        {availableStaff.length} registered
+                      </span>
+                    )}
+                  </label>
+                  {availableStaff.length > 0 ? (
+                    <CustomSelect
+                      id="std-staff-select"
+                      value={selectedStaffUser}
+                      onChange={e => setSelectedStaffUser(e.target.value)}
+                      style={{ height: 42 }}
+                    >
+                      {availableStaff.map((s, idx) => {
+                        return (
+                          <option key={idx} value={s.username}>
+                            {s.username} ({s.role || 'cashier'})
+                          </option>
+                        )
+                      })}
+                    </CustomSelect>
+                  ) : (
+                    <input
+                      id="std-staff-login"
+                      type="text"
+
+                      value={selectedStaffUser}
+                      onChange={e => setSelectedStaffUser(e.target.value)}
+                      required
+                      autoFocus
+                      autoComplete="username"
+                    />
+                  )}
                 </div>
                 <div className="form-group" style={{ marginTop: 14, width: '100%', boxSizing: 'border-box' }}>
                   <label htmlFor="std-staff-password">Password</label>
@@ -1117,7 +1409,7 @@ export default function Login() {
                   </div>
                 </div>
                 {error && <div className="login-error" style={{ marginTop: 14 }}>{error}</div>}
-                <button type="submit" className="login-submit-btn" disabled={loading} style={{ marginTop: 14 }}>{loading ? 'Signing in…' : 'Sign In'}</button>
+                <button type="submit" className="login-submit-btn" disabled={loading} style={{ marginTop: 14 }}>{loading ? 'Signing in…' : 'Sign In as Staff'}</button>
                 <button type="button" onClick={() => { setError(''); setStandardStep('choose') }} style={{ width: '100%', marginTop: 12, fontSize: '0.82rem', fontWeight: 600, color: 'var(--accent)', border: 'none', background: 'none', cursor: 'pointer' }}>← Back</button>
               </form>
             )}
@@ -1130,15 +1422,56 @@ export default function Login() {
           </div>
         )}
       </div>
-    </div>
+      <footer className="login-footer" style={{
+        marginTop: 18,
+        marginBottom: 8,
+        width: '100%',
+        display: 'flex',
+        flexWrap: 'wrap',
+        justifyContent: 'center',
+        alignItems: 'center',
+        gap: '8px 14px',
+        fontSize: '0.76rem',
+        color: 'var(--text-muted, #6b7280)',
+        zIndex: 10,
+        textAlign: 'center',
+      }}>
+        <a href="/terms" target="_blank" rel="noopener noreferrer" style={{ color: 'inherit', textDecoration: 'none' }}>Terms of Service</a>
+        <span>•</span>
+        <a href="/privacy" target="_blank" rel="noopener noreferrer" style={{ color: 'inherit', textDecoration: 'none' }}>Privacy Policy</a>
+        <span>•</span>
+        <a href="/refund-policy" target="_blank" rel="noopener noreferrer" style={{ color: 'inherit', textDecoration: 'none' }}>Refund Policy</a>
+        <span>•</span>
+        <a href="/contact" target="_blank" rel="noopener noreferrer" style={{ color: 'inherit', textDecoration: 'none' }}>Contact</a>
+        <span>•</span>
+        <span>© {new Date().getFullYear()} Stater Bill • ARES Pvt Ltd</span>
+      </footer>
     {/* First-run self-test: field installs can check backend/cloud/DB/clock
         and one-click send diagnostics instead of failing silently. */}
-    <details style={{ position: 'fixed', bottom: 12, right: 12, zIndex: 50, maxWidth: 480 }}>
+    <details className="login-system-check">
       <summary style={{ cursor: 'pointer', fontSize: '0.78rem', color: 'var(--text-muted)', userSelect: 'none' }}>⚙ System check</summary>
       <div style={{ marginTop: 8 }}>
         <BootHealthCheck auto={true} />
       </div>
     </details>
+
+    {/* Forgot Password OTP Modal */}
+    <ForgotPasswordModal
+      isOpen={showForgotModal}
+      onClose={() => setShowForgotModal(false)}
+      onSuccess={handleForgotSuccess}
+    />
+
+    {/* Google Onboarding Modal (for first-time Google sign-ins) */}
+    <GoogleOnboardingModal
+      isOpen={showGoogleModal}
+      credential={googleCredential}
+      initialData={googleOnboardingData}
+      onClose={() => setShowGoogleModal(false)}
+      onSuccess={handleGoogleRegisterSuccess}
+    />
+    <AuthRoadmap />
+    </div>
     </>
   )
 }

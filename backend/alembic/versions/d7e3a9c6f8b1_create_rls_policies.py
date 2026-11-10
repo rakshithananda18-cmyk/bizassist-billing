@@ -26,8 +26,19 @@ DIRECT_SCOPED_TABLES = [
 def upgrade() -> None:
     bind = op.get_bind()
     if bind.dialect.name == "postgresql":
+        # Transfers and expenses were formerly startup-created. Their parent
+        # tables must exist before the child isolation policies below refer to
+        # them. Existing installations keep their data and declarations.
+        from database.models import Expense, Godown, StockTransfer, StockTransferLineItem
+        for model in (Expense, Godown, StockTransfer, StockTransferLineItem):
+            model.__table__.create(bind, checkfirst=True)
+        present = set(sa.inspect(bind).get_table_names())
         # 1. Direct scoped tables
         for table in DIRECT_SCOPED_TABLES:
+            # Several optional startup tables are created by later revisions.
+            # Their definitive policies are installed when those tables exist.
+            if table not in present:
+                continue
             op.execute(f"ALTER TABLE public.{table} FORCE ROW LEVEL SECURITY;")
             op.execute(f"DROP POLICY IF EXISTS tenant_isolation ON public.{table};")
             op.execute(f"""

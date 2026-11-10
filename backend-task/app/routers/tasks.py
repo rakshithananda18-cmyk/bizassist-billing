@@ -21,14 +21,16 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.db import get_db, utc_now
+from app.billing_context import billing_context
+from app.collections import PAYMENT_MODES, confirmed_in_billing
 from app.geo import GeoFix, distance_to, validate_fix
-from app.invoices import MAX_PER_TASK, attach_invoices, ensure_not_planned, resolve_invoices
+from app.invoices import MAX_PER_TASK, attach_invoices, ensure_not_planned, resolve_invoices, invoice_balances, balance_due
 from app.models import FieldRun, FieldRunStop, FieldShop, FieldTask
 from app.routers.attendance import require_checked_in
 from app.routers.runs import _check_task_type, maybe_complete_run, maybe_complete_stop
-from app.security import Principal, get_settings, require_owner, require_staff
-from app.services import award_task_points, get_scoped, log_activity, optional_staff, record_fix, task_out
-from app.timeutil import biz_local_to_utc, day_bounds_utc
+from app.security import Principal, current_principal, get_settings, require_owner, require_staff
+from app.services import award_task_points, get_scoped, log_activity, optional_staff, prime_billing_reads, record_fix, task_out
+from app.timeutil import biz_local_to_utc, biz_now, day_bounds_utc
 
 router = APIRouter(prefix="/api", tags=["tasks"])
 
@@ -45,7 +47,7 @@ class TaskIn(BaseModel):
     boxes_planned: Optional[int] = Field(None, ge=0, le=10000)
     orders_count: Optional[int] = Field(None, ge=0, le=1000)
     reference: Optional[str] = Field(None, max_length=200)
-    amount_expected: Optional[float] = Field(None, ge=0)
+    amount_expected: Optional[float] = Field(None, ge=0, allow_inf_nan=False)
     invoice_ids: List[int] = Field(default_factory=list, max_length=MAX_PER_TASK,
                                    description="Billing invoices of the shop's linked customer")
 
@@ -113,7 +115,18 @@ def list_tasks(
             raise HTTPException(status_code=422, detail="day must be YYYY-MM-DD")
         q = q.filter(FieldTask.due_at >= start, FieldTask.due_at < end)
     rows = q.order_by(FieldTask.due_at.is_(None), FieldTask.due_at.asc(), FieldTask.id.desc()).limit(500).all()
-    return [task_out(t) for t in rows]
+    confirmed = confirmed_in_billing(db, p.business_id, (t.uid for t in rows if t.task_type == "payment_collect"))
+    prime_billing_reads(tasks=rows)
+    return [task_out(t, confirmed=confirmed) for t in rows]
+
+
+@router.get("/tasks/{task_id}")
+def get_task(task_id: int, p: Principal = Depends(current_principal), db: Session = Depends(get_db)):
+    task = get_scoped(db, FieldTask, p.business_id, task_id, "Task")
+    if p.kind == "staff" and task.staff_id != p.staff.id:
+        raise HTTPException(status_code=404, detail="Task not found")
+    confirmed = confirmed_in_billing(db, p.business_id, [task.uid]) if p.kind == "owner" else None
+    return task_out(task, confirmed=confirmed)
 
 
 class TaskPatch(BaseModel):
@@ -126,20 +139,58 @@ class TaskPatch(BaseModel):
     boxes_planned: Optional[int] = Field(None, ge=0, le=10000)
     orders_count: Optional[int] = Field(None, ge=0, le=1000)
     reference: Optional[str] = Field(None, max_length=200)
-    amount_expected: Optional[float] = Field(None, ge=0)
+    amount_expected: Optional[float] = Field(None, ge=0, allow_inf_nan=False)
     status: Optional[Literal["cancelled", "pending"]] = None
 
 
 @router.patch("/tasks/{task_id}")
 def update_task(task_id: int, req: TaskPatch, p: Principal = Depends(require_owner), db: Session = Depends(get_db)):
-    task = get_scoped(db, FieldTask, p.business_id, task_id, "Task")
+    task = (db.query(FieldTask).filter(FieldTask.business_id == p.business_id, FieldTask.id == task_id)
+            .with_for_update(of=FieldTask).populate_existing().first())
+    if task is None:
+        raise HTTPException(status_code=404, detail="Task not found")
     if task.status == "done":
         raise HTTPException(status_code=409, detail="Completed tasks are part of the points ledger and cannot be edited")
     data = req.model_dump(exclude_unset=True)
+    for field in ("title", "staff_id", "points", "status"):
+        if field in data and (data[field] is None or (field == "title" and not data[field].strip())):
+            raise HTTPException(status_code=422, detail=f"{field} cannot be empty")
     if "staff_id" in data:
-        task.staff_id = optional_staff(db, p.business_id, data.pop("staff_id")).id
+        staff = optional_staff(db, p.business_id, data.pop("staff_id"))
+        if task.run_id:
+            run = get_scoped(db, FieldRun, p.business_id, task.run_id, "Run")
+            if staff.id != run.staff_id:
+                raise HTTPException(status_code=409, detail="Reassign the whole run so its route and pending tasks stay with the same person")
+        task.staff_id = staff.id
     if "due_date" in data or "due_time" in data:
-        task.due_at = _due(data.pop("due_date", None), data.pop("due_time", None))
+        previous = biz_now(task.due_at) if task.due_at else None
+        day = data.pop("due_date", previous.date().isoformat() if previous else None)
+        default_clock = previous.strftime("%H:%M") if previous and day else None
+        clock = data.pop("due_time", default_clock)
+        if not day and clock:
+            raise HTTPException(status_code=422, detail="Choose a due date before setting a due time")
+        task.due_at = _due(day, clock)
+    if "status" in data:
+        new_status = data["status"]
+        if task.status == "cancelled" and new_status == "pending":
+            if task.run_id:
+                run = db.query(FieldRun).filter(FieldRun.id == task.run_id, FieldRun.business_id == p.business_id).first()
+                if run and run.status in ("completed", "cancelled"):
+                    raise HTTPException(status_code=409, detail=f"Cannot reopen task on a {run.status} run")
+            if task.run_stop_id:
+                stop = db.query(FieldRunStop).filter(FieldRunStop.id == task.run_stop_id).first()
+                if stop and stop.status in ("done", "skipped"):
+                    raise HTTPException(status_code=409, detail=f"Cannot reopen task on a {stop.status} stop")
+            ti_ids = [ti.invoice_id for ti in task.invoices]
+            if ti_ids:
+                shop = get_scoped(db, FieldShop, p.business_id, task.shop_id, "Shop") if task.shop_id is not None else None
+                invoices = resolve_invoices(db, p.business_id, shop, ti_ids)
+                ensure_not_planned(db, p.business_id, task.task_type, invoices)
+                if task.task_type == "payment_collect":
+                    balances = invoice_balances(db, invoices)
+                    due = round(sum(balance_due(i, balances) for i in invoices), 2)
+                    if task.amount_expected is None or task.amount_expected > due + 0.005:
+                        task.amount_expected = due
     for k, v in data.items():
         setattr(task, k, v.strip() if isinstance(v, str) and k == "title" else v)
     log_activity(db, p, "task.update", entity="task", entity_id=task.id, summary=", ".join(sorted(req.model_dump(exclude_unset=True))))
@@ -165,6 +216,7 @@ def my_tasks(
     if status:
         q = q.filter(FieldTask.status == status)
     rows = q.order_by(FieldTask.due_at.is_(None), FieldTask.due_at.asc(), FieldTask.id.asc()).limit(300).all()
+    prime_billing_reads(tasks=rows)
     return [task_out(t) for t in rows]
 
 
@@ -172,7 +224,9 @@ class CompleteBody(BaseModel):
     geo: GeoFix
     note: Optional[str] = Field(None, max_length=1000)
     boxes_delivered: Optional[int] = Field(None, ge=0, le=10000)
-    amount_collected: Optional[float] = Field(None, ge=0)
+    amount_collected: Optional[float] = Field(None, ge=0, allow_inf_nan=False)
+    payment_mode: Optional[Literal[PAYMENT_MODES]] = None  # default Cash when money was collected
+    payment_ref: Optional[str] = Field(None, max_length=60)
 
 
 @router.post("/tasks/{task_id}/complete")
@@ -181,8 +235,13 @@ def complete_task(task_id: int, body: CompleteBody, p: Principal = Depends(requi
     settings = get_settings(db, p.business_id)
     fix = validate_fix(body.geo, settings.max_accuracy_m)
     require_checked_in(db, p.staff)
-    task = get_scoped(db, FieldTask, p.business_id, task_id, "Task")
-    if task.staff_id != p.staff.id:
+    # Two in-flight retries must not both observe pending and award points or
+    # overwrite the amount collected. Lock only ft_tasks: joined optional shop
+    # rows cannot be FOR UPDATE targets on PostgreSQL.
+    task = (db.query(FieldTask).filter(FieldTask.business_id == p.business_id,
+                                     FieldTask.id == task_id, FieldTask.staff_id == p.staff.id)
+            .with_for_update(of=FieldTask).populate_existing().first())
+    if task is None:
         raise HTTPException(status_code=404, detail="Task not found")
     if task.status != "pending":
         raise HTTPException(status_code=409, detail=f"Task is already {task.status}")
@@ -203,7 +262,16 @@ def complete_task(task_id: int, body: CompleteBody, p: Principal = Depends(requi
     if task.task_type == "payment_collect":
         if body.amount_collected is None:
             raise HTTPException(status_code=422, detail="Enter the amount collected (0 if nothing)")
+        if task.invoices:
+            balances, _ = billing_context(task).task_balances(task)
+            if not balances["billing_balance_available"]:
+                raise HTTPException(status_code=409, detail="A linked billing invoice is unavailable or belongs to another customer. Ask the owner to review this task.")
+            if body.amount_collected - balances["current_amount_due"] > 0.005:
+                raise HTTPException(status_code=409, detail="The billing balance has changed. Refresh the task and enter no more than the current amount due.")
         task.amount_collected = body.amount_collected
+        if body.amount_collected > 0:
+            task.payment_mode = body.payment_mode or "Cash"
+            task.payment_ref = (body.payment_ref or "").strip() or None
 
     shop = task.shop
     task.status = "done"

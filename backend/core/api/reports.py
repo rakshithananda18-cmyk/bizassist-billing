@@ -260,11 +260,11 @@ def report_pnl(
     revenue_normal, returns_sales = rev_q.first() or (0.0, 0.0)
     net_revenue = revenue_normal - returns_sales
 
-    # 2. Cost of Goods Sold (COGS)
+    # 2. Cost of Goods Sold (COGS) — uses immutable sale-time snapshot (BD-10)
     cogs_query = db.query(
         Invoice.invoice_type,
         InvoiceLineItem.quantity,
-        Product.cost_price
+        case((InvoiceLineItem.cost_snapshot_known.is_(True), InvoiceLineItem.cost_price), else_=None)
     ).join(
         Invoice, Invoice.id == InvoiceLineItem.invoice_id
     ).outerjoin(
@@ -275,7 +275,11 @@ def report_pnl(
     if to_date:
         cogs_query = cogs_query.filter(Invoice.invoice_date <= to_date)
     cogs = 0.0
+    missing_cost_lines = 0
     for inv_type, qty, cost_price in cogs_query.all():
+        if cost_price is None:
+            missing_cost_lines += 1
+            continue
         sign = -1.0 if inv_type == "credit_note" else 1.0
         cogs += sign * ((cost_price or 0.0) * (qty or 0.0))
 
@@ -331,11 +335,14 @@ def report_pnl(
     jl_q = jl_q.group_by(JournalLine.account)
     jl_rows = {row.account: (float(row.dr or 0.0), float(row.cr or 0.0)) for row in jl_q.all()}
 
-    journal_sales_credit = jl_rows.get(ACC_SALES, (0.0, 0.0))[1]
-    journal_gst_payable = jl_rows.get(ACC_GST_OUT, (0.0, 0.0))[1]
-    journal_discount_allowed = jl_rows.get("Discount Allowed", (0.0, 0.0))[0]
+    sales_dr, sales_cr = jl_rows.get(ACC_SALES, (0.0, 0.0))
+    gst_dr, gst_cr = jl_rows.get(ACC_GST_OUT, (0.0, 0.0))
+    discount_dr, discount_cr = jl_rows.get("Discount Allowed", (0.0, 0.0))
+    journal_sales_credit = sales_cr - sales_dr
+    journal_gst_payable = gst_cr - gst_dr
+    journal_discount_allowed = discount_dr - discount_cr
     journal_net_revenue = journal_sales_credit - journal_discount_allowed
-    journal_recon_delta = round(net_revenue - (journal_sales_credit + journal_gst_payable), 2)
+    journal_recon_delta = round(net_revenue - (journal_sales_credit + journal_gst_payable - journal_discount_allowed), 2)
     if abs(journal_recon_delta) > 0.01:
         logger.warning(
             "[REPORT][M-14] P&L reconciliation gap bid=%s: invoice_net=%.2f "
@@ -343,7 +350,7 @@ def report_pnl(
             bid, net_revenue, journal_sales_credit + journal_gst_payable, journal_recon_delta,
         )
 
-    return [
+    metrics = [
         # ── Invoice-based section (billing / AR view) ─────────────────────────
         {"metric": "Gross Sales Revenue (Invoice Total, GST-inclusive)",
          "amount": round(revenue_normal, 2), "section": "invoice"},
@@ -390,6 +397,14 @@ def report_pnl(
          "section": "journal",
          "ok": abs(journal_recon_delta) <= 0.01},
     ]
+    for metric in metrics:
+        if metric["metric"] == "Cost of Goods Sold (COGS)" or metric["metric"].startswith(("Gross Profit", "Net Income")):
+            metric.update(complete=missing_cost_lines == 0, missing_cost_lines=missing_cost_lines)
+            if missing_cost_lines:
+                metric["known_amount"] = metric["amount"]
+                metric["amount"] = None
+                metric["reason"] = "Historical cost snapshots need evidence-based reconciliation"
+    return metrics
 
 
 @router.get("/reports/gst")

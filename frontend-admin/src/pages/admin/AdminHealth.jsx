@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useCallback, useState, useEffect } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
 import { logger } from '../../utils/logger'
 import { useDialog } from '../../contexts/DialogContext'
@@ -9,20 +9,18 @@ import TwoFactorCard from '../../components/TwoFactorCard'
 export default function AdminHealth() {
   const { authFetch } = useAuth()
   const { showError } = useDialog()
-  
+
   const [health, setHealth] = useState(null)
   const [feedbacks, setFeedbacks] = useState([])
   const [alterations, setAlterations] = useState([])
   const [loading, setLoading] = useState(true)
-  
+
   const [expandedAlteration, setExpandedAlteration] = useState(null)
   const [downloadingId, setDownloadingId] = useState(null)
 
-  useEffect(() => {
-    loadAllData()
-  }, [])
 
-  async function loadAllData() {
+
+  const loadAllData = useCallback(async () => {
     setLoading(true)
     try {
       // 1. Fetch Health check stats
@@ -51,7 +49,11 @@ export default function AdminHealth() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [authFetch, showError])
+
+  useEffect(() => {
+    loadAllData()
+  }, [loadAllData])
 
   async function handleDownloadLogs(feedbackId, originalFilename) {
     if (downloadingId) return
@@ -96,15 +98,18 @@ export default function AdminHealth() {
   }
 
   return (
-    <div className="admin-main">
+    <div className="admin-main" style={{ margin: 0, padding: 0 }}>
       <div className="admin-header-row">
         <div className="admin-title-group">
-          <h1 style={{ display: 'flex', alignItems: 'center', gap: 8 }}><Icon name="alert" size={24} /> SYSTEM HEALTH & AUDIT</h1>
-          <p>Real-time database connection monitoring, client logs, and change auditing</p>
+          <h1 style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Icon name="shield" size={22} style={{ color: 'var(--accent)' }} />
+            <span>System Health & Diagnostic Audits</span>
+          </h1>
+          <p>Real-time database connectivity, client diagnostic logs, and table alteration audit trails</p>
         </div>
         <div className="admin-header-actions">
-          <button className="btn-flush" onClick={loadAllData} disabled={loading} style={{ padding: '10px 16px', fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            <Icon name="refresh" size={14} /> Refresh Stats
+          <button className="btn-flush" onClick={loadAllData} disabled={loading} style={{ padding: '8px 14px', fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <Icon name="refresh" size={14} /> <span>Refresh Stats</span>
           </button>
         </div>
       </div>
@@ -113,45 +118,73 @@ export default function AdminHealth() {
       <TwoFactorCard />
 
       {loading && !health ? (
-        <div className="vskel" style={{ marginTop: 24 }}></div>
+        <div className="vskel" style={{ marginTop: 20 }}></div>
       ) : (
         <>
           {/* HEALTH STATUS CARDS */}
-          <div className="vsummary-strip-three" style={{ marginTop: 24, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 20 }}>
+          <div style={{ marginTop: 20, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16 }}>
             {/* Local DB Status */}
-            <div className="vsummary-card" style={{ borderLeftColor: health?.sqlite === 'connected' ? '#10b981' : '#6b7280', padding: 18 }}>
-              <div className="vsummary-label">SQLite Local DB</div>
-              <div className="vsummary-value" style={{ fontSize: '1.4rem', marginTop: 4 }}>
+            <div style={{
+              background: 'var(--bg-2)',
+              border: '1px solid var(--border)',
+              borderLeft: `4px solid ${health?.sqlite === 'connected' ? 'var(--success)' : 'var(--border)'}`,
+              borderRadius: 'var(--radius-lg, 12px)',
+              padding: '16px 20px',
+              boxShadow: 'var(--shadow-sm)',
+            }}>
+              <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>SQLite Local DB</div>
+              <div style={{ fontSize: '1.3rem', marginTop: 6, fontWeight: 600 }}>
                 {renderStatusDot(health?.sqlite)}
               </div>
-              <div className="vsummary-sub">desktop instance client</div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>desktop instance client</div>
             </div>
 
             {/* Cloud DB Status */}
-            <div className="vsummary-card" style={{ borderLeftColor: health?.postgres === 'connected' || health?.postgres === 'reachable' ? '#10b981' : '#6b7280', padding: 18 }}>
-              <div className="vsummary-label">PostgreSQL Cloud DB</div>
-              <div className="vsummary-value" style={{ fontSize: '1.4rem', marginTop: 4 }}>
+            <div style={{
+              background: 'var(--bg-2)',
+              border: '1px solid var(--border)',
+              borderLeft: `4px solid ${health?.postgres === 'connected' || health?.postgres === 'reachable' ? 'var(--success)' : 'var(--border)'}`,
+              borderRadius: 'var(--radius-lg, 12px)',
+              padding: '16px 20px',
+              boxShadow: 'var(--shadow-sm)',
+            }}>
+              <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>PostgreSQL Cloud DB</div>
+              <div style={{ fontSize: '1.3rem', marginTop: 6, fontWeight: 600 }}>
                 {renderStatusDot(health?.postgres)}
               </div>
-              <div className="vsummary-sub">supabase persistence node</div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>supabase persistence node</div>
             </div>
 
             {/* Log files card */}
-            <div className="vsummary-card" style={{ borderLeftColor: '#3b82f6', padding: 18 }}>
-              <div className="vsummary-label">Server Console Log File</div>
-              <div className="vsummary-value" style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-color, #fff)', marginTop: 4 }}>
+            <div style={{
+              background: 'var(--bg-2)',
+              border: '1px solid var(--border)',
+              borderLeft: '4px solid var(--accent)',
+              borderRadius: 'var(--radius-lg, 12px)',
+              padding: '16px 20px',
+              boxShadow: 'var(--shadow-sm)',
+            }}>
+              <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>Server Console Log</div>
+              <div style={{ fontSize: '1.3rem', fontWeight: 700, fontFamily: "var(--font-serif)", color: 'var(--text-primary)', marginTop: 4 }}>
                 {health?.log_file?.exists ? formatBytes(health?.log_file?.size_bytes) : 'Not found'}
               </div>
-              <div className="vsummary-sub">tailing logs/bizassist.log</div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>tailing logs/bizassist.log</div>
             </div>
 
             {/* Telemetry Stats */}
-            <div className="vsummary-card" style={{ borderLeftColor: '#8b5cf6', padding: 18 }}>
-              <div className="vsummary-label">Persistent Telemetry</div>
-              <div className="vsummary-value" style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-color, #fff)', marginTop: 4 }}>
+            <div style={{
+              background: 'var(--bg-2)',
+              border: '1px solid var(--border)',
+              borderLeft: '4px solid var(--warning)',
+              borderRadius: 'var(--radius-lg, 12px)',
+              padding: '16px 20px',
+              boxShadow: 'var(--shadow-sm)',
+            }}>
+              <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>Persistent Telemetry</div>
+              <div style={{ fontSize: '1.3rem', fontWeight: 700, fontFamily: "var(--font-serif)", color: 'var(--text-primary)', marginTop: 4 }}>
                 {health?.telemetry?.rows?.toLocaleString() || 0} events
               </div>
-              <div className="vsummary-sub">DB store row count</div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>DB store row count</div>
             </div>
           </div>
 
@@ -209,7 +242,7 @@ export default function AdminHealth() {
                                   gap: 4
                                 }}
                               >
-                                <Icon name="upload" size={11} style={{ transform: 'rotate(180deg)' }} /> 
+                                <Icon name="upload" size={11} style={{ transform: 'rotate(180deg)' }} />
                                 {downloadingId === fb.id ? 'Downloading...' : 'Download Logs'}
                               </button>
                             ) : (
@@ -259,7 +292,10 @@ export default function AdminHealth() {
                           <>
                             <tr
                               key={alt.id}
+                              tabIndex={0}
+                              aria-expanded={isExpanded}
                               onClick={() => setExpandedAlteration(isExpanded ? null : alt.id)}
+                              onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setExpandedAlteration(isExpanded ? null : alt.id) } }}
                               style={{ cursor: 'pointer', hover: 'background: rgba(255,255,255,0.02)' }}
                             >
                               <td>{new Date(alt.created_at + 'Z').toLocaleString()}</td>

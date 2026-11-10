@@ -12,7 +12,7 @@ export default function PartyLedgerView({ reportData, fmt }) {
         </div>
         <div style={{ textAlign: 'right' }}>
           <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>Closing {reportData.summary?.balance_type}</div>
-          <div style={{ fontSize: '1.2rem', fontWeight: 800, color: reportData.summary?.balance_type === 'Payable' ? 'var(--danger)' : '#2e7d32' }}>
+          <div style={{ fontSize: '1.2rem', fontWeight: 800, color: reportData.summary?.balance_type === 'Payable' ? 'var(--danger)' : 'var(--success)' }}>
             {fmt(reportData.summary?.abs_closing)}
           </div>
         </div>

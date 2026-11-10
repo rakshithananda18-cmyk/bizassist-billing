@@ -1,0 +1,29 @@
+{
+  "OPS-01": {
+    "equal_total_fallback_refused": true,
+    "live_default_path_remains": true,
+    "dry_run_default_present": false
+  },
+  "OPS-02": {
+    "tracked_financial_snapshot_count": 3,
+    "ignore_rule_occurrences": 2,
+    "financial_values_read_or_printed": false
+  },
+  "CI-01": {
+    "admin_test_build_added": true,
+    "billing_build_added": true,
+    "field_core_models_trigger_added": true,
+    "field_cleanup_trigger": false,
+    "field_collections_trigger": false,
+    "contract_uses_create_all": true,
+    "secret_scan_job_present": false,
+    "landing_job_present": false
+  },
+  "DOC-01": {
+    "foundation_historical_status_marker_added": true,
+    "original_register_statuses": [
+      "open"
+    ],
+    "scope_note": "Original baseline audit is intentionally historical; this review supplies the current status matrix."
+  }
+}

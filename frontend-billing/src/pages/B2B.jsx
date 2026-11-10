@@ -19,15 +19,18 @@
 // ============================================================================
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
+import { isDemoMode } from '../demo/demoEngine'
+import DemoGate from '../components/demo/DemoGate'
 import AppLayout from '../layouts/AppLayout'
 import { useAuth } from '../contexts/AuthContext'
 import { useConfirm } from '../contexts/ConfirmContext'
 import { logger } from '../utils/logger'
 import {
-  AlertIcon, BellIcon, CartIcon, CheckIcon, CloseIcon, ConnectionIcon,
+  AlertIcon, BellIcon, CartIcon, CheckIcon, CloseIcon, ConnectionIcon, CopyIcon,
   DownloadIcon, ImportIcon, TruckIcon,
 } from '../components/Icons'
-import WorkspaceTopBar, { WsDivider } from '../components/common/WorkspaceTopBar'
+import PageTabs from '../components/common/PageTabs'
+import HeaderSearchSlot from '../components/common/HeaderSearchSlot'
 import { useForegroundRefresh } from '../hooks/useForegroundRefresh'
 // One import surface for the whole B2B module (src/b2b/index.js). Keeping the
 // page's knowledge of B2B down to this single line is what makes the module
@@ -49,6 +52,20 @@ const TABS = [
 ]
 
 export default function B2B() {
+  if (isDemoMode()) {
+    return (
+      <AppLayout title="B2B Network">
+        <DemoGate
+          label="B2B Digital Supply Network"
+          description="Directly connect your store with verified distributors and FMCG suppliers. Transmit digital POs and auto-reconcile inward inventory without manual data entry. Start your 14-day trial to connect."
+        />
+      </AppLayout>
+    )
+  }
+  return <B2BWorkspace />
+}
+
+function B2BWorkspace() {
   const { authFetch, token, user, settings } = useAuth()
   const confirm = useConfirm()
 
@@ -106,7 +123,7 @@ export default function B2B() {
   const [catalogLoading, setCatalogLoading] = useState(false)
   const [placing, setPlacing] = useState(false)
 
-  const suppliers = connections.as_buyer
+  const suppliers = connections.as_buyer.filter(s => !(s.counterparty_deleted || s.buyer_deleted || s.seller_deleted))
 
   // Auto-select the first supplier so the desk is never a dead end on arrival.
   useEffect(() => {
@@ -117,7 +134,7 @@ export default function B2B() {
   }, [suppliers, selectedSupplier])
 
   const loadCatalog = useCallback(async (supplier) => {
-    if (!supplier) { setCatalog([]); return }
+    if (!supplier || supplier.counterparty_deleted || supplier.buyer_deleted || supplier.seller_deleted) { setCatalog([]); return }
     setCatalogLoading(true)
     try {
       setCatalog(await b2b.fetchSupplierCatalog(authFetch, supplier.counterparty_bizid || supplier.seller_bizid))
@@ -148,7 +165,7 @@ export default function B2B() {
   }, [loadCatalog, selectedSupplier, connections])
 
   const handlePlaceOrder = useCallback(async ({ lines, totals, notes }) => {
-    if (!selectedSupplier || lines.length === 0) return false
+    if (!selectedSupplier || selectedSupplier.counterparty_deleted || selectedSupplier.buyer_deleted || selectedSupplier.seller_deleted || lines.length === 0) return false
 
     const ok = await confirm({
       mode: 'create',
@@ -212,6 +229,9 @@ export default function B2B() {
         break
       case 'connection.rejected':
         connections.reload()
+        break
+      case 'sync.reconnect':
+        incoming.reload(); outgoing.reload(); connections.reload()
         break
       default:
         break
@@ -282,12 +302,17 @@ export default function B2B() {
     }
   }, [authFetch, confirm, notifyError, notifyOk, outgoing])
 
-  const copyBizId = useCallback(() => {
+  const copyBizId = useCallback(async () => {
     if (!myBizId) return
-    navigator.clipboard.writeText(myBizId)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
-  }, [myBizId])
+    try {
+      await navigator.clipboard.writeText(myBizId)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      setCopied(false)
+      notifyError('Clipboard access is unavailable. Select and copy the displayed BizID manually.')
+    }
+  }, [myBizId, notifyError])
 
   const pendingCount = connections.counts?.incoming || 0
   const badges = useMemo(() => ({
@@ -337,31 +362,50 @@ export default function B2B() {
             <p className="page-subtitle">Connect with suppliers & customers, manage purchase orders, and track live order status</p>
           </div>
           <div className="page-actions">
-            <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 600, whiteSpace: 'nowrap' }}>
-              {myBizId ? <>BizID <span className="td-mono" style={{ color: 'var(--accent)', fontWeight: 700 }}>{myBizId}</span></> : null}
-            </span>
+            <HeaderSearchSlot />
+            {myBizId && (
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={copyBizId}
+                title={copied ? 'Copied to clipboard!' : `Click to copy BizID: ${myBizId}`}
+                aria-label={`Copy BizID: ${myBizId}`}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  height: 34,
+                  padding: '0 10px',
+                  borderRadius: 'var(--radius-md, 8px)',
+                  fontWeight: 600,
+                  fontSize: '0.78rem',
+                  whiteSpace: 'nowrap',
+                  cursor: 'pointer',
+                  background: copied ? 'rgba(34, 197, 94, 0.12)' : undefined,
+                  borderColor: copied ? 'rgba(34, 197, 94, 0.4)' : undefined,
+                  color: copied ? 'var(--success, #22c55e)' : undefined,
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                {copied ? (
+                  <>
+                    <CheckIcon size={13} style={{ color: 'var(--success, #22c55e)' }} />
+                    <span>Copied!</span>
+                  </>
+                ) : (
+                  <>
+                    <span style={{ color: 'var(--text-muted)' }}>BizID</span>
+                    <span className="td-mono" style={{ color: 'var(--accent)', fontWeight: 700 }}>{myBizId}</span>
+                    <CopyIcon size={12} style={{ color: 'var(--text-muted)', marginLeft: 2 }} />
+                  </>
+                )}
+              </button>
+            )}
+            <div className="mobile-only-header-tabs">
+              <PageTabs inline label="B2B pages" tabs={TABS.map(({ key, label, icon: Icon }) => ({ id: key, label, icon: <Icon size={15} />, badge: badges[key] }))} active={tab} onChange={goTab} />
+            </div>
           </div>
         </div>
-
-        <WorkspaceTopBar
-          windowControls={false}
-        >
-          <span className="ws-workspace-title">
-            <ConnectionIcon size={16} /> B2B
-          </span>
-          <WsDivider />
-          {TABS.map(({ key, label, icon: Icon }) => (
-            <button
-              key={key}
-              className={`ws-tab ${tab === key ? 'active' : ''}`}
-              onClick={() => goTab(key)}
-            >
-              <Icon size={14} />
-              {label}
-              {badges[key] > 0 && <span className="b2b-tab-count is-alert">{badges[key]}</span>}
-            </button>
-          ))}
-        </WorkspaceTopBar>
 
         <div className="b2b-body">
         <OfflineNotice status={b2bStatus} />

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useCallback, useState, useEffect } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { API_BASE } from '../config'
 import { logger } from '../utils/logger'
@@ -7,32 +7,7 @@ import { Icon } from './icons'
 import { useDialog } from '../contexts/DialogContext'
 
 // Donut Arc Helper
-function DonutChart({ paid, pending, overdue, healthPct }) {
-  const total = paid + pending + overdue || 1
-  const r = 36, cx = 44, cy = 44, stroke = 10
-  const circ = 2 * Math.PI * r
 
-  const paidPct = paid / total
-  const pendPct = pending / total
-
-  const paidDash = paidPct * circ
-  const pendDash = pendPct * circ
-  const overDash = Math.max(0, 1 - paidPct - pendPct) * circ
-  const pendOffset = -(paidPct * circ)
-  const overOffset = -((paidPct + pendPct) * circ)
-
-  return (
-    <svg width="68" height="68" viewBox="0 0 88 88" style={{ transform: 'rotate(-90deg)', flexShrink: 0 }}>
-      <circle cx="44" cy="44" r={r} fill="none" stroke="var(--border-color)" strokeWidth="10" />
-      <circle cx="44" cy="44" r={r} fill="none" stroke="#3a9a5c" strokeWidth="10"
-        strokeDasharray={`${paidDash} ${circ}`} strokeDashoffset="0" />
-      <circle cx="44" cy="44" r={r} fill="none" stroke="#c97c22" strokeWidth="10"
-        strokeDasharray={`${pendDash} ${circ}`} strokeDashoffset={pendOffset} />
-      <circle cx="44" cy="44" r={r} fill="none" stroke="#c94242" strokeWidth="10"
-        strokeDasharray={`${overDash} ${circ}`} strokeDashoffset={overOffset} />
-    </svg>
-  )
-}
 
 // InsightsPanel — renders its own header (with collapse/close from props) + content
 export default function InsightsPanel({ onCollapse, onCloseMobile }) {
@@ -52,6 +27,38 @@ export default function InsightsPanel({ onCollapse, onCloseMobile }) {
   const [menuPos, setMenuPos] = useState({ top: 0, left: 0 })  // fixed-position coords for the menu
   const [renamingId, setRenamingId] = useState(null)   // session id being renamed inline
   const [renameValue, setRenameValue] = useState('')
+
+
+
+  // Close the kebab menu when clicking outside
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (menuOpenId && !e.target.closest('.rp-chat-kebab-wrap')) {
+        setMenuOpenId(null)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [menuOpenId])
+
+  const loadInsightsData = useCallback(async () => {
+    try {
+      const [sessionsData, summaryRes, customersRes, insightsRes] = await Promise.all([
+        fetchSessions(authFetch),   // shared/de-duped request
+        authFetch(`${API_BASE}/dashboard-summary`),
+        authFetch(`${API_BASE}/top-customers`),
+        authFetch(`${API_BASE}/smart-insights/summary`),   // free, deterministic
+      ])
+      if (sessionsData) setSessions(sessionsData)
+      if (summaryRes.ok) setSummary(await summaryRes.json())
+      if (customersRes.ok) setCustomers(await customersRes.json())
+      if (insightsRes.ok) setPanelInsights(await insightsRes.json())
+    } catch (err) {
+      logger.error('Failed to load insights data:', err)
+    }
+  }, [authFetch])
 
   useEffect(() => {
     loadInsightsData()
@@ -74,37 +81,7 @@ export default function InsightsPanel({ onCollapse, onCloseMobile }) {
       window.removeEventListener('ai-active-changed', handleActiveChanged)
       window.removeEventListener('ai-sessions-updated', loadInsightsData)
     }
-  }, [])
-
-  // Close the kebab menu when clicking outside
-  useEffect(() => {
-    function handleClickOutside(e) {
-      if (menuOpenId && !e.target.closest('.rp-chat-kebab-wrap')) {
-        setMenuOpenId(null)
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside)
-    }
-  }, [menuOpenId])
-
-  async function loadInsightsData() {
-    try {
-      const [sessionsData, summaryRes, customersRes, insightsRes] = await Promise.all([
-        fetchSessions(authFetch),   // shared/de-duped request
-        authFetch(`${API_BASE}/dashboard-summary`),
-        authFetch(`${API_BASE}/top-customers`),
-        authFetch(`${API_BASE}/smart-insights/summary`),   // free, deterministic
-      ])
-      if (sessionsData) setSessions(sessionsData)
-      if (summaryRes.ok) setSummary(await summaryRes.json())
-      if (customersRes.ok) setCustomers(await customersRes.json())
-      if (insightsRes.ok) setPanelInsights(await insightsRes.json())
-    } catch (err) {
-      logger.error('Failed to load insights data:', err)
-    }
-  }
+  }, [loadInsightsData])
 
   function toggleSection(name) {
     setCollapsedSections(prev => {
@@ -180,18 +157,9 @@ export default function InsightsPanel({ onCollapse, onCloseMobile }) {
     window.dispatchEvent(new CustomEvent('ai-shortcut', { detail: { query, intent, label: query } }))
   }
 
-  const total = summary?.invoice_count || 0
-  const pending = summary?.pending_invoices || 0
-  const revenue = summary?.total_revenue || 0
   const overdueAmt = summary?.overdue_amount || 0
 
-  const overdueCount = overdueAmt > 0 && revenue > 0 ? Math.round((overdueAmt / revenue) * total) : 0
-  const paidCount = Math.max(0, total - pending - overdueCount)
 
-  const collectedAmt = revenue - overdueAmt
-  const healthPct = revenue > 0 ? Math.round((collectedAmt / revenue) * 100) : 0
-  const overPctBar = Math.min(100, (overdueAmt / Math.max(revenue, 1)) * 100)
-  const maxCust = customers[0]?.total || 1
 
   return (
     <>
@@ -229,7 +197,7 @@ export default function InsightsPanel({ onCollapse, onCloseMobile }) {
 
         {/* Section 1: Chat History */}
         <div className={`rp-section ${collapsedSections.progress ? 'collapsed' : ''}`} id="rp-section-progress">
-          <div className="rp-section-header" onClick={() => toggleSection('progress')}>
+          <button type="button" className="rp-section-header" onClick={() => toggleSection('progress')} aria-expanded={!collapsedSections.progress} aria-controls="rp-progress-body">
             <svg className="rp-folder-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
             </svg>
@@ -237,7 +205,7 @@ export default function InsightsPanel({ onCollapse, onCloseMobile }) {
             <svg className="rp-section-arrow" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="6 9 12 15 18 9"></polyline>
             </svg>
-          </div>
+          </button>
           <div className="rp-section-body" id="rp-progress-body">
             <button className="rp-new-chat-btn" onClick={handleNewChat}>
               + New Chat
@@ -250,9 +218,16 @@ export default function InsightsPanel({ onCollapse, onCloseMobile }) {
                   <div
                     key={s.session_id}
                     className={`rp-chat-item ${s.session_id === activeSessionId ? 'active' : ''}`}
+                    role="button"
+                    tabIndex={renamingId === s.session_id ? -1 : 0}
+                    aria-label={`Open conversation: ${s.session_title || 'Untitled'}`}
                     onClick={() => {
                       if (renamingId === s.session_id) return
                       handleSessionSelect(s.session_id)
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.target !== e.currentTarget || renamingId === s.session_id) return
+                      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleSessionSelect(s.session_id) }
                     }}
                   >
                     <div className="rp-chat-title-wrapper">
@@ -333,7 +308,7 @@ export default function InsightsPanel({ onCollapse, onCloseMobile }) {
 
         {/* Section 1.5: Alerts Section (Collapsible container) */}
         <div className={`rp-section ${collapsedSections.alerts ? 'collapsed' : ''}`} id="rp-section-alerts">
-          <div className="rp-section-header" onClick={() => toggleSection('alerts')}>
+          <button type="button" className="rp-section-header" onClick={() => toggleSection('alerts')} aria-expanded={!collapsedSections.alerts} aria-controls="rp-alerts-body">
             <svg className="rp-folder-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
             </svg>
@@ -341,37 +316,37 @@ export default function InsightsPanel({ onCollapse, onCloseMobile }) {
             <svg className="rp-section-arrow" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="6 9 12 15 18 9"></polyline>
             </svg>
-          </div>
+          </button>
           <div className="rp-section-body" id="rp-alerts-body">
-            <div className="ip-alert-row ip-alert-warn" onClick={() => sendChip('Which medicines and products are expiring in the next 30 days?', 'expiring_soon')}>
+            <button type="button" className="ip-alert-row ip-alert-warn" onClick={() => sendChip('Which medicines and products are expiring in the next 30 days?', 'expiring_soon')}>
               <div className="ip-alert-icon"><Icon name="clock" /></div>
               <div className="ip-alert-text"><strong>Expiry check</strong><span>See items expiring soon</span></div>
               <div className="ip-alert-arrow">›</div>
-            </div>
-            <div className="ip-alert-row ip-alert-info" onClick={() => sendChip('Which products have low stock and need reordering?', 'low_stock')}>
+            </button>
+            <button type="button" className="ip-alert-row ip-alert-info" onClick={() => sendChip('Which products have low stock and need reordering?', 'low_stock')}>
               <div className="ip-alert-icon"><Icon name="package" /></div>
               <div className="ip-alert-text"><strong>Low stock</strong><span>Items needing reorder</span></div>
               <div className="ip-alert-arrow">›</div>
-            </div>
-            <div className="ip-alert-row ip-alert-red" onClick={() => sendChip('List all overdue invoices with amounts and due dates', 'overdue_list')}>
+            </button>
+            <button type="button" className="ip-alert-row ip-alert-red" onClick={() => sendChip('List all overdue invoices with amounts and due dates', 'overdue_list')}>
               <div className="ip-alert-icon"><Icon name="alert" /></div>
               <div className="ip-alert-text"><strong>Overdue invoices</strong><span>₹{Number(overdueAmt).toLocaleString('en-IN')} pending</span></div>
               <div className="ip-alert-arrow">›</div>
-            </div>
-            <div className="ip-alert-row ip-alert-green" onClick={() => sendChip('Who are my top 5 customers by revenue this period?', 'top_customers')}>
+            </button>
+            <button type="button" className="ip-alert-row ip-alert-green" onClick={() => sendChip('Who are my top 5 customers by revenue this period?', 'top_customers')}>
               <div className="ip-alert-icon"><Icon name="trophy" /></div>
               <div className="ip-alert-text">
                 <strong>Top customers</strong>
                 <span>{customers[0] ? `${customers[0].customer} leads` : 'See rankings'}</span>
               </div>
               <div className="ip-alert-arrow">›</div>
-            </div>
+            </button>
           </div>
         </div>
 
         {/* Section 2: Business Insights */}
         <div className={`rp-section ${collapsedSections.context ? 'collapsed' : ''}`} id="rp-section-context">
-          <div className="rp-section-header" onClick={() => toggleSection('context')}>
+          <button type="button" className="rp-section-header" onClick={() => toggleSection('context')} aria-expanded={!collapsedSections.context} aria-controls="rp-context-body">
             <svg className="rp-folder-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
             </svg>
@@ -379,7 +354,7 @@ export default function InsightsPanel({ onCollapse, onCloseMobile }) {
             <svg className="rp-section-arrow" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="6 9 12 15 18 9"></polyline>
             </svg>
-          </div>
+          </button>
           <div className="rp-section-body" id="rp-context-body">
             {!panelInsights && (
               <div style={{ fontSize: 12, opacity: 0.6, padding: '8px 2px' }}>Reading your business…</div>

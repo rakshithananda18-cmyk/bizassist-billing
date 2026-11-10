@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useCallback } from 'react'
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import React, { lazy, useEffect, useState, useCallback } from 'react'
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { LockProvider } from './contexts/LockContext'
 import { ConfirmProvider } from './contexts/ConfirmContext'
@@ -11,47 +11,82 @@ import { API_BASE } from './config'
 import { logger } from './utils/logger'
 import { useRealtimeLeader } from './hooks/useRealtimeLeader'
 import { IS_LOCAL_APP } from './config'
+import { useAppearance } from './hooks/useAppearance'
+import RouteBoundary from './components/RouteBoundary'
+import BillingWorkspaceGuard from './components/BillingWorkspaceGuard'
+import StorageConsentNotice from './components/StorageConsentNotice'
+import GuidedTour from './demo/GuidedTour'
+import { isEmbeddedGuidedTour } from './demo/guidedTourRuntime'
 
-// Pages
+// Keep the landing/sign-in screens and the offline counter in the initial
+// download. The web counter must remain reachable if the connection drops
+// before another route has been opened; there is no service-worker precache.
 import Login     from './pages/Login'
-import Register  from './pages/Register'
 import Home      from './pages/Home'
-import Dashboard from './pages/Dashboard'
 import Sales     from './pages/Sales'
-import LiveView  from './pages/LiveView'
-import ContactsPayments from './pages/ContactsPayments'
-import Money     from './pages/Money'
-import Reports   from './pages/Reports'
-import Import    from './pages/Import'
-import B2B       from './pages/B2B'
-import Profile     from './pages/Profile'
-import Settings    from './pages/Settings'
-import POSLiveCounter from './pages/POSLiveCounter'
-import InvoiceViewer  from './invoice/InvoiceViewer'
-import PublicInvoiceViewer from './pages/PublicInvoiceViewer'
-import Support from './pages/Support'
 import AppLayout from './layouts/AppLayout'
-import StockWorkspace from './pages/StockWorkspace'
+
+const Register = lazy(() => import('./pages/Register'))
+const Dashboard = lazy(() => import('./pages/Dashboard'))
+const LiveView = lazy(() => import('./pages/LiveView'))
+const ContactsPayments = lazy(() => import('./pages/ContactsPayments'))
+const Money = lazy(() => import('./pages/Money'))
+const Reports = lazy(() => import('./pages/Reports'))
+const Import = lazy(() => import('./pages/Import'))
+const B2B = lazy(() => import('./pages/B2B'))
+const Settings = lazy(() => import('./pages/Settings'))
+const POSLiveCounter = lazy(() => import('./pages/POSLiveCounter'))
+const InvoiceViewer = lazy(() => import('./invoice/InvoiceViewer'))
+const PublicInvoiceViewer = lazy(() => import('./pages/PublicInvoiceViewer'))
+const Support = lazy(() => import('./pages/Support'))
+const StockWorkspace = lazy(() => import('./pages/StockWorkspace'))
+const Terms = lazy(() => import('./pages/Terms'))
+const Privacy = lazy(() => import('./pages/Privacy'))
+const Contact = lazy(() => import('./pages/Contact'))
+const RefundPolicy = lazy(() => import('./pages/RefundPolicy'))
+const DemoProtectedWorkspace = lazy(() => import('./pages/DemoProtectedWorkspace'))
 
 
-function ProtectedRoute({ children }) {
-  const { user, loading } = useAuth()
-  if (loading) return <PageLoader />
-  return user ? children : <Navigate to="/login" replace />
+function AppearanceSync() {
+  const location = useLocation()
+  useAppearance(location.pathname)
+  return null
 }
 
-function AppRoutes() {
+function ProtectedRoute({ children }) {
+  const { user, token, loading } = useAuth()
+  if (loading) return <PageLoader />
+  return user ? <React.Fragment key={token || user.public_id || user.id}>{children}</React.Fragment> : <Navigate to="/login" replace />
+}
+
+export function AppRoutes() {
   const { user } = useAuth()
+  const location = useLocation()
+  const [tourPageVersion, setTourPageVersion] = useState(0)
+  useEffect(() => {
+    if (!isEmbeddedGuidedTour()) return
+    const resetPage = () => setTourPageVersion(version => version + 1)
+    window.addEventListener('stater-tour:reset-page', resetPage)
+    return () => window.removeEventListener('stater-tour:reset-page', resetPage)
+  }, [])
   return (
+    <BillingWorkspaceGuard>
+    <RouteBoundary key={tourPageVersion} resetKey={location.pathname}>
     <Routes>
       <Route path="/login"    element={user ? <Navigate to="/" replace /> : <Login />} />
       <Route path="/register" element={user ? <Navigate to="/" replace /> : <Register />} />
+      <Route path="/demo" element={<Navigate to="/?demo=1" replace />} />
       <Route path="/public/invoice/:uid" element={<PublicInvoiceViewer />} />
+      <Route path="/terms" element={<Terms />} />
+      <Route path="/privacy" element={<Privacy />} />
+      <Route path="/contact" element={<Contact />} />
+      <Route path="/refund-policy" element={<RefundPolicy />} />
 
       <Route path="/"          element={<ProtectedRoute><Home      /></ProtectedRoute>} />
       <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
       <Route path="/sales"     element={<ProtectedRoute><Sales key="sales" /></ProtectedRoute>} />
       <Route path="/live-view" element={<ProtectedRoute><LiveView /></ProtectedRoute>} />
+      <Route path="/demo-preview/:feature" element={<ProtectedRoute><DemoProtectedWorkspace /></ProtectedRoute>} />
       {/* Merged workspaces: Parties = Contacts+Payments · Stock = Inventory+Purchases.
           Each view is a real ROUTE (/parties/payments, /stock/inventory). */}
       <Route path="/parties"      element={<ProtectedRoute><ContactsPayments /></ProtectedRoute>} />
@@ -62,16 +97,16 @@ function AppRoutes() {
       <Route path="/stock"        element={<ProtectedRoute><StockWorkspace /></ProtectedRoute>} />
       <Route path="/stock/:tab"   element={<ProtectedRoute><StockWorkspace /></ProtectedRoute>} />
       <Route path="/reports"  element={<ProtectedRoute><Reports   /></ProtectedRoute>} />
-      <Route path="/import"   element={<ProtectedRoute><Import    /></ProtectedRoute>} />
+      <Route path="/import"   element={<ProtectedRoute><Navigate to="/settings?tab=migration" replace /></ProtectedRoute>} />
       {/* Unified B2B workspace (Order · Outgoing · Incoming · Connections).
           The two legacy routes redirect into the matching tab so existing
           bookmarks, nav links and help deep-links keep working. */}
       <Route path="/b2b"         element={<ProtectedRoute><B2B /></ProtectedRoute>} />
       <Route path="/b2b-network" element={<Navigate to="/b2b?tab=connections" replace />} />
       <Route path="/b2b-orders"  element={<Navigate to="/b2b?tab=outgoing" replace />} />
-      <Route path="/profile"     element={<ProtectedRoute><Profile     /></ProtectedRoute>} />
+      <Route path="/profile"     element={<ProtectedRoute><Navigate to="/settings?tab=profile" replace /></ProtectedRoute>} />
       <Route path="/settings"    element={<ProtectedRoute><Settings    /></ProtectedRoute>} />
-      <Route path="/support"     element={<ProtectedRoute><Support     /></ProtectedRoute>} />
+      <Route path="/support"     element={<Navigate to="/settings?tab=support" replace />} />
       <Route path="/pos-live-counter"    element={<ProtectedRoute><POSLiveCounter    /></ProtectedRoute>} />
       <Route path="/invoice/:invoiceNo/view" element={<ProtectedRoute><AppLayout title="Invoice"><InvoiceViewer /></AppLayout></ProtectedRoute>} />
       <Route path="/staff"       element={<Navigate to="/settings?tab=staff" replace />} />
@@ -80,6 +115,8 @@ function AppRoutes() {
       {/* Catch-all */}
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+    </RouteBoundary>
+    </BillingWorkspaceGuard>
   )
 }
 
@@ -164,18 +201,18 @@ function SyncPromptBanner() {
   const border    = isPending ? 'rgba(245,158,11,0.35)' : 'rgba(59,130,246,0.35)'
 
   return (
-    <div style={{
-      position: 'fixed', bottom: 20, left: '50%', transform: 'translateX(-50%)',
-      zIndex: 9999, maxWidth: 480, width: 'calc(100% - 40px)',
+    <div className="sync-prompt-banner" role="status" aria-live="polite" aria-atomic="true" style={{
+      position: 'fixed', bottom: 'max(12px, env(safe-area-inset-bottom, 0px))', left: '50%', transform: 'translateX(-50%)',
+      zIndex: 9999, maxWidth: 520, width: 'calc(100% - 24px)',
       background: 'var(--card-bg, #1a1a2e)',
       border: `1px solid ${border}`,
       borderLeft: `4px solid ${color}`,
       borderRadius: 12, padding: '14px 18px',
-      display: 'flex', alignItems: 'flex-start', gap: 14,
+      display: 'flex', alignItems: 'flex-start', gap: 12,
       boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
       animation: 'slideUpBanner 0.3s ease',
     }}>
-      <span style={{ fontSize: 22, marginTop: 1 }}>
+      <span aria-hidden="true" style={{ fontSize: 22, marginTop: 1, flexShrink: 0 }}>
         {isPending ? '⚡' : '📡'}
       </span>
       <div style={{ flex: 1, minWidth: 0 }}>
@@ -189,8 +226,9 @@ function SyncPromptBanner() {
             ? 'Sync now to prevent data loss and keep cloud up to date.'
             : 'Bills may take longer to sync. Consider closing the other session.'}
         </div>
-        <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
           <button
+            type="button"
             onClick={handleSyncNow}
             disabled={syncing}
             style={{
@@ -203,6 +241,7 @@ function SyncPromptBanner() {
             {syncing ? '⏳ Syncing…' : '↑ Sync Now'}
           </button>
           <button
+            type="button"
             onClick={handleRemindLater}
             style={{
               padding: '6px 14px', borderRadius: 8,
@@ -216,6 +255,7 @@ function SyncPromptBanner() {
         </div>
       </div>
       <button
+        type="button"
         onClick={handleRemindLater}
         style={{ background: 'none', border: 'none', color: 'var(--text-muted, #888)',
           cursor: 'pointer', fontSize: 18, padding: '0 0 0 4px', lineHeight: 1 }}
@@ -253,8 +293,8 @@ function RealtimeSyncListener() {
       title="⚠️ Real-Time Sync Paused"
       onClose={() => setModalOpen(false)}
       footer={
-        <button 
-          className="btn btn-primary" 
+        <button
+          className="btn btn-primary"
           onClick={() => setModalOpen(false)}
           style={{ width: '100%' }}
         >
@@ -266,11 +306,11 @@ function RealtimeSyncListener() {
         <p style={{ margin: 0, fontSize: '0.9rem', lineHeight: '1.4', color: 'var(--text-primary)' }}>
           Real-time sync was <strong>automatically paused</strong> after repeated connection failures.
         </p>
-        
-        <div style={{ 
-          background: 'rgba(239, 68, 68, 0.1)', 
-          border: '1px solid rgba(239, 68, 68, 0.2)', 
-          borderRadius: 8, 
+
+        <div style={{
+          background: 'rgba(239, 68, 68, 0.1)',
+          border: '1px solid rgba(239, 68, 68, 0.2)',
+          borderRadius: 8,
           padding: 12,
           fontSize: '0.82rem',
           color: 'var(--danger, #ef4444)',
@@ -290,6 +330,13 @@ function RealtimeSyncListener() {
 }
 
 export default function App() {
+  const [tourPlayback, setTourPlayback] = useState(() => isEmbeddedGuidedTour())
+  useEffect(() => {
+    if (!isEmbeddedGuidedTour()) return
+    const playback = event => setTourPlayback(event.detail?.active === true)
+    window.addEventListener('stater-tour:playback', playback)
+    return () => window.removeEventListener('stater-tour:playback', playback)
+  }, [])
   useEffect(() => {
     const unsubscribe = syncManager.start()
     return unsubscribe
@@ -297,7 +344,9 @@ export default function App() {
 
   return (
     <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      {!tourPlayback && <StorageConsentNotice />}
       <AuthProvider>
+        <AppearanceSync />
         <LockProvider>
           <ConfirmProvider>
             {/* Lock screen intercepts entire UI when session is locked */}
@@ -306,6 +355,7 @@ export default function App() {
             {/* Slide-in banner: offline bills pending sync + same-user multi-device warning */}
             <SyncPromptBanner />
             <AppRoutes />
+            <GuidedTour />
           </ConfirmProvider>
         </LockProvider>
       </AuthProvider>

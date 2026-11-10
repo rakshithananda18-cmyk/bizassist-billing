@@ -21,7 +21,12 @@ import os
 
 from database.db import get_db
 from database.models import User
-from services.auth import restrict_cashier, hash_password, bump_token_version
+from services.auth import (
+    restrict_cashier,
+    hash_password,
+    bump_token_version,
+    clear_token_version_cache,
+)
 
 router = APIRouter()
 logger = logging.getLogger("bizassist.core.api.staff")
@@ -33,6 +38,7 @@ ALLOWED_STAFF_ROLES = {"cashier", "supply adder"}
 class CreateStaff(BaseModel):
     username: str
     password: str
+    phone: Optional[str] = None            # Mandatory for human registration; normalized mobile
     role: str = "cashier"
     counter_prefix: Optional[str] = None   # POS counter series for this login (§9.3a)
 
@@ -40,6 +46,7 @@ class CreateStaff(BaseModel):
 class UpdateStaff(BaseModel):
     role: Optional[str] = None
     password: Optional[str] = None
+    phone: Optional[str] = None
     counter_prefix: Optional[str] = None   # set/change this login's POS counter series
 
 
@@ -53,41 +60,29 @@ def _norm_prefix(p: Optional[str]) -> Optional[str]:
     return token or None
 
 
-def _push_staff_to_cloud(business_id: int, staff_records: list) -> None:
+def _push_staff_to_cloud(business_id: int, staff_records: list, db: Optional[Session] = None) -> None:
     """
-    Fire-and-forget: push staff records to cloud immediately after a CRUD op.
-    Runs in a background thread so the local API response is never blocked.
-    Only active on the local (SQLite) backend.
+    Durable push: persist staff mutation to SyncControlOutbox and trigger delivery (TS-05).
+    Active on local (SQLite) backend for hybrid cloud businesses.
     """
-    # Only run on local backends (SQLite DB). Cloud instances push to themselves.
     _db_url = os.environ.get("DATABASE_URL", "sqlite")
     if not _db_url.startswith("sqlite"):
         return
+    from services.immediate_sync import syncs_to_cloud
+    if not syncs_to_cloud(business_id):
+        logger.info("[STAFF-SYNC] business %s is not on Local + Cloud - staff stay on this device", business_id)
+        return
 
-    def _run():
-        try:
-            import httpx
-            from services.sync_worker import _get_cloud_token, CLOUD_URL
-            token = _get_cloud_token(business_id)
-            if not token:
-                logger.warning("[STAFF-SYNC] No cloud token available for business %s — staff push skipped", business_id)
-                return
-            resp = httpx.post(
-                f"{CLOUD_URL}/api/sync/staff-push",
-                json={"staff": staff_records},
-                headers={"Authorization": f"Bearer {token}"},
-                timeout=8.0,
-            )
-            if resp.status_code == 200:
-                data = resp.json()
-                logger.info("[STAFF-SYNC] Pushed %d staff record(s) to cloud (upserted=%s deleted=%s)",
-                            len(staff_records), data.get("upserted"), data.get("deleted"))
-            else:
-                logger.warning("[STAFF-SYNC] Cloud returned %s: %s", resp.status_code, resp.text[:200])
-        except Exception as e:
-            logger.warning("[STAFF-SYNC] Push failed (non-critical): %s", e)
+    from services.control_outbox import enqueue_control_event, trigger_control_flush
 
-    threading.Thread(target=_run, daemon=True).start()
+    if db is not None:
+        enqueue_control_event(db, business_id, "staff_mutation", {"staff": staff_records})
+        return  # command commits mutation and event, then triggers delivery
+    from database.db import SessionLocal
+    with SessionLocal() as session:
+        enqueue_control_event(session, business_id, "staff_mutation", {"staff": staff_records})
+        session.commit()
+    trigger_control_flush(business_id)
 
 
 def _staff_out(u: User) -> dict:
@@ -96,6 +91,7 @@ def _staff_out(u: User) -> dict:
         # Display the per-business bare name ("counter_1"), not the internal
         # global-unique username. Falls back to username for legacy/owner rows.
         "username": getattr(u, "staff_login_name", None) or u.username,
+        "phone": getattr(u, "phone", None),
         "role": u.role,
         "business_id": u.parent_business_id,
         "counter_prefix": getattr(u, "counter_prefix", None),
@@ -211,18 +207,33 @@ def create_staff(req: CreateStaff, current_user: dict = Depends(restrict_cashier
         raise HTTPException(status_code=400, detail="A staff member with this name already exists in your business")
     _validate_password(req.password)
 
+    phone_val = None
+    if req.phone:
+        from services.registration_policy import normalize_phone
+        try:
+            phone_val = normalize_phone(req.phone)
+        except ValueError as ve:
+            raise HTTPException(status_code=422, detail=str(ve))
+    else:
+        raise HTTPException(status_code=422, detail="Phone number is required for staff registration")
+
+    duplicate_phone = db.query(User.id).filter(User.parent_business_id == bid, User.phone == phone_val,
+        func.lower(User.role).notin_(["deleted", "retired"])).first()
+    if duplicate_phone:
+        raise HTTPException(status_code=409, detail="Another staff account in this business already uses this phone number.")
+
     staff = User(
         username=_internal_staff_username(db, bid, bare_name),
         staff_login_name=bare_name,
         password=hash_password(req.password),
+        phone=phone_val,
         business_name=owner.business_name or current_user.get("business_name"),
         role=role,
         parent_business_id=bid,
         counter_prefix=_norm_prefix(req.counter_prefix),
     )
     db.add(staff)
-    db.commit()
-    db.refresh(staff)
+    db.flush()
     logger.info("[STAFF] created '%s' (internal=%s, role=%s) under business %s (BizID=%s)",
                 bare_name, staff.username, role, bid, owner.public_id)
     # Immediately sync to cloud so the cashier can log in from any device
@@ -232,8 +243,12 @@ def create_staff(req: CreateStaff, current_user: dict = Depends(restrict_cashier
         "hashed_password": staff.password,
         "role": staff.role,
         "counter_prefix": staff.counter_prefix,
+        "phone": staff.phone,
         "deleted": False,
-    }])
+    }], db=db)
+    db.commit()
+    from services.control_outbox import trigger_control_flush
+    trigger_control_flush(bid)
     return _staff_out(staff)
 
 
@@ -251,12 +266,27 @@ def update_staff(staff_id: int, req: UpdateStaff,
     if req.role is not None:
         staff.role = _validate_role(req.role)
     if req.password is not None:
+        from services.account_identity import normalize_email
+        try:
+            normalize_email(owner.email, required=True)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from None
         _validate_password(req.password)
         staff.password = hash_password(req.password)
+    if req.phone is not None:
+        from services.registration_policy import normalize_phone
+        try:
+            new_phone = normalize_phone(req.phone)
+            duplicate = db.query(User.id).filter(User.parent_business_id == bid, User.id != staff.id, User.phone == new_phone,
+                func.lower(User.role).notin_(["deleted", "retired"])).first()
+            if duplicate:
+                raise HTTPException(status_code=409, detail="Another staff account in this business already uses this phone number.")
+            staff.phone = new_phone
+        except ValueError as ve:
+            raise HTTPException(status_code=422, detail=str(ve))
     if req.counter_prefix is not None:
         staff.counter_prefix = _norm_prefix(req.counter_prefix)
-    db.commit()
-    db.refresh(staff)
+    db.flush()
     logger.info("[STAFF] updated %s under business %s (BizID=%s)", staff_id, bid, owner.public_id)
     # Re-sync to cloud so password/role/counter changes are immediately available
     _push_staff_to_cloud(bid, [{
@@ -265,8 +295,18 @@ def update_staff(staff_id: int, req: UpdateStaff,
         "hashed_password": staff.password,
         "role": staff.role,
         "counter_prefix": staff.counter_prefix,
+        "phone": staff.phone,
         "deleted": False,
-    }])
+    }], db=db)
+    db.commit()
+    if req.password is not None:
+        try:
+            from services.brevo_service import send_password_changed_email
+            send_password_changed_email(owner.email, owner.business_name or owner.username, staff.staff_login_name or staff.username, business_id=bid)
+        except Exception:
+            logger.warning("[STAFF] Password change notification could not be dispatched after commit")
+    from services.control_outbox import trigger_control_flush
+    trigger_control_flush(bid)
     return _staff_out(staff)
 
 
@@ -279,16 +319,21 @@ def delete_staff(staff_id: int, current_user: dict = Depends(restrict_cashier), 
     if not staff:
         raise HTTPException(status_code=404, detail="Staff member not found")
     bare = staff.staff_login_name or staff.username
+    # Do not leave the deleted subject's token-version cache entry alive for up
+    # to its TTL. Once the row is gone, auth.py fails closed with a 401.
+    clear_token_version_cache(staff.id)
     db.delete(staff)
-    db.commit()
     logger.info("[STAFF] deleted %s under business %s (BizID=%s)", staff_id, bid, owner.public_id)
     # Immediately remove from cloud so deleted cashiers can no longer log in
     _push_staff_to_cloud(bid, [{
         "staff_login_name": bare,
         "internal_username": "",
         "hashed_password": "",
-        "role": "",
+        "role": "cashier",
         "counter_prefix": None,
         "deleted": True,
-    }])
+    }], db=db)
+    db.commit()
+    from services.control_outbox import trigger_control_flush
+    trigger_control_flush(bid)
     return {"deleted": staff_id}

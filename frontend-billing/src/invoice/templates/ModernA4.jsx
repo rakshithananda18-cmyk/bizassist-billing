@@ -4,6 +4,8 @@
 // generous whitespace, light row separators, elegant totals panel, status chip.
 // Prints cleanly on A4 in B/W. No fetching, no state, no money math.
 import { inr, n2, qty, pct, has, statusChip } from '../formatters'
+import DeletedPartyNotice from '../DeletedPartyNotice'
+import SettlementSummary from '../SettlementSummary'
 
 const ACCENT = '#c15f3c'      // BizAssist terracotta (matches app --accent)
 const INK = '#1a1714'
@@ -60,6 +62,7 @@ export default function ModernA4({ payload }) {
 
   return (
     <div style={S.page} data-testid="invoice-modern">
+      <DeletedPartyNotice seller={seller} buyer={buyer} />
       {/* ── Accent band: identity left, invoice meta right ── */}
       <div style={S.band}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -219,6 +222,7 @@ export default function ModernA4({ payload }) {
             <span>Total</span><span>{inr(totals.grand_total)}</span>
           </div>
           <TotalRow k="Paid" v={inr(totals.amount_paid)} />
+          <SettlementSummary totals={totals} />
           {totals.balance_due ? (
             <div style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 10px', fontWeight: 700, color: '#9b1c1c' }}>
               <span>Balance Due</span><span>{inr(totals.balance_due)}</span>
@@ -242,7 +246,7 @@ export default function ModernA4({ payload }) {
         {footer.thank_you ? <span>{footer.thank_you} · </span> : null}
         Computer generated invoice
         {seller.biz_id ? <span> · BizID {seller.biz_id}</span> : null}
-        <span> · Powered by BizAssist</span>
+        <span> · Powered by Stater</span>
       </div>
     </div>
   )

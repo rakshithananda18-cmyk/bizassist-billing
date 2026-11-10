@@ -65,8 +65,9 @@ def test_expired_token_logs_auth_info(caplog):
 
 
 def test_valid_token_does_not_log_failure(caplog):
-    token = auth.create_access_token({"id": 7, "username": "ok"})
+    # The subject must exist now that token validation fails closed.
+    token = auth.create_access_token({"id": 1, "username": "ok"})
     with caplog.at_level(logging.INFO, logger="bizassist.auth"):
         payload = auth.get_active_user(f"Bearer {token}")
-    assert payload["id"] == 7
+    assert payload["id"] == 1
     assert not _auth_lines(caplog), "a valid token should not log an [AUTH] rejection"

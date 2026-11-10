@@ -1,0 +1,360 @@
+/* ============================================================================
+ * reports-shell.css — Master-Detail Split-Pane Layout for Reports & GST
+ * Styled identically to Settings: categorized left directory, full-height
+ * right working canvas, responsive mobile tabs, and theme-compliant accents.
+ * ============================================================================ */
+
+.reports-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ── Split-Pane Container ─────────────────────────────────────────────────── */
+.reports-split-layout,
+.reports-shell.slide-up > .card.reports-split-layout {
+  display: flex !important;
+  flex-direction: row !important;
+  flex: 1 1 0% !important;
+  min-height: 0 !important;
+  max-height: 100% !important;
+  height: 100% !important;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg, 12px);
+  background: var(--bg-1);
+  box-shadow: var(--shadow-sm);
+}
+
+/* ── Mobile-Only Tab Strip ────────────────────────────────────────────────── */
+.reports-mobile-tabs {
+  display: none;
+}
+
+/* ── Left: Reports Directory Sidebar ──────────────────────────────────────── */
+.reports-sub-sidebar {
+  width: 270px;
+  min-width: 270px;
+  max-width: 270px;
+  flex-shrink: 0;
+  background: var(--bg-1);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 14px 10px;
+  gap: 14px;
+  transition: all 0.2s ease;
+}
+
+.reports-sub-sidebar.is-collapsed {
+  display: none !important;
+}
+
+.reports-sidebar-toggle-btn:hover {
+  background: var(--bg-2) !important;
+  color: var(--text-primary) !important;
+}
+
+.reports-sub-sidebar::-webkit-scrollbar {
+  width: 4px;
+}
+
+.reports-sub-sidebar::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 4px;
+}
+
+.reports-sub-sidebar-header {
+  padding: 4px 10px 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.reports-sub-sidebar-title {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.reports-sub-sidebar-count {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: var(--bg-3);
+  padding: 2px 7px;
+  border-radius: 10px;
+}
+
+/* ── Nav Groups & Items ───────────────────────────────────────────────────── */
+.reports-nav-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.reports-nav-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.reports-nav-group-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  padding: 4px 10px;
+}
+
+.reports-nav-group-header {
+  transition: background 0.15s ease;
+}
+
+.reports-nav-group-header:hover {
+  background: var(--bg-2) !important;
+}
+
+.reports-nav-group-header:hover .reports-nav-group-label {
+  color: var(--text-primary);
+}
+
+.reports-nav-items {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.reports-nav-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-secondary);
+  transition: all var(--dur-fast, 0.15s) var(--ease, ease);
+  position: relative;
+}
+
+.reports-nav-item:hover {
+  background: var(--bg-3);
+  color: var(--text-primary);
+}
+
+.reports-nav-item.active {
+  background: var(--page-selection-bg, var(--bg-2));
+  color: var(--page-selection-text, var(--accent));
+  font-weight: 600;
+  border-color: var(--page-selection-border, var(--border));
+  border-left: 3px solid var(--page-selection-text, var(--accent));
+  box-shadow: var(--shadow-sm);
+}
+
+.reports-nav-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+  flex-shrink: 0;
+  color: inherit;
+}
+
+.reports-nav-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.reports-nav-label {
+  font-size: 0.84rem;
+  line-height: 1.25;
+  color: inherit;
+  font-weight: 600;
+}
+
+.reports-nav-desc {
+  font-size: 0.71rem;
+  color: var(--text-muted);
+  line-height: 1.35;
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.reports-nav-item.active .reports-nav-desc {
+  color: var(--text-secondary);
+}
+
+/* ── Right: Working Canvas ────────────────────────────────────────────────── */
+.reports-canvas {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.reports-canvas-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 18px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-2);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.reports-canvas-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto !important;
+  overflow-x: hidden;
+  padding: clamp(14px, 2vw, 24px);
+  display: flex;
+  flex-direction: column;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+.reports-canvas-body::-webkit-scrollbar {
+  width: 6px;
+}
+
+.reports-canvas-body::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 4px;
+}
+
+/* Ensure data tables inside reports canvas allow smooth vertical scrolling by the canvas body
+   while still providing horizontal scrolling when columns overflow */
+.reports-canvas-body .data-table-wrap {
+  overflow-x: auto !important;
+  overflow-y: visible !important;
+  flex: none !important;
+  min-height: auto !important;
+  max-height: none !important;
+}
+
+.reports-canvas-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+  flex-shrink: 0;
+}
+
+.reports-canvas-title {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+
+.reports-canvas-period-badge {
+  font-size: 0.76rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: var(--bg-3);
+  padding: 3px 8px;
+  border-radius: var(--radius-sm, 6px);
+  border: 1px solid var(--border);
+  margin-left: 6px;
+}
+
+.reports-canvas-desc {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-top: 4px;
+  margin-bottom: 0;
+}
+
+/* ── Responsive Rules ─────────────────────────────────────────────────────── */
+@media (max-width: 1024px) and (min-width: 769px) {
+  .reports-sub-sidebar {
+    width: 210px;
+    min-width: 210px;
+    max-width: 210px;
+    padding: 10px 6px;
+  }
+  .reports-nav-desc {
+    display: none;
+  }
+  .reports-nav-item {
+    padding: 8px 8px;
+    gap: 8px;
+  }
+}
+
+@media (max-width: 768px) {
+  .reports-split-layout,
+  .reports-shell.slide-up > .card.reports-split-layout {
+    flex-direction: column !important;
+  }
+  .reports-sub-sidebar {
+    display: none !important;
+  }
+  .reports-mobile-tabs {
+    display: block !important;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-2);
+    overflow-x: auto;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    flex-shrink: 0;
+  }
+  .reports-mobile-tabs::-webkit-scrollbar {
+    display: none;
+  }
+  .reports-canvas-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 12px;
+    gap: 10px;
+  }
+}
+
+@media print {
+  .reports-shell,
+  .reports-split-layout,
+  .reports-shell.slide-up > .card.reports-split-layout,
+  .reports-canvas,
+  .reports-canvas-body,
+  .reports-canvas-body > div {
+    display: block !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+  .reports-sub-sidebar,
+  .reports-mobile-tabs,
+  .reports-canvas-toolbar {
+    display: none !important;
+  }
+}

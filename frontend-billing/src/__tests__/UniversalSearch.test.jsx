@@ -8,6 +8,7 @@
 import React from 'react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor, fireEvent, act } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 
 const authFetch = vi.fn()
@@ -41,10 +42,11 @@ const openPalette = () => {
 const type = (value) =>
   fireEvent.change(screen.getByPlaceholderText(/Search invoices/i), { target: { value } })
 
-/** AppLayout renders this inside the sidebar; the palette portals into it. */
-const mountSidebarSlot = () => {
+/** Each page header declares where the single search trigger belongs. */
+const mountHeaderSlot = () => {
   const el = document.createElement('div')
-  el.id = 'usearch-slot'
+  el.setAttribute('data-header-search-slot', '')
+  el.className = 'header-search-slot'
   document.body.appendChild(el)
   return el
 }
@@ -59,12 +61,22 @@ beforeEach(() => {
 })
 afterEach(() => {
   vi.clearAllTimers()
-  // querySelectorAll, not getElementById: the reload case below mounts a
-  // second slot, and one left behind would leak into the next test.
-  document.querySelectorAll('#usearch-slot').forEach(el => el.remove())
+  vi.useRealTimers()
+  document.querySelectorAll('[data-header-search-slot]').forEach(el => el.remove())
 })
 
 describe('UniversalSearch', () => {
+  it('can hide the Home trigger while keeping the keyboard search available', () => {
+    const view = render(<MemoryRouter><UniversalSearch hideTrigger /></MemoryRouter>)
+    expect(screen.queryByRole('button', { name: 'Search anything (Ctrl+Space)' })).toBeNull()
+    expect(document.querySelector('.usearch-header-fallback')).toBeNull()
+    openPalette()
+    expect(screen.getByRole('dialog', { name: 'Search' })).toBeTruthy()
+    fireEvent.keyDown(window, { key: 'Escape' })
+    view.rerender(<MemoryRouter><UniversalSearch /></MemoryRouter>)
+    expect(screen.getByRole('button', { name: 'Search anything (Ctrl+Space)' })).toBeTruthy()
+  })
+
   it('opens on Ctrl+Space', () => {
     // The advertised shortcut. `code` is asserted alongside `key` because a
     // modified space does not report `' '` consistently across browsers.
@@ -226,84 +238,162 @@ describe('UniversalSearch', () => {
     }
   })
 
-  it('collapses into the sidebar when dismissed, and stays there', async () => {
-    mountSidebarSlot()
-    const { unmount } = draw()
-
-    await waitFor(() => expect(document.querySelector('.usearch-close')).toBeTruthy())
-    fireEvent.click(document.querySelector('.usearch-close'))
-
-    expect(document.querySelector('.usearch-dock')).toBeNull()
-    const row = document.querySelector('#usearch-slot .usearch-slot-btn')
-    expect(row).toBeTruthy()
-    expect(row.textContent).toMatch(/Find anything/i)
-
-    // A dismiss that a reload undoes is decoration, not a control.
-    unmount()
-    document.querySelectorAll('#usearch-slot').forEach(el => el.remove())
-    mountSidebarSlot()
+  it('opens from its page header instead of a bottom floating button', async () => {
+    const slot = mountHeaderSlot()
     draw()
-    await waitFor(() => expect(document.querySelector('#usearch-slot .usearch-slot-btn')).toBeTruthy())
+    const button = await screen.findByRole('button', { name: 'Search anything (Ctrl+Space)' })
+    expect(slot).toContainElement(button)
     expect(document.querySelector('.usearch-dock')).toBeNull()
-  })
-
-  it('opens the palette from the sidebar row', async () => {
-    mountSidebarSlot()
-    localStorage.setItem('usearch_fab_hidden', '1')
-    draw()
-
-    const row = await waitFor(() => {
-      const el = document.querySelector('#usearch-slot .usearch-slot-main')
-      expect(el).toBeTruthy()
-      return el
-    })
-    fireEvent.click(row)
+    fireEvent.click(button)
     expect(screen.getByPlaceholderText(/Search invoices/i)).toBeTruthy()
   })
 
-  it('puts the floating trigger back from the sidebar row', async () => {
-    // Dismissing is reversible or it is a trap: the expand glyph is the only
-    // way back, so it gets a test rather than a hope.
-    mountSidebarSlot()
-    localStorage.setItem('usearch_fab_hidden', '1')
+  it('opens an empty search from the generic placeholder hint', async () => {
+    mockSettings = { subscription: { plan: 'pro' } }
+    mountHeaderSlot()
     draw()
-
-    const expand = await waitFor(() => {
-      const el = document.querySelector('#usearch-slot .usearch-slot-expand')
-      expect(el).toBeTruthy()
-      return el
-    })
-    fireEvent.click(expand)
-
-    expect(document.querySelector('.usearch-dock')).toBeTruthy()
-    expect(document.querySelector('#usearch-slot .usearch-slot-btn')).toBeNull()
-    expect(localStorage.getItem('usearch_fab_hidden')).toBeNull()   // survives a reload
+    const button = await screen.findByRole('button', { name: 'Search anything (Ctrl+Space)' })
+    fireEvent.click(button)
+    const input = screen.getByPlaceholderText(/Search invoices/i)
+    expect(input.value).toBe('')
+    expect(screen.queryByRole('button', { name: 'Clear search' })).toBeNull()
+    expect(screen.queryByText('Ask the assistant')).toBeNull()
+    expect(authFetch).not.toHaveBeenCalled()
   })
 
-  it('offers the way back from inside the palette too', async () => {
-    // The sidebar row's glyph is display:none in the 56px collapsed rail, so
-    // it cannot be the only restore. This one is reachable in every state.
-    mountSidebarSlot()
-    localStorage.setItem('usearch_fab_hidden', '1')
-    draw()
-    await waitFor(() => expect(document.querySelector('.usearch-slot-btn')).toBeTruthy())
+  it.each(['{Enter}', ' '])('clears the query with the focused Clear button using %j', async (key) => {
+    const user = userEvent.setup()
+    const posHandler = vi.fn()
+    window.addEventListener('keydown', posHandler)
+    try {
+      draw()
+      openPalette()
+      type('print')
+      const input = screen.getByPlaceholderText(/Search invoices/i)
+      await waitFor(() => expect(input).toHaveFocus())
+      await user.tab()
+      expect(screen.getByRole('button', { name: 'Clear search' })).toHaveFocus()
+      posHandler.mockClear()
+      await user.keyboard(key)
+      expect(input.value).toBe('')
+      expect(input).toHaveFocus()
+      expect(screen.getByRole('dialog', { name: 'Search' })).toBeTruthy()
+      expect(navigate).not.toHaveBeenCalled()
+      expect(posHandler).not.toHaveBeenCalled()
+    } finally {
+      window.removeEventListener('keydown', posHandler)
+    }
+  })
 
+  it.each(['{Enter}', ' '])('closes with the focused Close button using %j', async (key) => {
+    const user = userEvent.setup()
+    const posHandler = vi.fn()
+    window.addEventListener('keydown', posHandler)
+    try {
+      draw()
+      openPalette()
+      type('print')
+      await waitFor(() => expect(screen.getByPlaceholderText(/Search invoices/i)).toHaveFocus())
+      await user.tab()
+      await user.tab()
+      expect(screen.getByRole('button', { name: 'Close search' })).toHaveFocus()
+      posHandler.mockClear()
+      await user.keyboard(key)
+      expect(screen.queryByRole('dialog', { name: 'Search' })).toBeNull()
+      expect(navigate).not.toHaveBeenCalled()
+      expect(posHandler).not.toHaveBeenCalled()
+    } finally {
+      window.removeEventListener('keydown', posHandler)
+    }
+  })
+
+  it.each(['{Enter}', ' '])('opens the focused result instead of the highlighted result using %j', async (key) => {
+    const user = userEvent.setup()
+    draw()
     openPalette()
-    fireEvent.click(screen.getByText(/Show floating button/i))
-
-    expect(document.querySelector('.usearch-dock')).toBeTruthy()
-    expect(localStorage.getItem('usearch_fab_hidden')).toBeNull()
-    // Restoring closes the palette, or the change happens behind an overlay.
-    expect(screen.queryByPlaceholderText(/Search invoices/i)).toBeNull()
+    type('print')
+    await waitFor(() => expect(screen.getByPlaceholderText(/Search invoices/i)).toHaveFocus())
+    const highlighted = screen.getByText('Print Logo').closest('button')
+    const focused = screen.getByText('Print Company Name').closest('button')
+    focused.focus()
+    await user.keyboard('{ArrowDown}')
+    expect(highlighted).toHaveAttribute('aria-selected', 'true')
+    expect(focused).toHaveFocus()
+    await user.keyboard(key)
+    expect(navigate).toHaveBeenCalledTimes(1)
+    expect(navigate).toHaveBeenCalledWith('/settings?tab=print&field=print_company_name')
   })
 
-  it('keeps the floating trigger where there is no sidebar to fall back to', async () => {
-    // /sales renders no sidebar. Honouring the stored dismiss there would
-    // leave the page with no visible way into search at all.
+  it('moves the highlighted result with arrows and opens it from the query input', async () => {
+    const user = userEvent.setup()
+    draw()
+    openPalette()
+    type('print')
+    const input = screen.getByPlaceholderText(/Search invoices/i)
+    await waitFor(() => expect(input).toHaveFocus())
+    await user.keyboard('{ArrowDown}{ArrowDown}{ArrowUp}')
+    expect(screen.getByText('Print Company Name').closest('button')).toHaveAttribute('aria-selected', 'true')
+    expect(input).toHaveFocus()
+    await user.keyboard('{Enter}')
+    expect(navigate).toHaveBeenCalledTimes(1)
+    expect(navigate).toHaveBeenCalledWith('/settings?tab=print&field=print_company_name')
+  })
+
+  it('keeps header search available when the old floating button was hidden', async () => {
+    const slot = mountHeaderSlot()
     localStorage.setItem('usearch_fab_hidden', '1')
     draw()
-    await waitFor(() => expect(document.querySelector('.usearch-dock')).toBeTruthy())
-    expect(document.querySelector('.usearch-close')).toBeNull()   // nothing to dismiss into
+    await waitFor(() => expect(slot.querySelector('.usearch-header-trigger')).toBeTruthy())
+    expect(document.querySelector('.usearch-header-fallback')).toBeNull()
+  })
+
+  it('reattaches when a loading page creates or replaces its header', async () => {
+    draw()
+    expect(document.querySelector('.usearch-header-fallback')).toBeTruthy()
+    let slot
+    act(() => { slot = mountHeaderSlot() })
+    await waitFor(() => expect(slot.querySelector('.usearch-header-trigger')).toBeTruthy())
+    let replacement
+    act(() => { slot.remove(); replacement = mountHeaderSlot() })
+    await waitFor(() => expect(replacement.querySelector('.usearch-header-trigger')).toBeTruthy())
+    expect(screen.getAllByRole('button', { name: 'Search anything (Ctrl+Space)' })).toHaveLength(1)
+  })
+
+  it('keeps a compact top-right trigger where no header slot exists', () => {
+    localStorage.setItem('usearch_fab_hidden', '1')
+    draw()
+    fireEvent.click(document.querySelector('.usearch-header-fallback button'))
+    expect(screen.getByPlaceholderText(/Search invoices/i)).toBeTruthy()
+  })
+
+  it('rotates suggestions without sending a search or AI request', () => {
+    vi.useFakeTimers()
+    mountHeaderSlot()
+    draw()
+    expect(screen.getByText('Find anything')).toBeTruthy()
+    act(() => vi.advanceTimersByTime(6500))
+    expect(screen.getByText('Find a bill, item or customer')).toBeTruthy()
+    expect(authFetch).not.toHaveBeenCalled()
+  })
+
+  it('keeps a generic category suggestion out of the query', () => {
+    vi.useFakeTimers()
+    draw()
+    act(() => vi.advanceTimersByTime(6500))
+    fireEvent.click(screen.getByRole('button', { name: 'Search anything (Ctrl+Space)' }))
+    expect(screen.getByPlaceholderText(/Search invoices/i).value).toBe('')
+    expect(authFetch).not.toHaveBeenCalled()
+  })
+
+  it('prefills a suggested question without automatically asking AI', () => {
+    vi.useFakeTimers()
+    mockSettings = { subscription: { plan: 'pro' } }
+    draw()
+    act(() => vi.advanceTimersByTime(6500))
+    fireEvent.click(screen.getByRole('button', { name: 'Search anything (Ctrl+Space)' }))
+    expect(screen.getByPlaceholderText(/Search invoices/i).value).toBe('How are sales doing today?')
+    expect(screen.getByText('Ask the assistant')).toBeTruthy()
+    expect(authFetch).not.toHaveBeenCalled()
   })
 
   it('keeps working when the record lookup fails', async () => {

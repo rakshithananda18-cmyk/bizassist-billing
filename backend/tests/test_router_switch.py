@@ -28,6 +28,8 @@ from tests.planhelpers import grant_pro
 from services.context_cache import invalidate
 from services.llm_router import RouteDecision
 
+from tests.signup_fixture import signup_payload
+
 client = TestClient(app)
 
 
@@ -48,10 +50,10 @@ def reset_state(monkeypatch):
 @pytest.fixture(scope="module")
 def auth():
     username = f"test_switch_{uuid.uuid4().hex[:8]}"
-    resp = client.post("/signup", json={
+    resp = client.post("/signup", json=signup_payload({
         "username": username, "password": "TestPass123!",
         "business_name": "Switch Test Biz",
-    })
+    }))
     assert resp.status_code == 200, f"Signup failed: {resp.text}"
     # The AI endpoints are Pro-only and now enforce it; this suite tests the
     # ROUTER, so it must provision a plan (tests/planhelpers.py).

@@ -19,6 +19,8 @@ from core.stock import ledger as SL
 from services.purchase_mapper import map_purchase_items_to_catalog
 from core.purchase.commands import accept_supplier_invoice
 
+from tests.signup_fixture import signup_payload
+
 client = TestClient(app)
 BID = 800800
 
@@ -223,9 +225,9 @@ def test_purchase_bill_rejects_money_that_disagrees_with_its_items():
 def api_auth():
     # Setup owner business
     owner_username = f"owner_{uuid.uuid4().hex[:6]}"
-    resp = client.post("/signup", json={
+    resp = client.post("/signup", json=signup_payload({
         "username": owner_username, "password": "OwnerPass123!", "business_name": "Owner Store",
-    })
+    }))
     assert resp.status_code == 200
     owner_data = resp.json()
     owner_token = owner_data["token"]

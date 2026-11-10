@@ -1,0 +1,29 @@
+.storage-consent-notice {
+  position: fixed;
+  z-index: 15000;
+  right: 16px;
+  bottom: max(16px, env(safe-area-inset-bottom));
+  left: 16px;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  max-width: 1000px;
+  margin-inline: auto;
+  padding: 18px 22px;
+  border: 1px solid var(--border, #d4d4d4);
+  border-radius: 14px;
+  background: var(--bg-2, #fff);
+  color: var(--text-primary, #202020);
+  box-shadow: 0 8px 32px #0002;
+}
+.storage-consent-copy { min-width: 0; }
+.storage-consent-copy h2 { margin: 0 0 6px; font-size: 1rem; }
+.storage-consent-copy p { margin: 0; font-size: .82rem; line-height: 1.5; }
+.storage-consent-copy a { color: var(--accent, #a04d30); text-decoration: underline; }
+.storage-consent-actions { display: flex; flex-shrink: 0; gap: 10px; }
+.storage-consent-actions .btn { white-space: nowrap; min-height: 40px; }
+@media (max-width: 640px) {
+  .storage-consent-notice { right: 10px; left: 10px; padding: 16px; flex-direction: column; align-items: stretch; gap: 12px; max-height: 60dvh; overflow-y: auto; }
+  .storage-consent-actions > button { flex: 1; }
+}
+@media print { .storage-consent-notice { display: none !important; } }

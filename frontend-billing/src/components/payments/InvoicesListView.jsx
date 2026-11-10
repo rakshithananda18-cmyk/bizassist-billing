@@ -2,7 +2,9 @@
 // InvoicesListView — all invoices with norms-aware Actions column and 25-item pagination.
 // Filter bar matches Transactions tab: Search | Filters | Sort | [Customer chip] | Refresh
 // ============================================================================
-import React, { useEffect, useState, useCallback, useMemo } from 'react'
+import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react'
+import { logger } from '../../utils/logger'
+import { readAllPages } from '../../utils/readPages'
 import { SyncIcon, SearchIcon, CopyIcon } from '../Icons'
 import InvoiceActions, { invoiceActionItems } from '../invoice/InvoiceActions'
 import { useDocLabels } from '../../hooks/useDocLabels'
@@ -52,17 +54,25 @@ export default function InvoicesListView({
   // ── Pagination State (25 items per page) ──────────────────────────
   const PAGE_SIZE = 25
   const [currentPage, setCurrentPage] = useState(1)
+  const [loadError, setLoadError] = useState(false)
+  const loadGeneration = useRef(0)
 
   const load = useCallback(() => {
+    const generation = ++loadGeneration.current
     setLoading(true)
-    authFetch('/invoices?per_page=500')
-      .then(r => r.ok ? r.json() : [])
-      .then(data => setRows(Array.isArray(data) ? data : (data.invoices || [])))
-      .catch(() => setRows([]))
-      .finally(() => setLoading(false))
+    setLoadError(false)
+    readAllPages(authFetch, '/invoices')
+      .then(data => { if (generation === loadGeneration.current) { setRows(data); setCurrentPage(1) } })
+      .catch((err) => {
+        if (generation !== loadGeneration.current) return
+        logger.error('[INVOICES] Failed to load invoices:', err)
+        setRows([])
+        setLoadError(true)
+      })
+      .finally(() => { if (generation === loadGeneration.current) setLoading(false) })
   }, [authFetch])
 
-  useEffect(() => { load() }, [load, reloadKey])
+  useEffect(() => { setRows([]); load(); return () => { loadGeneration.current++ } }, [load, reloadKey])
 
   useEffect(() => {
     setCurrentPage(1)
@@ -227,7 +237,11 @@ export default function InvoicesListView({
             </tr>
           </thead>
           <tbody>
-            {paginatedRows.length === 0 ? (
+            {loadError ? (
+              <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--danger, #dc2626)', padding: 24 }} role="alert">
+                Failed to load invoices from server. Please check your connection and <button onClick={load} className="btn btn-ghost btn-sm" style={{ textDecoration: 'underline', color: 'inherit' }}>retry</button>.
+              </td></tr>
+            ) : paginatedRows.length === 0 ? (
               <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 24 }}>
                 {customerFilter ? `No invoices found for "${customerFilter}".` : 'No invoices found.'}
               </td></tr>

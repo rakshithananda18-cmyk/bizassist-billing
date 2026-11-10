@@ -1,0 +1,244 @@
+path,review_depth,notes
+.env.example,screened,text inventory/content-pattern screening
+.gitattributes,screened,text inventory/content-pattern screening
+.github/workflows/ci.yml,deep,text inventory/content-pattern screening
+.github/workflows/db-backup.yml,deep,text inventory/content-pattern screening
+.github/workflows/field-team.yml,deep,text inventory/content-pattern screening
+.github/workflows/release.yml,deep,text inventory/content-pattern screening
+.github/workflows/sonar.yml,screened,text inventory/content-pattern screening
+.gitignore,deep,text inventory/content-pattern screening
+.gitleaks.toml,deep,text inventory/content-pattern screening
+.pre-commit-config.yaml,deep,text inventory/content-pattern screening
+Dockerfile,screened,text inventory/content-pattern screening
+README.md,deep,text inventory/content-pattern screening
+backend-task/.dockerignore,screened,text inventory/content-pattern screening
+backend-task/.env.example,screened,text inventory/content-pattern screening
+backend-task/Dockerfile,screened,text inventory/content-pattern screening
+backend-task/README.md,screened,text inventory/content-pattern screening
+backend-task/alembic.ini,screened,text inventory/content-pattern screening
+backend-task/alembic/env.py,screened,Python AST parse passed
+backend-task/alembic/script.py.mako,screened,text inventory/content-pattern screening
+backend-task/alembic/versions/0001_ft_initial.py,screened,Python AST parse passed
+backend-task/alembic/versions/0002_ft_task_invoices.py,screened,Python AST parse passed
+backend-task/alembic/versions/0003_ft_task_payment.py,screened,Python AST parse passed
+backend-task/app/__init__.py,screened,Python AST parse passed
+backend-task/app/billing_context.py,deep,Python AST parse passed
+backend-task/app/billing_models.py,screened,Python AST parse passed
+backend-task/app/collections.py,deep,Python AST parse passed
+backend-task/app/config.py,deep,Python AST parse passed
+backend-task/app/db.py,deep,Python AST parse passed
+backend-task/app/geo.py,deep,Python AST parse passed
+backend-task/app/invoices.py,deep,Python AST parse passed
+backend-task/app/logging_config.py,screened,Python AST parse passed
+backend-task/app/main.py,deep,Python AST parse passed
+backend-task/app/migration_scope.py,screened,Python AST parse passed
+backend-task/app/models.py,deep,Python AST parse passed
+backend-task/app/plan.py,deep,Python AST parse passed
+backend-task/app/routers/__init__.py,screened,Python AST parse passed
+backend-task/app/routers/attendance.py,deep,Python AST parse passed
+backend-task/app/routers/auth.py,deep,Python AST parse passed
+backend-task/app/routers/dashboard.py,deep,Python AST parse passed
+backend-task/app/routers/requests.py,deep,Python AST parse passed
+backend-task/app/routers/runs.py,deep,Python AST parse passed
+backend-task/app/routers/shops.py,deep,Python AST parse passed
+backend-task/app/routers/staff.py,screened,Python AST parse passed
+backend-task/app/routers/tasks.py,deep,Python AST parse passed
+backend-task/app/routers/tracking.py,deep,Python AST parse passed
+backend-task/app/security.py,deep,Python AST parse passed
+backend-task/app/services.py,deep,Python AST parse passed
+backend-task/app/timeutil.py,screened,Python AST parse passed
+backend-task/deploy_cloudrun.ps1,screened,text inventory/content-pattern screening
+backend-task/pytest.ini,screened,text inventory/content-pattern screening
+backend-task/requirements-dev.txt,screened,text inventory/content-pattern screening
+backend-task/requirements.txt,screened,text inventory/content-pattern screening
+backend-task/serve.py,screened,Python AST parse passed
+backend-task/tests/conftest.py,deep,Python AST parse passed
+backend-task/tests/test_attendance.py,test,Python AST parse passed
+backend-task/tests/test_auth.py,test,Python AST parse passed
+backend-task/tests/test_billing_alignment.py,test,Python AST parse passed
+backend-task/tests/test_billing_contract.py,test,Python AST parse passed
+backend-task/tests/test_billing_invoices.py,test,Python AST parse passed
+backend-task/tests/test_business_delete_lifecycle.py,test,Python AST parse passed
+backend-task/tests/test_cloud_configuration.py,test,Python AST parse passed
+backend-task/tests/test_collections.py,test,Python AST parse passed
+backend-task/tests/test_credit_balance_alignment.py,test,Python AST parse passed
+backend-task/tests/test_db_tenant_context.py,test,Python AST parse passed
+backend-task/tests/test_logging.py,test,Python AST parse passed
+backend-task/tests/test_migrations.py,test,Python AST parse passed
+backend-task/tests/test_pro_gate.py,test,Python AST parse passed
+backend-task/tests/test_runs_tasks.py,test,Python AST parse passed
+backend-task/tests/test_serve.py,test,Python AST parse passed
+backend-task/tests/test_staff_devices.py,test,Python AST parse passed
+backend-task/tests/test_task_audit_regressions.py,test,Python AST parse passed
+backend-task/tests/test_tracking_requests.py,test,Python AST parse passed
+check_db.py,deep,Python AST parse passed
+debug_fk.py,deep,Python AST parse passed
+debug_lineitem.py,deep,Python AST parse passed
+debug_remap.py,deep,Python AST parse passed
+dependencies.bat,deep,text inventory/content-pattern screening
+dev/check_cloud_release.py,deep,Python AST parse passed
+dev/dev_env.ps1,deep,text inventory/content-pattern screening
+dev/field_test_seed.py,screened,Python AST parse passed
+dev/tests/test_check_cloud_release.py,test,Python AST parse passed
+docs/.keep_test,screened,text inventory/content-pattern screening
+docs/AI_TOKEN_ECONOMICS_2026-08-07.md,screened,text inventory/content-pattern screening
+docs/ARCHITECTURE.md,deep,text inventory/content-pattern screening
+docs/BULK_TABLE_ACTIONS_2026-08-08.md,screened,text inventory/content-pattern screening
+docs/BizAssist_Phase_Plan.docx,metadata-only,binary metadata only
+docs/BizAssist_Phase_Plan.txt,screened,text inventory/content-pattern screening
+docs/CLEANUP_PLAN_2026-07-31.md,screened,text inventory/content-pattern screening
+docs/DATA_ARCHITECTURE_OPTIONS_2026-08-01.md,screened,text inventory/content-pattern screening
+docs/DATA_REPAIR_STATE_2026-08-03.md,screened,text inventory/content-pattern screening
+docs/DECISION_LOCAL_DB_ENCRYPTION_2026-08-03.md,screened,text inventory/content-pattern screening
+docs/DECISION_LOCAL_POSTGRES_2026-08-03.md,screened,text inventory/content-pattern screening
+docs/FIELD_TEAM_MASTER_PLAN.md,deep,text inventory/content-pattern screening
+docs/MASTER_PLAN.md,deep,text inventory/content-pattern screening
+docs/PLATFORM_STATE_AND_PENDING_WORK_2026-08-03.md,screened,text inventory/content-pattern screening
+docs/SECURITY_AND_FINANCIAL_REVIEW_2026-07-28.md,screened,text inventory/content-pattern screening
+docs/SECURITY_AND_FINANCIAL_REVIEW_2026-07-29.md,screened,text inventory/content-pattern screening
+docs/SECURITY_AND_FINANCIAL_REVIEW_2026-07-30.md,screened,text inventory/content-pattern screening
+docs/SETUP_AND_DEPLOYMENT.md,screened,text inventory/content-pattern screening
+docs/SPIKE_LOCAL_POSTGRES_2026-08-03.md,screened,text inventory/content-pattern screening
+docs/STRATEGIC_REVIEW_JUL2026.md,screened,text inventory/content-pattern screening
+docs/SYNC_LIVENESS_AUDIT_2026-07-31.md,screened,text inventory/content-pattern screening
+docs/TESTING.md,screened,text inventory/content-pattern screening
+docs/USER_GUIDE.md,screened,text inventory/content-pattern screening
+docs/archive/ARCHITECTURE_REVIEW_AND_PLAN.md,screened,text inventory/content-pattern screening
+docs/archive/ARCHITECTURE_REVIEW_AND_PLAN_root.md,screened,text inventory/content-pattern screening
+docs/archive/ARCHITECTURE_REVIEW_V2.md,screened,text inventory/content-pattern screening
+docs/archive/AUDIT_hosting_auth_changes.md,screened,text inventory/content-pattern screening
+docs/archive/BIZASSIST_BILLING_ECOSYSTEM_PLAN.md,screened,text inventory/content-pattern screening
+docs/archive/BIZASSIST_EXPERT_REVIEW.md,screened,text inventory/content-pattern screening
+docs/archive/BIZASSIST_EXPERT_REVIEW_PLAN.md,screened,text inventory/content-pattern screening
+docs/archive/COMPETITOR_FEATURE_BENCHMARK.md,screened,text inventory/content-pattern screening
+docs/archive/EMOJI_INVENTORY.md,screened,text inventory/content-pattern screening
+docs/archive/IDENTITY_AND_SYNC_DESIGN_REVIEW.md,screened,text inventory/content-pattern screening
+docs/archive/MANUAL_TEST_PLAN.md,screened,text inventory/content-pattern screening
+docs/archive/MANUAL_TEST_QUERIES.md,screened,text inventory/content-pattern screening
+docs/archive/MASTER_REVIEW.md,screened,text inventory/content-pattern screening
+docs/archive/RECOMMENDATIONS_WINDOWS_APP.md,screened,text inventory/content-pattern screening
+docs/archive/REVIEW_1_DESIGN_BUGS_GAPS_ADMIN_PORTAL.md,screened,text inventory/content-pattern screening
+docs/archive/REVIEW_1_IMPLEMENTATION_NOTES.md,screened,text inventory/content-pattern screening
+docs/archive/REVIEW_2_AI_AGENT_PLAN_AND_MOAT.md,screened,text inventory/content-pattern screening
+docs/archive/RLS_FAIL_CLOSED_TEST_PLAN.md,screened,text inventory/content-pattern screening
+docs/archive/SESSION_HANDOFF.md,screened,text inventory/content-pattern screening
+docs/archive/SETUP.md,screened,text inventory/content-pattern screening
+docs/archive/STEP3_UID_PLAN.md,screened,text inventory/content-pattern screening
+docs/archive/SYNC_MIGRATION_AUDIT.md,screened,text inventory/content-pattern screening
+docs/archive/VYAPAR_FEATURE_BENCHMARK.md,screened,text inventory/content-pattern screening
+docs/archive/WHAT_WE_DID_AND_HOW_TO_TEST.md,screened,text inventory/content-pattern screening
+docs/archive/clash_isolation_design.md,screened,text inventory/content-pattern screening
+docs/archive/data_security_comparison.md,screened,text inventory/content-pattern screening
+docs/archive/deployment_guide.md,screened,text inventory/content-pattern screening
+docs/archive/gaining_merchant_trust.md,screened,text inventory/content-pattern screening
+docs/archive/pdf_invoice_parsing_guide.md,screened,text inventory/content-pattern screening
+docs/plans/ADMIN_CONSOLE_PLAN.md,screened,text inventory/content-pattern screening
+docs/plans/AGENTIC_BLUEPRINT.md,screened,text inventory/content-pattern screening
+docs/plans/BENCHMARK_RECEIPT_MR_TRADERS.md,screened,text inventory/content-pattern screening
+docs/plans/BIZASSIST_BUILD_PLAN_NEXT_3_PHASES.md,deep,text inventory/content-pattern screening
+docs/plans/BIZASSIST_ECOSYSTEM_MASTER_PLAN.md,deep,text inventory/content-pattern screening
+docs/plans/HOSTING_MODE_MASTER_PLAN.md,deep,text inventory/content-pattern screening
+docs/plans/INVOICE_TEMPLATE_SYSTEM_PLAN.md,screened,text inventory/content-pattern screening
+docs/plans/MONEY_WORKSPACE_REDESIGN.md,screened,text inventory/content-pattern screening
+docs/plans/PHASE_COMPLETION_CHECKLIST.md,deep,text inventory/content-pattern screening
+docs/plans/PRODUCT_REVIEW.md,screened,text inventory/content-pattern screening
+docs/plans/R5_SALES_DECOMPOSITION_PLAN.md,screened,text inventory/content-pattern screening
+docs/plans/REALTIME_SYNC_ROBUSTNESS_PLAN.md,deep,text inventory/content-pattern screening
+docs/plans/SUBSCRIPTION_ACTIVATION_AND_DEVICES_PLAN.md,screened,text inventory/content-pattern screening
+docs/release/2026-10-28-verification.md,deep,text inventory/content-pattern screening
+docs/release/2026-10-29-billing-admin-alignment.md,screened,text inventory/content-pattern screening
+docs/release/2026-10-29-billing-pages-agent-audit.md,screened,text inventory/content-pattern screening
+docs/release/2026-10-29-cloud-readiness.md,screened,text inventory/content-pattern screening
+docs/release/2026-10-29-complete-app-survey.md,screened,text inventory/content-pattern screening
+docs/release/2026-10-29-dashboard-checkout-followup.md,screened,text inventory/content-pattern screening
+docs/release/2026-10-29-field-and-pos-review.md,screened,text inventory/content-pattern screening
+docs/release/2026-10-29-field-app-agent-audit.md,deep,text inventory/content-pattern screening
+docs/release/2026-10-29-money-sector-agent-audit.md,screened,text inventory/content-pattern screening
+docs/release/2026-10-29-post-checkout-print.md,screened,text inventory/content-pattern screening
+docs/release/2026-10-29-sync-import-lifecycle-review.md,deep,text inventory/content-pattern screening
+frontend-js.txt,screened,text inventory/content-pattern screening
+frontend-task/index.html,screened,text inventory/content-pattern screening
+frontend-task/package-lock.json,screened,JSON parse passed
+frontend-task/package.json,screened,JSON parse passed
+frontend-task/public/favicon.svg,screened,text inventory/content-pattern screening
+frontend-task/public/icon-192.png,metadata-only,binary metadata only
+frontend-task/public/icon-512-maskable.png,metadata-only,binary metadata only
+frontend-task/public/icon-512.png,metadata-only,binary metadata only
+frontend-task/public/manifest.webmanifest,screened,JSON parse passed
+frontend-task/public/sw.js,deep,text inventory/content-pattern screening
+frontend-task/src/App.jsx,deep,text inventory/content-pattern screening
+frontend-task/src/components/CollectionBalance.jsx,screened,text inventory/content-pattern screening
+frontend-task/src/components/Icons.jsx,screened,text inventory/content-pattern screening
+frontend-task/src/components/InvoicePicker.jsx,screened,text inventory/content-pattern screening
+frontend-task/src/components/InvoicePicker.test.jsx,test,text inventory/content-pattern screening
+frontend-task/src/components/Logo.jsx,screened,text inventory/content-pattern screening
+frontend-task/src/components/MapView.jsx,screened,text inventory/content-pattern screening
+frontend-task/src/components/NotificationBell.jsx,deep,text inventory/content-pattern screening
+frontend-task/src/components/WorkspaceSwitcher.jsx,screened,text inventory/content-pattern screening
+frontend-task/src/components/ui.jsx,screened,text inventory/content-pattern screening
+frontend-task/src/components/useLoad.test.jsx,test,text inventory/content-pattern screening
+frontend-task/src/layouts/OwnerLayout.jsx,screened,text inventory/content-pattern screening
+frontend-task/src/layouts/StaffLayout.jsx,deep,text inventory/content-pattern screening
+frontend-task/src/lib/api.js,deep,text inventory/content-pattern screening
+frontend-task/src/lib/api.test.js,test,text inventory/content-pattern screening
+frontend-task/src/lib/auth.jsx,deep,text inventory/content-pattern screening
+frontend-task/src/lib/auth.test.jsx,test,text inventory/content-pattern screening
+frontend-task/src/lib/billingBridge.js,screened,text inventory/content-pattern screening
+frontend-task/src/lib/billingBridge.test.js,test,text inventory/content-pattern screening
+frontend-task/src/lib/collections.js,screened,text inventory/content-pattern screening
+frontend-task/src/lib/collections.test.js,test,text inventory/content-pattern screening
+frontend-task/src/lib/coords.js,screened,text inventory/content-pattern screening
+frontend-task/src/lib/coords.test.js,test,text inventory/content-pattern screening
+frontend-task/src/lib/format.js,screened,text inventory/content-pattern screening
+frontend-task/src/lib/format.test.js,test,text inventory/content-pattern screening
+frontend-task/src/lib/geo.js,screened,text inventory/content-pattern screening
+frontend-task/src/lib/invoices.js,screened,text inventory/content-pattern screening
+frontend-task/src/lib/invoices.test.js,test,text inventory/content-pattern screening
+frontend-task/src/lib/plan.js,screened,text inventory/content-pattern screening
+frontend-task/src/lib/plan.test.js,test,text inventory/content-pattern screening
+frontend-task/src/lib/theme.js,screened,text inventory/content-pattern screening
+frontend-task/src/lib/theme.test.js,test,text inventory/content-pattern screening
+frontend-task/src/lib/tracker.js,deep,text inventory/content-pattern screening
+frontend-task/src/lib/tracker.test.js,test,text inventory/content-pattern screening
+frontend-task/src/lib/trackerSession.test.js,test,text inventory/content-pattern screening
+frontend-task/src/main.jsx,screened,text inventory/content-pattern screening
+frontend-task/src/pages/Login.jsx,screened,text inventory/content-pattern screening
+frontend-task/src/pages/Login.test.jsx,test,text inventory/content-pattern screening
+frontend-task/src/pages/owner/Activity.jsx,screened,text inventory/content-pattern screening
+frontend-task/src/pages/owner/Attendance.jsx,screened,text inventory/content-pattern screening
+frontend-task/src/pages/owner/Dashboard.jsx,screened,text inventory/content-pattern screening
+frontend-task/src/pages/owner/Live.jsx,screened,text inventory/content-pattern screening
+frontend-task/src/pages/owner/Live.test.jsx,test,text inventory/content-pattern screening
+frontend-task/src/pages/owner/Plan.jsx,screened,text inventory/content-pattern screening
+frontend-task/src/pages/owner/Requests.jsx,screened,text inventory/content-pattern screening
+frontend-task/src/pages/owner/Routes.jsx,screened,text inventory/content-pattern screening
+frontend-task/src/pages/owner/Scorecard.jsx,screened,text inventory/content-pattern screening
+frontend-task/src/pages/owner/Settings.jsx,screened,text inventory/content-pattern screening
+frontend-task/src/pages/owner/Shops.jsx,screened,text inventory/content-pattern screening
+frontend-task/src/pages/owner/Shops.test.jsx,test,text inventory/content-pattern screening
+frontend-task/src/pages/owner/Staff.jsx,screened,text inventory/content-pattern screening
+frontend-task/src/pages/owner/Tasks.jsx,screened,text inventory/content-pattern screening
+frontend-task/src/pages/staff/MyScore.jsx,screened,text inventory/content-pattern screening
+frontend-task/src/pages/staff/MyTasks.jsx,screened,text inventory/content-pattern screening
+frontend-task/src/pages/staff/NewRequest.jsx,deep,text inventory/content-pattern screening
+frontend-task/src/pages/staff/Today.jsx,deep,text inventory/content-pattern screening
+frontend-task/src/styles.css,screened,text inventory/content-pattern screening
+frontend-task/vercel.json,screened,JSON parse passed
+frontend-task/vite.config.js,screened,text inventory/content-pattern screening
+generate_sample_data.py,screened,Python AST parse passed
+notes,screened,text inventory/content-pattern screening
+package-lock.json,screened,JSON parse passed
+repair_line_items.py,deep,Python AST parse passed
+requirements.txt,screened,text inventory/content-pattern screening
+run_tests.bat,screened,text inventory/content-pattern screening
+run_tests.ps1,deep,text inventory/content-pattern screening
+sample_data/sample_bill.png,metadata-only,binary metadata only
+sample_data/sample_customers_import.csv,screened,text inventory/content-pattern screening
+sample_data/sample_inventory.csv,screened,text inventory/content-pattern screening
+sample_data/sample_invoices.csv,screened,text inventory/content-pattern screening
+sample_data/sample_payments.csv,screened,text inventory/content-pattern screening
+sample_data/sample_products_import.csv,screened,text inventory/content-pattern screening
+serve_dashboard.py,deep,Python AST parse passed
+sonar-project.properties,screened,text inventory/content-pattern screening
+start_dev.bat,deep,text inventory/content-pattern screening
+test_dashboard.html,screened,text inventory/content-pattern screening

@@ -264,6 +264,10 @@ def build_print_payload(db, *, business_id: int, invoice_no: str, user_id=None) 
         raise LookupError(f"Invoice '{invoice_no}' not found")
 
     seller = db.query(User).filter(User.id == business_id).first()
+    from core.party_archive import document_party_metadata
+    party_meta = document_party_metadata(inv, "sale")
+    stored_parties = party_meta.get("parties", {})
+    stored_seller = stored_parties.get("seller")
     buyer_row = None
     if inv.customer_id:
         buyer_row = (
@@ -285,7 +289,8 @@ def build_print_payload(db, *, business_id: int, invoice_no: str, user_id=None) 
         except Exception:
             pass
 
-    seller_gstin = (seller.gstin or "").strip() if seller else ""
+    seller_gstin = ((stored_seller.get("gstin") or "") if stored_seller is not None
+                    else (seller.gstin or "") if seller else "").strip()
     gst_mode = bool(seller_gstin)
     lines = [_line_out(i + 1, li) for i, li in enumerate(inv.line_items)]
     igst_mode = _r2(inv.igst_total) > 0 or any(l["igst"] > 0 for l in lines)
@@ -321,13 +326,32 @@ def build_print_payload(db, *, business_id: int, invoice_no: str, user_id=None) 
     )
 
     # ── Totals ───────────────────────────────────────────────────────────────
-    # `amount_paid` is DERIVED from the payment ledger (the source of truth), not
-    # trusted from inv.paid_amount — a stale synced copy can leave that column
-    # behind and show a fully-paid invoice as "Balance Due" (the "Pending but
-    # already paid" bug). Fall back to the column only when there are NO ledger
-    # rows (legacy data / mark_paid without a receipt).
-    grand = _r2(inv.total_amount if inv.total_amount is not None else inv.amount)
-    paid = _r2(sum(p.amount_paid or 0.0 for p in pay_rows)) if pay_rows else _r2(inv.paid_amount)
+    # The fiscal document total remains unchanged. Corrections/settlement facts
+    # are shown separately, using the same projection as accounts/collections.
+    from sqlalchemy import func
+    from core.billing.balances import invoice_balance
+    from core.accounting.settlement_models import CustomerRefund, CustomerCreditAllocation
+    from core.accounting.repost import _is_advance_application
+    balance = invoice_balance(db, inv)
+    is_return = inv.invoice_type == "credit_note"
+    grand = _r2(inv.total_amount or inv.amount or 0)
+    source_column = CustomerRefund.credit_note_id if is_return else CustomerRefund.source_invoice_id
+    refunded = _r2(db.query(func.coalesce(func.sum(CustomerRefund.amount), 0)).filter(
+        CustomerRefund.business_id == business_id, source_column == inv.id).scalar())
+    allocated_in = _r2(db.query(func.coalesce(func.sum(CustomerCreditAllocation.amount), 0)).filter(
+        CustomerCreditAllocation.business_id == business_id, CustomerCreditAllocation.target_invoice_id == inv.id).scalar())
+    allocated_out = _r2(db.query(func.coalesce(func.sum(CustomerCreditAllocation.amount), 0)).filter(
+        CustomerCreditAllocation.business_id == business_id,
+        (CustomerCreditAllocation.credit_note_id if is_return else CustomerCreditAllocation.source_invoice_id) == inv.id).scalar())
+    legacy_paid = _r2(inv.legacy_paid_baseline) if not is_return else 0
+    paid = _r2(legacy_paid + sum(p.amount_paid or 0 for p in pay_rows)) if pay_rows else (
+        0.0 if is_return else _r2(balance["paid"] + refunded + allocated_out - allocated_in))
+    cash_received = _r2(legacy_paid + sum(p.amount_paid or 0 for p in pay_rows if not _is_advance_application(p))) if pay_rows else paid
+    if is_return:
+        from core.accounting.settlements import credit_available
+        return_credit = credit_available(db, inv)
+    else:
+        return_credit = balance["credit_due"]
     totals = {
         "subtotal": _r2(inv.subtotal),                    # Σ taxable (command-defined)
         "total_discount": _r2(inv.discount_total),
@@ -337,8 +361,16 @@ def build_print_payload(db, *, business_id: int, invoice_no: str, user_id=None) 
         "round_off": _r2(inv.round_off),
         "cash_discount": _r2(getattr(inv, "cash_discount", 0)),
         "grand_total": grand,
-        "amount_paid": paid,
-        "balance_due": _r2(max(grand - paid, 0.0)),
+        "original_total": grand,
+        "credited_amount": balance["credited"] if not is_return else 0,
+        "adjusted_total": balance["effective_total"] if not is_return else grand,
+        "amount_paid": balance["paid"] if not is_return else 0,
+        "cash_received": cash_received,
+        "amount_refunded": refunded,
+        "credit_allocated_in": allocated_in,
+        "credit_allocated_out": allocated_out,
+        "return_credit": return_credit,
+        "balance_due": balance["outstanding"] if not is_return else 0,
         "amount_in_words": amount_in_words(grand),
     }
 
@@ -466,6 +498,24 @@ def build_print_payload(db, *, business_id: int, invoice_no: str, user_id=None) 
             "payload_hash": _payload_hash(inv.invoice_id, totals, lines),
         },
     }
+
+    # Issued identity fields are financial facts. Later profile edits and an
+    # account retirement must not rewrite the parties printed on an old bill.
+    for side in ("seller", "buyer"):
+        snapshot = stored_parties.get(side)
+        if snapshot is not None:
+            for key in ("name", "phone", "email", "gstin", "biz_id", "pan"):
+                payload[side][key] = snapshot.get(key)
+            address_key = "address" if side == "seller" else "billing_address"
+            payload[side][address_key] = snapshot.get("address")
+            code = snapshot.get("state_code")
+            code = str(code).zfill(2) if code else None
+            payload[side]["state_code"] = code
+            payload[side]["state"] = GST_STATES.get(code)
+        payload[side]["deleted"] = party_meta.get(side + "_deleted", False)
+    payload["meta"]["party_snapshot_origin"] = party_meta.get("party_snapshot_origin", "legacy_live")
+    if payload["buyer"].get("billing_address") and "buyer_address" not in blocks:
+        blocks.append("buyer_address")
 
     log_event("payload_built", invoice_id=inv.id, invoice_uid=getattr(inv, "uid", None),
               business_id=business_id, user_id=user_id, business_type=business_type,

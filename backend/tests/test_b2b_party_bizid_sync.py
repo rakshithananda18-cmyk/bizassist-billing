@@ -40,14 +40,16 @@ from database.models import User, _serialize_orm_obj      # noqa: E402
 from database.sync_map import resolve_parent_fk_uids      # noqa: E402
 from core.models import B2BConnection                     # noqa: E402
 
+from tests.signup_fixture import signup_payload
+
 client = TestClient(app)
 
 
 def _signup(name):
     uname = f"b2b_{uuid.uuid4().hex[:8]}"
-    r = client.post("/signup", json={
+    r = client.post("/signup", json=signup_payload({
         "username": uname, "password": "TestPass123!", "business_name": name,
-    })
+    }))
     assert r.status_code == 200, r.text
     b = r.json()
     return (b["user"]["id"] if isinstance(b.get("user"), dict) else b["id"])

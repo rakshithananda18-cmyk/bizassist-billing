@@ -1,14 +1,18 @@
 import logging
 import time
-from typing import Optional
-from fastapi import APIRouter, HTTPException, Request, Depends
+from typing import Optional, Literal
+from uuid import uuid4
+import os
+from fastapi import APIRouter, HTTPException, Request, Depends, Query, Body
 from pydantic import BaseModel
-from sqlalchemy import func
+from sqlalchemy import func, or_
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from database.db import get_db, DATABASE_URL
 from database.models import User
-from services.auth import hash_password, verify_password, create_access_token, get_active_user, create_sse_ticket, require_owner, get_active_user_or_ticket, redeem_sse_ticket
+from services.auth import hash_password, verify_password, create_access_token, get_active_user, create_sse_ticket, require_owner, require_business_owner, get_active_user_or_ticket, redeem_sse_ticket, verify_ticket, _validate_token_version, session_rejected, SESSION_REJECTION_HEADERS
 from services.rate_limiter import check_ip_rate_limit
+from services.registration_policy import TRIAL_DAYS, normalize_phone, phone_key
 
 router = APIRouter()
 logger = logging.getLogger("bizassist.auth")
@@ -38,28 +42,27 @@ _SUB_SYNC_FREE_COOLDOWN_SECS = 60
 _sub_sync_next: dict[int, float] = {}  # business_id → earliest next cloud check
 
 
+def _session_claims(user_row: User, *, sid: str, psid=None, owner=None) -> dict:
+    holder = owner or user_row
+    claims = {
+        "id": user_row.parent_business_id or user_row.id,
+        "user_id": user_row.id,
+        "username": user_row.username,
+        "public_id": holder.public_id,
+        "business_name": holder.business_name,
+        "role": user_row.role,
+        "tv": user_row.token_version or 0,
+        "sid": sid,
+    }
+    if psid:
+        claims["psid"] = psid
+    return claims
+
+
 class LoginRequest(BaseModel):
     username: str
     password: str
     otp: Optional[str] = None   # TOTP code — required only for admins with 2FA enabled (§4.1)
-
-
-class IdentityCheckRequest(BaseModel):
-    username: str
-
-
-@router.post("/api/biz_id/check")
-def biz_id_check(req: IdentityCheckRequest, db: Session = Depends(get_db)):
-    """
-    Lightweight, PUBLIC existence check for the registration UX.
-
-    Returns ONLY {"exists": bool} — no business name or any other field — so it
-    can't be used to enumerate account details. Lets the signup form branch to
-    "log in & link" vs "create new" before the user fills the whole form.
-    """
-    uname = (req.username or "").strip()
-    exists = bool(uname) and db.query(User).filter(User.username == uname).first() is not None
-    return {"exists": exists}
 
 
 class ReconcilePasswordRequest(BaseModel):
@@ -77,6 +80,33 @@ def _require_loopback_local(request: Request) -> None:
         raise HTTPException(status_code=403, detail="This recovery operation is available only from this device.")
 
 
+def _confirm_with_cloud(username: str, password: str) -> dict:
+    """Sign in to the cloud with these credentials FROM THIS BACKEND and return
+    the cloud's answer (its `public_id` is the account's BizID).
+
+    The recovery routes below change a local owner's password (and reclaim also
+    wipes the business's local data) on the claim that the cloud just accepted
+    these credentials. Loopback-only is not enough to trust that claim: a shop
+    computer is shared, and every cashier knows the owner's username (staff sign
+    in with it) and can read the BizID off the screen. So the claim is checked
+    here, never taken from the request."""
+    import httpx
+    from services.sync_worker import CLOUD_URL
+    try:
+        r = httpx.post(f"{CLOUD_URL}/login", json={"username": username, "password": password}, timeout=15.0)
+    except Exception as e:
+        logger.warning("[AUTH] cloud confirmation unreachable for local recovery: %s", e)
+        raise HTTPException(status_code=503, detail="Could not reach Stater Cloud to confirm this password. "
+                                                    "Check the internet connection and try again. Nothing was changed.")
+    if r.status_code != 200:
+        logger.warning("[AUTH] cloud refused the credentials offered for local recovery (HTTP %s)", r.status_code)
+        raise HTTPException(status_code=401, detail="Stater Cloud did not accept this password. Nothing was changed.")
+    try:
+        return r.json() or {}
+    except ValueError:
+        raise HTTPException(status_code=502, detail="Stater Cloud gave an unreadable answer. Nothing was changed.")
+
+
 @router.post("/api/auth/reconcile_password")
 def reconcile_password(req: ReconcilePasswordRequest, request: Request, db: Session = Depends(get_db)):
     """
@@ -86,8 +116,9 @@ def reconcile_password(req: ReconcilePasswordRequest, request: Request, db: Sess
     Identity-safe: the update happens ONLY when the local account's BizID
     (public_id) matches the cloud's. A username that maps to a DIFFERENT
     business on this device is reported as a mismatch and never overwritten —
-    so we can't silently log someone into the wrong local business. Localhost
-    trust model, same as the fresh-device /signup mirror.
+    so we can't silently log someone into the wrong local business. The cloud
+    sign-in is repeated here (_confirm_with_cloud), and the BizID compared is
+    the cloud's own, not the request's.
     """
     _require_loopback_local(request)
     uname = (req.username or "").strip()
@@ -96,7 +127,8 @@ def reconcile_password(req: ReconcilePasswordRequest, request: Request, db: Sess
               .first())
     if not user:
         raise HTTPException(status_code=404, detail="No such local owner account")
-    if not req.public_id or user.public_id != req.public_id:
+    cloud_bizid = _confirm_with_cloud(uname, req.password).get("public_id")
+    if not cloud_bizid or user.public_id != cloud_bizid:
         raise HTTPException(
             status_code=409,
             detail=(f"Identity mismatch: on this device '{uname}' is the business "
@@ -129,8 +161,12 @@ def reclaim_local(req: ReclaimLocalRequest, request: Request, db: Session = Depe
     single device owner); (2) it is reached ONLY after the cloud accepted a NEW
     signup for this username, proving the old cloud identity is gone; (3) it
     re-keys identity (BizID) + password and does NOT create or merge across
-    businesses. It is non-destructive to any existing local data on the row —
-    the caller can start fresh separately if they want a clean slate.
+    businesses. When the BizID changes it purges the business's stale local data.
+
+    Point (2) is checked, not assumed: this backend signs in to the cloud with
+    the same credentials (_confirm_with_cloud) and requires the cloud to name
+    the BizID being adopted. Without that, anyone at this computer who knew the
+    owner's username could wipe the business and take over the owner account.
     """
     _require_loopback_local(request)
     if not (req.public_id or "").strip():
@@ -143,31 +179,29 @@ def reclaim_local(req: ReclaimLocalRequest, request: Request, db: Session = Depe
     if not user:
         raise HTTPException(status_code=404, detail="No local account to reclaim.")
 
+    cloud = _confirm_with_cloud(uname, req.password)
+    if cloud.get("public_id") != req.public_id:
+        logger.warning(f"[AUTH] Refused reclaim of '{uname}': the cloud account's BizID is "
+                       f"{cloud.get('public_id')!r}, not the requested {req.public_id!r}.")
+        raise HTTPException(status_code=409, detail="This BizID is not the cloud account's for these credentials. Nothing was changed.")
+
     old_bizid = user.public_id
+    business_name = cloud.get("business_name") or req.business_name or user.business_name
+    if old_bizid and old_bizid != req.public_id:
+        from services.admin_service import purge_business_data, record_business_tombstone
+        old_name = user.business_name
+        result = purge_business_data(user.id, db, delete_owner=False, delete_staff=True, retire_account=True)
+        record_business_tombstone(db, public_id=old_bizid, username=uname,
+            business_name=old_name, reason="reclaim_rekey")
+        if result.get("identity_retained"):
+            db.flush()
+            user = User(username=uname, role="enterprise")
+            db.add(user)
     user.public_id = req.public_id
     user.password = hash_password(req.password)
-    if req.business_name:
-        user.business_name = req.business_name
-
-    # If the BizID changed, the cloud tenant was recreated from scratch. Purge ALL
-    # stale local data for this business so we start fresh and never push old data
-    # to the new cloud account. Uses the SAME centralized, dependency-ordered purge
-    # as the admin "wipe user data" path (services.admin_service.purge_business_data)
-    # — the previous inline `DELETE FROM {table} WHERE business_id` loop missed
-    # child line-item tables and, critically, could leave staff sub-accounts behind
-    # (the July 2026 "phantom counters" bug). delete_owner=False keeps THIS owner
-    # row so we can re-key it below; the whole thing commits atomically here.
-    if old_bizid and old_bizid != req.public_id:
-        logger.warning(
-            f"[AUTH] Reclaimed account '{uname}' has a new BizID ({old_bizid} -> {req.public_id}). "
-            f"Purging stale local data for business ID {user.id} via centralized purge..."
-        )
-        from services.admin_service import purge_business_data, record_business_tombstone
-        purge_business_data(user.id, db, delete_owner=False, delete_staff=True)
-        # Tombstone the RETIRED old BizID so any device/cloud can later recognise
-        # it as intentionally re-keyed (not a mystery orphan). Best-effort.
-        record_business_tombstone(db, public_id=old_bizid, username=uname,
-                                  business_name=user.business_name, reason="reclaim_rekey")
+    user.business_name = business_name
+    from services.auth import bump_token_version
+    bump_token_version(db, user)
 
     db.commit()
     db.refresh(user)
@@ -184,6 +218,7 @@ def reclaim_local(req: ReclaimLocalRequest, request: Request, db: Session = Depe
         "business_name": user.business_name,
         "role": user.role,
         "tv": user.token_version or 0,
+        "sid": uuid4().hex,
     })
     return {
         "token": token,
@@ -201,7 +236,8 @@ class SignupRequest(BaseModel):
     username: str
     password: str
     business_name: str
-    phone: Optional[str] = None            # captured at registration → stored on the profile
+    email: Optional[str] = None
+    phone: Optional[str] = None  # required for fresh signup; legacy local mirrors may omit it
     # Optional cloud-issued BizID. When the downloaded app registers, it creates
     # the account on the cloud first (the single authority), then mirrors it
     # locally passing the cloud's public_id here so both sides share one BizID.
@@ -211,7 +247,11 @@ class SignupRequest(BaseModel):
 
 @router.post("/login")
 def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
-    logger.info(f"[AUTH] Login attempt for username '{req.username}'...")
+    # The typed username is logged only once it is known to be an account's: a
+    # password typed into the username box is almost never a real username,
+    # and log files travel (support uploads, screenshots).
+    shown = "an unknown username"
+    logger.info("[AUTH] Login attempt...")
     try:
         # Check IP-based rate limiting
         ip = request.client.host if request.client else "unknown"
@@ -219,9 +259,12 @@ def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
         if not rl["allowed"]:
             raise HTTPException(status_code=429, detail=rl["reason"])
 
-        user = db.query(User).filter(User.username == req.username).first()
-        if not user or not verify_password(req.password, user.password):
-            logger.warning(f"[AUTH] Failed login for username '{req.username}': invalid credentials")
+        from database.security import authenticate_identity, username_exists
+        user = authenticate_identity(db, req.username, req.password)
+        if user or username_exists(db, req.username):
+            shown = f"username '{req.username}'"
+        if not user:
+            logger.warning(f"[AUTH] Failed login for {shown}: invalid credentials")
             raise HTTPException(status_code=401, detail="Invalid credentials")
 
         # ── Admin 2FA gate (§4.1) ─────────────────────────────────────────────
@@ -262,15 +305,7 @@ def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
                 business_name = owner.business_name
                 owner_public_id = owner.public_id
 
-        token = create_access_token({
-            "id": business_id,
-            "user_id": user.id,
-            "username": user.username,
-            "public_id": owner_public_id,   # BizID — the stable cross-DB identity spine (D9)
-            "business_name": business_name,
-            "role": user.role,
-            "tv": user.token_version or 0,  # session revocation (GAP-1)
-        })
+        token = create_access_token(_session_claims(user, sid=uuid4().hex, psid=None, owner=owner if user.parent_business_id else None))
 
         # Stamp the account as used. This is what lets the owner tell a real
         # counter from one created during testing and forgotten — a NULL
@@ -308,7 +343,7 @@ def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"[AUTH] Error during login for username '{req.username}': {str(e)}", exc_info=True)
+        logger.error(f"[AUTH] Error during login for {shown}: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Internal server login error")
 
 
@@ -316,49 +351,6 @@ class StaffLoginRequest(BaseModel):
     owner_username: str
     staff_login_name: str
     password: str
-
-
-@router.get("/staff-counters")
-def staff_counters(owner: str, db: Session = Depends(get_db)):
-    """(§9.5) Public lookup for the owner-gated staff-login dropdown: resolve an
-    OWNER username or public_id (BizID) → that business's name + its staff counters.
-    Returns an empty `staff` list if the owner has none; 404 if no such owner."""
-    owner_str = (owner or "").strip()
-    if not owner_str:
-        raise HTTPException(status_code=400, detail="Owner parameter is required")
-
-    # Match owner by public_id (BizID) or username
-    owner_row = db.query(User).filter(
-        (User.public_id == owner_str) | (User.username == owner_str),
-        User.parent_business_id.is_(None)
-    ).first()
-
-    if not owner_row:
-        raise HTTPException(status_code=404, detail="No business found for that owner")
-
-    # Query staff rows strictly bound to the verified owner_row.id
-    staff = (
-        db.query(User)
-        .filter(
-            User.parent_business_id == owner_row.id,
-        )
-        .order_by(User.staff_login_name.asc())
-        .all()
-    )
-
-    return {
-        "business_name": owner_row.business_name,
-        "owner_username": owner_row.username,
-        "public_id": owner_row.public_id,
-        "staff": [
-            {
-                "login_name": s.staff_login_name or s.username,
-                "counter_prefix": s.counter_prefix,
-                "role": s.role,
-            }
-            for s in staff
-        ],
-    }
 
 
 @router.post("/login/staff")
@@ -374,32 +366,16 @@ def staff_login(req: StaffLoginRequest, request: Request, db: Session = Depends(
         if not rl["allowed"]:
             raise HTTPException(status_code=429, detail=rl["reason"])
 
-        owner = db.query(User).filter(
-            User.username == req.owner_username, User.parent_business_id.is_(None)
-        ).first()
-        if not owner:
+        from database.security import authenticate_identity
+        staff = authenticate_identity(db, req.staff_login_name, req.password, req.owner_username)
+        if staff is None or staff.parent_business_id is None:
             raise HTTPException(status_code=401, detail="Invalid credentials")
-        staff = (
-            db.query(User)
-            .filter(
-                User.parent_business_id == owner.id,
-                func.lower(User.staff_login_name) == (req.staff_login_name or "").strip().lower(),
-            )
-            .first()
-        )
-        if not staff or not verify_password(req.password, staff.password):
+        owner = db.get(User, staff.parent_business_id)
+        if owner is None or owner.role == "deleted":
             raise HTTPException(status_code=401, detail="Invalid credentials")
 
         business_id = owner.id
-        token = create_access_token({
-            "id": business_id,
-            "user_id": staff.id,
-            "username": staff.username,          # internal global-unique → route resolution
-            "public_id": owner.public_id,
-            "business_name": owner.business_name,
-            "role": staff.role,
-            "tv": staff.token_version or 0,      # session revocation (GAP-1)
-        })
+        token = create_access_token(_session_claims(staff, sid=uuid4().hex, psid=None, owner=owner))
         logger.info(f"[AUTH] Staff '{staff.staff_login_name}' logged into business {business_id} (owner {owner.username}).")
         return {
             "token": token,
@@ -419,10 +395,149 @@ def staff_login(req: StaffLoginRequest, request: Request, db: Session = Depends(
         raise HTTPException(status_code=500, detail="Internal server login error")
 
 
+class BusinessLookupRequest(BaseModel):
+    identifier: str
+
+
+@router.post("/api/auth/lookup-business")
+@router.post("/auth/lookup-business")
+def lookup_business(req: BusinessLookupRequest, request: Request, db: Session = Depends(get_db)):
+    """
+    Lookup business details and available staff accounts by owner identifier
+    (mobile number, username, email, or BizID) or staff identifier.
+    Returns store details so users can verify they are logging into the right store,
+    and a staff roster dropdown so manual cashier typing is skipped.
+    """
+    ip = request.client.host if request.client else "unknown"
+    rl = check_ip_rate_limit(ip)
+    if not rl["allowed"]:
+        raise HTTPException(status_code=429, detail=rl["reason"])
+
+    raw = (req.identifier or "").strip()
+    if not raw or len(raw) > 254:
+        raise HTTPException(status_code=400, detail="Enter the business owner's username, email, phone number, or BizID.")
+    from database.security import find_owner_by_identifier
+    owner = find_owner_by_identifier(db, raw)
+    if not owner:
+        return {"found": False, "message": "No unique business found. Check the owner's details or use its BizID."}
+    staff_rows = db.query(User).filter(User.parent_business_id == owner.id,
+        func.lower(User.role).in_(["cashier", "supply adder"])).order_by(User.staff_login_name, User.username).all()
+    # This is a public sign-in preview, not an owner/staff contact directory.
+    staff = [{"id": row.id, "username": row.staff_login_name or row.username, "role": row.role} for row in staff_rows]
+    return {"found": True, "business_name": owner.business_name or "Business", "public_id": owner.public_id,
+            "has_staff": bool(staff), "staff": staff}
+
+
+# ---------------------------------------------------------------------------
+# PRO TRIAL FOR NEW BUSINESSES
+# ---------------------------------------------------------------------------
+# Every eligible first-time business registered on the CLOUD starts on Pro for
+# 14 days, so a new owner can work on the web straight away, then install
+# the desktop app and bring their data down while sync is still Pro. The grant
+# is the ordinary `settings.subscription` shape with status "trial", so
+# effective_plan() — and every gate built on it, Field Team included — turns it
+# on now and off at the end date with no extra plumbing.
+#
+# Cloud only, and never on the local mirror backend: the cloud is the plan
+# authority, and the desktop copies the plan
+# down through _sync_subscription_from_cloud like any admin grant.
+
+def _trial_days() -> int:
+    return TRIAL_DAYS
+
+
+def _phone_key(phone: Optional[str]) -> Optional[str]:
+    """Canonical, country-aware fingerprint; equivalent formatting matches."""
+    return phone_key(phone)
+
+
+@router.get("/trial-offer")
+def trial_offer():
+    """Public: whether a business registered now starts on a Pro trial, and for
+    how long. The desktop app's Register screen asks the CLOUD before sign-up to
+    preselect "Local + Cloud". Only the cloud grants trials, so a local backend
+    answers 0. The final word is the signup response: one trial per phone."""
+    return {"days": _trial_days() if _DB_MODE == "cloud" else 0}
+
+
+def _start_trial(user: User, phone: Optional[str], db: Session, force: bool = False) -> Optional[dict]:
+    """Put a brand-new business on the Pro trial. Returns the subscription it
+    wrote, or None when no trial was given."""
+    import json
+    from datetime import timedelta
+    from services.dates import utc_now
+
+    days = _trial_days()
+    if days <= 0:
+        return None
+    key = _phone_key(phone)
+    if not key and not force:
+        raise ValueError("A valid phone number is required for the first-time trial.")
+    if not force and key:
+        from database.models import TrialPhoneClaim
+        from sqlalchemy.exc import IntegrityError
+        if db.get(TrialPhoneClaim, key) is not None:
+            return None
+        others = db.query(User.phone).filter(
+            User.id != user.id,
+            User.parent_business_id.is_(None),
+            User.phone.isnot(None),
+            User.role != "deleted",
+        ).all()
+        if any(_phone_key(p) == key for (p,) in others):
+            logger.info(f"[TRIAL] No trial for '{user.username}': phone already registered to another business.")
+            return None
+        # The unique key serialises simultaneous registrations with one phone.
+        # The caller owns the outer account+trial transaction.
+        try:
+            with db.begin_nested():
+                db.add(TrialPhoneClaim(phone_hash=key))
+                db.flush()
+        except IntegrityError:
+            if db.get(TrialPhoneClaim, key) is not None:
+                return None
+            raise
+    elif force and key:
+        from database.models import TrialPhoneClaim
+        try:
+            with db.begin_nested():
+                if db.get(TrialPhoneClaim, key) is None:
+                    db.add(TrialPhoneClaim(phone_hash=key))
+                    db.flush()
+        except Exception:
+            pass
+
+    now = utc_now()
+    sub = {
+        "plan":       "pro",
+        "status":     "trial",
+        # A date means access THROUGH that day (expiry_moment), so this is the
+        # rest of today plus `days` full days.
+        "expires_at": (now.date() + timedelta(days=days)).isoformat(),
+        "granted_by": "trial",
+        "granted_at": now.isoformat(),
+        "note":       f"{days}-day Pro trial at signup",
+    }
+    s = json.loads(user.settings) if user.settings else {}
+    s["subscription"] = sub
+    user.settings = json.dumps(s)
+    db.flush()
+    logger.info(f"[TRIAL] '{user.username}' (BizID {user.public_id}) started a {days}-day Pro trial, ends {sub['expires_at']}.")
+    return sub
+
+
 @router.post("/signup")
 def signup(req: SignupRequest, db: Session = Depends(get_db)):
     logger.info(f"[AUTH] Signup attempt for username '{req.username}'...")
     try:
+        # Legacy local mirrors may have no phone on their older cloud account.
+        # Fresh registrations on either platform always require a valid contact.
+        phone = None
+        if req.phone or _DB_MODE == "cloud" or not (req.public_id or "").strip():
+            try:
+                phone = normalize_phone(req.phone)
+            except ValueError as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from None
         # Enforce password strength policy
         password = req.password
         if len(password) < 8:
@@ -434,10 +549,23 @@ def signup(req: SignupRequest, db: Session = Depends(get_db)):
         if not any(c.isdigit() for c in password):
             raise HTTPException(status_code=400, detail="Password must contain at least one number.")
 
-        existing = db.query(User).filter(User.username == req.username).first()
-        if existing:
+        from database.security import username_exists
+        if username_exists(db, req.username):
             logger.warning(f"[AUTH] Failed signup: username '{req.username}' already exists.")
             raise HTTPException(status_code=400, detail="Username already exists")
+
+        email = None
+        if req.email and req.email.strip():
+            from services.account_identity import normalize_email
+            try:
+                clean_email = normalize_email(req.email, required=True)
+            except ValueError as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from None
+            from database.security import owner_email_exists
+            existing_email = owner_email_exists(db, clean_email)
+            if existing_email:
+                raise HTTPException(status_code=400, detail="An account with this email already exists.")
+            email = clean_email
         
         # Test User Policy (leakage prevention):
         # 1. Test usernames (legacy fixture prefixes + 'biz_test_') are ONLY allowed
@@ -468,17 +596,24 @@ def signup(req: SignupRequest, db: Session = Depends(get_db)):
         from sqlalchemy.exc import IntegrityError
         from sqlalchemy import text
 
+        from database.security import allocate_owner_id
+        owner_pk = allocate_owner_id(db)
+        import json
+        default_settings = json.dumps({"general": {"hosting_mode": _DB_MODE, "realtime_sync_global": _DB_MODE == "cloud"}})
         user = User(
+            id=owner_pk,
             username=req.username,
+            email=email,
             password=hash_password(req.password),
             business_name=req.business_name,
             role="enterprise",
             public_id=bizid,
-            phone=(req.phone or None),   # captured at registration → shows on the profile
+            phone=phone,
+            settings=default_settings,
         )
         db.add(user)
         try:
-            db.commit()
+            db.flush()
         except IntegrityError as e:
             err_str = str(e)
             if "pk_users" in err_str or "users_id_seq" in err_str or "Key (id)=" in err_str:
@@ -488,29 +623,42 @@ def signup(req: SignupRequest, db: Session = Depends(get_db)):
                     db.execute(text("SELECT setval(pg_get_serial_sequence('users', 'id'), COALESCE((SELECT MAX(id) FROM users), 0) + 1, false);"))
                     user = User(
                         username=req.username,
+                        email=email,
                         password=hash_password(req.password),
                         business_name=req.business_name,
                         role="enterprise",
                         public_id=bizid,
-                        phone=(req.phone or None),
+                        phone=phone,
                     )
                     db.add(user)
-                    db.commit()
+                    db.flush()
                 else:
                     raise
             else:
                 raise
         db.refresh(user)
-        
-        token = create_access_token({
-            "id": user.id,
-            "user_id": user.id,
-            "username": user.username,
-            "public_id": user.public_id,   # BizID — stable cross-DB identity spine (D9)
-            "business_name": user.business_name,
-            "role": user.role,
-            "tv": user.token_version or 0,  # session revocation (GAP-1)
-        })
+
+        # Account, phone claim and trial grant commit together. A grant failure
+        # must not leave an eligible new owner stranded on a free account.
+        trial = None
+        if _DB_MODE == "cloud":
+            trial = _start_trial(user, phone, db)
+        db.commit()
+
+        if email:
+            try:
+                from services.brevo_service import send_welcome_email, sync_contact_to_brevo
+                send_welcome_email(email, user.business_name or user.username, user.username, user.business_name or user.username)
+                sync_contact_to_brevo(
+                    email=email,
+                    business_name=user.business_name or user.username,
+                    phone=user.phone or "",
+                    plan="Trial"
+                )
+            except Exception as be:
+                logger.warning(f"[AUTH] Brevo welcome sync skipped on signup: {be}")
+
+        token = create_access_token(_session_claims(user, sid=uuid4().hex, psid=None, owner=None))
 
         logger.info(f"[AUTH] User '{req.username}' registered and authenticated.")
         return {
@@ -523,8 +671,12 @@ def signup(req: SignupRequest, db: Session = Depends(get_db)):
             "role": user.role,
             "counter_prefix": user.counter_prefix,   # POS counter series for this login (§9.3a)
             "db_mode": _DB_MODE,   # 'local' | 'cloud' — tells frontend which backend this account lives on
+            # The Pro trial this signup started, or None (none given). The desktop
+            # app sets up "Local + Cloud" only when it got one (Register.jsx).
+            "trial": ({"days": _trial_days(), "expires_at": trial["expires_at"]} if trial else None),
         }
     except HTTPException:
+        db.rollback()
         raise
     except Exception as e:
         db.rollback()
@@ -536,16 +688,23 @@ def signup(req: SignupRequest, db: Session = Depends(get_db)):
 # SSO & HANDOFF TICKETS
 # ---------------------------------------------------------------------------
 
+class HandoffRequest(BaseModel):
+    purpose: Literal["field_team", "ai_dashboard", "admin_console"]
+
+
 @router.post("/handoff-ticket")
-def handoff_ticket(current_user: dict = Depends(require_owner)):
-    """
-    (Phase C) Generate a short-lived (30s), single-use SSO ticket for the owner.
-    This allows them to seamlessly cross origins (e.g. into the AI Admin Console)
-    without logging in again.
-    """
-    logger.info(f"[AUTH] Generating SSO handoff ticket for owner '{current_user.get('username')}'")
-    ticket = create_sse_ticket(current_user, expires_in_seconds=30)
-    return {"ticket": ticket}
+def handoff_ticket(body: Optional[HandoffRequest] = Body(None), current_user: dict = Depends(require_owner)):
+    purpose = body.purpose if body else None
+    ttl = 30 if purpose is None else 60
+    if purpose == "field_team":
+        try:
+            ttl = max(1, min(120, int(os.getenv("HANDOFF_TTL_FIELD_TEAM", "90"))))
+        except ValueError:
+            ttl = 90
+    claims = dict(current_user)
+    if purpose == "ai_dashboard" and current_user.get("sid"):
+        claims["psid"] = current_user["sid"]
+    return {"ticket": create_sse_ticket(claims, expires_in_seconds=ttl, aud=purpose), "expires_in": ttl}
 
 
 class RedeemTicketRequest(BaseModel):
@@ -568,10 +727,12 @@ def redeem_ticket(req: RedeemTicketRequest, request: Request, db: Session = Depe
         # get_active_user_or_ticket uses Query(None) params; calling it directly
         # passes ticket=None, falls through to JWT auth, always raises 401.
         # Stateless verify (BUG-4): survives server restarts and >1 worker.
-        current_user = redeem_sse_ticket(req.ticket)
+        check = verify_ticket(req.ticket, audiences={None, "ai_dashboard", "admin_console"})
+        current_user = check.claims
         if current_user is None:
-            logger.warning("[AUTH] SSO ticket invalid, expired, or already used")
-            raise HTTPException(status_code=401, detail="Invalid or expired ticket")
+            details = {"expired": "Ticket expired. Open the app again from Billing.", "already_used": "Ticket already used. Open the app again from Billing.", "bad_signature": "Ticket signing configuration does not match.", "wrong_audience": "Ticket is intended for another app."}
+            raise HTTPException(status_code=401, detail=details.get(check.reason, "Invalid or expired ticket"))
+        _validate_token_version(current_user)
         logger.info("[AUTH] SSO ticket verified for user '%s'", current_user.get("username"))
 
         
@@ -588,15 +749,7 @@ def redeem_ticket(req: RedeemTicketRequest, request: Request, db: Session = Depe
                 business_name = owner.business_name
                 owner_public_id = owner.public_id
 
-        token = create_access_token({
-            "id": business_id,
-            "user_id": user_row.id,
-            "username": user_row.username,
-            "public_id": owner_public_id,
-            "business_name": business_name,
-            "role": user_row.role,
-            "tv": user_row.token_version or 0,   # session revocation (GAP-1)
-        })
+        token = create_access_token(_session_claims(user_row, sid=uuid4().hex, psid=current_user.get("psid"), owner=owner if user_row.parent_business_id else None))
 
         logger.info(f"[AUTH] Ticket redeemed successfully for user '{user_row.username}'. Issued new session.")
         return {
@@ -629,7 +782,7 @@ def refresh_session(current_user: dict = Depends(get_active_user), db: Session =
         uid = current_user.get("user_id") or current_user.get("id")
         user = db.query(User).filter(User.id == uid).first()
         if not user:
-            raise HTTPException(status_code=401, detail="Account no longer exists")
+            raise session_rejected("Account no longer exists")
 
         business_id = user.parent_business_id or user.id
         business_name = user.business_name
@@ -640,15 +793,7 @@ def refresh_session(current_user: dict = Depends(get_active_user), db: Session =
                 business_name = owner.business_name
                 owner_public_id = owner.public_id
 
-        token = create_access_token({
-            "id": business_id,
-            "user_id": user.id,
-            "username": user.username,
-            "public_id": owner_public_id,
-            "business_name": business_name,
-            "role": user.role,
-            "tv": user.token_version or 0,
-        })
+        token = create_access_token(_session_claims(user, sid=current_user.get("sid") or uuid4().hex, psid=current_user.get("psid"), owner=owner if user.parent_business_id else None))
         logger.info(f"[AUTH] Session refreshed for '{user.username}' (business={business_id}).")
         return {
             "token": token,
@@ -668,11 +813,37 @@ def refresh_session(current_user: dict = Depends(get_active_user), db: Session =
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
+@router.post("/auth/logout")
+def logout_session(current_user: dict = Depends(get_active_user), db: Session = Depends(get_db)):
+    """Revoke dashboard descendants without ending the owner's other devices."""
+    from database.models import RevokedSession
+    from datetime import datetime, timedelta
+    sid = current_user.get("sid")
+    if sid and db.get(RevokedSession, sid) is None:
+        # Descendant refreshes can outlive the original JWT; retain the parent
+        # tombstone for the maximum session age beyond logout.
+        from services.auth import ACCESS_TOKEN_EXPIRE_MINUTES
+        expires = datetime.utcfromtimestamp(current_user.get("exp", time.time())) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        db.add(RevokedSession(sid=sid, expires_at=expires))
+        try:
+            db.commit()
+        except IntegrityError:
+            # Two tabs can sign out the same parent concurrently.
+            db.rollback()
+            if db.get(RevokedSession, sid) is None:
+                raise HTTPException(status_code=503, detail="Sign-out could not be confirmed. Please retry.")
+        except Exception:
+            db.rollback()
+            raise HTTPException(status_code=503, detail="Sign-out could not be confirmed. Please retry.")
+    return {"status": "ok"}
+
+
 class ProfileUpdateRequest(BaseModel):
     business_name: Optional[str] = None
     gstin: Optional[str] = None
     phone: Optional[str] = None
     email: Optional[str] = None
+    password: Optional[str] = None
     address: Optional[str] = None
     state_code: Optional[str] = None
     pan: Optional[str] = None
@@ -685,7 +856,7 @@ class ProfileUpdateRequest(BaseModel):
 def get_profile(current_user: dict = Depends(get_active_user), db: Session = Depends(get_db)):
     user = db.query(User).filter(User.username == current_user.get("username")).first()
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(status_code=404, detail="User not found", headers=SESSION_REJECTION_HEADERS)
     return {
         "id": user.id,
         "username": user.username,
@@ -708,36 +879,53 @@ def get_profile(current_user: dict = Depends(get_active_user), db: Session = Dep
 
 
 @router.put("/profile")
-def update_profile(req: ProfileUpdateRequest, current_user: dict = Depends(get_active_user), db: Session = Depends(get_db)):
+def update_profile(req: ProfileUpdateRequest, current_user: dict = Depends(require_business_owner), db: Session = Depends(get_db)):
     user = db.query(User).filter(User.username == current_user.get("username")).first()
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(status_code=404, detail="User not found", headers=SESSION_REJECTION_HEADERS)
     
-    if req.business_name is not None:
-        user.business_name = req.business_name
-    if req.gstin is not None:
-        user.gstin = req.gstin
-    if req.phone is not None:
-        user.phone = req.phone
-    if req.email is not None:
-        user.email = req.email
-    if req.address is not None:
-        user.address = req.address
-    if req.state_code is not None:
-        user.state_code = req.state_code
-    if req.pan is not None:
-        user.pan = req.pan
-    if req.logo is not None:
-        user.logo = req.logo
-    if req.counter_prefix is not None:
-        import re
-        token = re.sub(r"[^A-Za-z0-9_]", "", req.counter_prefix.strip()).rstrip("-")[:8]
-        user.counter_prefix = token or None
-    if req.upi_vpa is not None:
-        user.upi_vpa = (req.upi_vpa.strip() or None)
-
-    db.commit()
-    db.refresh(user)
+    from services.account_identity import normalize_email, validate_password
+    old_email = user.email
+    values = {}
+    fields = {"business_name": "Business name", "gstin": "GSTIN", "phone": "Phone number", "email": "Email address",
+              "address": "Business address", "state_code": "State code", "pan": "PAN", "logo": "Business logo",
+              "counter_prefix": "Counter prefix", "upi_vpa": "UPI address"}
+    try:
+        for field in fields:
+            incoming = getattr(req, field)
+            if incoming is None:
+                continue
+            if field == "email":
+                incoming = normalize_email(incoming)
+            elif field == "phone":
+                incoming = normalize_phone(incoming) if incoming.strip() else None
+            elif field == "counter_prefix":
+                import re
+                incoming = re.sub(r"[^A-Za-z0-9_]", "", incoming.strip()).rstrip("-")[:8] or None
+            elif field == "upi_vpa":
+                incoming = incoming.strip() or None
+            values[field] = incoming
+        effective_email = values.get("email", user.email)
+        if req.password is not None:
+            normalize_email(effective_email, required=True)
+            validate_password(req.password)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    if values.get("email"):
+        from database.security import owner_email_exists
+        if owner_email_exists(db, values["email"], exclude_id=user.id):
+            raise HTTPException(status_code=409, detail="Another business already uses this email address.")
+    changes = []
+    for field, incoming in values.items():
+        if incoming != getattr(user, field):
+            setattr(user, field, incoming)
+            changes.append(f"{fields[field]} updated")
+    password_changed = req.password is not None
+    if password_changed:
+        from services.auth import bump_token_version
+        user.password = hash_password(req.password)
+        bump_token_version(db, user)
+    db.flush()
 
     # Immediately push profile changes to the cloud
     from services.immediate_sync import push_profile_to_cloud
@@ -751,7 +939,22 @@ def update_profile(req: ProfileUpdateRequest, current_user: dict = Depends(get_a
         "pan": req.pan,
         "logo": req.logo,
         "upi_vpa": req.upi_vpa,
-    })
+    }, db=db)
+    db.commit()
+    db.refresh(user)
+    if changes or password_changed:
+        from services.brevo_service import send_account_update_email, send_password_changed_email
+        recipients = {address.strip().lower() for address in (old_email, user.email) if address and "@" in address}
+        for address in recipients:
+            try:
+                if changes:
+                    send_account_update_email(address, user.business_name or user.username, changes, business_id=user.id)
+                if password_changed:
+                    send_password_changed_email(address, user.business_name or user.username, user.username, business_id=user.id)
+            except Exception:
+                logger.warning("[AUTH] Account notification could not be dispatched after commit")
+    from services.control_outbox import trigger_control_flush
+    trigger_control_flush(user.id)
     
     return {
         "id": user.id,
@@ -1044,21 +1247,46 @@ def _subscription_view(user: User, db: Session = None, force: bool = False) -> d
             _sync_subscription_from_cloud(user, db, force=force)
         except Exception:
             pass
-    from services.admin_service import effective_plan, _settings_dict
+    from services.admin_service import effective_plan, expiry_moment, _settings_dict
     from services.auth import subscription_enforced
+    from services.dates import utc_now
     plan_holder = user
     if user.parent_business_id and db:
         owner = db.query(User).filter(User.id == user.parent_business_id).first()
         if owner:
             plan_holder = owner
     sub = _settings_dict(plan_holder).get("subscription") or {}
+
+    # Auto-heal Google-registered owners missing active trial or subscription
+    if _DB_MODE == "cloud" and db and getattr(plan_holder, "google_id", None) and not plan_holder.parent_business_id:
+        if not sub or (sub.get("plan") == "free" and not sub.get("granted_at")):
+            try:
+                sub = _start_trial(plan_holder, plan_holder.phone, db, force=True) or {}
+                db.commit()
+                db.refresh(plan_holder)
+                logger.info("[TRIAL] Auto-healed 14-day Pro trial for Google owner '%s'", plan_holder.username)
+            except Exception as ex:
+                logger.warning("[TRIAL] Failed to auto-heal Google trial for '%s': %s", plan_holder.username, ex)
+
+    status = sub.get("status", "none")
+    gated = (user.role or "").lower() != "admin" and effective_plan(plan_holder) != "pro"
+    ends = expiry_moment(sub.get("expires_at"))
     return {
         "plan":       effective_plan(plan_holder),
-        "status":     sub.get("status", "none"),
+        "status":     status,
         "expires_at": sub.get("expires_at"),
+        # The exact moment access ends (a date runs to the end of that day) and
+        # the whole days left before it, so every screen counts down alike.
+        # 0 = it ends within the next 24 hours, or already has.
+        "ends_at":    (ends.isoformat() + "Z") if ends else None,
+        "days_remaining": max(0, int((ends - utc_now()).total_seconds() // 86400)) if ends else None,
+        # Still true after the trial lapses (plan "free"), so the client can say
+        # "your trial ended" rather than treat it like any free account.
+        "trial":      status == "trial",
         # Whether the backend actually gates Pro features right now — the client
         # shows PRO badges / blocks only when this is true.
         "enforced":   subscription_enforced(),
+        "gates": {"ai": gated, "field_team": gated, "hybrid_sync": gated and subscription_enforced(), "web_preview": gated},
     }
 
 
@@ -1070,7 +1298,7 @@ def get_settings(force: bool = False, current_user: dict = Depends(get_active_us
     user = db.query(User).filter(User.username == current_user.get("username")).first()
     if not user:
         logger.warning(f"[SETTINGS] User with ID {current_user.get('id')} not found")
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(status_code=404, detail="User not found", headers=SESSION_REJECTION_HEADERS)
     merged = _get_user_settings(user, db)
     merged["subscription"] = _subscription_view(user, db, force=force)
     return merged
@@ -1088,7 +1316,7 @@ def update_settings(
     user = db.query(User).filter(User.username == current_user.get("username")).first()
     if not user:
         logger.warning(f"[SETTINGS] User with ID {current_user.get('id')} not found during update")
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(status_code=404, detail="User not found", headers=SESSION_REJECTION_HEADERS)
 
     current = _get_user_settings(user, db)
 
@@ -1198,4 +1426,449 @@ def update_settings(
     resp.pop("totp", None)
     resp["subscription"] = _subscription_view(user, db)
     return resp
+
+
+# ── Username Availability ───────────────────────────────────────────────────
+
+@router.get("/api/auth/check-username")
+def check_username(username: str = Query(..., min_length=1), db: Session = Depends(get_db)):
+    """Real-time availability check for merchant's desired store username."""
+    from database.security import username_exists
+    uname = (username or "").strip()
+    if len(uname) < 3:
+        return {"available": False, "username": uname, "reason": "too_short"}
+    taken = username_exists(db, uname)
+    return {"available": not taken, "username": uname}
+
+
+# ── Password Reset via OTP (Brevo Mail) ─────────────────────────────────────
+
+class ForgotPasswordRequest(BaseModel):
+    identifier: str  # username, phone, or email
+
+
+class VerifyAndResetPasswordRequest(BaseModel):
+    identifier: str
+    otp: str
+    new_password: str
+
+
+@router.post("/api/auth/forgot-password/request-otp")
+def forgot_password_request_otp(req: ForgotPasswordRequest, request: Request, db: Session = Depends(get_db)):
+    """Initiates an OTP-based password reset. Generates a secure 6-digit code,
+    persists its hash, and dispatches via Brevo email (and server log for SMS)."""
+    ip = request.client.host if request.client else "unknown"
+    rl = check_ip_rate_limit(ip)
+    if not rl["allowed"]:
+        raise HTTPException(status_code=429, detail=rl["reason"])
+
+    ident = (req.identifier or "").strip()
+    if not ident:
+        raise HTTPException(status_code=400, detail="Identifier (username, email, or phone) is required.")
+
+    from database.security import find_user_by_identifier
+    from database.models import PasswordResetOTP
+    from services.auth import hash_password
+    from services.brevo_service import send_otp_email
+    import secrets
+    from datetime import datetime, timezone, timedelta
+
+    user = find_user_by_identifier(db, ident)
+    if not user or (user.role or "").lower() in {"deleted", "retired"}:
+        # Return generic success to prevent account enumeration
+        return {
+            "status": "ok",
+            "message": "If an account matches, a 6-digit verification code has been sent.",
+            "destination": "registered email/phone",
+        }
+
+    from services.account_identity import normalize_email
+    try:
+        normalize_email(user.email, required=True)
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail="A registered email address is mandatory for account password updates. Please contact support or add an email in your store settings."
+        )
+
+    otp_code = f"{secrets.randbelow(900000) + 100000:06d}"
+    otp_hash = hash_password(otp_code)
+    now = datetime.now(timezone.utc)
+    expires = now + timedelta(minutes=10)
+
+    # Invalidate existing unused OTPs for this user
+    db.query(PasswordResetOTP).filter(
+        PasswordResetOTP.user_id == user.id,
+        PasswordResetOTP.used.is_(False)
+    ).update({"used": True})
+
+    otp_row = PasswordResetOTP(
+        user_id=user.id,
+        identifier=ident,
+        otp_hash=otp_hash,
+        purpose="password_reset",
+        expires_at=expires,
+        attempts=0,
+        used=False,
+    )
+    db.add(otp_row)
+    db.commit()
+
+    masked_email = ""
+    if user.email and "@" in user.email:
+        parts = user.email.split("@")
+        masked_email = f"{parts[0][:2]}***@{parts[1]}"
+
+    masked_phone = ""
+    if user.phone and len(user.phone) >= 6:
+        masked_phone = f"***{user.phone[-4:]}"
+
+    destination_hint = masked_email or masked_phone or "your registered account"
+
+    if user.email:
+        send_otp_email(user.email, user.business_name or user.username, otp_code, user.username)
+    else:
+        logger.info("[AUTH] User '%s' has no email; OTP %s logged for phone %s", user.username, otp_code, user.phone)
+
+    logger.info("[AUTH] Generated password reset OTP for '%s' (User ID %s)", user.username, user.id)
+    return {
+        "status": "ok",
+        "message": f"Verification code sent to {destination_hint}.",
+        "destination": destination_hint,
+        "has_email": bool(user.email),
+        "username_hint": user.username[:2] + "***" if len(user.username) > 2 else "***",
+    }
+
+
+@router.post("/api/auth/forgot-password/verify-and-reset")
+def forgot_password_verify_and_reset(req: VerifyAndResetPasswordRequest, request: Request, db: Session = Depends(get_db)):
+    """Verifies the 6-digit OTP, updates the password, bumps token_version to revoke
+    all stale device sessions, and returns an authenticated JWT session."""
+    ip = request.client.host if request.client else "unknown"
+    rl = check_ip_rate_limit(ip)
+    if not rl["allowed"]:
+        raise HTTPException(status_code=429, detail=rl["reason"])
+
+    ident = (req.identifier or "").strip()
+    from database.security import find_user_by_identifier
+    from database.models import PasswordResetOTP
+    from services.auth import verify_password, hash_password, create_access_token, bump_token_version
+    from datetime import datetime, timezone
+
+    user = find_user_by_identifier(db, ident)
+    if not user or (user.role or "").lower() in {"deleted", "retired"}:
+        raise HTTPException(status_code=400, detail="Invalid verification request.")
+
+    from services.account_identity import normalize_email
+    try:
+        normalize_email(user.email, required=True)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+
+    now = datetime.now(timezone.utc)
+    otp_record = (
+        db.query(PasswordResetOTP)
+        .filter(PasswordResetOTP.user_id == user.id, PasswordResetOTP.used.is_(False))
+        .order_by(PasswordResetOTP.id.desc())
+        .first()
+    )
+
+    if not otp_record or otp_record.expires_at.replace(tzinfo=timezone.utc) < now:
+        raise HTTPException(status_code=400, detail="Verification code has expired. Please request a new one.")
+
+    if otp_record.attempts >= 3:
+        otp_record.used = True
+        db.commit()
+        raise HTTPException(status_code=400, detail="Too many invalid attempts. Please request a new code.")
+
+    if not verify_password(req.otp.strip(), otp_record.otp_hash):
+        otp_record.attempts += 1
+        db.commit()
+        remaining = 3 - otp_record.attempts
+        raise HTTPException(status_code=400, detail=f"Invalid verification code. {remaining} attempt(s) remaining.")
+
+    # Validate password rules
+    password = req.new_password
+    if len(password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters long.")
+    if not any(c.isupper() for c in password):
+        raise HTTPException(status_code=400, detail="Password must contain at least one uppercase letter.")
+    if not any(c.islower() for c in password):
+        raise HTTPException(status_code=400, detail="Password must contain at least one lowercase letter.")
+    if not any(c.isdigit() for c in password):
+        raise HTTPException(status_code=400, detail="Password must contain at least one number.")
+
+    user.password = hash_password(password)
+    bump_token_version(db, user)
+    otp_record.used = True
+    db.commit()
+    db.refresh(user)
+
+    if user.email:
+        try:
+            from services.brevo_service import send_password_changed_email
+            send_password_changed_email(user.email, user.business_name or user.username, user.username, business_id=user.parent_business_id or user.id)
+        except Exception as pe:
+            logger.warning("[AUTH] Failed dispatching password changed email: %s", pe)
+
+    logger.info("[AUTH] Password reset succeeded for '%s' (User ID %s)", user.username, user.id)
+
+    business_id = user.parent_business_id or user.id
+    token = create_access_token(_session_claims(user, sid=uuid4().hex))
+    return {
+        "status": "ok",
+        "message": "Password updated successfully.",
+        "token": token,
+        "id": business_id,
+        "user_id": user.id,
+        "username": user.username,
+        "public_id": user.public_id,
+        "business_name": user.business_name,
+        "role": user.role,
+        "counter_prefix": user.counter_prefix,
+        "db_mode": _DB_MODE,
+    }
+
+
+# ── Google Sign-In & Onboarding ──────────────────────────────────────────────
+
+def _verify_google_credential(credential: str) -> dict:
+    from services.google_identity import verify_google_identity
+    return verify_google_identity(credential)
+
+
+def _google_owner(db, data, *, allow_email):
+    from database.security import bind_tenant
+    from sqlalchemy import text
+    if db.bind.dialect.name == "postgresql":
+        uid = db.execute(text("SELECT bizassist_google_owner(:s,:e)"),
+            {"s": data["sub"], "e": data["email"] if allow_email else None}).scalar()
+        if uid is None:
+            return None
+        if uid < 0:
+            raise HTTPException(status_code=409, detail="This Google identity conflicts with an existing account. Use your account password or contact support.")
+        bind_tenant(db, uid)
+        return db.get(User, uid)
+    linked = db.query(User).filter(User.google_id == data["sub"]).limit(2).all()
+    if linked:
+        if len(linked) != 1 or linked[0].parent_business_id is not None or (linked[0].role or "").lower() not in {"enterprise", "owner"}:
+            raise HTTPException(status_code=409, detail="This Google identity cannot sign in to a business owner account.")
+        return linked[0]
+    if not allow_email:
+        return None
+    matches = db.query(User).filter(func.lower(User.email) == data["email"], User.parent_business_id.is_(None),
+        func.lower(User.role).in_(["enterprise", "owner"])).limit(2).all()
+    if len(matches) > 1 or (matches and matches[0].google_id):
+        raise HTTPException(status_code=409, detail="Use your existing account password to confirm this Google connection.")
+    return matches[0] if matches else None
+
+
+class GoogleVerifyRequest(BaseModel):
+    credential: str
+    password: Optional[str] = None
+
+
+class GoogleRegisterRequest(BaseModel):
+    credential: str
+    username: str
+    business_name: str
+    category: Optional[str] = "general"
+    phone: str
+
+
+@router.post("/api/auth/google/verify")
+def google_verify(req: GoogleVerifyRequest, request: Request, db: Session = Depends(get_db)):
+    """Verifies a Google ID token. If user exists, signs them in immediately;
+    if brand new, returns prefilled onboarding data for store setup."""
+    ip = request.client.host if request.client else "unknown"
+    rl = check_ip_rate_limit(ip)
+    if not rl["allowed"]:
+        raise HTTPException(status_code=429, detail=rl["reason"])
+
+    import re
+    from sqlalchemy import or_, func
+
+    google_data = _verify_google_credential(req.credential)
+    sub = google_data["sub"]
+    email = google_data["email"]
+
+    authoritative = bool(google_data.get("email_authoritative", email.endswith("@gmail.com") or google_data.get("hd")))
+    user = _google_owner(db, google_data, allow_email=authoritative or req.password is not None)
+    if user is None and not authoritative and req.password is None:
+        from database.security import find_owner_by_identifier
+        candidate = find_owner_by_identifier(db, email)
+        if candidate and (candidate.email or "").strip().lower() == email and not candidate.google_id:
+            return {"status": "needs_link", "email": email, "business_name": candidate.business_name,
+                    "public_id": candidate.public_id, "message": "Confirm your existing account password to connect Google."}
+    if user and (user.role or "").lower() in {"enterprise", "owner"}:
+        if not user.google_id:
+            if not authoritative and not verify_password(req.password or "", user.password):
+                raise HTTPException(status_code=401, detail="The account password could not be verified.")
+            user.google_id = sub
+            db.commit()
+        # A linked Google subject identifies the account; do not overwrite its edited contact email.
+
+        # Auto-heal: Ensure existing Google owner has 14-day Pro trial if never granted
+        from services.admin_service import _settings_dict
+        curr_sub = _settings_dict(user).get("subscription") or {}
+        if not curr_sub or (curr_sub.get("plan") == "free" and not curr_sub.get("granted_at")):
+            try:
+                _start_trial(user, user.phone, db, force=True)
+                db.commit()
+                db.refresh(user)
+                logger.info("[GOOGLE_AUTH] Auto-healed trial on Google sign-in for '%s'", user.username)
+            except Exception as err:
+                logger.warning("[GOOGLE_AUTH] Could not auto-heal trial for '%s': %s", user.username, err)
+
+        business_id = user.parent_business_id or user.id
+        token = create_access_token(_session_claims(user, sid=uuid4().hex))
+        logger.info("[GOOGLE_AUTH] Existing user '%s' logged in via Google.", user.username)
+        return {
+            "status": "ok",
+            "action": "login",
+            "token": token,
+            "id": business_id,
+            "user_id": user.id,
+            "username": user.username,
+            "public_id": user.public_id,
+            "business_name": user.business_name,
+            "role": user.role,
+            "counter_prefix": user.counter_prefix,
+            "db_mode": _DB_MODE,
+        }
+
+    # Brand new user: return onboarding metadata so they can choose their username
+    raw_name = google_data["name"] or "Store"
+    suggested_username = re.sub(r"[^a-zA-Z0-9_]", "", raw_name.lower().replace(" ", "_"))[:18]
+    return {
+        "status": "needs_onboarding",
+        "email": email,
+        "name": google_data["name"],
+        "picture": google_data["picture"],
+        "suggested_business_name": f"{raw_name}'s Store",
+        "suggested_username": suggested_username,
+    }
+
+
+@router.post("/api/auth/google/register")
+def google_register(req: GoogleRegisterRequest, request: Request, db: Session = Depends(get_db)):
+    """Registers a new store using Google credentials with the user's chosen username,
+    mandatory phone, business name, and store category."""
+    ip = request.client.host if request.client else "unknown"
+    rl = check_ip_rate_limit(ip)
+    if not rl["allowed"]:
+        raise HTTPException(status_code=429, detail=rl["reason"])
+
+    from database.security import username_exists, allocate_owner_id
+    from core.connection.utils import generate_bizid
+    from services.auth import hash_password, create_access_token
+    from services.brevo_service import send_welcome_email, sync_contact_to_brevo
+
+    google_data = _verify_google_credential(req.credential)
+    sub = google_data["sub"]
+    email = google_data["email"]
+
+    from database.security import find_owner_by_identifier, owner_email_exists
+    if _google_owner(db, google_data, allow_email=True) is not None or owner_email_exists(db, email):
+        raise HTTPException(status_code=409, detail="An account already uses this email or Google identity. Sign in to the existing account.")
+
+    # Validate user's chosen username
+    uname = (req.username or "").strip()
+    if len(uname) < 3:
+        raise HTTPException(status_code=400, detail="Username must be at least 3 characters long.")
+    if username_exists(db, uname):
+        raise HTTPException(status_code=400, detail="This username is already taken. Please choose another.")
+
+    # Validate mandatory phone
+    try:
+        phone = normalize_phone(req.phone)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+    existing_phone = db.query(User).filter(User.phone == phone, User.parent_business_id.is_(None)).first()
+    if existing_phone:
+        raise HTTPException(status_code=400, detail="This mobile number is already registered to a business account.")
+
+    # Allocate identity and mint BizID
+    owner_pk = allocate_owner_id(db)
+    bizid = generate_bizid(db)
+    business_name = (req.business_name or "").strip() or f"{uname}'s Store"
+
+    import json
+    default_settings = json.dumps({"general": {"hosting_mode": _DB_MODE, "realtime_sync_global": _DB_MODE == "cloud"}})
+    user = User(
+        id=owner_pk,
+        username=uname,
+        password=hash_password(uuid4().hex),  # Random password; authenticates via Google
+        business_name=business_name,
+        role="enterprise",
+        public_id=bizid,
+        phone=phone,
+        email=email,
+        google_id=sub,
+        settings=default_settings,
+    )
+    db.add(user)
+    db.flush()
+
+    # Provision 14-day Pro trial and default store settings
+    trial_sub = _start_trial(user, phone, db, force=True)
+    if not trial_sub:
+        from datetime import timedelta
+        from services.dates import utc_now
+        import json
+        now = utc_now()
+        trial_sub = {
+            "plan": "pro",
+            "status": "trial",
+            "expires_at": (now.date() + timedelta(days=_trial_days())).isoformat(),
+            "granted_by": "trial",
+            "granted_at": now.isoformat(),
+            "note": f"{_trial_days()}-day Pro trial at Google signup",
+        }
+        s = json.loads(user.settings) if user.settings else {}
+        s["subscription"] = trial_sub
+        user.settings = json.dumps(s)
+
+    # Save selected store category in business_settings
+    try:
+        from database.models import BusinessSettings
+        cat = (req.category or "general").strip()
+        settings_row = db.query(BusinessSettings).filter(BusinessSettings.business_id == user.id).first()
+        if not settings_row:
+            settings_row = BusinessSettings(business_id=user.id, template_key=cat)
+            db.add(settings_row)
+        else:
+            settings_row.template_key = cat
+    except Exception as e:
+        logger.warning("[GOOGLE_AUTH] Could not set business template category: %s", e)
+
+    db.commit()
+    db.refresh(user)
+
+    logger.info("[GOOGLE_AUTH] New store registered via Google: '%s' (BizID %s, Phone %s)", uname, bizid, phone)
+
+    # Asynchronously notify via Brevo
+    try:
+        send_welcome_email(email, business_name, uname, business_name)
+        sync_contact_to_brevo(email, business_name, phone, plan="Trial")
+    except Exception as exc:
+        logger.warning("[BREVO] Failed to dispatch welcome/sync: %s", exc)
+
+    token = create_access_token(_session_claims(user, sid=uuid4().hex))
+    return {
+        "status": "ok",
+        "action": "registered",
+        "token": token,
+        "id": user.id,
+        "user_id": user.id,
+        "username": user.username,
+        "public_id": user.public_id,
+        "business_name": user.business_name,
+        "role": user.role,
+        "counter_prefix": user.counter_prefix,
+        "db_mode": _DB_MODE,
+        "trial": {"days": _trial_days(), "expires_at": trial_sub["expires_at"]} if trial_sub else None,
+    }
+
 

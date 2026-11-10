@@ -21,6 +21,7 @@ import RecordPaymentModal from '../components/payments/RecordPaymentModal'
 import SettleDuesModal from '../components/payments/SettleDuesModal'
 import InvoicesListView from '../components/payments/InvoicesListView'
 import LogExpenseModal from '../components/payments/LogExpenseModal'
+import FinancialSettlements from '../components/payments/FinancialSettlements'
 import { buildWhatsAppLink, buildPublicInvoiceLink } from '../invoice/share'
 import { usePageLifecycle } from '../hooks/usePageLifecycle'
 import ContextMenu from '../components/common/ContextMenu'
@@ -68,6 +69,8 @@ export default function Payments({ embedded = false, headerTabs = null, inlinePa
   const [pendingDues, setPendingDues] = useState([])
   const [creditNotes, setCreditNotes] = useState([])
   const [loading, setLoading]       = useState(true)
+  const [loadError, setLoadError] = useState(false)
+  const loadRequestRef = useRef(0)
   const [activeTab, setActiveTab]   = useState('All')
   const [isFullScreen, setIsFullScreen] = useState(false)
   const [showModal, setShowModal]   = useState(false)
@@ -78,7 +81,7 @@ export default function Payments({ embedded = false, headerTabs = null, inlinePa
   const [viewingInvoiceNo, setViewingInvoiceNo] = useState(null)
   const [showStats, setShowStats] = useState(false)
   const [form, setForm]             = useState(defaultForm)
-  
+
   const defaultExpenseForm = {
     expense_date: new Date().toISOString().slice(0, 10),
     category: 'Rent',
@@ -96,22 +99,34 @@ export default function Payments({ embedded = false, headerTabs = null, inlinePa
 
 
   const load = useCallback(() => {
+    const request = ++loadRequestRef.current
     setLoading(true)
-    Promise.all([
-      authFetch('/billing/payments').then(r => r.ok ? r.json() : []),
-      authFetch('/billing/expenses').then(r => r.ok ? r.json() : []),
-      authFetch('/billing/pending-invoices').then(r => r.ok ? r.json() : []),
-      authFetch('/billing/credit-notes').then(r => r.ok ? r.json() : [])
+    setLoadError(false)
+    const read = async path => {
+      const response = await authFetch(path)
+      if (!response.ok) throw new Error(`Transactions unavailable: HTTP ${response.status}`)
+      return response.json()
+    }
+    return Promise.all([
+      read('/billing/payments'),
+      read('/billing/expenses'),
+      read('/billing/pending-invoices'),
+      read('/billing/credit-notes')
     ])
       .then(([payData, expData, duesData, cnData]) => {
+        if (request !== loadRequestRef.current) return
         setPayments(Array.isArray(payData) ? payData : [])
         setExpenses(Array.isArray(expData) ? expData : [])
         setPendingDues(Array.isArray(duesData) ? duesData : [])
         setCreditNotes(Array.isArray(cnData) ? cnData : [])
       })
-      .catch(() => {})
-      .finally(() => setLoading(false))
-  }, [authFetch])
+      .catch(error => {
+        if (request !== loadRequestRef.current) return
+        setLoadError(true)
+        logger.warn('[PAYMENTS] Transaction data could not load:', error)
+      })
+      .finally(() => { if (request === loadRequestRef.current) setLoading(false) })
+  }, [authFetch, user?.id])
 
   // Page lifecycle: guard form + silent refresh on tab resume
   const { blocker, isRefreshing, dirtyMessage } = usePageLifecycle({
@@ -135,6 +150,7 @@ export default function Payments({ embedded = false, headerTabs = null, inlinePa
     // throttled — no separate 'focus' listener here (that caused a double reload).
     window.addEventListener('sync-event', handleSync)
     return () => {
+      loadRequestRef.current++
       window.removeEventListener('sync-event', handleSync)
     }
   }, [load])
@@ -162,7 +178,7 @@ export default function Payments({ embedded = false, headerTabs = null, inlinePa
 
   const getFilteredPayments = () => {
     let baseItems = []
-    
+
     if (activeTab === 'All') {
       const mappedPayments = payments.map(p => {
         const ts = p.created_at || p.payment_date || p.date
@@ -203,7 +219,7 @@ export default function Payments({ embedded = false, headerTabs = null, inlinePa
         _sortDate: cn.created_at || cn.date
       }))
       baseItems = [...mappedPayments, ...mappedExpenses, ...mappedDues, ...mappedCreditNotes]
-      
+
       // Sort by date descending by default
       if (!sortConfig.key) {
         baseItems.sort((a, b) => {
@@ -294,9 +310,9 @@ export default function Payments({ embedded = false, headerTabs = null, inlinePa
       if (modeFilter && (e.payment_mode || '').toLowerCase() !== modeFilter.toLowerCase()) return false
 
       const q = search.toLowerCase()
-      return !q || 
-        e.category?.toLowerCase().includes(q) || 
-        e.expense_type?.toLowerCase().includes(q) || 
+      return !q ||
+        e.category?.toLowerCase().includes(q) ||
+        e.expense_type?.toLowerCase().includes(q) ||
         e.note?.toLowerCase().includes(q)
     })
 
@@ -334,8 +350,8 @@ export default function Payments({ embedded = false, headerTabs = null, inlinePa
     let items = pendingDues.filter(d => {
       const q = search.toLowerCase()
       const party = d.customer || ''
-      return !q || 
-        d.invoice_id?.toLowerCase().includes(q) || 
+      return !q ||
+        d.invoice_id?.toLowerCase().includes(q) ||
         party.toLowerCase().includes(q)
     })
     if (sortConfig.key && sortConfig.direction) {
@@ -368,10 +384,10 @@ export default function Payments({ embedded = false, headerTabs = null, inlinePa
     let items = creditNotes.filter(cn => {
       const q = search.toLowerCase()
       const party = cn.customer || ''
-      return !q || 
-        cn.invoice_id?.toLowerCase().includes(q) || 
-        cn.reference_invoice?.toLowerCase().includes(q) || 
-        party.toLowerCase().includes(q) || 
+      return !q ||
+        cn.invoice_id?.toLowerCase().includes(q) ||
+        cn.reference_invoice?.toLowerCase().includes(q) ||
+        party.toLowerCase().includes(q) ||
         cn.note?.toLowerCase().includes(q)
     })
     if (sortConfig.key && sortConfig.direction) {
@@ -402,11 +418,11 @@ export default function Payments({ embedded = false, headerTabs = null, inlinePa
 
   const generateCashFlowInsights = () => {
     const insights = []
-    
+
     // 1. UPI vs Cash Collections
     const receivedPayments = payments.filter(p => p.type === 'received')
     const totalRecv = receivedPayments.reduce((s, p) => s + (parseFloat(p.amount) || 0), 0)
-    
+
     if (totalRecv > 0) {
       const upiRecv = receivedPayments.filter(p => p.method === 'UPI').reduce((s, p) => s + (parseFloat(p.amount) || 0), 0)
       const upiPct = Math.round((upiRecv / totalRecv) * 100)
@@ -418,7 +434,7 @@ export default function Payments({ embedded = false, headerTabs = null, inlinePa
         })
       }
     }
-    
+
     // 2. Overdue Receivables Risk
     const overdueList = pendingDues.filter(d => d.status === 'Overdue')
     const totalOverdue = overdueList.reduce((s, d) => s + parseFloat(d.balance_due || 0), 0)
@@ -429,7 +445,7 @@ export default function Payments({ embedded = false, headerTabs = null, inlinePa
         text: `${fmt(totalOverdue)} is currently overdue across ${overdueList.length} outstanding invoices. Consider sending reminders.`,
       })
     }
-    
+
     // 3. Expense Breakdown
     const totalExp = expenses.reduce((s, e) => s + (parseFloat(e.amount) || 0), 0)
     if (totalExp > 0) {
@@ -454,7 +470,7 @@ export default function Payments({ embedded = false, headerTabs = null, inlinePa
         })
       }
     }
-    
+
     // 4. Burn Rate / Runway
     if (totalRecv > 0 && totalExp > totalRecv) {
       insights.push({
@@ -469,7 +485,7 @@ export default function Payments({ embedded = false, headerTabs = null, inlinePa
         text: `Operating margins are positive. General overheads eat up ${Math.round((totalExp / totalRecv) * 100)}% of sales inflows.`,
       })
     }
-    
+
     if (insights.length === 0) {
       insights.push({
         type: 'info',
@@ -477,7 +493,7 @@ export default function Payments({ embedded = false, headerTabs = null, inlinePa
         text: 'Insufficient transaction history to construct advanced analytics. Record more payments and log expenses to populate insights.',
       })
     }
-    
+
     return insights
   }
 
@@ -494,6 +510,10 @@ export default function Payments({ embedded = false, headerTabs = null, inlinePa
 
   const handleSubmit = async (e) => {
     e.preventDefault()
+    if (form.type !== 'received') {
+      setAlert({ type: 'danger', msg: 'This form records customer receipts. Supplier settlement is not supported here.' })
+      return
+    }
     setSubmitting(true)
     try {
       const nowIso = new Date().toISOString()
@@ -774,7 +794,7 @@ export default function Payments({ embedded = false, headerTabs = null, inlinePa
                   <PlusIcon size={13} /> Log Expense
                 </button>
               ) : (
-                <button className="btn btn-primary btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }} onClick={() => { setForm(defaultPaymentForm); setShowPaymentModal(true) }}>
+                <button className="btn btn-primary btn-sm" style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }} onClick={() => { setForm(defaultForm); setShowModal(true) }}>
                   <PlusIcon size={13} /> Record Payment
                 </button>
               )}
@@ -791,6 +811,7 @@ export default function Payments({ embedded = false, headerTabs = null, inlinePa
           </div>
         )}
 
+        {!isCashier && ['owner', 'manager', 'admin'].includes((user?.role || 'owner').toLowerCase()) && <FinancialSettlements authFetch={authFetch} onChanged={load} />}
         {/* Embedded (Khata): the SAME 48px workspace bar as Godown's tabs —
             workspace tabs · divider · group switch · actions · window controls. */}
         {inWorkspace && (
@@ -874,10 +895,10 @@ export default function Payments({ embedded = false, headerTabs = null, inlinePa
 
         {/* Cash Flow Summary Cards */}
         <div style={{
-          maxHeight: showStats ? '500px' : '0px',
+          maxHeight: showStats && !loadError ? '500px' : '0px',
           overflow: 'hidden',
           transition: 'max-height 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease, margin-bottom 0.3s ease',
-          opacity: showStats ? 1 : 0,
+          opacity: showStats && !loadError ? 1 : 0,
           marginBottom: showStats ? 20 : 0,
         }}>
           <div style={{
@@ -989,6 +1010,12 @@ export default function Payments({ embedded = false, headerTabs = null, inlinePa
         {/* Table & Content */}
         {loading ? (
           <div className="page-loader"><span className="spinner" /> Loading…</div>
+        ) : loadError ? (
+          <div className="empty-state" role="alert">
+            <h3>Transactions are unavailable</h3>
+            <p>Payments, expenses or dues could not be loaded. Retry before relying on these totals.</p>
+            <button type="button" className="btn btn-secondary" onClick={load}>Retry transactions</button>
+          </div>
         ) : activeTab === 'Invoices' ? (
           <div className="slide-up">
             <InvoicesListView
@@ -1098,10 +1125,10 @@ export default function Payments({ embedded = false, headerTabs = null, inlinePa
               )
               return (
                 <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
-                  <button 
-                    type="button" 
-                    onClick={() => setIsFullScreen(true)} 
-                    style={{ position: 'absolute', top: 6, right: 6, zIndex: 10, background: 'var(--bg-1)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: 4, cursor: 'pointer', color: 'var(--text-secondary)' }} 
+                  <button
+                    type="button"
+                    onClick={() => setIsFullScreen(true)}
+                    style={{ position: 'absolute', top: 6, right: 6, zIndex: 10, background: 'var(--bg-1)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: 4, cursor: 'pointer', color: 'var(--text-secondary)' }}
                     title="Full Screen"
                   >
                     <ExpandIcon size={14} />
@@ -1185,8 +1212,8 @@ export default function Payments({ embedded = false, headerTabs = null, inlinePa
                         <td>{d.due_date ? formatISTDate(d.due_date) : '—'}</td>
                         <td className="td-mono">
                           {d.invoice_id ? (
-                            <span 
-                              className="link" 
+                            <span
+                              className="link"
                               style={{ color: 'var(--accent)', textDecoration: 'underline' }}
                             >
                               {d.invoice_id}
@@ -1220,10 +1247,10 @@ export default function Payments({ embedded = false, headerTabs = null, inlinePa
               )
               return (
                 <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
-                  <button 
-                    type="button" 
-                    onClick={() => setIsFullScreen(true)} 
-                    style={{ position: 'absolute', top: 6, right: 6, zIndex: 10, background: 'var(--bg-1)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: 4, cursor: 'pointer', color: 'var(--text-secondary)' }} 
+                  <button
+                    type="button"
+                    onClick={() => setIsFullScreen(true)}
+                    style={{ position: 'absolute', top: 6, right: 6, zIndex: 10, background: 'var(--bg-1)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: 4, cursor: 'pointer', color: 'var(--text-secondary)' }}
                     title="Full Screen"
                   >
                     <ExpandIcon size={14} />
@@ -1287,8 +1314,8 @@ export default function Payments({ embedded = false, headerTabs = null, inlinePa
                         <td>{cn.date ? formatISTDate(cn.date) : '—'}</td>
                         <td className="td-mono">
                           {cn.invoice_id ? (
-                            <span 
-                              className="link" 
+                            <span
+                              className="link"
                               style={{ color: 'var(--accent)', textDecoration: 'underline' }}
                             >
                               {cn.invoice_id}
@@ -1297,8 +1324,8 @@ export default function Payments({ embedded = false, headerTabs = null, inlinePa
                         </td>
                         <td className="td-mono">
                           {cn.reference_invoice ? (
-                            <span 
-                              className="link" 
+                            <span
+                              className="link"
                               onClick={(e) => { e.stopPropagation(); setViewingInvoiceNo(cn.reference_invoice) }}
                               style={{ cursor: 'pointer', color: 'var(--accent)', textDecoration: 'underline' }}
                             >
@@ -1328,10 +1355,10 @@ export default function Payments({ embedded = false, headerTabs = null, inlinePa
               )
               return (
                 <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
-                  <button 
-                    type="button" 
-                    onClick={() => setIsFullScreen(true)} 
-                    style={{ position: 'absolute', top: 6, right: 6, zIndex: 10, background: 'var(--bg-1)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: 4, cursor: 'pointer', color: 'var(--text-secondary)' }} 
+                  <button
+                    type="button"
+                    onClick={() => setIsFullScreen(true)}
+                    style={{ position: 'absolute', top: 6, right: 6, zIndex: 10, background: 'var(--bg-1)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: 4, cursor: 'pointer', color: 'var(--text-secondary)' }}
                     title="Full Screen"
                   >
                     <ExpandIcon size={14} />
@@ -1397,8 +1424,8 @@ export default function Payments({ embedded = false, headerTabs = null, inlinePa
                         <td style={{ whiteSpace: 'nowrap', color: 'var(--text-muted)', fontSize: '0.78rem' }}>{p.date ? formatISTDateTime(p.date) : '—'}</td>
                         <td className="td-mono" style={{ whiteSpace: 'nowrap' }}>
                           {(p.invoice_number || p.invoice_ref) ? (
-                            <span 
-                              className="link" 
+                            <span
+                              className="link"
                               style={{ color: 'var(--accent)', textDecoration: 'underline' }}
                             >
                               {p.invoice_number || p.invoice_ref}
@@ -1412,7 +1439,7 @@ export default function Payments({ embedded = false, headerTabs = null, inlinePa
                           </span>
                         </td>
                         <td style={{ textAlign: 'right', whiteSpace: 'nowrap', fontWeight: 600, color: (p.type === 'received' || p.type === 'settlement') ? 'var(--success)' : (p.type === 'pending_due' ? 'var(--warning)' : (p.type === 'credit_note' ? 'var(--info)' : 'var(--danger)')) }}>
-                          {(p.type === 'received' || p.type === 'settlement' || p.type === 'pending_due') ? '+' : '−'}{fmt(p.amount)}
+                          {(p.type === 'received' || p.type === 'settlement') ? '+' : p.type === 'pending_due' ? '' : '−'}{fmt(p.amount)}
                         </td>
                         <td style={{ whiteSpace: 'nowrap' }}><span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><CashIcon size={14} style={{ display: 'inline', marginRight: 4, verticalAlign: 'middle' }} /> {p.method || '—'}</span></td>
                         <td className="td-mono" style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{p.reference || '—'}</td>
@@ -1434,10 +1461,10 @@ export default function Payments({ embedded = false, headerTabs = null, inlinePa
               )
               return (
                 <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
-                  <button 
-                    type="button" 
-                    onClick={() => setIsFullScreen(true)} 
-                    style={{ position: 'absolute', top: 6, right: 6, zIndex: 10, background: 'var(--bg-1)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: 4, cursor: 'pointer', color: 'var(--text-secondary)' }} 
+                  <button
+                    type="button"
+                    onClick={() => setIsFullScreen(true)}
+                    style={{ position: 'absolute', top: 6, right: 6, zIndex: 10, background: 'var(--bg-1)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: 4, cursor: 'pointer', color: 'var(--text-secondary)' }}
                     title="Full Screen"
                   >
                     <ExpandIcon size={14} />

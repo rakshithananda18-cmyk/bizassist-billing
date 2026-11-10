@@ -19,6 +19,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from database.db import get_db
+from database.admin_service import get_admin_db
 from services.auth import get_active_user, require_owner
 import services.admin_service as svc
 import services.campaign_service as camp
@@ -71,7 +72,7 @@ class RedeemRequest(BaseModel):
 # ── Admin: campaigns ─────────────────────────────────────────────────────────
 
 @router.get("/admin/campaigns")
-def admin_list_campaigns(current_user: dict = Depends(get_active_user), db: Session = Depends(get_db)):
+def admin_list_campaigns(current_user: dict = Depends(get_active_user), db: Session = Depends(get_admin_db)):
     try:
         svc.require_admin(current_user["id"], db)
         return camp.list_campaigns(db)
@@ -83,12 +84,20 @@ def admin_list_campaigns(current_user: dict = Depends(get_active_user), db: Sess
 
 @router.post("/admin/campaigns")
 def admin_create_campaign(body: CampaignCreateRequest,
-                          current_user: dict = Depends(get_active_user), db: Session = Depends(get_db)):
+                          current_user: dict = Depends(get_active_user), db: Session = Depends(get_admin_db)):
     try:
         admin = svc.require_admin(current_user["id"], db, action="create_campaign",
                                   details={"title": body.title, "channel": body.channel,
                                            "status": body.status})
-        return camp.create_campaign(body, admin, db)
+        res = camp.create_campaign(body, admin, db)
+        if body.status == "active":
+            try:
+                from services.realtime import realtime_manager
+                for bid in list(realtime_manager.connections.keys()):
+                    realtime_manager.broadcast_threadsafe(bid, {"type": "sync.trigger", "entity": "notification"})
+            except Exception as ex:
+                logger.warning("[CAMPAIGN] Realtime broadcast failed: %s", ex)
+        return res
     except HTTPException: db.rollback(); raise
     except Exception as e:
         db.rollback(); logger.error("admin/campaigns POST: %s", e, exc_info=True)
@@ -97,11 +106,19 @@ def admin_create_campaign(body: CampaignCreateRequest,
 
 @router.post("/admin/campaigns/{campaign_id}/status")
 def admin_set_campaign_status(campaign_id: int, body: CampaignStatusRequest,
-                              current_user: dict = Depends(get_active_user), db: Session = Depends(get_db)):
+                              current_user: dict = Depends(get_active_user), db: Session = Depends(get_admin_db)):
     try:
         svc.require_admin(current_user["id"], db, action="set_campaign_status",
                           details={"campaign_id": campaign_id, "status": body.status})
-        return camp.set_campaign_status(campaign_id, body.status, db)
+        res = camp.set_campaign_status(campaign_id, body.status, db)
+        if body.status == "active":
+            try:
+                from services.realtime import realtime_manager
+                for bid in list(realtime_manager.connections.keys()):
+                    realtime_manager.broadcast_threadsafe(bid, {"type": "sync.trigger", "entity": "notification"})
+            except Exception as ex:
+                logger.warning("[CAMPAIGN] Realtime broadcast failed: %s", ex)
+        return res
     except HTTPException: db.rollback(); raise
     except Exception as e:
         db.rollback(); logger.error("admin/campaigns/%s/status: %s", campaign_id, e, exc_info=True)
@@ -110,7 +127,7 @@ def admin_set_campaign_status(campaign_id: int, body: CampaignStatusRequest,
 
 @router.post("/admin/campaigns/preview-audience")
 def admin_preview_audience(body: AudiencePreviewRequest,
-                           current_user: dict = Depends(get_active_user), db: Session = Depends(get_db)):
+                           current_user: dict = Depends(get_active_user), db: Session = Depends(get_admin_db)):
     """Dry run: how many businesses match this filter right now?"""
     try:
         svc.require_admin(current_user["id"], db)
@@ -124,7 +141,7 @@ def admin_preview_audience(body: AudiencePreviewRequest,
 # ── Admin: offers ────────────────────────────────────────────────────────────
 
 @router.get("/admin/offers")
-def admin_list_offers(current_user: dict = Depends(get_active_user), db: Session = Depends(get_db)):
+def admin_list_offers(current_user: dict = Depends(get_active_user), db: Session = Depends(get_admin_db)):
     try:
         svc.require_admin(current_user["id"], db)
         return camp.list_offers(db)
@@ -136,7 +153,7 @@ def admin_list_offers(current_user: dict = Depends(get_active_user), db: Session
 
 @router.post("/admin/offers")
 def admin_create_offer(body: OfferCreateRequest,
-                       current_user: dict = Depends(get_active_user), db: Session = Depends(get_db)):
+                       current_user: dict = Depends(get_active_user), db: Session = Depends(get_admin_db)):
     try:
         admin = svc.require_admin(current_user["id"], db, action="create_offer",
                                   details={"code": body.code, "effect": body.effect,
@@ -150,7 +167,7 @@ def admin_create_offer(body: OfferCreateRequest,
 
 @router.post("/admin/offers/{offer_id}/active")
 def admin_set_offer_active(offer_id: int, body: OfferActiveRequest,
-                           current_user: dict = Depends(get_active_user), db: Session = Depends(get_db)):
+                           current_user: dict = Depends(get_active_user), db: Session = Depends(get_admin_db)):
     try:
         svc.require_admin(current_user["id"], db, action="set_offer_active",
                           details={"offer_id": offer_id, "active": body.active})
@@ -164,11 +181,11 @@ def admin_set_offer_active(offer_id: int, body: OfferActiveRequest,
 # ── Admin: sync doctor ───────────────────────────────────────────────────────
 
 @router.get("/admin/sync-doctor")
-def admin_sync_doctor(current_user: dict = Depends(get_active_user), db: Session = Depends(get_db)):
+def admin_sync_doctor(business_id: int = None, current_user: dict = Depends(get_active_user), db: Session = Depends(get_admin_db)):
     """Red/amber/green sync health per business, worst first."""
     try:
         svc.require_admin(current_user["id"], db)
-        return svc.sync_doctor(db)
+        return svc.sync_doctor(db, business_id=business_id)
     except HTTPException: raise
     except Exception as e:
         logger.error("admin/sync-doctor: %s", e, exc_info=True)

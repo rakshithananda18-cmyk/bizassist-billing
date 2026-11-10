@@ -1,0 +1,77 @@
+{
+  "reproduced": true,
+  "calls": [
+    {
+      "url": "https://mock-api.invalid/invoices",
+      "token": "Bearer TOKEN_A",
+      "body": {
+        "invoice_no": "A-1",
+        "customer_id": null,
+        "godown_id": null,
+        "due_date": null,
+        "gst_enabled": false,
+        "bill_discount": 0,
+        "cash_discount": 0,
+        "paid_amount": 100,
+        "mark_paid": true,
+        "payment_mode": "cash",
+        "notes": null,
+        "items": [
+          {
+            "product_id": null,
+            "product": "Name-only service",
+            "qty": 1,
+            "price": 100,
+            "batch_no": null,
+            "expiry_date": null,
+            "serial_no": null,
+            "attributes": null,
+            "cgst_rate": 0,
+            "sgst_rate": 0,
+            "igst_rate": 0
+          }
+        ]
+      }
+    },
+    {
+      "url": "https://mock-api.invalid/invoices",
+      "token": "Bearer TOKEN_B",
+      "body": {
+        "invoice_no": "A-2",
+        "customer_id": null,
+        "godown_id": null,
+        "due_date": null,
+        "gst_enabled": false,
+        "bill_discount": 0,
+        "cash_discount": 0,
+        "paid_amount": 100,
+        "mark_paid": true,
+        "payment_mode": "cash",
+        "notes": null,
+        "items": [
+          {
+            "product_id": null,
+            "product": "Name-only service",
+            "qty": 1,
+            "price": 100,
+            "batch_no": null,
+            "expiry_date": null,
+            "serial_no": null,
+            "attributes": null,
+            "cgst_rate": 0,
+            "sgst_rate": 0,
+            "igst_rate": 0
+          }
+        ]
+      }
+    }
+  ],
+  "summary": {
+    "sent": 2,
+    "deadLettered": 0,
+    "stopped": false,
+    "remaining": 0,
+    "scopeSkipped": 0
+  },
+  "originalQueueRemaining": 0
+}

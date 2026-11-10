@@ -41,6 +41,8 @@ from fastapi.testclient import TestClient
 from main_groq import app
 from core.api import reports as RPT
 
+from tests.signup_fixture import signup_payload
+
 client = TestClient(app)
 
 R2 = lambda x: round(float(x or 0.0), 2)
@@ -140,8 +142,8 @@ def traded():
     that 500s on its own auth or paging is not covered by a service-level test.
     """
     uname = f"rpt_{uuid.uuid4().hex[:8]}"
-    r = client.post("/signup", json={"username": uname, "password": "TestPass123!",
-                                     "business_name": "Reports Co"})
+    r = client.post("/signup", json=signup_payload({"username": uname, "password": "TestPass123!",
+                                     "business_name": "Reports Co"}))
     assert r.status_code == 200, r.text
     body = r.json()
     h = {"Authorization": f"Bearer {body['token']}"}
@@ -456,8 +458,8 @@ def test_a_report_is_scoped_to_the_calling_business(traded):
     audited statically, asserted here behaviourally on the screens that aggregate
     money."""
     other = f"rpt_other_{uuid.uuid4().hex[:8]}"
-    r = client.post("/signup", json={"username": other, "password": "TestPass123!",
-                                     "business_name": "Other Co"})
+    r = client.post("/signup", json=signup_payload({"username": other, "password": "TestPass123!",
+                                     "business_name": "Other Co"}))
     assert r.status_code == 200, r.text
     oh = {"Authorization": f"Bearer {r.json()['token']}"}
 

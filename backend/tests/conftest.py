@@ -14,6 +14,14 @@ over this env default, so they are unaffected.
 import os
 import sys
 import logging
+import pytest
+
+
+@pytest.fixture
+def anyio_backend():
+    # Uvicorn and RealtimeManager use asyncio queues/tasks. Test that supported
+    # runtime explicitly rather than parametrizing an uninstalled Trio backend.
+    return "asyncio"
 
 # Background daemon threads (e.g. services/immediate_sync's force-sync) can log
 # AFTER pytest has torn down its capture stream at session/worker shutdown. The
@@ -69,11 +77,18 @@ os.unlink = secure_unlink
 # SQLite exactly as before.
 _pg_override = (os.environ.get("BIZASSIST_TEST_DATABASE_URL") or "").strip()
 _xdist_worker = os.environ.get("PYTEST_XDIST_WORKER")
+_test_run_id = os.environ.get("BIZASSIST_TEST_RUN_ID", "")
+if _test_run_id:
+    import re
+    if not re.fullmatch(r"[A-Za-z0-9_-]+", _test_run_id):
+        raise RuntimeError("Invalid isolated test run identifier")
 if _pg_override:
     os.environ["DATABASE_URL"] = _pg_override
     _test_db_name = None  # Postgres: no local file to clean up
 else:
-    _test_db_name = f"test_bizassist_{_xdist_worker}.db" if _xdist_worker else "test_bizassist.db"
+    _worker_suffix = _xdist_worker or "serial"
+    _test_db_name = (f"test_bizassist_{_test_run_id}_{_worker_suffix}.db" if _test_run_id
+                     else f"test_bizassist_{_xdist_worker}.db" if _xdist_worker else "test_bizassist.db")
     os.environ["DATABASE_URL"] = f"sqlite:///./{_test_db_name}"
 # Explicit signal for database/db.py's fail-closed guard: even on an odd entry
 # path, this marks the process as a test run so the DB layer refuses any
@@ -108,6 +123,10 @@ os.environ["LLM_ROUTER"] = "off"
 os.environ["ADMIN_API_ENABLED"] = "1"
 # Keep the paywall dormant for the suite (free users can call /ask etc.);
 # subscription tests flip it on explicitly.
+# No signup trial either. The Postgres CI runs make every backend "cloud", which
+# would quietly put each test account on Pro; test_pro_trial.py opts back in.
+# Trial grants are disabled explicitly by the fixture below for unrelated
+# workflow tests; production signup always offers the fixed 14-day policy.
 # Dynamic mocking of ChromaDB and SentenceTransformer to prevent thread-safety
 # access violations/crashes on Windows while preserving real behavior for RAG/router tests.
 from unittest.mock import MagicMock
@@ -157,6 +176,13 @@ def pytest_runtest_setup(item):
         embeddings.search_chat_memories = lambda *a, **kw: []
 
 import pytest
+
+
+@pytest.fixture(autouse=True)
+def isolate_signup_trial_policy(request, monkeypatch):
+    if request.path.name != "test_pro_trial.py":
+        import routes.auth as auth_routes
+        monkeypatch.setattr(auth_routes, "_trial_days", lambda: 0)
 
 
 def pytest_configure(config):

@@ -19,6 +19,7 @@
 // Everything is computed live from the intake rows passed in; nothing here is
 // persisted yet (distributor + payment are a later backend pass).
 import React, { useState, useEffect } from 'react'
+import { readAllPages } from '../../utils/readPages'
 
 const money = (n) =>
   `₹${(Number(n) || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -81,6 +82,7 @@ export default function IntakePurchasePanel({ rows = [], authFetch, distributor:
 
   const [vendors, setVendors] = useState([])
   const [vendorQuery, setVendorQuery] = useState('')
+  const [vendorError, setVendorError] = useState('')
 
   const [localDist, setLocalDist] = useState({ vendor_id: null, name: '', gstin: '', pan: '', fssai: '', phone: '', address: '', invoice_no: '', invoice_date: todayISO() })
   const dist = propDistributor || localDist
@@ -101,10 +103,11 @@ export default function IntakePurchasePanel({ rows = [], authFetch, distributor:
 
   useEffect(() => {
     if (!authFetch) return
-    authFetch('/billing/vendors?per_page=500')
-      .then((r) => (r.ok ? r.json() : { items: [] }))
-      .then((d) => setVendors(d.items || []))
-      .catch(() => {})
+    let active = true
+    readAllPages(authFetch, '/billing/vendors')
+      .then(data => { if (active) { setVendors(data); setVendorError('') } })
+      .catch(error => { if (active) setVendorError(`Supplier list unavailable: ${error.message}`) })
+    return () => { active = false }
   }, [authFetch])
 
   // ── live computation from the intake rows ──
@@ -172,6 +175,7 @@ export default function IntakePurchasePanel({ rows = [], authFetch, distributor:
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flexShrink: 0, borderTop: '1px solid var(--border)', background: 'var(--bg-2)', maxHeight: '62%', overflowY: 'auto' }}>
+      {vendorError && <p role="alert">{vendorError}</p>}
       {/* Distributor */}
       <Section title="Distributor" open={open.distributor} onToggle={() => toggle('distributor')}>
         <div style={{ position: 'relative', marginBottom: 8 }}>

@@ -46,6 +46,18 @@ beforeEach(() => {
 afterEach(() => { vi.clearAllTimers() })
 
 describe('NotificationBell', () => {
+  it('does not claim all-clear after an initial HTTP failure and supports retry', async () => {
+    authFetch.mockImplementation(async path => path === '/alerts/notifications'
+      ? { ok: false, status: 503 } : ok({ halt: null }))
+    draw()
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Notifications' })).toHaveAttribute('title', 'Notifications could not refresh'))
+    fireEvent.click(screen.getByRole('button', { name: 'Notifications' }))
+    await screen.findByRole('button', { name: 'Retry notifications' })
+    expect(screen.queryByText('Nothing needs attention.')).not.toBeInTheDocument()
+    authFetch.mockImplementation(route(EMPTY))
+    fireEvent.click(screen.getByRole('button', { name: 'Retry notifications' }))
+    await screen.findByText('Nothing needs attention.')
+  })
   it('asks the endpoint through authFetch, not a raw URL', async () => {
     // authFetch attaches THIS session's token and pins the request to THIS
     // backend — a bare fetch to the cloud would resolve the id in the wrong DB.
@@ -70,6 +82,30 @@ describe('NotificationBell', () => {
     fireEvent.click(screen.getByLabelText('2 notifications'))
     expect(screen.getByText('3 batches past expiry')).toBeTruthy()
     expect(screen.getByText('2 overdue invoices')).toBeTruthy()
+  })
+
+  it('opens the sidebar panel outside the clipped footer and keeps its actions clickable', async () => {
+    authFetch.mockImplementation(route(TWO))
+    const onOpen = vi.fn()
+    const { container } = render(<MemoryRouter><NotificationBell placement="sidebar" onOpen={onOpen} /></MemoryRouter>)
+    const trigger = await screen.findByLabelText('2 notifications')
+    fireEvent.click(trigger)
+    const panel = screen.getByRole('dialog', { name: 'Smart notifications' })
+    expect(container.contains(panel)).toBe(false)
+    expect(onOpen).toHaveBeenCalledOnce()
+
+    const action = screen.getByRole('button', { name: /3 batches past expiry/ })
+    fireEvent.mouseDown(action)
+    expect(screen.getByRole('dialog', { name: 'Smart notifications' })).toBe(panel)
+    fireEvent.click(action)
+    expect(screen.queryByRole('dialog')).toBeNull()
+
+    fireEvent.click(trigger)
+    fireEvent.mouseDown(document.body)
+    expect(screen.queryByRole('dialog')).toBeNull()
+    fireEvent.click(trigger)
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(screen.queryByRole('dialog')).toBeNull()
   })
 
   it('adds the backup reminder the server cannot know about', async () => {

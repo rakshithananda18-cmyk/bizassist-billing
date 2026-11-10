@@ -3,7 +3,8 @@ import { api } from '../../lib/api'
 import { fmtDay, fmtTime, rupees, TASK_TYPES, telHref, todayIST } from '../../lib/format'
 import { summarizeInvoices } from '../../lib/invoices'
 import InvoicePicker from '../../components/InvoicePicker'
-import { Empty, ErrorNote, Loader, Modal, PageHeader, StatusBadge, useLoad, useToast } from '../../components/ui'
+import CollectionBalance from '../../components/CollectionBalance'
+import { ConfirmDialog, Empty, ErrorNote, Loader, Modal, PageHeader, StatusBadge, useLoad, useToast } from '../../components/ui'
 
 const EXTRA_TYPES = Object.entries(TASK_TYPES).filter(([k]) => k !== 'delivery')
 
@@ -159,6 +160,7 @@ function PlanModal({ day, onClose, onSaved }) {
 export default function Plan() {
   const [day, setDay] = useState(todayIST())
   const [planning, setPlanning] = useState(false)
+  const [runToCancel, setRunToCancel] = useState(null)
   const toast = useToast()
   const { data: runs, error, loading, reload } = useLoad(() => api.get('/api/runs', { day }), [day])
   const { data: staff } = useLoad(() => api.get('/api/staff'), [])
@@ -175,7 +177,6 @@ export default function Plan() {
     try { await api.patch(`/api/runs/${run.id}`, { staff_id: Number(staff_id) }); reload() } catch (e) { toast(e.message, 'error') }
   }
   const cancel = async (run) => {
-    if (!window.confirm(`Cancel ${run.name}? Pending tasks on it are cancelled.`)) return
     try { await api.post(`/api/runs/${run.id}/cancel`); reload() } catch (e) { toast(e.message, 'error') }
   }
 
@@ -202,7 +203,7 @@ export default function Plan() {
                     onChange={e => reassign(run, e.target.value)}>
                     {(staff || []).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                   </select>
-                  {run.status !== 'completed' && run.status !== 'cancelled' && <button className="btn btn-danger btn-sm" onClick={() => cancel(run)}>Cancel</button>}
+                  {run.status !== 'completed' && run.status !== 'cancelled' && <button type="button" className="btn btn-danger btn-sm" onClick={() => setRunToCancel(run)}>Cancel</button>}
                 </div>
               </div>
               <div className="table-wrap" style={{ marginTop: 12 }}>
@@ -217,6 +218,7 @@ export default function Plan() {
                         <td className="num">{st.orders_count}</td>
                         <td className="small">{st.tasks.map(t => (
                           <div key={t.id}>{t.status === 'done' ? '✓' : '○'} {TASK_TYPES[t.task_type]}{t.points_awarded ? ` · +${t.points_awarded}` : ''}{t.on_time === false ? ' · late' : ''}
+                            <CollectionBalance task={t} />
                             {t.invoices?.length > 0 && <div className="xs muted">{t.invoices.map(x => x.number).join(', ')}</div>}</div>
                         ))}</td>
                         <td>
@@ -235,6 +237,13 @@ export default function Plan() {
         </div>
       )}
       {planning && <PlanModal day={day} onClose={() => setPlanning(false)} onSaved={() => { setPlanning(false); reload() }} />}
+      {runToCancel && <ConfirmDialog
+        title={`Cancel ${runToCancel.name}?`}
+        message="Pending tasks on this run will be cancelled."
+        confirmLabel="Cancel run"
+        onCancel={() => setRunToCancel(null)}
+        onConfirm={() => { const run = runToCancel; setRunToCancel(null); cancel(run) }}
+      />}
     </>
   )
 }

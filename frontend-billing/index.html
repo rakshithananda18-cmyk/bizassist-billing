@@ -3,14 +3,24 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="BizAssist Billing — Smart invoicing, stock, and payments for modern businesses" />
-    <title>BizAssist Billing</title>
+    <meta name="description" content="Stater Bill — Fast, offline-first billing, stock, and POS for modern businesses by ARES Pvt Ltd" />
+    <title>Stater Bill — Smart POS & Invoicing</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
     <script>
       (function () {
+        // Auth and public pages that do not have a theme changer always render in Light mode
+        const p = (window.location.pathname || '').toLowerCase();
+        const isAuthOrPublic = /^\/(login|register|privacy|terms|refund-policy|contact|public)(\/|$)/.test(p);
+        if (isAuthOrPublic) {
+          document.documentElement.classList.remove('dark-mode');
+          document.documentElement.dataset.appearance = 'light';
+          document.documentElement.style.colorScheme = 'light';
+          return;
+        }
+
         let savedTheme = null;
         try { savedTheme = localStorage.getItem('billing_theme'); } catch(e) {}
         // Default to 'system' so a fresh install (incl. the Windows app) follows
@@ -19,8 +29,12 @@
         const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
         if (savedTheme === 'dark' || (savedTheme === 'system' && prefersDark)) {
           document.documentElement.classList.add('dark-mode');
+          document.documentElement.dataset.appearance = 'dark';
+          document.documentElement.style.colorScheme = 'dark';
         } else {
           document.documentElement.classList.remove('dark-mode');
+          document.documentElement.dataset.appearance = 'light';
+          document.documentElement.style.colorScheme = 'light';
         }
       })();
     </script>

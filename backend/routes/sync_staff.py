@@ -25,7 +25,12 @@ from sqlalchemy.orm import Session
 
 from database.db import get_db
 from database.models import User
-from services.auth import require_business_owner, resolve_business_id_in_db
+from services.auth import (
+    require_business_owner,
+    resolve_business_id_in_db,
+    bump_token_version,
+    clear_token_version_cache,
+)
 
 logger = logging.getLogger("bizassist.sync.staff")
 router = APIRouter(tags=["sync"])
@@ -41,10 +46,14 @@ class StaffRecord(BaseModel):
     # owner-level role from a client-controlled payload.
     role: Literal["cashier", "supply adder"] = "cashier"
     counter_prefix: Optional[str] = None
+    phone: Optional[str] = None
     deleted: bool = False            # True → remove this staff from cloud
 
 
-class StaffPushRequest(BaseModel):
+from services.control_outbox import ControlEnvelope
+
+
+class StaffPushRequest(ControlEnvelope):
     staff: List[StaffRecord]
 
 
@@ -69,6 +78,9 @@ def sync_staff_push(
 
     # Resolve owner_id with strict public_id enforcement (fail-closed if missing/mismatched)
     owner_id = resolve_business_id_in_db(current_user, db, require_public_id=True)
+    from services.control_outbox import receive_control_event
+    if not receive_control_event(db, owner_id, req):
+        return {"status": "ok", "replayed": True, "upserted": 0, "deleted": 0}
 
     # Sanity: owner must exist on cloud and match public_id
     owner = db.query(User).filter(
@@ -94,21 +106,37 @@ def sync_staff_push(
 
         if rec.deleted:
             if existing:
+                clear_token_version_cache(existing.id)
                 db.delete(existing)
                 deleted += 1
                 logger.info("[STAFF-SYNC] Deleted staff '%s' for business %s", bare, owner_id)
             continue
 
+        canonical_phone = None
+        if rec.phone is not None:
+            from services.registration_policy import normalize_phone
+            try:
+                canonical_phone = normalize_phone(rec.phone)
+            except ValueError as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from None
+
         if existing:
-            # Update — always overwrite password hash, role, counter_prefix
+            # Update — overwrite password hash, role, counter_prefix
+            # TS-04 fix: If password or role materially changed, invalidate existing cloud sessions
+            material_change = (existing.password != rec.hashed_password) or (existing.role != rec.role)
             existing.password        = rec.hashed_password
             existing.role            = rec.role
             existing.counter_prefix  = rec.counter_prefix
+            if canonical_phone is not None:
+                existing.phone = canonical_phone
+            if material_change:
+                bump_token_version(db, existing)
             # Ensure internal username stays consistent
             if existing.username != rec.internal_username:
                 existing.username = rec.internal_username
             upserted += 1
-            logger.info("[STAFF-SYNC] Updated staff '%s' for business %s", bare, owner_id)
+            logger.info("[STAFF-SYNC] Updated staff '%s' for business %s (material_change=%s)",
+                        bare, owner_id, material_change)
         else:
             # Insert — resolve global username collision on cloud side
             internal = _resolve_username(db, rec.internal_username)
@@ -120,6 +148,7 @@ def sync_staff_push(
                 role=rec.role,
                 parent_business_id=owner_id,
                 counter_prefix=rec.counter_prefix,
+                phone=canonical_phone,
             )
             db.add(staff)
             upserted += 1

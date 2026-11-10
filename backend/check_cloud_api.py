@@ -7,7 +7,7 @@ sys.path.insert(0, ".")
 
 import httpx
 
-CLOUD_URL = "https://rakshit-dev-bizassist.hf.space"
+from core.cloud_endpoint import CLOUD_URL
 # Use sync token from local DB (the token the sync worker uses)
 from database.db import SessionLocal
 from sqlalchemy import text

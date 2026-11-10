@@ -1,6 +1,7 @@
 // New Money workspace views: PartyAccount drill-down + CashbookView.
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, cleanup, waitFor, fireEvent } from '@testing-library/react'
+import { screen, cleanup, waitFor, fireEvent } from '@testing-library/react'
+import { renderWithAuth as render } from './renderWithAuth'
 import React from 'react'
 
 import PartyAccount from '../components/money/PartyAccount'

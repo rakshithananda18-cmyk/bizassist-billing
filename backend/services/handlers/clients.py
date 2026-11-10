@@ -15,24 +15,17 @@ from datetime import datetime, timedelta
 from sqlalchemy import func
 from database.db import SessionLocal
 from database.models import Invoice, Inventory
+from core.billing.balances import invoice_net_amount
 
 logger = logging.getLogger("bizassist.handlers.clients")
 
 def _top_customers(user_id: int) -> str:
     db = SessionLocal()
     try:
-        rows = (
-            db.query(
-                Invoice.customer,
-                func.sum(Invoice.amount).label("total"),
-                func.count(Invoice.id).label("invoices")
-            )
-            .filter(Invoice.business_id == user_id)
-            .group_by(Invoice.customer)
-            .order_by(func.sum(Invoice.amount).desc())
-            .limit(5)
-            .all()
-        )
+        from core.billing.balances import customer_revenue_rows
+        from types import SimpleNamespace
+        rows = [SimpleNamespace(customer=row.customer, total=row.total_amount, invoices=row.invoice_count)
+                for row in customer_revenue_rows(db, user_id)[:5]]
         if not rows:
             return "No customer data found yet. Upload an invoice file to get started."
 
@@ -65,7 +58,7 @@ def _customer_invoices(user_id: int, params: dict = None) -> str:
             return f"No invoices found for **{customer}**."
 
         name  = rows[0].customer
-        total = sum(r.amount or 0 for r in rows)
+        total = sum(invoice_net_amount(r) for r in rows)
         lines = [
             f"**{name} — All Invoices** ({len(rows)})\n",
             "| Invoice ID | Amount | Due Date | Status |",
@@ -101,10 +94,17 @@ def _client_summary(user_id: int, params: dict = None) -> str:
             return f"No invoices found for **{customer}**."
 
         name = rows[0].customer  # canonical casing as stored
-        total = sum(r.amount or 0 for r in rows)
-        amt = lambda st: sum(r.amount or 0 for r in rows if r.status == st)
-        cnt = lambda st: sum(1 for r in rows if r.status == st)
-        paid_amt, pend_amt, over_amt = amt("Paid"), amt("Pending"), amt("Overdue")
+        total = sum(invoice_net_amount(r) for r in rows)
+        from core.billing.balances import invoice_balances, outstanding_rows
+        original = [row for row in rows if row.invoice_type != "credit_note"]
+        balances = invoice_balances(db, original)
+        overdue_rows = [row for row in outstanding_rows(db, user_id, overdue=True)
+                        if (row.customer or "").lower() == customer.strip().lower()]
+        pending_rows = [row for row in outstanding_rows(db, user_id, overdue=False)
+                        if (row.customer or "").lower() == customer.strip().lower()]
+        paid_amt = sum(max(balance["paid"], 0) for balance in balances.values())
+        pend_amt, over_amt = sum(row.amount for row in pending_rows), sum(row.amount for row in overdue_rows)
+        cnt = lambda status: len(overdue_rows) if status == "Overdue" else len(pending_rows)
         coll = round((paid_amt / total) * 100) if total else 0
 
         lines = [
@@ -115,10 +115,6 @@ def _client_summary(user_id: int, params: dict = None) -> str:
             f"- Overdue      : **₹{over_amt:,.0f}**  ({cnt('Overdue')})",
         ]
 
-        overdue_rows = sorted(
-            [r for r in rows if r.status == "Overdue"],
-            key=lambda x: x.amount or 0, reverse=True,
-        )
         if overdue_rows:
             lines.append("\n**Overdue invoices**")
             for r in overdue_rows:

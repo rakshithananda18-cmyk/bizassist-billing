@@ -299,11 +299,13 @@ def test_an_unreadable_table_is_reported_not_reported_as_empty(db, monkeypatch):
             raise RuntimeError("no such table: customers")
         return real_execute(stmt, *a, **kw)
 
-    monkeypatch.setattr(db, "execute", _unreadable_customers)
-
-    summary = _run(db, monkeypatch, {
-        "products": [{"id": 5, "uid": "prod-cloud-only", "name": "Sugar 50kg"}],
-    })
+    # Restore the real executor before this fixture deletes its customer rows.
+    # The fault belongs to the scan, not to database cleanup.
+    with monkeypatch.context() as scan_patch:
+        scan_patch.setattr(db, "execute", _unreadable_customers)
+        summary = _run(db, scan_patch, {
+            "products": [{"id": 5, "uid": "prod-cloud-only", "name": "Sugar 50kg"}],
+        })
 
     assert any("presence customers" in e for e in summary["errors"]), summary["errors"]
     # Unknown, so no verdict is recorded for it either way.

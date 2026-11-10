@@ -32,7 +32,10 @@ router = APIRouter(tags=["sync"])
 
 # ── Schema ────────────────────────────────────────────────────────────────────
 
-class ProfilePushRequest(BaseModel):
+from services.control_outbox import ControlEnvelope
+
+
+class ProfilePushRequest(ControlEnvelope):
     business_name: Optional[str] = None
     gstin:         Optional[str] = None
     phone:         Optional[str] = None
@@ -62,6 +65,9 @@ def sync_profile_push(
     # Numeric user ids differ between the local and cloud databases. Resolve
     # the shared BizID in this database before updating the profile.
     owner_id = resolve_business_id_in_db(current_user, db)
+    from services.control_outbox import receive_control_event
+    if not receive_control_event(db, owner_id, req):
+        return {"status": "ok", "replayed": True, "updated_fields": []}
 
     owner = db.query(User).filter(
         User.id == owner_id,

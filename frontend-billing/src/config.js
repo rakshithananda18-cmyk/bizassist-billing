@@ -32,12 +32,48 @@ export const isLocalHost = (hostname) => {
 export const IS_LOCAL_APP =
   typeof window !== 'undefined' && isLocalHost(window.location.hostname);
 
-export const CLOUD_URL = import.meta.env.VITE_API_URL || 'https://rakshit-dev-bizassist.hf.space';
+export const PRIMARY_CLOUD_RUN_URL = 'https://staterbill-api-1076771386585.asia-south1.run.app';
+// Hugging Face standby backend (uncomment to re-enable):
+// export const SECONDARY_HF_URL = 'https://rakshit-dev-bizassist.hf.space';
+export const SECONDARY_HF_URL = null;
+
+export const CLOUD_URL = (
+  import.meta.env.VITE_API_URL ||
+  PRIMARY_CLOUD_RUN_URL
+).replace(/\/$/, '');
+
+// Cloud fallback disabled — Google Cloud Run is the sole cloud backend.
+// To re-enable Hugging Face fallback, uncomment below:
+// export const FALLBACK_CLOUD_URL = (import.meta.env.VITE_FALLBACK_API_URL || 'https://rakshit-dev-bizassist.hf.space').replace(/\/$/, '');
+export const FALLBACK_CLOUD_URL = null;
+
+let activeCloudUrl = CLOUD_URL;
+
+export function getActiveCloudUrl() {
+  return activeCloudUrl;
+}
+
+export function switchActiveCloudUrl(target) {
+  if (target) {
+    activeCloudUrl = target.replace(/\/$/, '');
+  } else if (FALLBACK_CLOUD_URL) {
+    activeCloudUrl = activeCloudUrl === CLOUD_URL ? FALLBACK_CLOUD_URL : CLOUD_URL;
+  }
+  API_BASE = getApiBase();
+  console.log(`[CONFIG] Active cloud URL set to: ${activeCloudUrl}`);
+  return activeCloudUrl;
+}
+
+export function getAlternateCloudUrl(current = activeCloudUrl) {
+  if (!FALLBACK_CLOUD_URL) return null;
+  return current === CLOUD_URL ? FALLBACK_CLOUD_URL : CLOUD_URL;
+}
 
 // Public WEB app (Vercel) — the only origin an outsider can open. Share links
 // must ALWAYS use this: on the desktop app `window.location.origin` is
 // localhost/LAN, which is unreachable for the customer receiving the link.
-export const PUBLIC_WEB_URL = (import.meta.env.VITE_PUBLIC_WEB_URL || 'https://bizassist-billing.vercel.app').replace(/\/$/, '');
+export const PUBLIC_WEB_URL = (import.meta.env.VITE_PUBLIC_WEB_URL || 'https://staterbill.com').replace(/\/$/, '');
+export const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '1076771386585-lt9gotlje2s5nrq509rokjngpufukuf0.apps.googleusercontent.com';
 export const LOCAL_URL =
   typeof window !== 'undefined' && isLocalHost(window.location.hostname)
     ? `http://${window.location.hostname}:8001`
@@ -59,7 +95,7 @@ export function getApiBase() {
   if (IS_LOCAL_APP) {
     // Local app can optionally point to cloud (user explicitly chose cloud-only mode)
     const savedMode = localStorage.getItem('bizassist_hosting_mode');
-    if (savedMode === 'cloud') return CLOUD_URL;
+    if (savedMode === 'cloud') return activeCloudUrl;
 
     // Connect to configured LAN master server if checked
     const useLanDb = localStorage.getItem('bizassist_use_lan_db') === 'true';
@@ -71,7 +107,7 @@ export function getApiBase() {
   }
 
   // Hard rule: browser URL (Vercel / any non-localhost) = cloud backend
-  return CLOUD_URL;
+  return activeCloudUrl;
 }
 
 export let API_BASE = getApiBase();

@@ -64,6 +64,10 @@ JWT_SECRET = _raw_secret
 # shift without forcing a mid-route re-login. Owners use the same TTL.
 ACCESS_TOKEN_TTL_MINUTES = _int("TASK_TOKEN_TTL_MINUTES", 14 * 60)
 
+# Same web client as Billing by default; deployments using another OAuth client
+# must set this and the frontend's VITE_GOOGLE_CLIENT_ID to the same value.
+GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "1076771386585-lt9gotlje2s5nrq509rokjngpufukuf0.apps.googleusercontent.com").strip()
+
 # Business wall clock. Attendance dates, "today's route" and lateness are all
 # computed in this zone from SERVER time — never from the phone's clock.
 BIZ_TIMEZONE = os.environ.get("BIZ_TIMEZONE", "Asia/Kolkata")
@@ -72,15 +76,36 @@ BIZ_TIMEZONE = os.environ.get("BIZ_TIMEZONE", "Asia/Kolkata")
 # touches billing tables. Set 0 to migrate manually.
 AUTO_MIGRATE = _bool("TASK_AUTO_MIGRATE", True)
 
-# In dev/test on SQLite we also create the minimal billing tables (users,
-# customers) so the app runs standalone. On Postgres they belong to billing and
-# are NEVER created or altered from here.
-CREATE_BILLING_MIRROR = _bool("TASK_CREATE_BILLING_MIRROR", IS_SQLITE)
+# A standalone SQLite mirror is only an explicit development/test fixture.
+# Field operations use Billing's shared CLOUD database; a missing production
+# DATABASE_URL must never silently open an unrelated empty local business.
+CREATE_BILLING_MIRROR = _bool("TASK_CREATE_BILLING_MIRROR", False)
+_DEPLOYED = bool(os.getenv("SPACE_ID") or os.getenv("K_SERVICE")
+                 or os.getenv("ENVIRONMENT", "").lower() == "production")
+_SQLITE_TEST = _bool("TASK_ALLOW_SQLITE_TESTING", False) and "test" in DATABASE_URL.lower()
+if IS_SQLITE and (_DEPLOYED or not (CREATE_BILLING_MIRROR or _SQLITE_TEST)):
+    raise RuntimeError(
+        "Field Team requires the same cloud PostgreSQL DATABASE_URL as BizAssist Billing. "
+        "A local SQLite database is not a cloud data source. "
+        "For an isolated development/test fixture only, explicitly set TASK_CREATE_BILLING_MIRROR=1."
+    )
+if _DEPLOYED and CREATE_BILLING_MIRROR:
+    raise RuntimeError(
+        "TASK_CREATE_BILLING_MIRROR is development/test-only and must be disabled in a deployment. "
+        "Billing owns the shared cloud tables and their migrations."
+    )
 
 # Allow owners to create a BizAssist account from the task app. The row written
 # is identical in shape to billing's own /signup (role=enterprise + BizID), so
 # the same login works in billing too.
 ALLOW_SIGNUP = _bool("TASK_ALLOW_SIGNUP", True)
+
+# Field Team is part of BizAssist Pro (app/plan.py). Same switch and name as
+# billing's. Cloud Field Team is Pro-gated by default; explicit standalone
+# development fixtures and tests can run without provisioning subscriptions.
+REQUIRE_PRO = _DEPLOYED or _bool("SUBSCRIPTION_ENFORCED", not IS_SQLITE)
+# Days Field Team keeps working after a Pro plan EXPIRES (not when revoked).
+PRO_GRACE_DAYS = _int("TASK_PRO_GRACE_DAYS", 7)
 
 # Raw GPS pings older than this are purged daily. Event locations (check-in,
 # arrival, task completion) live on their own rows and are kept.
@@ -92,11 +117,8 @@ PURGE_LOOP = _bool("TASK_PURGE_LOOP", True)
 # Unset = the endpoint does not exist (404).
 CRON_SECRET = os.environ.get("TASK_CRON_SECRET", "")
 
-# Comma-separated extra CORS origins (the Vercel URL, if the PWA is hosted there).
-_default_origins = (
-    "http://localhost:5176,http://127.0.0.1:5176,"
-    "http://localhost:4173,http://127.0.0.1:4173"
-)
+# The custom domain is canonical; keep the Vercel origin for older clients.
+_default_origins = "https://task.staterbill.com,https://bizassist-task.vercel.app,https://app.staterbill.com,https://staterbill.com"
 def parse_origins(raw: str) -> list:
     """Browsers send an Origin with no path and no trailing slash, and CORS
     matches it exactly, so `https://x.vercel.app/` (as copied from the address
@@ -104,7 +126,7 @@ def parse_origins(raw: str) -> list:
     return [o.strip().rstrip("/") for o in raw.split(",") if o.strip().rstrip("/")]
 
 
-ALLOWED_ORIGINS = parse_origins(os.environ.get("ALLOWED_ORIGINS", _default_origins))
+ALLOWED_ORIGINS = list(dict.fromkeys(parse_origins(_default_origins) + parse_origins(os.environ.get("ALLOWED_ORIGINS", ""))))
 
 # Optional built PWA to serve at "/" (TASK_STATIC_DIR). The image is API-only:
 # the screens are frontend-task/ on their own Vercel project.

@@ -14,6 +14,8 @@
 import { API_BASE, getApiBase } from '../config'
 import { logger } from '../utils/logger'
 import { tokenStorage } from '../utils/tokenStorage'
+import { resilientSessionFetch } from './session'
+import { readableError, isOwnApiResponse } from './httpErrors'
 
 const TOKEN_KEY = 'billing_token'
 
@@ -60,7 +62,7 @@ export async function request(method, path, { query, body, signal, raw, headers 
     signal,
     headers: {
       ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(token && isOwnApiResponse({ url }) ? { Authorization: `Bearer ${token}` } : {}),
       ...headers,
     },
   }
@@ -68,7 +70,7 @@ export async function request(method, path, { query, body, signal, raw, headers 
 
   let res
   try {
-    res = await fetch(url, init)
+    res = await resilientSessionFetch(url, init)
   } catch (err) {
     // Network / CORS / aborted — never block the counter on this; surface clearly.
     if (err.name === 'AbortError') throw err
@@ -89,9 +91,6 @@ export async function request(method, path, { query, body, signal, raw, headers 
   }
 
   if (!res.ok) {
-    if (res.status === 401) {
-      window.dispatchEvent(new CustomEvent('auth_unauthorized'))
-    }
     throw await toError(res, method, url, data)
   }
   return data
@@ -100,12 +99,12 @@ export async function request(method, path, { query, body, signal, raw, headers 
 async function toError(res, method, url, data) {
   let detail
   if (data && typeof data === 'object') detail = data.detail || data.message
-  else if (typeof data === 'string') detail = data
+  else if (typeof data === 'string') detail = readableError(res.status, res.headers?.get?.('content-type'), data)
   if (detail === undefined) {
     try { detail = (await res.clone().json())?.detail } catch { /* ignore */ }
   }
   logger.error('[api]', method, url, '→', res.status, detail || '')
-  return new ApiError(detail || `Request failed (${res.status})`, {
+  return new ApiError(readableError(res.status, res.headers?.get?.('content-type'), data || { detail }), {
     status: res.status, detail, body: data,
   })
 }

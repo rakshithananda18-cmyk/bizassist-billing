@@ -70,6 +70,13 @@ def _has_column(insp, table: str, column: str) -> bool:
 
 def upgrade() -> None:
     bind = op.get_bind()
+    # These four tables historically came only from startup create_all, so a
+    # fresh Alembic-only installation reached later UID/RLS revisions without
+    # them. Create missing tables before their UID phase; existing populated
+    # tables are never replaced or rewritten.
+    from database.models import Expense, Godown, StockTransfer, StockTransferLineItem
+    for model in (Expense, Godown, StockTransfer, StockTransferLineItem):
+        model.__table__.create(bind, checkfirst=True)
     insp = inspect(bind)
     present = _existing_tables(insp)
     is_pg = bind.dialect.name == "postgresql"

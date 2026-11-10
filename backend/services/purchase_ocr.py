@@ -3,9 +3,15 @@ import io
 import json
 import base64
 import logging
-import pypdf
+try:
+    import pypdf
+except ImportError:
+    pypdf = None
 from groq import Groq
-from PIL import Image
+try:
+    from PIL import Image
+except ImportError:
+    Image = None
 
 logger = logging.getLogger("bizassist.purchase_ocr")
 
@@ -464,11 +470,12 @@ def extract_structured_purchase_invoice(raw_text: str) -> dict:
     groq_key = os.getenv("GROQ_API_KEY")
     if groq_key:
         try:
-            logger.info("Extracting purchase invoice using Groq (qwen/qwen3-32b)...")
-            from services.groq_client import make_groq_client
+            from services.groq_client import DEFAULT_COMPLEX_MODEL, make_groq_client
+            model = os.getenv("GROQ_MODEL_COMPLEX", DEFAULT_COMPLEX_MODEL)
+            logger.info("Extracting purchase invoice using Groq (%s)...", model)
             client = make_groq_client(groq_key)
             completion = client.chat.completions.create(
-                model=os.getenv("GROQ_MODEL_COMPLEX", "qwen/qwen3-32b"),
+                model=model,
                 messages=[
                     {"role": "system", "content": _SYSTEM_PROMPT},
                     {"role": "user", "content": user_content},

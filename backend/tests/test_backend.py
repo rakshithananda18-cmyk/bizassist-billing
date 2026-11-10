@@ -25,6 +25,8 @@ from services.query_router import classify
 from services.auth import hash_password, verify_password
 
 from tests.planhelpers import grant_pro
+from tests.signup_fixture import signup_payload
+
 client = TestClient(app)
 
 @pytest.fixture(scope="session", autouse=True)
@@ -116,11 +118,11 @@ def test_auth_flow():
     assert response.status_code == 401
 
     # Signup flow
-    response = client.post("/signup", json={
+    response = client.post("/signup", json=signup_payload({
         "username": "newuser",
         "password": "Newpassword123",
         "business_name": "New Retail Shop"
-    })
+    }))
     assert response.status_code == 200
     data = response.json()
     assert "token" in data
@@ -128,11 +130,11 @@ def test_auth_flow():
     assert data["business_name"] == "New Retail Shop"
 
     # Duplicate username signup
-    response = client.post("/signup", json={
+    response = client.post("/signup", json=signup_payload({
         "username": "newuser",
         "password": "Anotherpassword123",
         "business_name": "Another Shop"
-    })
+    }))
     assert response.status_code == 400
 
 def test_authorized_endpoints():
@@ -536,22 +538,26 @@ def test_admin_endpoints():
     assert resp.status_code == 200
     assert resp.json()["status"] == "success"
 
-    # 6. Verify data tables are empty for the enterprise user
+    # 6. Deleting an account revokes its existing bearer token. Inspect the
+    # private deletion through the database rather than authenticating a ghost.
     resp = client.get("/database", headers=user_headers)
-    assert resp.status_code == 200
-    db_data = resp.json()
-    assert len(db_data["invoices"]) == 0
-    assert len(db_data["inventory"]) == 0
-    assert len(db_data["uploads"]) == 0
+    assert resp.status_code == 401
+    from database.db import SessionLocal
+    from database.models import User, Invoice, Inventory, UploadedFile
+    with SessionLocal() as db:
+        assert db.get(User, user_id) is None
+        assert db.query(Invoice).filter_by(business_id=user_id).count() == 0
+        assert db.query(Inventory).filter_by(business_id=user_id).count() == 0
+        assert db.query(UploadedFile).filter_by(business_id=user_id).count() == 0
 
 
 def test_pdf_upload_flow():
     # Sign up a new user
-    signup_resp = client.post("/signup", json={
+    signup_resp = client.post("/signup", json=signup_payload({
         "username": "pdf_merchant",
         "password": "Pdf_password123",
         "business_name": "PDF Business"
-    })
+    }))
     assert signup_resp.status_code == 200
     
     # Login as the new user
@@ -622,38 +628,38 @@ def test_pdf_upload_flow():
 
 def test_password_policy_signup():
     # Short password
-    response = client.post("/signup", json={
+    response = client.post("/signup", json=signup_payload({
         "username": "user_short",
         "password": "pwd",
         "business_name": "Short Business"
-    })
+    }))
     assert response.status_code == 400
     assert "at least 8 characters" in response.json()["detail"]
 
     # No uppercase
-    response = client.post("/signup", json={
+    response = client.post("/signup", json=signup_payload({
         "username": "user_no_upper",
         "password": "password123",
         "business_name": "No Upper Business"
-    })
+    }))
     assert response.status_code == 400
     assert "uppercase" in response.json()["detail"]
 
     # No lowercase
-    response = client.post("/signup", json={
+    response = client.post("/signup", json=signup_payload({
         "username": "user_no_lower",
         "password": "PASSWORD123",
         "business_name": "No Lower Business"
-    })
+    }))
     assert response.status_code == 400
     assert "lowercase" in response.json()["detail"]
 
     # No number
-    response = client.post("/signup", json={
+    response = client.post("/signup", json=signup_payload({
         "username": "user_no_number",
         "password": "Password",
         "business_name": "No Number Business"
-    })
+    }))
     assert response.status_code == 400
     assert "number" in response.json()["detail"]
 
@@ -683,11 +689,11 @@ def test_login_rate_limiting():
 
 def test_upload_limits():
     # Sign up a new user to ensure clean isolated state
-    signup_resp = client.post("/signup", json={
+    signup_resp = client.post("/signup", json=signup_payload({
         "username": "upload_merchant",
         "password": "Upload_password123",
         "business_name": "Upload Business"
-    })
+    }))
     assert signup_resp.status_code == 200
     token = signup_resp.json()["token"]
     user_headers = {"Authorization": f"Bearer {token}"}
@@ -713,11 +719,11 @@ def test_upload_limits():
 
 def test_upload_rate_limiting():
     # Sign up a new user to ensure clean isolated state
-    signup_resp = client.post("/signup", json={
+    signup_resp = client.post("/signup", json=signup_payload({
         "username": "upload_rate_merchant",
         "password": "Upload_password123",
         "business_name": "Upload Rate Business"
-    })
+    }))
     assert signup_resp.status_code == 200
     token = signup_resp.json()["token"]
     user_headers = {"Authorization": f"Bearer {token}"}
@@ -755,14 +761,14 @@ def test_sanitized_errors():
 
     # Inject a broken DB session via the get_db dependency override (H6: routes
     # now receive their session through Depends(get_db) rather than SessionLocal).
-    from database.db import get_db
+    from database.admin_service import get_admin_db
 
     def _broken_db():
         mock_db = MagicMock()
         mock_db.query.side_effect = Exception("Internal DB Connection Corrupted Stack Trace Info")
         yield mock_db
 
-    app.dependency_overrides[get_db] = _broken_db
+    app.dependency_overrides[get_admin_db] = _broken_db
     try:
         # Try to call set_rate_limits
         response = client.post("/admin/rate-limits/1", json={
@@ -778,4 +784,4 @@ def test_sanitized_errors():
         assert "Internal DB Connection Corrupted" not in response.json()["detail"]
         assert response.json()["detail"] == "Internal server error setting rate limits."
     finally:
-        app.dependency_overrides.pop(get_db, None)
+        app.dependency_overrides.pop(get_admin_db, None)

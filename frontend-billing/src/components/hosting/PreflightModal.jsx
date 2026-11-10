@@ -167,7 +167,7 @@ export default function PreflightModal({
                 rel="noreferrer"
                 style={{
                   padding: '9px 18px', borderRadius: 8,
-                  background: 'var(--accent)', color: '#fff', border: 'none',
+                  background: 'var(--accent-solid, var(--accent))', color: 'var(--accent-foreground, #fff)', border: 'none',
                   cursor: 'pointer', fontSize: '0.84rem', fontWeight: 600,
                   textDecoration: 'none',
                   display: 'inline-flex', alignItems: 'center', gap: 6,
@@ -193,7 +193,7 @@ export default function PreflightModal({
                 onClick={onClose}
                 style={{
                   padding: '9px 20px', borderRadius: 8,
-                  background: 'var(--accent)', color: '#fff', border: 'none',
+                  background: 'var(--accent-solid, var(--accent))', color: 'var(--accent-foreground, #fff)', border: 'none',
                   cursor: 'pointer', fontSize: '0.84rem', fontWeight: 600,
                   display: 'inline-flex', alignItems: 'center', gap: 6,
                 }}

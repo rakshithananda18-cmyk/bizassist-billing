@@ -12,7 +12,7 @@ export const HELP_CONTENT = {
     intro: 'Your launchpad — every card jumps straight to a work area.',
     steps: [
       { t: 'Pick a task', d: 'New Invoice opens the billing counter; Inventory, Cash Book, Contacts and Reports jump to their sections.' },
-      { t: 'Watch for announcements', d: 'Offers and product news from BizAssist appear here as dismissible cards. Redeem offer codes right from the card (or via "Have an offer code?").' },
+      { t: 'Watch for announcements', d: 'Offers and product news from Stater appear here as dismissible cards. Redeem offer codes right from the card (or via "Have an offer code?").' },
       { t: 'Staff see less', d: 'Cashier logins only see the areas the owner allows — owner-only pages are hidden automatically.' },
     ],
     tips: ['The sidebar is always available on every page — Home is just the fastest way in after login.'],
@@ -24,7 +24,7 @@ export const HELP_CONTENT = {
     steps: [
       { t: 'Read the headline cards', d: 'Revenue, outstanding, invoice counts — computed from your real invoices, not estimates.' },
       { t: 'Drill into anything', d: 'Cards and lists link to the underlying page (overdue list → Payments, low stock → Inventory).' },
-      { t: 'Want deeper analysis?', d: 'Open Dashboard BIZASSIST from the sidebar — the AI assistant answers questions like "who owes me the most?" from your live data.' },
+      { t: 'Want deeper analysis?', d: 'Open Stater AI from the sidebar — the AI assistant answers questions like "who owes me the most?" from your live data.' },
     ],
   },
 
@@ -102,7 +102,7 @@ export const HELP_CONTENT = {
     intro: 'Bring existing products, customers or invoices in from Excel/CSV.',
     steps: [
       { t: 'Upload your file', d: 'Excel or CSV, any column names — you map columns to fields in the next step.' },
-      { t: 'Map the columns', d: 'Match your sheet\'s columns to BizAssist fields; the preview shows exactly what will be created.' },
+      { t: 'Map the columns', d: 'Match your sheet\'s columns to Stater fields; the preview shows exactly what will be created.' },
       { t: 'Review & commit', d: 'Rows with problems are flagged before anything is written — nothing imports silently.' },
     ],
   },
@@ -139,7 +139,7 @@ export const HELP_CONTENT = {
 
   '/settings': {
     title: 'Settings',
-    intro: 'App behaviour, hosting mode, staff, printing and data safety.',
+    intro: 'Business profile, appearance, app behaviour, staff, printing and data safety.',
     steps: [
       { t: 'Hosting mode', d: 'Local (this device only), Hybrid (local + cloud sync) or Cloud. Switching runs a guided, merge-safe migration.' },
       { t: 'Staff management — two sectors', d: 'Create staff as CASHIER (sales sector: the billing counter, own counter prefix) or SUPPLY ADDER (stock sector: inventory, label printing, purchase bills). Each sector only sees its own pages; neither sees reports, margins or money settings.' },

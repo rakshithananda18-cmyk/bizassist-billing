@@ -21,11 +21,11 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db, utc_now
 from app.geo import GeoFix, distance_to, validate_fix
-from app.invoices import MAX_PER_TASK, attach_invoices, balance_due, ensure_not_planned, resolve_invoices
+from app.invoices import MAX_PER_TASK, attach_invoices, balance_due, ensure_not_planned, invoice_balances, resolve_invoices
 from app.models import TASK_TYPES, FieldRoute, FieldRun, FieldRunStop, FieldShop, FieldStaff, FieldTask
 from app.routers.attendance import require_checked_in
 from app.security import Principal, current_principal, get_settings, require_owner, require_staff
-from app.services import get_scoped, log_activity, record_fix, run_out, run_stop_out
+from app.services import get_scoped, log_activity, prime_billing_reads, record_fix, run_out, run_stop_out
 from app.timeutil import biz_local_to_utc, biz_today, iso_weekday, parse_hhmm
 
 router = APIRouter(prefix="/api", tags=["runs"])
@@ -38,7 +38,7 @@ class ExtraTaskIn(BaseModel):
     title: str = Field(..., min_length=1, max_length=120)
     description: Optional[str] = Field(None, max_length=1000)
     points: Optional[int] = Field(None, ge=0, le=1000)
-    amount_expected: Optional[float] = Field(None, ge=0)
+    amount_expected: Optional[float] = Field(None, ge=0, allow_inf_nan=False)
 
 
 class StopPlanIn(BaseModel):
@@ -100,7 +100,8 @@ def _add_stop(db: Session, p: Principal, run: FieldRun, plan: StopPlanIn, seq: i
         task.title = (f"Deliver {len(invoices)} invoice(s) to {shop.name}" if invoices and not task.boxes_planned
                       else f"Deliver {task.boxes_planned} box(es) to {shop.name}")
         db.add(task)
-    due = [i for i in invoices if balance_due(i) > 0] if plan.collect_due else []
+    balances = invoice_balances(db, invoices) if plan.collect_due else {}
+    due = [i for i in invoices if balance_due(i, balances) > 0] if plan.collect_due else []
     if due:
         ensure_not_planned(db, p.business_id, "payment_collect", due)
         collect = FieldTask(
@@ -215,6 +216,8 @@ def list_runs(day: Optional[str] = Query(None), p: Principal = Depends(require_o
     rows = (db.query(FieldRun)
             .filter(FieldRun.business_id == p.business_id, FieldRun.run_date == day)
             .order_by(FieldRun.name.asc()).all())
+    prime_billing_reads(shops=[stop.shop for run in rows for stop in run.stops],
+                        tasks=[task for run in rows for stop in run.stops for task in stop.tasks])
     return [run_out(r) for r in rows]
 
 

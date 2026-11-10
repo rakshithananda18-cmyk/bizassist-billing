@@ -28,6 +28,8 @@ from database.db import SessionLocal
 from core.models import BusinessSettings
 from core import templates as T
 
+from tests.signup_fixture import signup_payload
+
 client = TestClient(app)
 
 SHIPPED = {"supermarket", "pharmacy", "restaurant", "textile",
@@ -139,9 +141,9 @@ def test_resolve_for_defaults_to_general_when_no_row():
 @pytest.fixture(scope="module")
 def auth():
     username = f"test_tmpl_{uuid.uuid4().hex[:8]}"
-    resp = client.post("/signup", json={
+    resp = client.post("/signup", json=signup_payload({
         "username": username, "password": "TestPass123!", "business_name": "Template Test Biz",
-    })
+    }))
     assert resp.status_code == 200, f"Signup failed: {resp.text}"
     body = resp.json()
     return {"headers": {"Authorization": f"Bearer {body['token']}"}, "bid": body["id"]}

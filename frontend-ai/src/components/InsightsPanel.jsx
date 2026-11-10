@@ -229,7 +229,7 @@ export default function InsightsPanel({ onCollapse, onCloseMobile }) {
 
         {/* Section 1: Chat History */}
         <div className={`rp-section ${collapsedSections.progress ? 'collapsed' : ''}`} id="rp-section-progress">
-          <div className="rp-section-header" onClick={() => toggleSection('progress')}>
+          <button type="button" className="rp-section-header" onClick={() => toggleSection('progress')} aria-expanded={!collapsedSections.progress} aria-controls="rp-progress-body">
             <svg className="rp-folder-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
             </svg>
@@ -237,7 +237,7 @@ export default function InsightsPanel({ onCollapse, onCloseMobile }) {
             <svg className="rp-section-arrow" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="6 9 12 15 18 9"></polyline>
             </svg>
-          </div>
+          </button>
           <div className="rp-section-body" id="rp-progress-body">
             <button className="rp-new-chat-btn" onClick={handleNewChat}>
               + New Chat
@@ -250,9 +250,16 @@ export default function InsightsPanel({ onCollapse, onCloseMobile }) {
                   <div
                     key={s.session_id}
                     className={`rp-chat-item ${s.session_id === activeSessionId ? 'active' : ''}`}
+                    role="button"
+                    tabIndex={renamingId === s.session_id ? -1 : 0}
+                    aria-label={`Open conversation: ${s.session_title || 'Untitled'}`}
                     onClick={() => {
                       if (renamingId === s.session_id) return
                       handleSessionSelect(s.session_id)
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.target !== e.currentTarget || renamingId === s.session_id) return
+                      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleSessionSelect(s.session_id) }
                     }}
                   >
                     <div className="rp-chat-title-wrapper">
@@ -333,7 +340,7 @@ export default function InsightsPanel({ onCollapse, onCloseMobile }) {
 
         {/* Section 1.5: Alerts Section (Collapsible container) */}
         <div className={`rp-section ${collapsedSections.alerts ? 'collapsed' : ''}`} id="rp-section-alerts">
-          <div className="rp-section-header" onClick={() => toggleSection('alerts')}>
+          <button type="button" className="rp-section-header" onClick={() => toggleSection('alerts')} aria-expanded={!collapsedSections.alerts} aria-controls="rp-alerts-body">
             <svg className="rp-folder-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
             </svg>
@@ -341,37 +348,37 @@ export default function InsightsPanel({ onCollapse, onCloseMobile }) {
             <svg className="rp-section-arrow" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="6 9 12 15 18 9"></polyline>
             </svg>
-          </div>
+          </button>
           <div className="rp-section-body" id="rp-alerts-body">
-            <div className="ip-alert-row ip-alert-warn" onClick={() => sendChip('Which medicines and products are expiring in the next 30 days?', 'expiring_soon')}>
+            <button type="button" className="ip-alert-row ip-alert-warn" onClick={() => sendChip('Which medicines and products are expiring in the next 30 days?', 'expiring_soon')}>
               <div className="ip-alert-icon"><Icon name="clock" /></div>
               <div className="ip-alert-text"><strong>Expiry check</strong><span>See items expiring soon</span></div>
               <div className="ip-alert-arrow">›</div>
-            </div>
-            <div className="ip-alert-row ip-alert-info" onClick={() => sendChip('Which products have low stock and need reordering?', 'low_stock')}>
+            </button>
+            <button type="button" className="ip-alert-row ip-alert-info" onClick={() => sendChip('Which products have low stock and need reordering?', 'low_stock')}>
               <div className="ip-alert-icon"><Icon name="package" /></div>
               <div className="ip-alert-text"><strong>Low stock</strong><span>Items needing reorder</span></div>
               <div className="ip-alert-arrow">›</div>
-            </div>
-            <div className="ip-alert-row ip-alert-red" onClick={() => sendChip('List all overdue invoices with amounts and due dates', 'overdue_list')}>
+            </button>
+            <button type="button" className="ip-alert-row ip-alert-red" onClick={() => sendChip('List all overdue invoices with amounts and due dates', 'overdue_list')}>
               <div className="ip-alert-icon"><Icon name="alert" /></div>
               <div className="ip-alert-text"><strong>Overdue invoices</strong><span>₹{Number(overdueAmt).toLocaleString('en-IN')} pending</span></div>
               <div className="ip-alert-arrow">›</div>
-            </div>
-            <div className="ip-alert-row ip-alert-green" onClick={() => sendChip('Who are my top 5 customers by revenue this period?', 'top_customers')}>
+            </button>
+            <button type="button" className="ip-alert-row ip-alert-green" onClick={() => sendChip('Who are my top 5 customers by revenue this period?', 'top_customers')}>
               <div className="ip-alert-icon"><Icon name="trophy" /></div>
               <div className="ip-alert-text">
                 <strong>Top customers</strong>
                 <span>{customers[0] ? `${customers[0].customer} leads` : 'See rankings'}</span>
               </div>
               <div className="ip-alert-arrow">›</div>
-            </div>
+            </button>
           </div>
         </div>
 
         {/* Section 2: Business Insights */}
         <div className={`rp-section ${collapsedSections.context ? 'collapsed' : ''}`} id="rp-section-context">
-          <div className="rp-section-header" onClick={() => toggleSection('context')}>
+          <button type="button" className="rp-section-header" onClick={() => toggleSection('context')} aria-expanded={!collapsedSections.context} aria-controls="rp-context-body">
             <svg className="rp-folder-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
             </svg>
@@ -379,7 +386,7 @@ export default function InsightsPanel({ onCollapse, onCloseMobile }) {
             <svg className="rp-section-arrow" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="6 9 12 15 18 9"></polyline>
             </svg>
-          </div>
+          </button>
           <div className="rp-section-body" id="rp-context-body">
             {!panelInsights && (
               <div style={{ fontSize: 12, opacity: 0.6, padding: '8px 2px' }}>Reading your business…</div>

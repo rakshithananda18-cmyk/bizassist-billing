@@ -10,19 +10,21 @@
 //
 // `onChanged` fires after a return/payment succeeds so the caller can refresh.
 // ============================================================================
-import React, { useCallback, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import { logger } from '../utils/logger'
-import { buildUpiUri, buildWhatsAppShareUrl } from '../utils/share'
+import { buildUpiUri, buildWhatsAppShareUrl, resolvePaymentVpa } from '../utils/share'
 import InvoiceViewerModal from '../components/invoice/InvoiceViewerModal'
 import SaleReturnModal from '../components/parties/SaleReturnModal'
+import { prepareReturnLines } from '../utils/returnPreview'
 import RecordPaymentModal from '../components/payments/RecordPaymentModal'
+import { printInvoicePdf } from '../utils/printInvoicePdf'
 
 const toast = (type, msg) => window.dispatchEvent(new CustomEvent('show_toast', { detail: { type, msg } }))
 const emptyPay = () => ({ type: 'received', invoice_ref: '', amount: '', method: 'UPI', reference: '', date: new Date().toISOString().slice(0, 10) })
 
 export default function useInvoiceActions(authFetch, { onChanged } = {}) {
-  const { user } = useAuth()
+  const { user, profile } = useAuth()
 
   // Viewer
   const [viewingInvoiceNo, setViewingInvoiceNo] = useState(null)
@@ -35,49 +37,42 @@ export default function useInvoiceActions(authFetch, { onChanged } = {}) {
   // Payment
   const [payForm, setPayForm] = useState(null)
   const [submitting, setSubmitting] = useState(false)
+  const printWork = useRef(null)
+
+  useEffect(() => () => {
+    printWork.current?.abort()
+    printWork.current = null
+  }, [])
 
   const view = useCallback((invoiceNo) => setViewingInvoiceNo(invoiceNo), [])
 
   const print = useCallback(async (invoiceNo) => {
     if (!invoiceNo) return
+    printWork.current?.abort()
+    const pending = new AbortController()
+    printWork.current = pending
+    let timedOut = false
+    const timeout = setTimeout(() => {
+      timedOut = true
+      pending.abort()
+    }, 65000)
     try {
-      const res = await authFetch(`/sales/${invoiceNo}/pdf`)
+      const res = await authFetch(`/sales/${encodeURIComponent(invoiceNo)}/pdf`, { signal: pending.signal })
+      if (pending.signal.aborted || printWork.current !== pending) return
       if (!res.ok) { toast('error', 'Failed to load PDF for printing.'); return }
       const blob = await res.blob()
-      const url = window.URL.createObjectURL(blob)
-      const iframe = document.createElement('iframe')
-      iframe.style.display = 'none'
-      iframe.src = url
-      document.body.appendChild(iframe)
-
-      // Cleaned up, and the print call guarded. Previously the iframe and its
-      // object URL were left in the document forever — one of each per print —
-      // and `print()` sat outside the try, so a renderer that refuses it (the
-      // desktop app with the PDF viewer disabled) failed silently with no toast.
-      const cleanup = () => {
-        try { window.URL.revokeObjectURL(url) } catch { /* already gone */ }
-        iframe.remove()
-      }
-      iframe.onload = () => {
-        try {
-          iframe.contentWindow.print()
-          // Give the dialog time to take over; removing the frame under it
-          // cancels the job on some platforms.
-          setTimeout(cleanup, 60000)
-        } catch (err) {
-          logger.error('[INVOICE] print dialog refused', err)
-          toast('error', 'Could not open the print dialog.')
-          cleanup()
-        }
-      }
-      iframe.onerror = () => {
-        logger.error('[INVOICE] print iframe failed to load the PDF')
-        toast('error', 'Could not load the invoice PDF for printing.')
-        cleanup()
-      }
+      if (pending.signal.aborted || printWork.current !== pending) return
+      // Use the same load, validation and cleanup lifecycle as POS printing.
+      // display:none frames may not render Chromium's native PDF viewer.
+      await printInvoicePdf(blob, { signal: pending.signal })
     } catch (err) {
+      if (pending.signal.aborted && !timedOut) return
       logger.error('[INVOICE] print failed', err)
-      toast('error', 'Error printing invoice.')
+      toast('error', timedOut
+        ? 'The invoice PDF did not respond. Try Print / PDF again.'
+        : 'Could not print this invoice PDF. Open the invoice to print its preview or download the PDF.')
+    } finally {
+      clearTimeout(timeout)
     }
   }, [authFetch])
 
@@ -85,23 +80,29 @@ export default function useInvoiceActions(authFetch, { onChanged } = {}) {
     const invoiceNo = invoice.invoice_number || invoice.invoice_no
     const total = parseFloat(invoice.total_amount || 0)
     const paid = parseFloat(invoice.paid_amount || 0)
-    const balance = Math.max(total - paid, 0)
+    const balance = invoice.outstanding != null ? parseFloat(invoice.outstanding) : Math.max(total - paid, 0)
     let phone = customer?.phone || invoice.customer_phone || ''
     if (!phone) {
       const input = window.prompt("Enter Customer's WhatsApp Number (10 digits):")
       if (!input) return
       phone = input
     }
-    const upiVpa = localStorage.getItem('pos_upi_vpa') || 'bizassist@upi'
-    const businessName = (user?.business_name || 'BizAssist Merchant').toUpperCase()
+    const upiVpa = resolvePaymentVpa({ profile, user })
+    const businessName = (user?.business_name || 'Stater Merchant').toUpperCase()
     let message = `Hi ${customer?.name || 'Customer'},\n\nHere is your Invoice ${invoiceNo} from ${businessName}:\nDate: ${invoice.date || invoice.invoice_date}\nTotal Amount: ₹${total.toLocaleString('en-IN')}\n`
     if (balance > 0) {
-      const upiLink = buildUpiUri({ vpa: upiVpa, payeeName: businessName, amount: balance, note: `INV-${invoiceNo}` })
-      message += `Balance Due: ₹${balance.toLocaleString('en-IN')}.\nYou can pay online using this UPI link: ${upiLink}\n`
+      if (upiVpa) {
+        const upiLink = buildUpiUri({ vpa: upiVpa, payeeName: businessName, amount: balance, note: `INV-${invoiceNo}` })
+        message += `Balance Due: ₹${balance.toLocaleString('en-IN')}.\nYou can pay online using this UPI link: ${upiLink}\n`
+  
+      } else {
+        message += `Balance Due: ₹${balance.toLocaleString('en-IN')}.\n`
+      }
+
     }
     message += `\nThank you for your business!`
     window.open(buildWhatsAppShareUrl(phone, message), '_blank')
-  }, [user])
+  }, [user, profile])
 
   const openReturn = useCallback(async (invoice) => {
     const invoiceNo = invoice.invoice_number || invoice.invoice_no
@@ -110,13 +111,7 @@ export default function useInvoiceActions(authFetch, { onChanged } = {}) {
       if (!res.ok) { toast('error', 'Failed to fetch invoice details.'); return }
       const detail = await res.json()
       setReturningInvoice(detail)
-      setReturnLines((detail.lines || []).map(li => ({
-        product_id: li.product_id, product_name: li.product_name, quantity: 0,
-        max_quantity: li.quantity, unit_price: li.unit_price,
-        cgst_rate: li.cgst_rate || 0, sgst_rate: li.sgst_rate || 0,
-        igst_rate: li.igst_rate || 0, cess_rate: li.cess_rate || 0,
-        unit: li.unit || 'Nos', hsn_sac: li.hsn_sac || '',
-      })))
+      setReturnLines(prepareReturnLines(detail.lines))
       setReturnNote('')
       setShowReturnModal(true)
     } catch (e) {

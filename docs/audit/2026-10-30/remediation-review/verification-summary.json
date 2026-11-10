@@ -1,0 +1,21 @@
+{
+  "date": "2026-10-30",
+  "reviewed_head": "6c527927cc2571cfb6a87de900bfbcd8919421d0",
+  "includes_uncommitted_working_tree": true,
+  "original_issue_count": 40,
+  "counts": {
+    "fixed": 18,
+    "partial": 20,
+    "open": 2
+  },
+  "not_closed": 22,
+  "not_closed_by_original_priority": {
+    "P1": 11,
+    "P2": 9,
+    "P3": 2
+  },
+  "head_unchanged_during_review": true,
+  "source_drift_during_review": [],
+  "product_changes_made_by_review": false,
+  "status_meaning": "Fixed is local correction/containment of the original defect, not a production, migration, historical-data or full-release certification."
+}

@@ -100,7 +100,7 @@ export default function PosTotalBar({
           type="button"
           className="btn btn-primary"
           style={{
-            background: 'var(--accent)',
+            background: 'var(--accent-solid, var(--accent))',
             borderColor: 'var(--accent)',
             padding: '10px 24px',
             borderRadius: 'var(--radius-md)',

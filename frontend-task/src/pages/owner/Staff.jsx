@@ -6,11 +6,28 @@ import { Empty, ErrorNote, Loader, Modal, PageHeader, useLoad, useToast } from '
 
 const ROLES = { delivery: 'Delivery agent', field: 'Field staff', supervisor: 'Supervisor' }
 
-function StaffForm({ staff, onClose, onSaved }) {
+function validPhone(value) {
+  const raw = value.trim()
+  if (!/^\+?[0-9 ()\-.]+$/.test(raw)) return false
+  let digits = raw.replace(/\D/g, '')
+  if (new Set(digits).size === 1) return false
+  if (!raw.startsWith('+')) {
+    if (digits.length === 10) digits = `91${digits}`
+    else if (!(digits.length === 12 && digits.startsWith('91'))) return false
+  }
+  return digits.length >= 8 && digits.length <= 15 && !digits.startsWith('0') && new Set(digits).size > 1 && (!digits.startsWith('91') || digits.length === 12)
+}
+
+export function StaffForm({ staff, onClose, onSaved }) {
   const toast = useToast()
   const [f, setF] = useState({ name: staff?.name || '', login_name: staff?.login_name || '', phone: staff?.phone || '', role: staff?.role || 'delivery', password: '' })
+  const [saving, setSaving] = useState(false)
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value })
+  const phoneValid = validPhone(f.phone)
+  const canSave = f.name.trim() && (staff || (f.login_name.trim() && f.password && phoneValid)) && (!f.phone.trim() || phoneValid)
   const save = async () => {
+    if (!canSave || saving) return
+    setSaving(true)
     try {
       if (staff) {
         const body = { name: f.name, phone: f.phone, role: f.role }
@@ -21,19 +38,21 @@ function StaffForm({ staff, onClose, onSaved }) {
       }
       onSaved()
     } catch (e) { toast(e.message, 'error') }
+    finally { setSaving(false) }
   }
   return (
     <Modal title={staff ? `Edit ${staff.name}` : 'Add staff'} onClose={onClose}
-      footer={<><button className="btn btn-ghost" onClick={onClose}>Cancel</button><button className="btn btn-primary" disabled={!f.name || (!staff && (!f.login_name || !f.password))} onClick={save}>Save</button></>}>
+      footer={<><button className="btn btn-ghost" onClick={onClose}>Cancel</button><button className="btn btn-primary" disabled={!canSave || saving} onClick={save}>{saving ? 'Saving…' : 'Save'}</button></>}>
       <div className="form-grid">
-        <div className="form-group"><label className="form-label">Full name</label><input className="form-input" value={f.name} onChange={set('name')} /></div>
-        <div className="form-group"><label className="form-label">Login name</label>
-          <input className="form-input" value={f.login_name} onChange={set('login_name')} disabled={!!staff} autoCapitalize="none" placeholder="e.g. ravi" /></div>
-        <div className="form-group"><label className="form-label">Phone</label><input className="form-input" inputMode="tel" value={f.phone} onChange={set('phone')} /></div>
-        <div className="form-group"><label className="form-label">Role</label>
-          <select className="form-select" value={f.role} onChange={set('role')}>{Object.entries(ROLES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></div>
-        <div className="form-group span-2"><label className="form-label">{staff ? 'New password (leave empty to keep)' : 'Password'}</label>
-          <input className="form-input" type="text" value={f.password} onChange={set('password')} autoComplete="new-password" />
+        <div className="form-group"><label className="form-label" htmlFor="staff-full-name">Full name</label><input id="staff-full-name" className="form-input" value={f.name} onChange={set('name')} /></div>
+        <div className="form-group"><label className="form-label" htmlFor="staff-account-name">Login name</label>
+          <input id="staff-account-name" className="form-input" value={f.login_name} onChange={set('login_name')} disabled={!!staff} autoCapitalize="none" placeholder="e.g. ravi" /></div>
+        <div className="form-group"><label className="form-label" htmlFor="staff-phone">{staff ? 'Phone' : 'Phone (required)'}</label><input id="staff-phone" className="form-input" type="tel" inputMode="tel" value={f.phone} onChange={set('phone')} required={!staff} aria-invalid={f.phone.trim() && !phoneValid ? 'true' : undefined} />
+          <span className="form-hint">Enter a 10-digit Indian number, or include the country code (for example +91).</span></div>
+        <div className="form-group"><label className="form-label" htmlFor="staff-role">Role</label>
+          <select id="staff-role" className="form-select" value={f.role} onChange={set('role')}>{Object.entries(ROLES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></div>
+        <div className="form-group span-2"><label className="form-label" htmlFor="staff-new-password">{staff ? 'New password (leave empty to keep)' : 'Password'}</label>
+          <input id="staff-new-password" className="form-input" type="text" value={f.password} onChange={set('password')} autoComplete="new-password" />
           <span className="form-hint">You set it and share it with them. 8+ characters, upper-case, lower-case and a number.{staff && ' Changing it signs them out.'}</span></div>
       </div>
     </Modal>
@@ -51,7 +70,7 @@ export default function Staff() {
   const policy = me.settings.device_policy
   return (
     <>
-      <PageHeader title="Staff" subtitle={`Staff sign in with BizID ${me.public_id} + their login name · ${policy === 'bound' ? 'locked to one phone each' : 'one device at a time'}`}>
+      <PageHeader title="Staff" subtitle={`Staff find your business with BizID ${me.public_id} or your account details, then select their name · ${policy === 'bound' ? 'locked to one phone each' : 'one device at a time'}`}>
         <button className="btn btn-primary" onClick={() => setEditing({})}>+ Add staff</button>
       </PageHeader>
       <ErrorNote error={error} />

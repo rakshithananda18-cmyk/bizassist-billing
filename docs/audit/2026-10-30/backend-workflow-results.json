@@ -1,0 +1,9 @@
+{
+  "date": "2026-10-30",
+  "baseline": "f90ea1f8de4be2b44cf2144954692a1094f08dab",
+  "command": "PYTEST_XDIST_WORKER=audit_release_root PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 scratch/core-workflow-venv/Scripts/python.exe -u scratch/core_workflow_runner.py -q tests/test_money_audit_regressions.py tests/test_financial_invariants.py tests/test_stock_ledger.py tests/test_billing.py tests/test_purchase_commit.py tests/test_phase3.py tests/test_actions.py tests/test_action_rails.py tests/test_reports_agree.py",
+  "result": "139 passed, 1 skipped in 18.82s",
+  "exit_code": 0,
+  "scope": "Selected existing backend money/API suites; worker-specific disposable SQLite, synthetic credentials, external network denied; run outside Windows local-socket restriction",
+  "limits": "Not full backend collection; not a PostgreSQL, production, multi-device or physical-printer result. Does not fix or disprove the separately reproduced defects."
+}

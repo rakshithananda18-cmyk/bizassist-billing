@@ -1,0 +1,304 @@
+/* ==========================================================================
+   STATER Bill — Legal & Trust Documentation Layout
+   Split-pane layout matching App Settings sub-sidebar aesthetic
+   ========================================================================== */
+
+.legal-shell {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  background-color: var(--bg, #fdfdfc);
+  color: var(--text-primary, #111827);
+  overflow: hidden;
+  z-index: 1000;
+  box-sizing: border-box;
+}
+
+/* ── Left Sidebar (Settings Sub-Sidebar Style) ── */
+.legal-sidebar {
+  width: 300px;
+  min-width: 300px;
+  max-width: 300px;
+  height: 100%;
+  background-color: var(--bg-1, #fcfcfb);
+  border-right: 1px solid var(--border, #e5e7eb);
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  flex-shrink: 0;
+  z-index: 10;
+}
+
+.legal-sidebar-header {
+  padding: 22px 20px 18px;
+  border-bottom: 1px solid var(--border, #f0f0ee);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-sizing: border-box;
+}
+
+.legal-sidebar-nav {
+  flex: 1;
+  padding: 18px 14px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  box-sizing: border-box;
+}
+
+.legal-sidebar-nav::-webkit-scrollbar {
+  width: 4px;
+}
+.legal-sidebar-nav::-webkit-scrollbar-thumb {
+  background: var(--border, #e5e7eb);
+  border-radius: 4px;
+}
+
+.legal-nav-group-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--accent, #c15f3c);
+  padding: 4px 10px;
+  margin-bottom: 4px;
+}
+
+.legal-nav-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  width: 100%;
+  text-decoration: none;
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-secondary, #4b5563);
+  transition: all 0.15s ease;
+  box-sizing: border-box;
+}
+
+.legal-nav-item:hover {
+  background: var(--bg-3, #f3f4f6);
+  color: var(--text-primary, #111827);
+}
+
+.legal-nav-item.active {
+  background: var(--page-selection-bg, var(--bg-2, #f5efe6));
+  color: var(--page-selection-text, var(--accent, #c15f3c));
+  font-weight: 600;
+  border-color: var(--page-selection-border, var(--border, #e5e7eb));
+  border-left: 3px solid var(--page-selection-text, var(--accent, #c15f3c));
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.legal-nav-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  margin-top: 1px;
+  flex-shrink: 0;
+  color: inherit;
+}
+
+.legal-nav-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.legal-nav-label {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: inherit;
+  line-height: 1.3;
+}
+
+.legal-nav-desc {
+  font-size: 0.74rem;
+  color: var(--text-muted, #6b7280);
+  line-height: 1.25;
+}
+
+.legal-sidebar-footer {
+  padding: 16px 18px;
+  border-top: 1px solid var(--border, #f0f0ee);
+  background-color: var(--bg-1, #fcfcfb);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-sizing: border-box;
+}
+
+/* ── Right Panel (Always-Scrollable Document Workspace) ── */
+.legal-doc-scroll {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  height: 100%;
+  overflow-y: scroll !important;
+  overflow-x: hidden;
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border, #d1d5db) transparent;
+  background-color: var(--bg, #fdfdfc);
+  outline: none;
+  box-sizing: border-box;
+}
+
+.legal-doc-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+
+.legal-doc-scroll::-webkit-scrollbar-track {
+  background: var(--bg-1, #fcfcfb);
+}
+
+.legal-doc-scroll::-webkit-scrollbar-thumb {
+  background: var(--border, #d1d5db);
+  border-radius: 4px;
+}
+
+.legal-doc-scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--accent, #c15f3c);
+}
+
+.legal-doc-content {
+  max-width: 840px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 44px 44px 110px;
+  box-sizing: border-box;
+}
+
+.legal-doc-header {
+  margin-bottom: 32px;
+  padding-bottom: 22px;
+  border-bottom: 1px solid var(--border, #e5e7eb);
+}
+
+.legal-doc-title {
+  font-size: 2.1rem;
+  font-weight: 900;
+  line-height: 1.2;
+  letter-spacing: -0.025em;
+  margin: 0 0 10px 0;
+  color: var(--text-primary, #111827);
+}
+
+.legal-doc-subtitle {
+  font-size: 1.05rem;
+  color: var(--text-secondary, #4b5563);
+  margin: 0 0 12px 0;
+  line-height: 1.5;
+}
+
+.legal-doc-badge {
+  font-size: 0.78rem;
+  color: var(--text-muted, #9ca3af);
+  font-weight: 600;
+}
+
+.legal-prose {
+  line-height: 1.78;
+  font-size: 0.96rem;
+  color: var(--text-secondary, #374151);
+}
+
+.legal-prose section {
+  margin-bottom: 32px;
+}
+
+.legal-prose h2 {
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin: 0 0 12px 0;
+  color: var(--text-primary, #111827);
+  letter-spacing: -0.01em;
+}
+
+.legal-prose p {
+  margin: 0 0 14px 0;
+}
+
+.legal-prose ul {
+  padding-left: 20px;
+  margin: 10px 0 16px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.legal-prose li {
+  line-height: 1.6;
+}
+
+/* ── Responsive Mobile (Below 768px) ── */
+@media (max-width: 768px) {
+  .legal-shell {
+    flex-direction: column;
+  }
+  
+  .legal-sidebar {
+    width: 100%;
+    min-width: 100%;
+    max-width: 100%;
+    height: auto;
+    border-right: none;
+    border-bottom: 1px solid var(--border, #e5e7eb);
+  }
+
+  .legal-sidebar-header {
+    padding: 14px 16px;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .legal-sidebar-nav {
+    flex-direction: row;
+    overflow-x: auto;
+    padding: 8px 12px;
+    gap: 8px;
+  }
+
+  .legal-nav-group-label {
+    display: none;
+  }
+
+  .legal-nav-item {
+    white-space: nowrap;
+    padding: 8px 12px;
+    width: auto;
+  }
+
+  .legal-nav-desc {
+    display: none;
+  }
+
+  .legal-sidebar-footer {
+    display: none;
+  }
+
+  .legal-doc-content {
+    padding: 24px 20px 80px;
+  }
+
+  .legal-doc-title {
+    font-size: 1.6rem;
+  }
+}

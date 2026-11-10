@@ -21,6 +21,8 @@ import pytest
 from fastapi.testclient import TestClient
 from main_groq import app
 
+from tests.signup_fixture import signup_payload
+
 client = TestClient(app)
 
 OWNER = {"username": "own_activity_owner", "password": "Password123",
@@ -35,7 +37,7 @@ def clear_windows():
 
 
 def _signup_or_login(creds):
-    r = client.post("/signup", json=creds)
+    r = client.post("/signup", json=signup_payload(creds))
     if r.status_code != 200:
         r = client.post("/login", json={"username": creds["username"], "password": creds["password"]})
     assert r.status_code == 200, r.text

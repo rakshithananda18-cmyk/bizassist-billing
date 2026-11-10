@@ -1,0 +1,8 @@
+2026-10-31 Asia/Calcutta
+Command: Python backend/tests/run_sync_role_smoke.py
+Environment: fresh loopback PostgreSQL 16 test database; synthetic schema-admin, tenant runtime, trade and platform-admin credentials. Secret values omitted.
+Actual pytest stdout:
+............                                                             [100%]
+12 passed in 13.60s
+
+The runner uses current metadata plus repeated additive installers. Full historical Alembic-chain verification is recorded separately by the root agent.

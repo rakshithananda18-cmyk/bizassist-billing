@@ -1,8 +1,8 @@
 import logging
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, BackgroundTasks
-from pydantic import BaseModel
-from sqlalchemy.orm import Session
+from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session, object_session
 
 from database.db import get_db
 from database.models import PurchaseInvoice, PurchaseInvoiceLineItem, User
@@ -27,6 +27,7 @@ def _line_out(li: PurchaseInvoiceLineItem) -> dict:
         "hsn_sac": li.hsn_sac,
         "unit": li.unit,
         "quantity": li.quantity,
+        "returned_qty": li.returned_qty or 0.0,
         "purchase_unit": li.purchase_unit,
         "conversion_factor": li.conversion_factor,
         "unit_price": li.unit_price,
@@ -46,7 +47,16 @@ def _line_out(li: PurchaseInvoiceLineItem) -> dict:
 
 
 def _invoice_out(inv: PurchaseInvoice) -> dict:
+    from core.party_archive import document_party_metadata
+    from core.billing.balances import invoice_balance, collection_status
+    session = object_session(inv)
+    balance = invoice_balance(session, inv, purchase=True) if session is not None else {}
     return {
+        **document_party_metadata(inv, "purchase"),
+        "paid_amount": balance.get("paid", 0),
+        "outstanding": balance.get("outstanding", 0),
+        "return_credit": balance.get("credit_due", 0),
+        "payment_status": collection_status(balance) if balance else "Pending",
         "id": inv.id,
         "supplier_id": inv.supplier_id,
         "supplier_name": inv.supplier_name,
@@ -215,7 +225,7 @@ def get_purchase_detail(
 
 class DebitNoteLine(BaseModel):
     product_id: int
-    quantity: float
+    quantity: float = Field(gt=0, allow_inf_nan=False)
     reason: Optional[str] = "return"
 
 

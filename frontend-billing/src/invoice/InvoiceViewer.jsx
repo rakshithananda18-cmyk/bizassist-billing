@@ -4,7 +4,7 @@
 // ONCE and freezes it: switching templates re-renders only — the payload object
 // is never refetched or mutated (the core no-mutation guarantee). Unknown or
 // crashing templates fall back to Classic and report `template_fallback_used`.
-import { Component, useCallback, useEffect, useState } from 'react'
+import { Component, useCallback, useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
 import { logger } from '../utils/logger'
@@ -12,11 +12,16 @@ import { resolveTemplate, templateOptions, FALLBACK_TEMPLATE } from './registry'
 import PrintPortal, { triggerPrint } from './PrintPortal'
 import { shareInvoice, buildWhatsAppLink, buildPublicInvoiceLink } from './share'
 import PageLoader from '../components/PageLoader'
+import HeaderSearchSlot from '../components/common/HeaderSearchSlot'
 import InvoiceAccountPanel from '../components/invoice/InvoiceAccountPanel'
-import { PhoneIcon, DownloadIcon } from '../components/Icons'
+import {
+  PhoneIcon, DownloadIcon, ChevronLeftIcon, CopyIcon, ReturnArrowIcon,
+  CheckIcon, Share2Icon, PrinterIcon, CloseIcon
+} from '../components/Icons'
 import { useDocLabels } from '../hooks/useDocLabels'
 import { useConfirm } from '../contexts/ConfirmContext'
 const LAST_USED_KEY = (bizId) => `invoice.template.${bizId || 'default'}`
+const PDF_DOWNLOAD_STYLE = { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 30, height: 30, borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', cursor: 'pointer', background: 'var(--bg-2)', color: 'var(--text-secondary)', transition: 'all 0.15s ease' }
 
 /** WhatsApp glyph (no dedicated icon in Icons.jsx). */
 function WhatsAppIcon({ size = 15 }) {
@@ -72,7 +77,7 @@ class TemplateBoundary extends Component {
   }
 }
 
-export default function InvoiceViewer({ invoiceNo: invoiceNoProp = null, embedded = false, onBack = null }) {
+export default function InvoiceViewer({ invoiceNo: invoiceNoProp = null, embedded = false, onBack = null, onClose = null }) {
   const label = useDocLabels()
   const confirm = useConfirm()
   // Embedded mode (e.g. inside the Payments page): the invoice number comes in
@@ -83,13 +88,34 @@ export default function InvoiceViewer({ invoiceNo: invoiceNoProp = null, embedde
   const invoiceNo = invoiceNoProp || params.invoiceNo
   const navigate = useNavigate()
   const goBack = useCallback(() => {
-    if (onBack) onBack()
+    if (onClose) onClose()
+    else if (onBack) onBack()
     else navigate(-1)
-  }, [onBack, navigate])
+  }, [onClose, onBack, navigate])
   const [payload, setPayload] = useState(null)
   const [error, setError] = useState(null)
   const [template, setTemplate] = useState(null)   // resolved after payload load
   const [savingDefault, setSavingDefault] = useState(false)
+  const [downloadingPdf, setDownloadingPdf] = useState(false)
+  const [pdfUrl, setPdfUrl] = useState(null)
+  const [pdfError, setPdfError] = useState(null)
+  const [printError, setPrintError] = useState(null)
+  const [printing, setPrinting] = useState(false)
+  const pdfAbortRef = useRef(null)
+  const pdfUrlRef = useRef(null)
+  const fetchInvoiceAccount = useCallback(path => api.raw(path), [])
+
+  useEffect(() => {
+    setDownloadingPdf(false)
+    setPdfUrl(null)
+    setPdfError(null)
+    return () => {
+      pdfAbortRef.current?.abort()
+      pdfAbortRef.current = null
+      if (pdfUrlRef.current) URL.revokeObjectURL(pdfUrlRef.current)
+      pdfUrlRef.current = null
+    }
+  }, [invoiceNo])
 
   // ── Load the payload ONCE. Freeze it. ──────────────────────────────────────
   useEffect(() => {
@@ -141,16 +167,54 @@ export default function InvoiceViewer({ invoiceNo: invoiceNoProp = null, embedde
     })
   }, [invoiceNo, payload])
 
-  const onPrint = useCallback(() => {
+  const onPrint = useCallback(async () => {
+    setPrintError(null)
+    setPrinting(true)
     beacon('print_opened', { invoice_no: invoiceNo, template_type: entry.key })
-    triggerPrint()
+    try { await triggerPrint() }
+    catch (error) {
+      logger.warn('Invoice print dialog failed', error)
+      setPrintError('The print dialog could not open. Try Print again, or use Download PDF.')
+    } finally { setPrinting(false) }
   }, [invoiceNo, entry.key])
 
-  const onDownloadPdf = useCallback(() => {
-    // Phase 1: browser print-to-PDF via the same pixel-exact print CSS.
-    // (Server-rendered PDF arrives in Phase 3.)
-    beacon('pdf_generated', { invoice_no: invoiceNo, template_type: entry.key })
-    triggerPrint()
+  const onDownloadPdf = useCallback(async () => {
+    if (pdfAbortRef.current) return
+    const controller = new AbortController()
+    pdfAbortRef.current = controller
+    setDownloadingPdf(true)
+    setPdfError(null)
+    try {
+      const response = await api.raw(`/sales/${encodeURIComponent(invoiceNo)}/pdf`, undefined, { signal: controller.signal })
+      const blob = await response.blob()
+      if (controller.signal.aborted) return
+      // The server can return printable HTML with HTTP 200 when PDF generation
+      // is unavailable. Never save that as a corrupt .pdf or open raw HTML.
+      if (!blob.size || blob.type.toLowerCase().split(';')[0].trim() !== 'application/pdf') {
+        throw new Error('PDF download is unavailable right now. Please try again shortly.')
+      }
+      const url = URL.createObjectURL(blob)
+      pdfUrlRef.current = url
+      setPdfUrl(url)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `${invoiceNo}.pdf`
+      document.body.appendChild(link)
+      try { link.click() } finally { link.remove() }
+      beacon('pdf_generated', { invoice_no: invoiceNo, template_type: entry.key })
+      // Keep the visible download link alive for a direct retry if this browser
+      // ignores the initial download request. Printing is a separate action.
+    } catch (error) {
+      if (controller.signal.aborted) return
+      logger.warn('Invoice PDF download failed', error)
+      setPdfError('PDF download could not start. Your invoice is saved; try Download PDF again.')
+      beacon('pdf_failed', { invoice_no: invoiceNo, template_type: entry.key, success: false })
+    } finally {
+      if (pdfAbortRef.current === controller) {
+        pdfAbortRef.current = null
+        if (!controller.signal.aborted) setDownloadingPdf(false)
+      }
+    }
   }, [invoiceNo, entry.key])
 
   const onShare = useCallback(async () => {
@@ -201,12 +265,21 @@ export default function InvoiceViewer({ invoiceNo: invoiceNoProp = null, embedde
     return (
       <div className="invoice-viewer" data-testid="invoice-viewer-error" style={{ padding: 24 }}>
         <p>{error}</p>
-        <button className="btn" onClick={goBack}>Go back</button>
+        <button className="btn" onClick={goBack} aria-label={embedded || onClose ? 'Close invoice viewer' : undefined}>
+          {embedded || onClose ? 'Close' : 'Go back'}
+        </button>
       </div>
     )
   }
   if (!payload || !template) {
-    return <PageLoader />
+    return <div className="invoice-viewer" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      {(onClose || embedded) && <div className="no-print" style={{ display: 'flex', justifyContent: 'flex-end', padding: '10px 16px' }}>
+        <button type="button" className="btn btn-ghost btn-icon" onClick={goBack} aria-label="Close invoice viewer">
+          <CloseIcon size={16} />
+        </button>
+      </div>}
+      <PageLoader />
+    </div>
   }
 
   const Template = entry.component
@@ -220,82 +293,211 @@ export default function InvoiceViewer({ invoiceNo: invoiceNoProp = null, embedde
     <div className="invoice-viewer" data-testid="invoice-viewer" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       {/* toolbar (hidden in print via .no-print) */}
       <div className="invoice-viewer-toolbar no-print" style={{
-        display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap',
-        padding: '8px 14px', position: 'sticky', top: 0, zIndex: 5,
-        background: 'var(--bg-3)', borderBottom: '1px solid var(--border)',
+        display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap',
+        padding: '10px 16px', position: 'sticky', top: 0, zIndex: 5,
+        background: 'var(--bg-2)', borderBottom: '1px solid var(--border)',
+        boxShadow: 'var(--shadow-sm)',
       }}>
-        {/* ← Back + title */}
-        <button className="btn btn-ghost btn-icon" onClick={goBack} aria-label="Back" style={{ flexShrink: 0 }}>←</button>
-        <span style={{ fontWeight: 700, fontSize: '0.88rem', color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 200 }}>
-          {payload.invoice.title} {payload.invoice.number}
-        </span>
+        {/* ← Back button */}
+        <button
+          className="btn btn-ghost btn-icon"
+          onClick={goBack}
+          aria-label="Back"
+          style={{
+            flexShrink: 0, width: 32, height: 32, borderRadius: 'var(--radius-sm)',
+            border: '1px solid var(--border)', background: 'var(--bg-1)',
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+            color: 'var(--text-secondary)', cursor: 'pointer',
+          }}
+        >
+          <ChevronLeftIcon size={16} />
+        </button>
+
+        {/* Title + Number Badge */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexShrink: 0 }}>
+          <span style={{
+            fontSize: '0.72rem', fontWeight: 700, padding: '2px 8px',
+            borderRadius: 'var(--radius-sm)', background: 'var(--accent-dim)',
+            color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.5px',
+          }}>
+            {payload.invoice.title || 'Invoice'}
+          </span>
+          <span style={{
+            fontWeight: 700, fontSize: '0.92rem', color: 'var(--text-primary)',
+            fontFamily: 'var(--font-mono, monospace)', whiteSpace: 'nowrap',
+          }}>
+            {payload.invoice.number}
+          </span>
+        </div>
 
         {/* divider */}
-        <span style={{ width: 1, height: 20, background: 'var(--border)', flexShrink: 0, margin: '0 2px' }} />
+        <span style={{ width: 1, height: 22, background: 'var(--border)', flexShrink: 0, margin: '0 3px' }} />
 
         {/* Template tabs */}
-        <div role="tablist" aria-label="Invoice template" style={{ display: 'flex', gap: 3, background: 'var(--bg-4, var(--bg-1))', borderRadius: 'var(--radius-sm)', padding: '3px' }}>
+        <HeaderSearchSlot compact />
+        <div role="tablist" aria-label="Invoice template" style={{
+          display: 'flex', gap: 3, background: 'var(--bg-1)',
+          borderRadius: 'var(--radius-md)', border: '1px solid var(--border)',
+          padding: '3px', flexShrink: 0,
+        }}>
           {templateOptions().map((opt) => (
             <button
               key={opt.key} role="tab" aria-selected={entry.key === opt.key}
               title={opt.description}
               onClick={() => selectTemplate(opt.key)}
               style={{
-                fontSize: '0.78rem', fontWeight: 600, padding: '4px 10px',
-                borderRadius: 'calc(var(--radius-sm) - 2px)',
+                fontSize: '0.78rem', fontWeight: entry.key === opt.key ? 700 : 500,
+                padding: '4px 12px',
+                borderRadius: 'calc(var(--radius-md) - 2px)',
                 border: 'none', cursor: 'pointer',
-                background: entry.key === opt.key ? 'var(--accent)' : 'transparent',
-                color: entry.key === opt.key ? '#fff' : 'var(--text-secondary)',
-                transition: 'background 0.15s, color 0.15s',
+                background: entry.key === opt.key ? 'var(--page-selection-bg, var(--accent-dim))' : 'transparent',
+                color: entry.key === opt.key ? 'var(--page-selection-text, var(--accent))' : 'var(--text-secondary)',
+                boxShadow: entry.key === opt.key ? '0 1px 3px rgba(0,0,0,0.14)' : 'none',
+                transition: 'background 0.15s, color 0.15s, box-shadow 0.15s',
               }}>
               {opt.label}
             </button>
           ))}
         </div>
 
-        <span style={{ flex: 1 }} />
+        <span style={{ flex: 1, minWidth: 6 }} />
 
         {/* Secondary actions */}
-        <div style={{ display: 'flex', gap: 4 }}>
-          <button className="btn btn-ghost btn-sm" onClick={onDuplicate}>Duplicate</button>
-          <button className="btn btn-ghost btn-sm" onClick={onCreditNote}>{label('sale_return')}</button>
-          <button className="btn btn-ghost btn-sm" onClick={onSetDefault} disabled={savingDefault}>
-            {savingDefault ? 'Saving…' : 'Set as default'}
+        <div style={{ display: 'flex', gap: 5, alignItems: 'center', flexWrap: 'wrap' }}>
+          <button
+            className="btn btn-ghost btn-sm"
+            onClick={onDuplicate}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 5,
+              padding: '5px 10px', borderRadius: 'var(--radius-sm)',
+              border: '1px solid var(--border)', background: 'var(--bg-1)',
+              fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-primary)',
+              cursor: 'pointer',
+            }}
+          >
+            <CopyIcon size={13} />
+            <span>Duplicate</span>
           </button>
-        </div>
-
-        {/* divider */}
-        <span style={{ width: 1, height: 20, background: 'var(--border)', flexShrink: 0, margin: '0 2px' }} />
-
-        {/* Share actions (WhatsApp + Download PDF now live beside the customer
-            name in the right panel as icon buttons). */}
-        <div style={{ display: 'flex', gap: 4 }}>
-          <button className="btn btn-ghost btn-sm" onClick={onShare}>Share Link</button>
+          <button
+            className="btn btn-ghost btn-sm"
+            onClick={onCreditNote}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 5,
+              padding: '5px 10px', borderRadius: 'var(--radius-sm)',
+              border: '1px solid var(--border)', background: 'var(--bg-1)',
+              fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-primary)',
+              cursor: 'pointer',
+            }}
+          >
+            <ReturnArrowIcon size={13} />
+            <span>{label('sale_return')}</span>
+          </button>
+          <button
+            className="btn btn-ghost btn-sm"
+            onClick={onSetDefault}
+            disabled={savingDefault}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 5,
+              padding: '5px 10px', borderRadius: 'var(--radius-sm)',
+              border: '1px solid var(--border)', background: 'var(--bg-1)',
+              fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-primary)',
+              cursor: savingDefault ? 'wait' : 'pointer',
+            }}
+          >
+            <CheckIcon size={13} />
+            <span>{savingDefault ? 'Saving…' : 'Set as default'}</span>
+          </button>
+          <button
+            className="btn btn-ghost btn-sm"
+            onClick={onShare}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 5,
+              padding: '5px 10px', borderRadius: 'var(--radius-sm)',
+              border: '1px solid var(--border)', background: 'var(--bg-1)',
+              fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-primary)',
+              cursor: 'pointer',
+            }}
+          >
+            <Share2Icon size={13} />
+            <span>Share Link</span>
+          </button>
         </div>
 
         {/* Primary: Print */}
         <button
           className="btn btn-primary btn-sm"
           data-testid="invoice-print-btn"
-          onClick={onPrint}>
-          Print
+          onClick={onPrint}
+          disabled={printing}
+          aria-busy={printing}
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+            padding: '6px 16px', borderRadius: 'var(--radius-sm)',
+            background: 'var(--accent-solid, var(--accent))', color: 'var(--accent-foreground, #fff)', border: 'none',
+            fontSize: '0.84rem', fontWeight: 700, cursor: 'pointer',
+            boxShadow: 'var(--shadow-sm)',
+            flexShrink: 0,
+          }}
+        >
+          <PrinterIcon size={14} />
+          <span>Print</span>
         </button>
+
+        {/* Integrated Close Button (when in modal or embedded) */}
+        {(onClose || embedded) && (
+          <button
+            onClick={onClose || goBack}
+            aria-label="Close invoice viewer"
+            title="Close"
+            style={{
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+              width: 32, height: 32, borderRadius: 'var(--radius-sm)',
+              border: '1px solid var(--border)', background: 'var(--bg-1)',
+              color: 'var(--text-secondary)', cursor: 'pointer',
+              flexShrink: 0, marginLeft: 2, transition: 'all 0.15s ease',
+            }}
+            onMouseEnter={e => {
+              e.currentTarget.style.background = 'var(--danger-dim)'
+              e.currentTarget.style.color = 'var(--danger)'
+              e.currentTarget.style.borderColor = 'var(--danger-dim)'
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.background = 'var(--bg-1)'
+              e.currentTarget.style.color = 'var(--text-secondary)'
+              e.currentTarget.style.borderColor = 'var(--border)'
+            }}
+          >
+            <CloseIcon size={15} />
+          </button>
+        )}
       </div>
 
+      {printError && <div className="no-print" role="alert" style={{ padding: '10px 14px', color: 'var(--danger)', background: 'var(--danger-dim)' }}>{printError}</div>}
+      {pdfError && <div className="no-print" role="alert" style={{ padding: '10px 14px', color: 'var(--danger)', background: 'var(--danger-dim)', borderBottom: '1px solid var(--border)', fontSize: '0.83rem' }}>{pdfError}</div>}
+
       {/* ── Body: preview + side panel ────────────────────────────────────────── */}
-      <div className="no-print" style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden' }}>
+      <div className="no-print invoice-viewer-body" style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden' }}>
+        <style>{`
+          @media (max-width: 640px) {
+            .invoice-viewer-body { flex-direction: column; overflow: auto !important; }
+            .invoice-viewer-body > .invoice-viewer-preview { flex: 0 0 auto !important; min-height: 240px; max-height: 60vh; box-sizing: border-box; }
+            .invoice-viewer-body > .invoice-viewer-account { width: 100% !important; border-left: 0 !important; border-top: 1px solid var(--border); flex: 0 0 auto; overflow: visible !important; }
+          }
+        `}</style>
 
         {/* Invoice preview (scrollable) */}
-        <div style={{
+        <div className="invoice-viewer-preview" style={{
           flex: 1, overflowY: 'auto', overflowX: 'auto',
-          padding: '24px 20px', background: 'var(--bg)',
+          padding: '28px 24px', background: 'var(--bg)',
           WebkitOverflowScrolling: 'touch',
+          scrollbarWidth: 'thin',
         }}>
           <div style={{
-            boxShadow: 'var(--shadow-md)', background: '#fff',
-            width: '100%', maxWidth: 820,
+            boxShadow: 'var(--shadow-lg, 0 8px 30px rgba(0,0,0,0.12))', background: '#fff',
+            width: '100%', maxWidth: 840,
             minWidth: entry.key.includes('thermal') ? 'auto' : '800px',
-            margin: '0 auto', borderRadius: 'var(--radius-sm)',
+            margin: '0 auto', borderRadius: 'var(--radius-md)',
+            border: '1px solid var(--border)',
           }}>
             {body}
           </div>
@@ -313,21 +515,23 @@ export default function InvoiceViewer({ invoiceNo: invoiceNoProp = null, embedde
           const amtPaid = tot.amount_paid || 0
           const balanceDue = tot.balance_due ?? Math.max(0, grandTotal - amtPaid)
           const isPaid = balanceDue <= 0
+          const rawProgress = grandTotal > 0 ? (amtPaid / grandTotal) * 100 : (isPaid ? 100 : 0)
+          const paymentProgress = Number.isFinite(rawProgress) ? Math.max(0, Math.min(100, rawProgress)) : 0
           return (
-            <div style={{
-              width: 'min(340px, 38vw)', flexShrink: 0,
+            <div className="invoice-viewer-account" style={{
+              width: 'min(350px, 36vw)', flexShrink: 0,
               borderLeft: '1px solid var(--border)',
               background: 'var(--bg-2)',
               display: 'flex', flexDirection: 'column',
               overflow: 'hidden',
             }}>
               <style>{`
-                .ivp-label { font-size: 0.67rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: var(--text-muted); margin-bottom: 8px; display: flex; align-items: center; gap: 5px; }
+                .ivp-label { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: var(--text-muted); margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
                 .ivp-label::after { content: ''; flex: 1; height: 1px; background: var(--border); margin-left: 4px; }
-                .ivp-card { background: var(--bg-1); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 13px 15px; display: flex; flex-direction: column; gap: 5px; }
-                .ivp-row { display: flex; justify-content: space-between; align-items: center; font-size: 0.82rem; padding: 2px 0; }
+                .ivp-card { background: var(--bg-1); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 14px 16px; display: flex; flex-direction: column; gap: 6px; box-shadow: var(--shadow-sm); }
+                .ivp-row { display: flex; justify-content: space-between; align-items: center; font-size: 0.84rem; padding: 3px 0; }
                 .ivp-row .lbl { color: var(--text-secondary); }
-                .ivp-row .val { font-weight: 600; color: var(--text-primary); }
+                .ivp-row .val { font-weight: 600; color: var(--text-primary); font-family: var(--font-mono, monospace); }
               `}</style>
 
               {/* Pinned customer header — stays at the top while the details below
@@ -336,27 +540,34 @@ export default function InvoiceViewer({ invoiceNo: invoiceNoProp = null, embedde
                 <div className="ivp-label">Customer</div>
                 <div className="ivp-card" style={{ gap: 6 }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                    <div style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-primary)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <div style={{ fontWeight: 700, fontSize: '0.94rem', color: 'var(--text-primary)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {buyer.name || 'Walk-in Customer'}
                     </div>
                     <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
                       <button onClick={onShareWhatsApp} title="Send on WhatsApp" aria-label="Send on WhatsApp"
-                        style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: '50%', border: 'none', cursor: 'pointer', background: '#25D366', color: '#fff' }}>
-                        <WhatsAppIcon size={15} />
+                        style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 30, height: 30, borderRadius: 'var(--radius-sm)', border: 'none', cursor: 'pointer', background: '#25D366', color: '#fff', boxShadow: '0 2px 5px rgba(37,211,102,0.35)', transition: 'transform 0.15s ease' }}>
+                        <WhatsAppIcon size={16} />
                       </button>
-                      <button onClick={onDownloadPdf} title="Download PDF" aria-label="Download PDF"
-                        style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: '50%', border: '1px solid var(--border)', cursor: 'pointer', background: 'var(--bg-2)', color: 'var(--text-secondary)' }}>
-                        <DownloadIcon size={14} />
-                      </button>
+                      {pdfUrl ? (
+                        <a href={pdfUrl} download={`${invoiceNo}.pdf`} title="Download saved invoice PDF" aria-label="Download PDF" style={PDF_DOWNLOAD_STYLE}>
+                          <DownloadIcon size={14} />
+                        </a>
+                      ) : (
+                        <button type="button" onClick={onDownloadPdf} title="Download saved invoice PDF"
+                          aria-label={downloadingPdf ? 'Preparing PDF' : 'Download PDF'} disabled={downloadingPdf}
+                          aria-busy={downloadingPdf} style={{ ...PDF_DOWNLOAD_STYLE, ...(downloadingPdf ? { cursor: 'wait' } : {}) }}>
+                          {downloadingPdf ? <span className="spinner" style={{ width: 14, height: 14 }} /> : <DownloadIcon size={14} />}
+                        </button>
+                      )}
                     </div>
                   </div>
                   {buyer.phone && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
-                      <PhoneIcon size={12} /> {buyer.phone}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                      <PhoneIcon size={13} /> {buyer.phone}
                     </div>
                   )}
                   {buyer.place_of_supply && (
-                    <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>📍 {buyer.place_of_supply}</div>
+                    <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Place of Supply: {buyer.place_of_supply}</div>
                   )}
                   {payload.invoice?.payment_mode && (
                     <div style={{ marginTop: 2 }}>
@@ -374,7 +585,7 @@ export default function InvoiceViewer({ invoiceNo: invoiceNoProp = null, embedde
               </div>
 
               {/* Scrolling details — roll under the pinned customer header. */}
-              <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '14px 16px 20px', display: 'flex', flexDirection: 'column', gap: 18 }}>
+              <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '14px 16px 20px', display: 'flex', flexDirection: 'column', gap: 16, scrollbarWidth: 'thin' }}>
 
                 {/* — Items — */}
                 <div>
@@ -382,24 +593,24 @@ export default function InvoiceViewer({ invoiceNo: invoiceNoProp = null, embedde
                     Items
                     {lines.length > 0 && (
                       <span style={{
-                        fontSize: '0.64rem', fontWeight: 700, padding: '1px 6px',
-                        borderRadius: '99px', background: 'var(--bg-3)',
-                        color: 'var(--text-muted)', border: '1px solid var(--border)',
+                        fontSize: '0.66rem', fontWeight: 700, padding: '1px 7px',
+                        borderRadius: '99px', background: 'var(--accent-dim)',
+                        color: 'var(--accent)', border: '1px solid var(--border-subtle)',
                       }}>{lines.length}</span>
                     )}
                   </div>
-                  <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', overflow: 'hidden' }}>
+                  <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', overflow: 'hidden', boxShadow: 'var(--shadow-sm)' }}>
                     {lines.length === 0 ? (
                       <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '18px 12px', fontSize: '0.8rem', background: 'var(--bg-1)' }}>
                         No items on this invoice
                       </div>
                     ) : (
-                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.79rem' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
                         <thead>
                           <tr style={{ background: 'var(--bg-3)', borderBottom: '1px solid var(--border)' }}>
-                            <th style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 600, color: 'var(--text-muted)', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.4px' }}>Item</th>
-                            <th style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 600, color: 'var(--text-muted)', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.4px' }}>Qty</th>
-                            <th style={{ padding: '6px 10px', textAlign: 'right', fontWeight: 600, color: 'var(--text-muted)', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.4px' }}>Total</th>
+                            <th style={{ padding: '7px 10px', textAlign: 'left', fontWeight: 700, color: 'var(--text-muted)', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Item</th>
+                            <th style={{ padding: '7px 8px', textAlign: 'right', fontWeight: 700, color: 'var(--text-muted)', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Qty</th>
+                            <th style={{ padding: '7px 10px', textAlign: 'right', fontWeight: 700, color: 'var(--text-muted)', fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Total</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -407,10 +618,10 @@ export default function InvoiceViewer({ invoiceNo: invoiceNoProp = null, embedde
                             <tr key={i} style={{ borderBottom: i < lines.length - 1 ? '1px solid var(--border)' : 'none', background: i % 2 === 0 ? 'var(--bg-1)' : 'var(--bg-2)' }}>
                               <td style={{ padding: '8px 10px', color: 'var(--text-primary)', fontWeight: 500, lineHeight: 1.3 }}>
                                 <div>{line.name}</div>
-                                {line.rate > 0 && <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: 1 }}>{fmtAmt(line.rate)} / {line.unit || 'Nos'}</div>}
+                                {line.rate > 0 && <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 1, fontFamily: 'var(--font-mono, monospace)' }}>{fmtAmt(line.rate)} / {line.unit || 'Nos'}</div>}
                               </td>
                               <td style={{ padding: '8px', textAlign: 'right', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>{line.qty} {line.unit || 'Nos'}</td>
-                              <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 700, color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>{fmtAmt(line.line_total)}</td>
+                              <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 700, color: 'var(--text-primary)', whiteSpace: 'nowrap', fontFamily: 'var(--font-mono, monospace)' }}>{fmtAmt(line.line_total)}</td>
                             </tr>
                           ))}
                         </tbody>
@@ -441,40 +652,51 @@ export default function InvoiceViewer({ invoiceNo: invoiceNoProp = null, embedde
                     {tot.round_off != null && tot.round_off !== 0 && (
                       <div className="ivp-row"><span className="lbl">Round Off</span><span className="val">{tot.round_off > 0 ? '+' : ''}{fmtAmt(tot.round_off)}</span></div>
                     )}
-                    <div style={{ height: 1, background: 'var(--border)', margin: '5px 0' }} />
+                    <div style={{ height: 1, background: 'var(--border)', margin: '4px 0' }} />
                     {/* Grand total strip */}
                     <div style={{
                       display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                       background: 'var(--accent-dim)', border: '1px solid var(--border-subtle)',
-                      borderRadius: 'var(--radius-sm)', padding: '9px 12px', margin: '2px -1px 0',
+                      borderRadius: 'var(--radius-md)', padding: '11px 14px', margin: '2px -1px 0',
                     }}>
-                      <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-primary)' }}>Grand Total</span>
-                      <span style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--accent)' }}>{fmtAmt(grandTotal)}</span>
+                      <span style={{ fontSize: '0.84rem', fontWeight: 700, color: 'var(--text-primary)' }}>Grand Total</span>
+                      <span style={{ fontSize: '1.22rem', fontWeight: 800, color: 'var(--accent)', fontFamily: 'var(--font-mono, monospace)' }}>{fmtAmt(grandTotal)}</span>
                     </div>
                   </div>
                 </div>
 
                 {/* — Payment status — */}
-                {grandTotal > 0 && (
+                {grandTotal >= 0 && (
                   <div>
                     <div className="ivp-label">Payment</div>
                     <div className="ivp-card" style={{ gap: 8 }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>Amount Paid</span>
-                        <span style={{ fontSize: '0.86rem', fontWeight: 700, color: 'var(--success)' }}>{fmtAmt(amtPaid)}</span>
+                        <span style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--success)', fontFamily: 'var(--font-mono, monospace)' }}>{fmtAmt(amtPaid)}</span>
                       </div>
-                      <div style={{ height: 5, background: 'var(--bg-3)', borderRadius: '99px', overflow: 'hidden' }}>
+                      <div role="progressbar" aria-label="Invoice payment progress" aria-valuemin={0} aria-valuemax={100}
+                        aria-valuenow={paymentProgress} style={{ height: 6, background: 'var(--bg-3)', borderRadius: '99px', overflow: 'hidden' }}>
                         <div style={{
                           height: '100%', borderRadius: '99px', transition: 'width 0.4s ease',
-                          width: `${Math.min(100, (amtPaid / grandTotal) * 100)}%`,
+                          width: `${paymentProgress}%`,
                           background: isPaid ? 'var(--success)' : 'var(--warning)',
                         }} />
                       </div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>Balance Due</span>
-                        <span style={{ fontSize: '0.86rem', fontWeight: 700, color: isPaid ? 'var(--success)' : 'var(--danger)' }}>
-                          {isPaid ? '✓ Paid' : fmtAmt(balanceDue)}
-                        </span>
+                        {isPaid ? (
+                          <span style={{
+                            fontSize: '0.78rem', fontWeight: 700, padding: '2px 8px',
+                            borderRadius: '99px', background: 'var(--success-dim)',
+                            color: 'var(--success)', border: '1px solid rgba(31, 107, 58, 0.25)',
+                          }}>
+                            ✓ Paid
+                          </span>
+                        ) : (
+                          <span style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--danger)', fontFamily: 'var(--font-mono, monospace)' }}>
+                            {fmtAmt(balanceDue)}
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -482,7 +704,7 @@ export default function InvoiceViewer({ invoiceNo: invoiceNoProp = null, embedde
 
                 {/* — Payments received & returns (screen-only, from /account) — */}
                 {payload.invoice?.id && (
-                  <InvoiceAccountPanel authFetch={(p) => api.raw(p)} invoiceId={payload.invoice.id} />
+                  <InvoiceAccountPanel authFetch={fetchInvoiceAccount} invoiceId={payload.invoice.id} />
                 )}
 
               </div>

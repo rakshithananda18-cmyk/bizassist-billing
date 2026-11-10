@@ -1,0 +1,31 @@
+import { test, expect } from '@playwright/test'
+
+for (const viewport of [{ width: 320, height: 568 }, { width: 1440, height: 900 }]) {
+  test(`storage choice is reachable and remembered at ${viewport.width}px`, async ({ page }) => {
+    await page.setViewportSize(viewport)
+    await page.route('**/health', route => route.fulfill({ json: { status: 'ok', db: 'connected' } }))
+    await page.goto('/login')
+    const notice = page.getByRole('region', { name: 'Cookies & browser storage' })
+    await expect(notice).toBeVisible()
+    const bounds = await notice.boundingBox()
+    expect(bounds.x).toBeGreaterThanOrEqual(0)
+    expect(bounds.x + bounds.width).toBeLessThanOrEqual(viewport.width)
+    await expect(notice.getByRole('button', { name: 'Essential only' })).toBeInViewport()
+    await expect(notice.getByRole('button', { name: 'Accept all' })).toBeInViewport()
+    await page.screenshot({ path: `test-results/storage-consent-${viewport.width}.png` })
+    await notice.getByRole('button', { name: 'Essential only' }).click()
+    await expect(notice).toHaveCount(0)
+    await page.reload()
+    await expect(notice).toHaveCount(0)
+    await page.goto('/privacy')
+    await page.getByRole('button', { name: 'Manage storage preferences' }).click()
+    await expect(notice).toBeVisible()
+    await notice.getByRole('button', { name: 'Accept all' }).click()
+    const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('stater_storage_consent')))
+    expect(saved).toMatchObject({ essential: true, diagnostics: true, version: 1 })
+    await page.getByRole('button', { name: 'Manage storage preferences' }).click()
+    await expect(notice).toBeVisible()
+    await page.emulateMedia({ media: 'print' })
+    await expect(notice).toBeHidden()
+  })
+}

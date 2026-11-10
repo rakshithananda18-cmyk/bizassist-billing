@@ -26,10 +26,11 @@ from sqlalchemy import func
 from database.db import SessionLocal
 from database.models import Invoice, Inventory
 from services.dates import parse_date
+from services.groq_client import DEFAULT_COMPLEX_MODEL
 
 logger = logging.getLogger("bizassist.smart_insights")
 
-MODEL_COMPLEX = os.getenv("GROQ_MODEL_COMPLEX", "openai/gpt-oss-120b")
+MODEL_COMPLEX = os.getenv("GROQ_MODEL_COMPLEX", DEFAULT_COMPLEX_MODEL)
 
 
 def _sf(v) -> float:

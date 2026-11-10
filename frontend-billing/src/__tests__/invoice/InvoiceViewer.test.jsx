@@ -2,9 +2,10 @@
 //   • fetches the payload once and freezes it
 //   • template switching re-renders WITHOUT refetching or mutating the payload
 //   • Print button triggers window.print and fires the print_opened beacon
-//   • Download PDF calls its handler; beacons never block the UI
+//   • Download PDF fetches a real authenticated PDF independently of printing
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, waitFor } from '@testing-library/react'
+import { act, screen, cleanup, waitFor } from '@testing-library/react'
+import { renderWithAuth as render } from '../renderWithAuth'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import { gstPayload } from './fixtures'
@@ -12,6 +13,7 @@ import { gstPayload } from './fixtures'
 const apiGet = vi.fn()
 const apiPost = vi.fn(() => Promise.resolve({ ok: true }))
 const apiPut = vi.fn(() => Promise.resolve({}))
+const apiRaw = vi.fn()
 vi.mock('../../api/client', () => ({
   api: {
     get: (...a) => apiGet(...a),
@@ -19,7 +21,7 @@ vi.mock('../../api/client', () => ({
     put: (...a) => apiPut(...a),
     // InvoiceAccountPanel fetches the invoice account via api.raw; return
     // not-ok so the panel renders nothing and these tests stay focused.
-    raw: () => Promise.resolve({ ok: false, json: async () => ({}) }),
+    raw: (...a) => apiRaw(...a),
   },
 }))
 
@@ -39,6 +41,12 @@ beforeEach(() => {
   vi.clearAllMocks()
   localStorage.clear()
   apiGet.mockResolvedValue(gstPayload())
+  apiRaw.mockImplementation(path => Promise.resolve(path.endsWith('/pdf')
+    ? { ok: true, blob: async () => new Blob(['%PDF-1.7 test'], { type: 'application/pdf' }) }
+    : { ok: false, json: async () => ({}) }))
+  vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:invoice-viewer-test')
+  vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
+  vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
   window.print = vi.fn()
 })
 
@@ -46,9 +54,35 @@ afterEach(() => {
   cleanup()
   const node = document.getElementById('invoice-a4-root')
   if (node) node.remove()
+  vi.restoreAllMocks()
+  delete window.bizassistDesktop
 })
 
 describe('InvoiceViewer', () => {
+  it.each([
+    [0, 100],
+    [10, 0],
+  ])('shows finite progress for a zero-value invoice with %s balance due', async (balanceDue, expectedProgress) => {
+    const data = gstPayload()
+    apiGet.mockResolvedValue(gstPayload({ totals: { ...data.totals, grand_total: 0, amount_paid: 0, balance_due: balanceDue } }))
+    mount()
+    const progress = await screen.findByRole('progressbar', { name: 'Invoice payment progress' })
+    expect(progress).toHaveAttribute('aria-valuenow', String(expectedProgress))
+    expect(progress.firstElementChild).toHaveStyle({ width: `${expectedProgress}%` })
+    expect(progress.innerHTML).not.toContain('NaN')
+    expect(apiPost.mock.calls.some(([path]) => path === '/billing/invoices')).toBe(false)
+  })
+  it('keeps the integrated close action available during loading and uses the latest callback', async () => {
+    apiGet.mockReturnValue(new Promise(() => {}))
+    const firstClose = vi.fn(), latestClose = vi.fn()
+    const view = render(<MemoryRouter><InvoiceViewer invoiceNo="INV-42" embedded onClose={firstClose} /></MemoryRouter>)
+    await userEvent.click(screen.getByRole('button', { name: 'Close invoice viewer' }))
+    expect(firstClose).toHaveBeenCalledOnce()
+    view.rerender(<MemoryRouter><InvoiceViewer invoiceNo="INV-42" embedded onClose={latestClose} /></MemoryRouter>)
+    await userEvent.click(screen.getByRole('button', { name: 'Close invoice viewer' }))
+    expect(latestClose).toHaveBeenCalledOnce()
+    expect(firstClose).toHaveBeenCalledOnce()
+  })
   it('fetches the payload once and renders the default (classic) template', async () => {
     mount()
     await waitFor(() => expect(screen.getAllByTestId('invoice-classic').length).toBeGreaterThan(0))
@@ -71,6 +105,7 @@ describe('InvoiceViewer', () => {
     await waitFor(() => expect(screen.getAllByTestId('invoice-classic').length).toBeGreaterThan(0))
 
     expect(apiGet).toHaveBeenCalledTimes(1)                 // never refetched
+    expect(apiRaw.mock.calls.filter(([path]) => path.endsWith('/account'))).toHaveLength(1)
     expect(payload).toEqual(snapshot)                       // never mutated
     expect(Object.isFrozen(payload)).toBe(true)             // frozen on load
     // template_selected beacon fired for the switch
@@ -86,14 +121,85 @@ describe('InvoiceViewer', () => {
     const actions = apiPost.mock.calls.map(([, body]) => body?.action)
     expect(actions).toContain('print_opened')
   })
+  it('requests the desktop native print dialog directly without opening a popup', async () => {
+    const nativePrint = vi.fn().mockResolvedValue({ success: true, cancelled: false })
+    window.bizassistDesktop = { print: nativePrint }
+    mount()
+    await waitFor(() => screen.getAllByTestId('invoice-classic'))
+    await userEvent.click(screen.getByTestId('invoice-print-btn'))
+    expect(nativePrint).toHaveBeenCalledOnce()
+    expect(window.print).not.toHaveBeenCalled()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+  it('shows print recovery only for a native failure and keeps cancellation quiet', async () => {
+    const nativePrint = vi.fn().mockResolvedValueOnce({ success: false, cancelled: true })
+      .mockResolvedValueOnce({ success: false, cancelled: false, reason: 'failed' })
+    window.bizassistDesktop = { print: nativePrint }
+    mount()
+    await waitFor(() => screen.getAllByTestId('invoice-classic'))
+    await userEvent.click(screen.getByTestId('invoice-print-btn'))
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    await userEvent.click(screen.getByTestId('invoice-print-btn'))
+    expect(await screen.findByRole('alert')).toHaveTextContent('print dialog could not open')
+    expect(screen.getByTestId('invoice-print-btn')).not.toBeDisabled()
+  })
 
-  it('Download PDF calls the pdf handler (print-to-PDF in Phase 1)', async () => {
+  it('downloads a real PDF without invoking native printing and leaves a retry link', async () => {
     mount()
     await waitFor(() => screen.getAllByTestId('invoice-classic'))
     await userEvent.click(screen.getByRole('button', { name: 'Download PDF' }))
-    expect(window.print).toHaveBeenCalledTimes(1)
+    const link = await screen.findByRole('link', { name: 'Download PDF' })
+    expect(apiRaw).toHaveBeenCalledWith('/sales/INV-42/pdf', undefined, { signal: expect.any(AbortSignal) })
+    expect(window.print).not.toHaveBeenCalled()
+    expect(URL.createObjectURL).toHaveBeenCalledOnce()
+    expect(HTMLAnchorElement.prototype.click).toHaveBeenCalledOnce()
+    expect(link).toHaveAttribute('href', 'blob:invoice-viewer-test')
+    expect(link).toHaveAttribute('download', 'INV-42.pdf')
     const actions = apiPost.mock.calls.map(([, body]) => body?.action)
     expect(actions).toContain('pdf_generated')
+  })
+
+  it('rejects a printable HTML fallback instead of downloading it as a PDF', async () => {
+    apiRaw.mockImplementation(path => Promise.resolve(path.endsWith('/pdf')
+      ? { ok: true, blob: async () => new Blob(['<html>fallback</html>'], { type: 'text/html' }) }
+      : { ok: false, json: async () => ({}) }))
+    mount()
+    await waitFor(() => screen.getAllByTestId('invoice-classic'))
+    await userEvent.click(screen.getByRole('button', { name: 'Download PDF' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Your invoice is saved')
+    expect(URL.createObjectURL).not.toHaveBeenCalled()
+    expect(HTMLAnchorElement.prototype.click).not.toHaveBeenCalled()
+    expect(window.print).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: 'Download PDF' })).not.toBeDisabled()
+  })
+
+  it('aborts an unfinished PDF request when the viewer closes', async () => {
+    let resolvePdf
+    const pendingPdf = new Promise(resolve => { resolvePdf = resolve })
+    apiRaw.mockImplementation(path => path.endsWith('/pdf')
+      ? pendingPdf : Promise.resolve({ ok: false, json: async () => ({}) }))
+    const view = mount()
+    await waitFor(() => screen.getAllByTestId('invoice-classic'))
+    await userEvent.click(screen.getByRole('button', { name: 'Download PDF' }))
+    expect(screen.getByRole('button', { name: 'Preparing PDF' })).toBeDisabled()
+    const request = apiRaw.mock.calls.find(([path]) => path.endsWith('/pdf'))
+    view.unmount()
+    expect(request[2].signal.aborted).toBe(true)
+    await act(async () => {
+      resolvePdf({ ok: true, blob: async () => new Blob(['%PDF-test'], { type: 'application/pdf' }) })
+      await pendingPdf
+    })
+    expect(HTMLAnchorElement.prototype.click).not.toHaveBeenCalled()
+    expect(URL.createObjectURL).not.toHaveBeenCalled()
+  })
+
+  it('revokes a prepared PDF URL when the viewer closes', async () => {
+    const view = mount()
+    await waitFor(() => screen.getAllByTestId('invoice-classic'))
+    await userEvent.click(screen.getByRole('button', { name: 'Download PDF' }))
+    await screen.findByRole('link', { name: 'Download PDF' })
+    view.unmount()
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:invoice-viewer-test')
   })
 
   it('Set as default persists via PUT /settings', async () => {

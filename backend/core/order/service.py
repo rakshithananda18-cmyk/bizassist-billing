@@ -5,9 +5,11 @@ Domain service logic for B2B Ordering and Catalog visibility.
 """
 import logging
 import uuid
+import math
 from services.dates import utc_now
 from datetime import datetime
 from typing import List, Dict, Any
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from core.models import B2BConnection, B2BOrder, B2BOrderLineItem
 from core.billing import sequence as SEQ
@@ -75,6 +77,12 @@ def get_supplier_catalog(db: Session, buyer_business_id: int, seller_business_id
     """
     Get the seller's catalog filtered and priced according to the B2BConnection policy.
     """
+    if db.bind.dialect.name == "postgresql" and not db.info.get("trade_authorized"):
+        from database.trade_service import authorized_catalog, _privileged
+        if not _privileged(db):
+            if int(db.info.get("business_id") or 0) != int(buyer_business_id):
+                raise PermissionError("Catalogue requester does not match the authenticated business")
+            return authorized_catalog(db, seller_business_id)
     conn = db.query(B2BConnection).filter(
         B2BConnection.seller_business_id == seller_business_id,
         B2BConnection.buyer_business_id == buyer_business_id,
@@ -122,16 +130,17 @@ def get_supplier_catalog(db: Session, buyer_business_id: int, seller_business_id
             # requirement — a failure here must not take the catalogue down.
             logger.warning("Catalogue barcode lookup failed: %s", e)
 
-    # Inventory, also batched (was one query per product).
+    # Inventory, also batched (aggregates across all warehouse/batch buckets, BD-12).
     stock_by_product = {}
     if product_ids:
-        for pid, qty in (
-            db.query(Inventory.product_id, Inventory.stock)
+        for pid, total_qty in (
+            db.query(Inventory.product_id, func.coalesce(func.sum(Inventory.stock), 0.0))
             .filter(Inventory.business_id == seller_business_id,
                     Inventory.product_id.in_(product_ids))
+            .group_by(Inventory.product_id)
             .all()
         ):
-            stock_by_product[pid] = qty
+            stock_by_product[pid] = float(total_qty)
 
     catalog = []
     for p in products:
@@ -196,6 +205,14 @@ def create_order(
     items: List[Dict[str, Any]],
     notes: str = None
 ) -> B2BOrder:
+    from database.trade_service import trade_session
+    with trade_session(db, actor_id=buyer_business_id, operation="place_order", seller_id=seller_business_id) as work:
+        result = _create_order(work, buyer_business_id, seller_business_id, items, notes)
+        list(result.line_items)
+        return result
+
+
+def _create_order(db, buyer_business_id, seller_business_id, items, notes=None):
     """
     Create a new B2BOrder and calculate taxes / totals.
     """
@@ -214,6 +231,16 @@ def create_order(
     order_num = _next_order_number(db)
 
 
+    from core.billing import commands as billing
+    from core.templates import loader as templates
+    seller = db.query(User).filter(User.id == seller_business_id).first()
+    buyer = db.query(User).filter(User.id == buyer_business_id).first()
+    from core.party_archive import require_active_businesses
+    require_active_businesses(db, buyer_business_id, seller_business_id)
+    seller_state, buyer_state = seller.state_code, buyer.state_code
+    inclusive = bool(templates.resolve_for(seller_business_id, db).get("billing", {}).get("tax_inclusive_default", False))
+    rounding = billing.round_off_policy(seller, db=db)
+    computed_lines = []
     # Calculate tax totals
     subtotal = 0.0
     cgst_total = 0.0
@@ -224,14 +251,17 @@ def create_order(
     for item in items:
         prod_id = item["product_id"]
         qty = float(item["quantity"])
-        if qty <= 0:
-            raise ValueError("Quantity must be greater than zero")
+        if not math.isfinite(qty) or qty <= 0:
+            raise ValueError("Quantity must be finite and greater than zero")
             
-        p = db.query(Product).filter(
+        p_query = db.query(Product).filter(
             Product.id == prod_id,
             Product.business_id == seller_business_id,
             Product.is_active == True
-        ).first()
+        )
+        if conn.catalog_category:
+            p_query = p_query.filter(Product.category == conn.catalog_category)
+        p = p_query.first()
         
         if not p:
             raise ValueError(f"Product ID {prod_id} not found in supplier catalogue")
@@ -245,39 +275,35 @@ def create_order(
 
         # Apply connection discount policy
         discount_factor = 1.0 - (conn.discount_pct / 100.0)
-        unit_price = base_price * discount_factor
+        unit_price = billing._round2(base_price * discount_factor)
         
-        line_total = unit_price * qty
-        subtotal += line_total
-        
-        # Calculate line GST (simple split)
-        cgst_rate = p.cgst_rate or 0.0
-        sgst_rate = p.sgst_rate or 0.0
-        igst_rate = p.igst_rate or 0.0
-        
-        cgst_amount = line_total * (cgst_rate / 100.0)
-        sgst_amount = line_total * (sgst_rate / 100.0)
-        igst_amount = line_total * (igst_rate / 100.0)
-        
+        facts = billing._compute_line({"product_id": p.id, "quantity": qty, "unit_price": unit_price},
+            p, intra=billing._is_intra_state(seller_state, buyer_state), tax_inclusive=inclusive)
+        computed_lines.append(facts)
+        cgst_rate, sgst_rate, igst_rate = facts["cgst_rate"], facts["sgst_rate"], facts["igst_rate"]
+        cgst_amount, sgst_amount, igst_amount = facts["cgst_amount"], facts["sgst_amount"], facts["igst_amount"]
+
         cgst_total += cgst_amount
         sgst_total += sgst_amount
         igst_total += igst_amount
-        
+
         line_item = B2BOrderLineItem(
             product_id=p.id,
             product_name=p.name,
             hsn_sac=p.hsn_sac,
             unit=p.unit or "Nos",
             quantity=qty,
-            unit_price=unit_price,
+            unit_price=facts["unit_price"],
             cgst_rate=cgst_rate,
             sgst_rate=sgst_rate,
             igst_rate=igst_rate,
-            line_total=line_total + cgst_amount + sgst_amount + igst_amount
+            line_total=facts["line_total"]
         )
         order_items.append(line_item)
         
-    total_amount = subtotal + cgst_total + sgst_total + igst_total
+    totals = billing.invoice_totals(computed_lines, round_off_enabled=rounding)
+    subtotal, cgst_total, sgst_total, igst_total, total_amount = (
+        totals[key] for key in ("subtotal", "cgst_total", "sgst_total", "igst_total", "total_amount"))
     
     order = B2BOrder(
         buyer_business_id=buyer_business_id,
@@ -291,10 +317,16 @@ def create_order(
         igst_total=igst_total,
         total_amount=total_amount,
         notes=notes,
+        quoted_place_of_supply=buyer_state or "",
+        quoted_seller_state=seller_state or "",
+        quoted_tax_inclusive=inclusive,
+        quoted_round_off_enabled=rounding,
         line_items=order_items
     )
     
     db.add(order)
+    from core.party_archive import capture_order_parties
+    capture_order_parties(db, order, buyer, seller)
     db.commit()
     db.refresh(order)
     logger.info(
@@ -304,9 +336,29 @@ def create_order(
     )
     return order
 
+# State transition machine with explicit terminal states (BD-08)
+ALLOWED_ORDER_TRANSITIONS = {
+    "pending": {"accepted", "rejected", "cancelled"},
+    "accepted": {"packed", "rejected", "cancelled"},
+    "packed": {"dispatched"},
+    "dispatched": {"completed"},
+    "completed": set(),
+    "rejected": set(),
+    "cancelled": set(),
+}
+
+
 def transition_order_status(db: Session, business_id: int, order_id: int, new_status: str) -> B2BOrder:
+    from database.trade_service import trade_session
+    with trade_session(db, actor_id=business_id, operation="transition_order", order_id=order_id) as work:
+        result = _transition_order_status(work, business_id, order_id, new_status)
+        list(result.line_items)
+        return result
+
+
+def _transition_order_status(db, business_id, order_id, new_status):
     """
-    Transition order state. Verifies user roles and state machine validity.
+    Transition order state. Verifies user roles and state machine validity with terminal states (BD-08).
     """
     order = db.query(B2BOrder).filter(B2BOrder.id == order_id).with_for_update().first()
     if not order:
@@ -314,10 +366,16 @@ def transition_order_status(db: Session, business_id: int, order_id: int, new_st
         
     if business_id not in [order.buyer_business_id, order.seller_business_id]:
         raise PermissionError("Not authorized to manage this order")
-        
-    valid_statuses = ["pending", "accepted", "packed", "dispatched", "completed", "cancelled", "rejected"]
-    if new_status not in valid_statuses:
-        raise ValueError("Invalid order status")
+    from core.party_archive import require_active_businesses
+    require_active_businesses(db, order.buyer_business_id, order.seller_business_id)
+
+    # Terminal state check: completed, rejected, cancelled orders cannot be mutated
+    if order.status in ["completed", "rejected", "cancelled"]:
+        raise ValueError(f"Order is in terminal state '{order.status}' and cannot be transitioned")
+
+    allowed_next = ALLOWED_ORDER_TRANSITIONS.get(order.status, set())
+    if new_status not in allowed_next:
+        raise ValueError(f"Invalid order transition from '{order.status}' to '{new_status}'")
         
     # Buyer permissions
     if business_id == order.buyer_business_id:
@@ -536,6 +594,8 @@ def _ensure_buyer_purchase_invoice(db: Session, *, order: B2BOrder, buyer: User,
 
     from core.accounting import posting
     posting.post_purchase(db, purchase)
+    from core.party_archive import capture_document_parties
+    capture_document_parties(db, purchase, kind="purchase", seller=seller, buyer=buyer)
     return purchase
 
 
@@ -566,6 +626,18 @@ def _ensure_buyer_stock_in(db: Session, order: B2BOrder, seller: User):
 
 
 def reconcile_buyer_purchase_bill(db: Session, order: B2BOrder, receive_stock: bool = False) -> PurchaseInvoice:
+    from database.trade_service import trade_session
+    with trade_session(db, actor_id=order.buyer_business_id, operation="reconcile_order", order_id=order.id) as work:
+        current_order = work.get(B2BOrder, order.id)
+        result = _reconcile_buyer_purchase_bill(work, current_order, receive_stock)
+        if work is not db:
+            work.commit()
+            work.refresh(result)
+        list(result.line_items)
+        return result
+
+
+def _reconcile_buyer_purchase_bill(db, order, receive_stock=False):
     """Create a missing buyer Purchase Bill for a legacy completed B2B order."""
     if order.status != "completed":
         raise ValueError("Only completed B2B orders can have a purchase bill")
@@ -619,6 +691,13 @@ def sync_completed_order(db: Session, order: B2BOrder):
     seller = db.query(User).filter(User.id == order.seller_business_id).first()
     if not buyer or not seller:
         raise ValueError("B2B order references a missing buyer or seller")
+    from core.party_archive import require_active_businesses, capture_order_parties
+    require_active_businesses(db, order.buyer_business_id, order.seller_business_id)
+    capture_order_parties(db, order, buyer, seller)
+    if order.quoted_seller_state is not None and (seller.state_code or "") != order.quoted_seller_state:
+        raise ValueError("Seller tax state changed; cancel and requote this order before fulfilment")
+    if order.quoted_round_off_enabled is not None and billing.round_off_policy(seller, db=db) != order.quoted_round_off_enabled:
+        raise ValueError("Rounding policy changed; cancel and requote this order before fulfilment")
 
     # 1) Seller sale invoice — deterministic number ⇒ idempotent; deducts seller stock.
     lines = [{
@@ -649,10 +728,13 @@ def sync_completed_order(db: Session, order: B2BOrder):
             customer_id=seller_customer.id,
             invoice_no=f"B2B-{order.order_number}",
             invoice_type="B2B",
-            place_of_supply=buyer.state_code or None,
+            place_of_supply=(order.quoted_place_of_supply if order.quoted_place_of_supply is not None else buyer.state_code) or None,
+            tax_inclusive=bool(order.quoted_tax_inclusive),
             lines=lines,
             commit=False,
         )
+        if abs(float(order.total_amount or 0) - float(inv.total_amount or 0)) > 0.01:
+            raise ValueError("Order quote no longer matches final invoice; cancel and requote before fulfilment")
 
     # 2) Buyer auto stock-in — idempotent on (buyer, b2b_order, order.id).
     already = db.query(StockLedger).filter(
@@ -680,6 +762,8 @@ def sync_completed_order(db: Session, order: B2BOrder):
     _ensure_buyer_purchase_invoice(
         db, order=order, buyer=buyer, seller=seller, sale_invoice=inv,
     )
+    from core.party_archive import capture_document_parties
+    capture_document_parties(db, inv, kind="sale", seller=seller, buyer=buyer)
     order.seller_invoice_id = inv.id
     logger.info("[ORDER] synced order %s → seller invoice %s + buyer stock-in (buyer=%s, seller=%s)",
                 order.order_number, inv.id, order.buyer_business_id, order.seller_business_id)

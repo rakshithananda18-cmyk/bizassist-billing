@@ -1,6 +1,7 @@
 // InvoicesListView: all-invoices table with norms-aware actions.
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, cleanup, waitFor, fireEvent } from '@testing-library/react'
+import { screen, cleanup, waitFor, fireEvent } from '@testing-library/react'
+import { renderWithAuth as render } from './renderWithAuth'
 import React from 'react'
 
 import InvoicesListView from '../components/payments/InvoicesListView'
@@ -29,6 +30,15 @@ const mockActions = () => ({ view: vi.fn(), print: vi.fn(), share: vi.fn(), reco
 afterEach(cleanup)
 
 describe('InvoicesListView', () => {
+  it('shows HTTP failure as unavailable and recovers on retry', async () => {
+    const fetch = vi.fn().mockResolvedValueOnce({ ok: false, status: 503 }).mockResolvedValue({ ok: true, json: async () => invoices })
+    render(<InvoicesListView authFetch={fetch} actions={mockActions()} />)
+    expect(await screen.findByRole('alert')).toHaveTextContent('Failed to load invoices')
+    expect(screen.queryByText('No invoices found.')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'retry' }))
+    await screen.findByText('INV-1')
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
   it('lists invoices and gates actions by norms', async () => {
     render(<InvoicesListView authFetch={authFetch()} actions={mockActions()} />)
     await waitFor(() => expect(screen.getByText('INV-1')).toBeInTheDocument())

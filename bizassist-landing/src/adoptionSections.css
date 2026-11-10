@@ -1,0 +1,480 @@
+.adoption {
+  --adoption-ink: #25221f;
+  --adoption-muted: #77716b;
+  --adoption-line: #ddd7cf;
+  --adoption-accent: #c15f3c;
+  --adoption-band: #f0ebe4;
+  color: var(--adoption-ink);
+}
+
+html.dark .adoption {
+  --adoption-ink: #f0ede8;
+  --adoption-muted: #aaa59e;
+  --adoption-line: #2a2b2e;
+  --adoption-accent: #e08660;
+  --adoption-band: #101216;
+}
+
+.adoption__inner {
+  width: min(1152px, calc(100% - 48px));
+  margin-inline: auto;
+}
+
+.adoption-start,
+.adoption-faq {
+  padding-block: 112px;
+  scroll-margin-top: 100px;
+}
+
+.adoption__section-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 48px;
+  margin-bottom: 58px;
+}
+
+.adoption__eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0 0 21px;
+  color: var(--adoption-accent);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .15em;
+  line-height: 1.5;
+  text-transform: uppercase;
+}
+
+.adoption__eyebrow > span {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.adoption h2 {
+  margin: 0;
+  font-size: clamp(32px, 3.5vw, 46px);
+  font-weight: 500;
+  letter-spacing: -.055em;
+  line-height: 1.12;
+}
+
+.adoption__intro {
+  max-width: 310px;
+  margin: 0 0 4px;
+  color: var(--adoption-muted);
+  font-size: 16px;
+  line-height: 1.8;
+}
+
+.adoption-steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 36px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.adoption-steps > li {
+  min-width: 0;
+  border-top: 1px solid var(--adoption-line);
+  padding-top: 25px;
+}
+
+.adoption-steps__top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 36px;
+}
+
+.adoption-steps__number {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  color: var(--adoption-accent);
+}
+
+.adoption-steps__label {
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--adoption-muted);
+}
+
+.adoption-steps__top > svg {
+  width: 20px;
+  height: 20px;
+  margin-left: auto;
+  color: var(--adoption-muted);
+}
+
+.adoption-steps__finish {
+  margin-left: auto;
+  color: var(--adoption-accent);
+  font-size: 19px;
+  line-height: 20px;
+}
+
+.adoption-steps h3 {
+  margin: 0 0 14px;
+  font-size: 20px;
+  font-weight: 500;
+  letter-spacing: -.035em;
+  line-height: 1.35;
+}
+
+.adoption-steps p,
+.adoption-stores__item p {
+  margin: 0;
+  color: var(--adoption-muted);
+  font-size: 15px;
+  line-height: 1.85;
+}
+
+.adoption__text-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  margin-top: 23px;
+  padding-block: 3px;
+  color: var(--adoption-ink);
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: color .18s ease;
+}
+
+.adoption__text-link > svg {
+  width: 14px;
+  height: 14px;
+  transition: transform .18s ease;
+}
+
+.adoption__text-link:hover {
+  color: var(--adoption-accent);
+}
+
+.adoption__text-link:hover > svg {
+  transform: translate(2px, -2px);
+}
+
+.adoption__text-link:focus-visible,
+.adoption-faq summary:focus-visible {
+  outline: 2px solid var(--adoption-accent);
+  outline-offset: 6px;
+  border-radius: 2px;
+}
+
+.adoption-steps__note {
+  display: block;
+  margin-top: 26px;
+  color: var(--adoption-muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.adoption-stores {
+  background: var(--adoption-band);
+  padding-block: 64px 68px;
+  border-block: 1px solid var(--adoption-line);
+}
+
+.adoption-stores__heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 32px;
+  margin-bottom: 40px;
+}
+
+.adoption-stores__heading .adoption__eyebrow {
+  margin: 0;
+  max-width: 170px;
+}
+
+.adoption-stores__heading h2 {
+  font-size: clamp(23px, 2.4vw, 31px);
+  letter-spacing: -.04em;
+}
+
+.adoption-stores__list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 36px;
+}
+
+.adoption-stores__item {
+  min-width: 0;
+  padding-top: 25px;
+  border-top: 1px solid var(--adoption-line);
+}
+
+.adoption-stores__item > svg {
+  width: 31px;
+  height: 31px;
+  margin-bottom: 22px;
+  color: var(--adoption-accent);
+}
+
+.adoption-stores__item h3 {
+  margin: 0 0 10px;
+  font-size: 20px;
+  font-weight: 500;
+  letter-spacing: -.025em;
+}
+
+.adoption-stores__item p {
+  max-width: 290px;
+  font-size: 15px;
+}
+
+.adoption-faq__layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+  gap: 70px;
+}
+
+.adoption-faq__heading > p:last-child {
+  max-width: 285px;
+  margin: 24px 0 0;
+  color: var(--adoption-muted);
+  font-size: 15px;
+  line-height: 1.85;
+}
+
+.adoption-faq__questions {
+  border-top: 1px solid var(--adoption-line);
+}
+
+.adoption-faq__item {
+  border-bottom: 1px solid var(--adoption-line);
+}
+
+.adoption-faq summary {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) 18px;
+  align-items: center;
+  gap: 14px;
+  padding-block: 24px;
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1.6;
+  list-style: none;
+  cursor: pointer;
+  transition: color .18s ease;
+}
+
+.adoption-faq summary::-webkit-details-marker {
+  display: none;
+}
+
+.adoption-faq summary:hover,
+.adoption-faq__item[open] summary {
+  color: var(--adoption-accent);
+}
+
+.adoption-faq__number {
+  color: var(--adoption-muted);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  letter-spacing: .02em;
+}
+
+.adoption-faq__toggle {
+  position: relative;
+  width: 16px;
+  height: 16px;
+}
+
+.adoption-faq__toggle > span {
+  position: absolute;
+  top: 7px;
+  left: 2px;
+  width: 12px;
+  height: 1px;
+  background: currentColor;
+  transition: transform .18s ease;
+}
+
+.adoption-faq__toggle > span:last-child {
+  transform: rotate(90deg);
+}
+
+.adoption-faq__item[open] .adoption-faq__toggle > span:last-child {
+  transform: rotate(0);
+}
+
+.adoption-faq__item > p {
+  margin: -3px 32px 24px 36px;
+  max-width: 520px;
+  color: var(--adoption-muted);
+  font-size: 15px;
+  line-height: 1.85;
+}
+
+@media (max-width: 800px) {
+  .adoption-start,
+  .adoption-faq {
+    padding-block: 76px;
+  }
+
+  .adoption__section-heading {
+    align-items: start;
+    gap: 28px;
+  }
+
+  .adoption__intro {
+    max-width: 245px;
+    font-size: 15px;
+  }
+
+  .adoption-steps,
+  .adoption-stores__list {
+    gap: 24px;
+  }
+
+  .adoption-steps h3 {
+    font-size: 18px;
+  }
+
+  .adoption-steps p {
+    font-size: 15px;
+  }
+
+  .adoption-steps__label {
+    font-size: 11px;
+    letter-spacing: .04em;
+  }
+
+  .adoption-stores__heading {
+    align-items: start;
+  }
+
+  .adoption-faq__layout {
+    gap: 40px;
+    grid-template-columns: minmax(0, .85fr) minmax(0, 1.4fr);
+  }
+}
+
+@media (max-width: 600px) {
+  .adoption__inner {
+    width: calc(100% - 40px);
+  }
+
+  .adoption__section-heading {
+    flex-direction: column;
+    gap: 23px;
+    margin-bottom: 36px;
+  }
+
+  .adoption__intro {
+    max-width: 330px;
+    font-size: 15px;
+  }
+
+  .adoption-steps,
+  .adoption-stores__list,
+  .adoption-faq__layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .adoption-steps {
+    gap: 35px;
+  }
+
+  .adoption-steps__top {
+    margin-bottom: 23px;
+  }
+
+  .adoption-steps__label {
+    font-size: 12px;
+    letter-spacing: .08em;
+  }
+
+  .adoption-steps h3 {
+    font-size: 22px;
+  }
+
+  .adoption-steps p {
+    max-width: 390px;
+    font-size: 15px;
+  }
+
+  .adoption-steps__note,
+  .adoption__text-link {
+    margin-top: 18px;
+  }
+
+  .adoption-stores {
+    padding-block: 48px;
+  }
+
+  .adoption-stores__heading {
+    flex-direction: column;
+    gap: 18px;
+    margin-bottom: 30px;
+  }
+
+  .adoption-stores__heading .adoption__eyebrow {
+    max-width: none;
+  }
+
+  .adoption-stores__heading h2 {
+    max-width: 330px;
+    font-size: 28px;
+  }
+
+  .adoption-stores__list {
+    gap: 28px;
+  }
+
+  .adoption-stores__item {
+    display: grid;
+    grid-template-columns: 35px minmax(0, 1fr);
+    column-gap: 18px;
+    padding-top: 27px;
+  }
+
+  .adoption-stores__item > svg {
+    grid-row: span 2;
+    margin-bottom: 0;
+  }
+
+  .adoption-stores__item p {
+    max-width: 340px;
+  }
+
+  .adoption-faq__layout {
+    gap: 35px;
+  }
+
+  .adoption-faq__heading > p:last-child {
+    max-width: 330px;
+    margin-top: 20px;
+  }
+
+  .adoption-faq summary {
+    gap: 9px;
+    padding-block: 22px;
+  }
+
+  .adoption-faq__item > p {
+    margin-left: 31px;
+    margin-right: 22px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .adoption *,
+  .adoption *::before,
+  .adoption *::after {
+    transition: none !important;
+    animation: none !important;
+  }
+}

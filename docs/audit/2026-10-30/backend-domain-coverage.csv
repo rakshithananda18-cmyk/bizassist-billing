@@ -1,0 +1,497 @@
+path,review_depth,notes
+backend/.dockerignore,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/.gitignore,screened,Automated full-text screening (26 lines); Static screen only; not line-by-line certification
+backend/.sync_test,screened,Automated full-text screening (0 lines); Static screen only; not line-by-line certification
+backend/Dockerfile,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/FOUNDATION.md,deep,Automated full-text screening (128 lines); Manual targeted source/contract/invariant trace; not a proof of every branch
+backend/Pipfile,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/README.md,screened,Automated full-text screening (36 lines); Static screen only; not line-by-line certification
+backend/_wtest_mount.py,screened,Automated full-text screening (3 lines); AST parsed; 0 functions; Static screen only; not line-by-line certification
+backend/alembic.ini,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/alembic/env.py,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/alembic/script.py.mako,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/alembic/versions/.gitkeep,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/alembic/versions/04f94642987a_make_uid_not_null_phase_c.py,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/alembic/versions/2a6f1c9b4d8e_harden_b2b_rls_policies.py,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/alembic/versions/3b7d5e0a9c1f_optimize_rls_init_plan.py,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/alembic/versions/4e78be85db86_add_b2b_network_models.py,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/alembic/versions/7ea4d9eb55fb_add_purchase_invoices.py,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/alembic/versions/9c2f4b8a1d3e_fail_closed_rls_policies.py,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/alembic/versions/a1b2c3d4e5f6_phase_c_uid_unique_indexes.py,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/alembic/versions/a3c7e9b1d2f4_add_journal_hash_chain.py,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/alembic/versions/a4c9d2e7b3f1_business_settings.py,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/alembic/versions/a7c4e9f02b13_backfill_normalize_dates_status.py,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/alembic/versions/a7d3f0c9e514_add_document_sequences.py,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/alembic/versions/a8d3f1c9e5b7_add_invoice_print_fields.py,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/alembic/versions/a9c4e7f1d2b8_add_telemetry_events.py,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/alembic/versions/ac832002b0db_rename_tables_phase_3.py,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/alembic/versions/aea3a6d76429_enable_rls_and_restrict_api.py,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/alembic/versions/b3c1d5e7f9a2_add_user_counter_prefix.py,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/alembic/versions/b4e7a2d8f1c3_add_business_types.py,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/alembic/versions/b5d8f2a6c3e1_add_invoice_cash_discount.py,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/alembic/versions/b707f13242e7_add_business_facts_table_phase_4_memory.py,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/alembic/versions/b9f1c3e7a2d4_add_uid_sync_keys.py,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/alembic/versions/ba1f7c3e9d20_add_user_is_premium.py,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/alembic/versions/c0017902b685_baseline_schema.py,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/alembic/versions/c1e4f7a9b2d6_uid_unique_partial_index.py,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/alembic/versions/c4d2e6f8a1b3_add_staff_login_name.py,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/alembic/versions/c5e1a9d4f7b2_add_parent_business_id.py,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/alembic/versions/c8e1b4f7d203_invoice_number_unique_index.py,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/alembic/versions/d1f3a6c8e2b0_add_stock_ledger.py,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/alembic/versions/d1f4a2c8e6b0_add_deleted_businesses_and_parent_cascade.py,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/alembic/versions/d6f2b4a8e913_add_b2b_order_seller_invoice_id.py,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/alembic/versions/d7e3a9c6f8b1_create_rls_policies.py,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/alembic/versions/d9f1a2b3c4d5_harden_document_sequences_and_accounting.py,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/alembic/versions/e0a1b2c3d4e5_trial_phone_claims.py,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/alembic/versions/e2a4b7d9c1f5_add_product_barcodes.py,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/alembic/versions/e5c9a1d7b3f2_b2b_connection_approval_flow.py,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/alembic/versions/e7a1c3f5b9d2_add_journal_tables.py,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/alembic/versions/ee9c2223e60a_add_child_uids.py,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/alembic/versions/f2b9d4c1a8e3_add_period_locks.py,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/alembic/versions/f3b8c1e6a2d7_universal_compatibility_fields.py,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/alembic/versions/f4a1c7e9b2d6_add_idempotency_keys.py,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/alembic/versions/f6a2d8c4b1e9_b2b_uids_for_cloud_mirror.py,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/alembic/versions/f78e8836b7b1_add_phase_3_and_phase_4_schema_updates.py,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/alembic/versions/f7b8c9d0e1f2_add_b2b_bizid_columns.py,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/analyze_llm_shadow.py,screened,Automated full-text screening (108 lines); AST parsed; 2 functions; Static screen only; not line-by-line certification
+backend/analyze_shadow.py,screened,Automated full-text screening (100 lines); AST parsed; 2 functions; Static screen only; not line-by-line certification
+backend/app.py,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/backfill_titles.py,screened,Automated full-text screening (73 lines); AST parsed; 1 functions; Static screen only; not line-by-line certification
+backend/benchmark_reports.py,screened,Automated full-text screening (158 lines); AST parsed; 1 functions; Static screen only; not line-by-line certification
+backend/benchmark_reports_enhanced.py,screened,Automated full-text screening (199 lines); AST parsed; 1 functions; Static screen only; not line-by-line certification
+backend/bizassist-backend.spec,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/check_cloud_api.py,screened,Automated full-text screening (78 lines); AST parsed; 0 functions; Static screen only; not line-by-line certification
+backend/check_cloud_db.py,screened,Automated full-text screening (91 lines); AST parsed; 0 functions; Static screen only; not line-by-line certification
+backend/check_exp_modes.py,screened,Automated full-text screening (9 lines); AST parsed; 0 functions; Static screen only; not line-by-line certification
+backend/check_ledger.py,screened,Automated full-text screening (32 lines); AST parsed; 0 functions; Static screen only; not line-by-line certification
+backend/check_modes.py,screened,Automated full-text screening (15 lines); AST parsed; 0 functions; Static screen only; not line-by-line certification
+backend/check_spaces.py,screened,Automated full-text screening (9 lines); AST parsed; 0 functions; Static screen only; not line-by-line certification
+backend/check_upi_biz.py,screened,Automated full-text screening (20 lines); AST parsed; 0 functions; Static screen only; not line-by-line certification
+backend/cloud_db_check.py,screened,Automated full-text screening (90 lines); AST parsed; 0 functions; Static screen only; not line-by-line certification
+backend/compare_schema.py,screened,Automated full-text screening (95 lines); AST parsed; 1 functions; Static screen only; not line-by-line certification
+backend/core/README.md,screened,Automated full-text screening (86 lines); Static screen only; not line-by-line certification
+backend/core/__init__.py,screened,Automated full-text screening (28 lines); AST parsed; 0 functions; Static screen only; not line-by-line certification
+backend/core/accounting/__init__.py,screened,Automated full-text screening (1 lines); AST parsed; 0 functions; Static screen only; not line-by-line certification
+backend/core/accounting/db_invariants.py,deep,Automated full-text screening (679 lines); AST parsed; 22 functions; Manual targeted source/contract/invariant trace; not a proof of every branch
+backend/core/accounting/integrity.py,screened,Automated full-text screening (82 lines); AST parsed; 3 functions; Static screen only; not line-by-line certification
+backend/core/accounting/period_lock.py,deep,Automated full-text screening (102 lines); AST parsed; 6 functions; Manual targeted source/contract/invariant trace; not a proof of every branch
+backend/core/accounting/posting.py,deep,Automated full-text screening (419 lines); AST parsed; 21 functions; Manual targeted source/contract/invariant trace; not a proof of every branch
+backend/core/accounting/repost.py,screened,Automated full-text screening (338 lines); AST parsed; 13 functions; Static screen only; not line-by-line certification
+backend/core/api/__init__.py,screened,Automated full-text screening (59 lines); AST parsed; 0 functions; Static screen only; not line-by-line certification
+backend/core/api/biz_id.py,screened,Automated full-text screening (89 lines); AST parsed; 2 functions; Static screen only; not line-by-line certification
+backend/core/api/business.py,screened,Automated full-text screening (163 lines); AST parsed; 6 functions; Static screen only; not line-by-line certification
+backend/core/api/compliance.py,screened,Automated full-text screening (156 lines); AST parsed; 5 functions; Static screen only; not line-by-line certification
+backend/core/api/connections.py,screened,Automated full-text screening (412 lines); AST parsed; 14 functions; Static screen only; not line-by-line certification
+backend/core/api/field_collections.py,screened,Automated full-text screening (62 lines); AST parsed; 2 functions; Static screen only; not line-by-line certification
+backend/core/api/godowns.py,screened,Automated full-text screening (81 lines); AST parsed; 3 functions; Static screen only; not line-by-line certification
+backend/core/api/import_route.py,screened,Automated full-text screening (425 lines); AST parsed; 9 functions; Static screen only; not line-by-line certification
+backend/core/api/orders.py,deep,Automated full-text screening (347 lines); AST parsed; 10 functions; Manual targeted source/contract/invariant trace; not a proof of every branch
+backend/core/api/parties.py,deep,Automated full-text screening (501 lines); AST parsed; 15 functions; Manual targeted source/contract/invariant trace; not a proof of every branch
+backend/core/api/payments.py,deep,Automated full-text screening (630 lines); AST parsed; 12 functions; Manual targeted source/contract/invariant trace; not a proof of every branch
+backend/core/api/period_lock.py,screened,Automated full-text screening (104 lines); AST parsed; 4 functions; Static screen only; not line-by-line certification
+backend/core/api/products.py,deep,Automated full-text screening (775 lines); AST parsed; 12 functions; Manual targeted source/contract/invariant trace; not a proof of every branch
+backend/core/api/purchases.py,deep,Automated full-text screening (264 lines); AST parsed; 8 functions; Manual targeted source/contract/invariant trace; not a proof of every branch
+backend/core/api/realtime.py,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/core/api/reports.py,deep,Automated full-text screening (2018 lines); AST parsed; 34 functions; Manual targeted source/contract/invariant trace; not a proof of every branch
+backend/core/api/sales.py,screened,Automated full-text screening (691 lines); AST parsed; 15 functions; Static screen only; not line-by-line certification
+backend/core/api/search.py,screened,Automated full-text screening (170 lines); AST parsed; 2 functions; Static screen only; not line-by-line certification
+backend/core/api/staff.py,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/core/api/sync.py,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/core/api/transfers.py,deep,Automated full-text screening (158 lines); AST parsed; 4 functions; Manual targeted source/contract/invariant trace; not a proof of every branch
+backend/core/billing/__init__.py,screened,Automated full-text screening (7 lines); AST parsed; 0 functions; Static screen only; not line-by-line certification
+backend/core/billing/balances.py,deep,Automated full-text screening (88 lines); AST parsed; 6 functions; Manual targeted source/contract/invariant trace; not a proof of every branch
+backend/core/billing/commands.py,deep,Automated full-text screening (1241 lines); AST parsed; 20 functions; Manual targeted source/contract/invariant trace; not a proof of every branch
+backend/core/billing/print_payload.py,screened,Automated full-text screening (474 lines); AST parsed; 14 functions; Static screen only; not line-by-line certification
+backend/core/billing/sequence.py,screened,Automated full-text screening (319 lines); AST parsed; 11 functions; Static screen only; not line-by-line certification
+backend/core/billing/templates/invoice_classic_a4.html,screened,Automated full-text screening (278 lines); Static screen only; not line-by-line certification
+backend/core/billing/templates/invoice_thermal.html,screened,Automated full-text screening (245 lines); Static screen only; not line-by-line certification
+backend/core/catalog/__init__.py,screened,Automated full-text screening (5 lines); AST parsed; 0 functions; Static screen only; not line-by-line certification
+backend/core/catalog/barcode.py,screened,Automated full-text screening (184 lines); AST parsed; 9 functions; Static screen only; not line-by-line certification
+backend/core/compliance/__init__.py,screened,Automated full-text screening (1 lines); AST parsed; 0 functions; Static screen only; not line-by-line certification
+backend/core/compliance/einvoice.py,screened,Automated full-text screening (371 lines); AST parsed; 11 functions; Static screen only; not line-by-line certification
+backend/core/connection/service.py,deep,Automated full-text screening (487 lines); AST parsed; 14 functions; Manual targeted source/contract/invariant trace; not a proof of every branch
+backend/core/connection/transfer.py,screened,Automated full-text screening (491 lines); AST parsed; 13 functions; Static screen only; not line-by-line certification
+backend/core/connection/utils.py,screened,Automated full-text screening (43 lines); AST parsed; 3 functions; Static screen only; not line-by-line certification
+backend/core/dpapi.py,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/core/field_team.py,screened,Automated full-text screening (271 lines); AST parsed; 10 functions; Static screen only; not line-by-line certification
+backend/core/identity.py,screened,Automated full-text screening (118 lines); AST parsed; 1 functions; Static screen only; not line-by-line certification
+backend/core/models.py,screened,Automated full-text screening (721 lines); AST parsed; 0 functions; Static screen only; not line-by-line certification
+backend/core/order/service.py,deep,Automated full-text screening (686 lines); AST parsed; 12 functions; Manual targeted source/contract/invariant trace; not a proof of every branch
+backend/core/purchase/commands.py,deep,Automated full-text screening (643 lines); AST parsed; 6 functions; Manual targeted source/contract/invariant trace; not a proof of every branch
+backend/core/shifts/__init__.py,screened,Automated full-text screening (13 lines); AST parsed; 0 functions; Static screen only; not line-by-line certification
+backend/core/shifts/service.py,screened,Automated full-text screening (433 lines); AST parsed; 15 functions; Static screen only; not line-by-line certification
+backend/core/stock/__init__.py,screened,Automated full-text screening (7 lines); AST parsed; 0 functions; Static screen only; not line-by-line certification
+backend/core/stock/ledger.py,deep,Automated full-text screening (224 lines); AST parsed; 4 functions; Manual targeted source/contract/invariant trace; not a proof of every branch
+backend/core/sync/__init__.py,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/core/sync/apply_hooks.py,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/core/sync/idempotency.py,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/core/sync/inbox.py,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/core/sync/tenant_scope.py,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/core/templates/__init__.py,screened,Automated full-text screening (6 lines); AST parsed; 0 functions; Static screen only; not line-by-line certification
+backend/core/templates/configs/b2b_supplier.json,screened,Automated full-text screening (40 lines); Static screen only; not line-by-line certification
+backend/core/templates/configs/electronics.json,screened,Automated full-text screening (42 lines); Static screen only; not line-by-line certification
+backend/core/templates/configs/general.json,screened,Automated full-text screening (37 lines); Static screen only; not line-by-line certification
+backend/core/templates/configs/hardware.json,screened,Automated full-text screening (42 lines); Static screen only; not line-by-line certification
+backend/core/templates/configs/mobile.json,screened,Automated full-text screening (41 lines); Static screen only; not line-by-line certification
+backend/core/templates/configs/pharmacy.json,screened,Automated full-text screening (41 lines); Static screen only; not line-by-line certification
+backend/core/templates/configs/repair.json,screened,Automated full-text screening (38 lines); Static screen only; not line-by-line certification
+backend/core/templates/configs/restaurant.json,screened,Automated full-text screening (41 lines); Static screen only; not line-by-line certification
+backend/core/templates/configs/services.json,screened,Automated full-text screening (40 lines); Static screen only; not line-by-line certification
+backend/core/templates/configs/supermarket.json,screened,Automated full-text screening (41 lines); Static screen only; not line-by-line certification
+backend/core/templates/configs/textile.json,screened,Automated full-text screening (43 lines); Static screen only; not line-by-line certification
+backend/core/templates/configs/wholesale.json,screened,Automated full-text screening (42 lines); Static screen only; not line-by-line certification
+backend/core/templates/loader.py,screened,Automated full-text screening (313 lines); AST parsed; 11 functions; Static screen only; not line-by-line certification
+backend/coverage.xml,excluded,Generated/report/data artifact: metadata classified; no claim of semantic or personal-data review.
+backend/database/db.py,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/database/migration.py,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/database/models.py,deep,Automated full-text screening (2006 lines); AST parsed; 15 functions; Manual targeted source/contract/invariant trace; not a proof of every branch
+backend/database/repository.py,screened,Automated full-text screening (426 lines); AST parsed; 36 functions; Static screen only; not line-by-line certification
+backend/database/sync_map.py,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/db_audit.py,screened,Automated full-text screening (41 lines); AST parsed; 0 functions; Static screen only; not line-by-line certification
+backend/db_check.py,screened,Automated full-text screening (12 lines); AST parsed; 0 functions; Static screen only; not line-by-line certification
+backend/dump_payments.py,screened,Automated full-text screening (15 lines); AST parsed; 0 functions; Static screen only; not line-by-line certification
+backend/dump_schema.py,screened,Automated full-text screening (29 lines); AST parsed; 0 functions; Static screen only; not line-by-line certification
+backend/logging_config.py,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/main_groq.py,screened,Automated full-text screening (509 lines); AST parsed; 10 functions; Static screen only; not line-by-line certification
+backend/migrate_sqlite_to_postgres.py,screened,Automated full-text screening (133 lines); AST parsed; 0 functions; Static screen only; not line-by-line certification
+backend/pytest.ini,screened,Automated full-text screening (12 lines); Static screen only; not line-by-line certification
+backend/reconstruct_line_items.py,screened,Automated full-text screening (136 lines); AST parsed; 0 functions; Static screen only; not line-by-line certification
+backend/repair_pass2.py,screened,Automated full-text screening (139 lines); AST parsed; 0 functions; Static screen only; not line-by-line certification
+backend/requirements_hf.txt,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/reset_owner_password.py,screened,Automated full-text screening (34 lines); AST parsed; 0 functions; Static screen only; not line-by-line certification
+backend/reset_supabase.py,screened,Automated full-text screening (55 lines); AST parsed; 0 functions; Static screen only; not line-by-line certification
+backend/routes/actions.py,deep,Automated full-text screening (135 lines); AST parsed; 3 functions; Manual targeted source/contract/invariant trace; not a proof of every branch
+backend/routes/activity.py,screened,Automated full-text screening (166 lines); AST parsed; 3 functions; Static screen only; not line-by-line certification
+backend/routes/admin.py,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/routes/ai_insights.py,screened,Automated full-text screening (132 lines); AST parsed; 12 functions; Static screen only; not line-by-line certification
+backend/routes/alerts.py,screened,Automated full-text screening (593 lines); AST parsed; 11 functions; Static screen only; not line-by-line certification
+backend/routes/ask.py,screened,Automated full-text screening (169 lines); AST parsed; 6 functions; Static screen only; not line-by-line certification
+backend/routes/auth.py,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/routes/b2b_proxy.py,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/routes/campaigns.py,screened,Automated full-text screening (227 lines); AST parsed; 11 functions; Static screen only; not line-by-line certification
+backend/routes/chat.py,screened,Automated full-text screening (156 lines); AST parsed; 4 functions; Static screen only; not line-by-line certification
+backend/routes/data_transfer.py,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/routes/discovery.py,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/routes/feedback.py,screened,Automated full-text screening (301 lines); AST parsed; 6 functions; Static screen only; not line-by-line certification
+backend/routes/intents.py,screened,Automated full-text screening (90 lines); AST parsed; 3 functions; Static screen only; not line-by-line certification
+backend/routes/public.py,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/routes/realtime_relay.py,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/routes/shifts.py,screened,Automated full-text screening (271 lines); AST parsed; 9 functions; Static screen only; not line-by-line certification
+backend/routes/sync.py,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/routes/sync_profile.py,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/routes/sync_staff.py,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/routes/telemetry.py,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/routes/upload.py,screened,Automated full-text screening (653 lines); AST parsed; 5 functions; Static screen only; not line-by-line certification
+backend/scan_db.py,screened,Automated full-text screening (53 lines); AST parsed; 1 functions; Static screen only; not line-by-line certification
+backend/scripts/_dbcompat.py,screened,Automated full-text screening (713 lines); AST parsed; 39 functions; Static screen only; not line-by-line certification
+backend/scripts/audit_money_integrity.py,screened,Automated full-text screening (529 lines); AST parsed; 7 functions; Static screen only; not line-by-line certification
+backend/scripts/audit_payment_attachment.py,screened,Automated full-text screening (265 lines); AST parsed; 4 functions; Static screen only; not line-by-line certification
+backend/scripts/backfill_batch_price_tiers.py,screened,Automated full-text screening (164 lines); AST parsed; 2 functions; Static screen only; not line-by-line certification
+backend/scripts/backfill_journals.py,screened,Automated full-text screening (248 lines); AST parsed; 6 functions; Static screen only; not line-by-line certification
+backend/scripts/check_local_sync_backlog.py,screened,Automated full-text screening (192 lines); AST parsed; 2 functions; Static screen only; not line-by-line certification
+backend/scripts/check_outbox_rows.py,screened,Automated full-text screening (16 lines); AST parsed; 0 functions; Static screen only; not line-by-line certification
+backend/scripts/clear_foreign_godown_ids.py,screened,Automated full-text screening (170 lines); AST parsed; 2 functions; Static screen only; not line-by-line certification
+backend/scripts/clear_staff_bizids.py,screened,Automated full-text screening (327 lines); AST parsed; 3 functions; Static screen only; not line-by-line certification
+backend/scripts/cloud_cleanup_counters.py,screened,Automated full-text screening (153 lines); AST parsed; 4 functions; Static screen only; not line-by-line certification
+backend/scripts/diagnose_money_findings.py,screened,Automated full-text screening (639 lines); AST parsed; 14 functions; Static screen only; not line-by-line certification
+backend/scripts/fk_teardown_scan.py,screened,Automated full-text screening (90 lines); AST parsed; 0 functions; Static screen only; not line-by-line certification
+backend/scripts/inspect_cloud_invoice.py,screened,Automated full-text screening (350 lines); AST parsed; 5 functions; Static screen only; not line-by-line certification
+backend/scripts/inspect_invoice.py,screened,Automated full-text screening (257 lines); AST parsed; 5 functions; Static screen only; not line-by-line certification
+backend/scripts/link_b2b_invoice_customers.py,screened,Automated full-text screening (264 lines); AST parsed; 5 functions; Static screen only; not line-by-line certification
+backend/scripts/migrate_clean_ids.py,screened,Automated full-text screening (289 lines); AST parsed; 6 functions; Static screen only; not line-by-line certification
+backend/scripts/prune_unused_staff.py,screened,Automated full-text screening (328 lines); AST parsed; 2 functions; Static screen only; not line-by-line certification
+backend/scripts/quarantine_fk_orphans.py,screened,Automated full-text screening (346 lines); AST parsed; 3 functions; Static screen only; not line-by-line certification
+backend/scripts/quarantine_misattached_payments.py,screened,Automated full-text screening (158 lines); AST parsed; 1 functions; Static screen only; not line-by-line certification
+backend/scripts/queue_never_queued_rows.py,screened,Automated full-text screening (124 lines); AST parsed; 1 functions; Static screen only; not line-by-line certification
+backend/scripts/reconcile_local_vs_cloud.py,screened,Automated full-text screening (383 lines); AST parsed; 8 functions; Static screen only; not line-by-line certification
+backend/scripts/reconcile_orphans.py,screened,Automated full-text screening (131 lines); AST parsed; 3 functions; Static screen only; not line-by-line certification
+backend/scripts/reenrich_outbox_payloads.py,screened,Automated full-text screening (135 lines); AST parsed; 1 functions; Static screen only; not line-by-line certification
+backend/scripts/repair_b2b_invoice_lines.py,screened,Automated full-text screening (355 lines); AST parsed; 4 functions; Static screen only; not line-by-line certification
+backend/scripts/repair_duplicate_line_items.py,screened,Automated full-text screening (158 lines); AST parsed; 2 functions; Static screen only; not line-by-line certification
+backend/scripts/repair_line_items_by_invariant.py,screened,Automated full-text screening (534 lines); AST parsed; 14 functions; Static screen only; not line-by-line certification
+backend/scripts/repair_m7_rollback.py,screened,Automated full-text screening (129 lines); AST parsed; 1 functions; Static screen only; not line-by-line certification
+backend/scripts/resolve_duplicate_invoice_numbers.py,screened,Automated full-text screening (283 lines); AST parsed; 6 functions; Static screen only; not line-by-line certification
+backend/scripts/rewind_pull_cursor.py,screened,Automated full-text screening (215 lines); AST parsed; 2 functions; Static screen only; not line-by-line certification
+backend/scripts/void_duplicate_payment.py,screened,Automated full-text screening (307 lines); AST parsed; 4 functions; Static screen only; not line-by-line certification
+backend/seed_load_test.py,screened,Automated full-text screening (202 lines); AST parsed; 2 functions; Static screen only; not line-by-line certification
+backend/server_entry.py,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/services/action_rails.py,deep,Automated full-text screening (159 lines); AST parsed; 9 functions; Manual targeted source/contract/invariant trace; not a proof of every branch
+backend/services/actions.py,deep,Automated full-text screening (767 lines); AST parsed; 26 functions; Manual targeted source/contract/invariant trace; not a proof of every branch
+backend/services/admin_service.py,screened,Automated full-text screening (1230 lines); AST parsed; 38 functions; Static screen only; not line-by-line certification
+backend/services/agent_graph.py,screened,Automated full-text screening (560 lines); AST parsed; 11 functions; Static screen only; not line-by-line certification
+backend/services/agent_loop.py,deep,Automated full-text screening (258 lines); AST parsed; 8 functions; Manual targeted source/contract/invariant trace; not a proof of every branch
+backend/services/ai_router.py,screened,Automated full-text screening (765 lines); AST parsed; 5 functions; Static screen only; not line-by-line certification
+backend/services/ai_router_cache.py,screened,Automated full-text screening (60 lines); AST parsed; 3 functions; Static screen only; not line-by-line certification
+backend/services/ai_router_decision.py,screened,Automated full-text screening (298 lines); AST parsed; 6 functions; Static screen only; not line-by-line certification
+backend/services/ai_router_execution.py,screened,Automated full-text screening (364 lines); AST parsed; 11 functions; Static screen only; not line-by-line certification
+backend/services/alert_jobs.py,screened,Automated full-text screening (430 lines); AST parsed; 8 functions; Static screen only; not line-by-line certification
+backend/services/auth.py,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/services/billing.py,screened,Automated full-text screening (14 lines); AST parsed; 0 functions; Static screen only; not line-by-line certification
+backend/services/campaign_service.py,screened,Automated full-text screening (404 lines); AST parsed; 19 functions; Static screen only; not line-by-line certification
+backend/services/charts.py,screened,Automated full-text screening (140 lines); AST parsed; 1 functions; Static screen only; not line-by-line certification
+backend/services/cloud_listener.py,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/services/column_mapper.py,screened,Automated full-text screening (413 lines); AST parsed; 7 functions; Static screen only; not line-by-line certification
+backend/services/context_cache.py,screened,Automated full-text screening (322 lines); AST parsed; 10 functions; Static screen only; not line-by-line certification
+backend/services/context_engine.py,screened,Automated full-text screening (1 lines); AST parsed; 0 functions; Static screen only; not line-by-line certification
+backend/services/dates.py,screened,Automated full-text screening (101 lines); AST parsed; 5 functions; Static screen only; not line-by-line certification
+backend/services/direct_query_handler.py,deep,Automated full-text screening (256 lines); AST parsed; 8 functions; Manual targeted source/contract/invariant trace; not a proof of every branch
+backend/services/embeddings.py,screened,Automated full-text screening (569 lines); AST parsed; 23 functions; Static screen only; not line-by-line certification
+backend/services/errors.py,screened,Automated full-text screening (34 lines); AST parsed; 2 functions; Static screen only; not line-by-line certification
+backend/services/feedback_service.py,screened,Automated full-text screening (114 lines); AST parsed; 3 functions; Static screen only; not line-by-line certification
+backend/services/field_business_cleanup.py,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/services/groq_client.py,screened,Automated full-text screening (210 lines); AST parsed; 10 functions; Static screen only; not line-by-line certification
+backend/services/handlers/__init__.py,screened,Automated full-text screening (40 lines); AST parsed; 0 functions; Static screen only; not line-by-line certification
+backend/services/handlers/clients.py,screened,Automated full-text screening (131 lines); AST parsed; 3 functions; Static screen only; not line-by-line certification
+backend/services/handlers/dashboard.py,deep,Automated full-text screening (56 lines); AST parsed; 1 functions; Manual targeted source/contract/invariant trace; not a proof of every branch
+backend/services/handlers/inventory.py,screened,Automated full-text screening (82 lines); AST parsed; 3 functions; Static screen only; not line-by-line certification
+backend/services/handlers/invoices.py,screened,Automated full-text screening (370 lines); AST parsed; 12 functions; Static screen only; not line-by-line certification
+backend/services/handlers/payments.py,screened,Automated full-text screening (125 lines); AST parsed; 4 functions; Static screen only; not line-by-line certification
+backend/services/handlers/utils.py,screened,Automated full-text screening (18 lines); AST parsed; 1 functions; Static screen only; not line-by-line certification
+backend/services/immediate_sync.py,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/services/import_data.py,screened,Automated full-text screening (236 lines); AST parsed; 3 functions; Static screen only; not line-by-line certification
+backend/services/insights_service.py,screened,Automated full-text screening (409 lines); AST parsed; 12 functions; Static screen only; not line-by-line certification
+backend/services/intent_router.py,screened,Automated full-text screening (313 lines); AST parsed; 7 functions; Static screen only; not line-by-line certification
+backend/services/intents.py,screened,Automated full-text screening (90 lines); AST parsed; 2 functions; Static screen only; not line-by-line certification
+backend/services/llm_router.py,screened,Automated full-text screening (328 lines); AST parsed; 11 functions; Static screen only; not line-by-line certification
+backend/services/log_uploader.py,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/services/memory_service.py,screened,Automated full-text screening (254 lines); AST parsed; 3 functions; Static screen only; not line-by-line certification
+backend/services/normalize.py,screened,Automated full-text screening (39 lines); AST parsed; 2 functions; Static screen only; not line-by-line certification
+backend/services/notifier.py,screened,Automated full-text screening (69 lines); AST parsed; 3 functions; Static screen only; not line-by-line certification
+backend/services/ops_health.py,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/services/parser.py,screened,Automated full-text screening (228 lines); AST parsed; 5 functions; Static screen only; not line-by-line certification
+backend/services/pdf_parser.py,screened,Automated full-text screening (326 lines); AST parsed; 5 functions; Static screen only; not line-by-line certification
+backend/services/pdf_safety.py,deep,Automated full-text screening (48 lines); AST parsed; 1 functions; Manual targeted source/contract/invariant trace; not a proof of every branch
+backend/services/product_barcode.py,screened,Automated full-text screening (13 lines); AST parsed; 0 functions; Static screen only; not line-by-line certification
+backend/services/purchase_mapper.py,screened,Automated full-text screening (61 lines); AST parsed; 1 functions; Static screen only; not line-by-line certification
+backend/services/purchase_ocr.py,screened,Automated full-text screening (565 lines); AST parsed; 11 functions; Static screen only; not line-by-line certification
+backend/services/query_router.py,screened,Automated full-text screening (279 lines); AST parsed; 4 functions; Static screen only; not line-by-line certification
+backend/services/rate_limiter.py,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/services/realtime.py,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/services/recommendations.py,deep,Automated full-text screening (303 lines); AST parsed; 11 functions; Manual targeted source/contract/invariant trace; not a proof of every branch
+backend/services/registration_policy.py,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/services/router_mode.py,screened,Automated full-text screening (77 lines); AST parsed; 5 functions; Static screen only; not line-by-line certification
+backend/services/scheduler.py,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/services/self_healing.py,deep,Automated full-text screening (418 lines); AST parsed; 5 functions; Manual targeted source/contract/invariant trace; not a proof of every branch
+backend/services/smart_insights.py,screened,Automated full-text screening (485 lines); AST parsed; 9 functions; Static screen only; not line-by-line certification
+backend/services/stock_ledger.py,screened,Automated full-text screening (15 lines); AST parsed; 0 functions; Static screen only; not line-by-line certification
+backend/services/sync_worker.py,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/services/telemetry_maintenance.py,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/services/telemetry_relay.py,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/services/tools.py,screened,Automated full-text screening (1 lines); AST parsed; 0 functions; Static screen only; not line-by-line certification
+backend/services/tools/__init__.py,screened,Automated full-text screening (59 lines); AST parsed; 1 functions; Static screen only; not line-by-line certification
+backend/services/tools/_utils.py,screened,Automated full-text screening (10 lines); AST parsed; 1 functions; Static screen only; not line-by-line certification
+backend/services/tools/business.py,deep,Automated full-text screening (57 lines); AST parsed; 1 functions; Manual targeted source/contract/invariant trace; not a proof of every branch
+backend/services/tools/inventory.py,screened,Automated full-text screening (67 lines); AST parsed; 1 functions; Static screen only; not line-by-line certification
+backend/services/tools/invoices.py,deep,Automated full-text screening (577 lines); AST parsed; 12 functions; Manual targeted source/contract/invariant trace; not a proof of every branch
+backend/services/tools/payments.py,screened,Automated full-text screening (51 lines); AST parsed; 1 functions; Static screen only; not line-by-line certification
+backend/services/tools/search.py,screened,Automated full-text screening (87 lines); AST parsed; 2 functions; Static screen only; not line-by-line certification
+backend/services/totp.py,excluded,Owned by trust/sync/ops agent; overlap in domain paths explicitly identified there.
+backend/supabase_schema.txt,excluded,Generated/report/data artifact: metadata classified; no claim of semantic or personal-data review.
+backend/tests/_fk_cleanup.py,screened,Automated full-text screening (111 lines); AST parsed; 3 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/conftest.py,test,Automated full-text screening (343 lines); AST parsed; 13 functions; Test fixtures and relevant assertions manually reviewed; execution scope in report
+backend/tests/golden_set.jsonl,screened,Automated full-text screening (41 lines); Test definitions statically screened; not executed unless named in report
+backend/tests/planhelpers.py,screened,Automated full-text screening (42 lines); AST parsed; 1 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/signup_fixture.py,screened,Automated full-text screening (10 lines); AST parsed; 1 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_accounting.py,screened,Automated full-text screening (353 lines); AST parsed; 7 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_action_preview_binding.py,screened,Automated full-text screening (99 lines); AST parsed; 5 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_action_rails.py,screened,Automated full-text screening (208 lines); AST parsed; 18 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_actions.py,test,Automated full-text screening (210 lines); AST parsed; 18 functions; Test fixtures and relevant assertions manually reviewed; execution scope in report
+backend/tests/test_activity_and_adjustments.py,screened,Automated full-text screening (139 lines); AST parsed; 8 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_admin_console_sso.py,screened,Automated full-text screening (301 lines); AST parsed; 18 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_admin_ops_health.py,screened,Automated full-text screening (64 lines); AST parsed; 5 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_admin_purge_product_refs.py,screened,Automated full-text screening (69 lines); AST parsed; 3 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_agent_graph_tokens.py,screened,Automated full-text screening (123 lines); AST parsed; 8 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_agent_loop.py,screened,Automated full-text screening (124 lines); AST parsed; 11 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_ai_failure_not_an_answer.py,screened,Automated full-text screening (100 lines); AST parsed; 7 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_ai_pro_gate_enforced.py,screened,Automated full-text screening (100 lines); AST parsed; 6 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_ask_stream_heartbeat.py,screened,Automated full-text screening (122 lines); AST parsed; 10 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_audit_and_merchant_feedback.py,screened,Automated full-text screening (116 lines); AST parsed; 5 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_audit_journal.py,screened,Automated full-text screening (170 lines); AST parsed; 9 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_audit_log_fallback.py,screened,Automated full-text screening (50 lines); AST parsed; 2 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_auth_logging.py,screened,Automated full-text screening (73 lines); AST parsed; 6 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_b2b_customer_link.py,screened,Automated full-text screening (119 lines); AST parsed; 6 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_b2b_import_conflicts.py,screened,Automated full-text screening (162 lines); AST parsed; 14 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_b2b_party_bizid_sync.py,screened,Automated full-text screening (259 lines); AST parsed; 9 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_b2b_proxy.py,screened,Automated full-text screening (155 lines); AST parsed; 15 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_b2b_proxy_test_isolation.py,screened,Automated full-text screening (163 lines); AST parsed; 10 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_b2b_transfer.py,screened,Automated full-text screening (199 lines); AST parsed; 6 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_b2b_transfer_internals.py,screened,Automated full-text screening (385 lines); AST parsed; 28 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_backend.py,screened,Automated full-text screening (783 lines); AST parsed; 19 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_batch_price_tiers.py,test,Automated full-text screening (231 lines); AST parsed; 13 functions; Test fixtures and relevant assertions manually reviewed; execution scope in report
+backend/tests/test_bill_scan_pro_gate.py,screened,Automated full-text screening (88 lines); AST parsed; 6 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_billing.py,screened,Automated full-text screening (422 lines); AST parsed; 22 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_billing_profile.py,screened,Automated full-text screening (213 lines); AST parsed; 13 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_bulk_product_active.py,screened,Automated full-text screening (197 lines); AST parsed; 14 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_business_template.py,screened,Automated full-text screening (202 lines); AST parsed; 15 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_cache_regression.py,screened,Automated full-text screening (121 lines); AST parsed; 7 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_cache_salt.py,screened,Automated full-text screening (150 lines); AST parsed; 15 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_cache_scoping.py,screened,Automated full-text screening (86 lines); AST parsed; 6 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_cash_discount.py,screened,Automated full-text screening (182 lines); AST parsed; 12 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_charts.py,screened,Automated full-text screening (104 lines); AST parsed; 9 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_chat_memory_killswitch.py,screened,Automated full-text screening (138 lines); AST parsed; 8 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_child_rows_reach_the_outbox.py,screened,Automated full-text screening (240 lines); AST parsed; 12 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_cloud_token_refresh.py,screened,Automated full-text screening (174 lines); AST parsed; 19 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_cloud_token_store.py,screened,Automated full-text screening (134 lines); AST parsed; 9 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_compliance.py,screened,Automated full-text screening (170 lines); AST parsed; 12 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_conflict_log_never_breaks_sync.py,screened,Automated full-text screening (112 lines); AST parsed; 3 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_conflict_log_only_on_apply.py,screened,Automated full-text screening (155 lines); AST parsed; 6 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_connection_approval.py,screened,Automated full-text screening (461 lines); AST parsed; 36 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_connections.py,screened,Automated full-text screening (453 lines); AST parsed; 14 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_connections_security.py,screened,Automated full-text screening (185 lines); AST parsed; 13 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_cross_database_identity.py,screened,Automated full-text screening (214 lines); AST parsed; 15 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_dashboard_charts.py,screened,Automated full-text screening (56 lines); AST parsed; 3 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_data_transfer.py,screened,Automated full-text screening (167 lines); AST parsed; 3 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_data_transfer_staff_identity.py,screened,Automated full-text screening (235 lines); AST parsed; 11 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_dates.py,screened,Automated full-text screening (48 lines); AST parsed; 5 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_db_guard_fail_closed.py,screened,Automated full-text screening (52 lines); AST parsed; 4 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_db_invariants.py,screened,Automated full-text screening (489 lines); AST parsed; 30 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_dbcompat_and_sql_portability.py,screened,Automated full-text screening (1273 lines); AST parsed; 112 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_desktop_recovery_checks_cloud.py,screened,Automated full-text screening (174 lines); AST parsed; 17 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_discovery.py,screened,Automated full-text screening (262 lines); AST parsed; 17 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_discovery_spoofing.py,screened,Automated full-text screening (178 lines); AST parsed; 12 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_einvoice.py,screened,Automated full-text screening (177 lines); AST parsed; 14 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_entity_match.py,screened,Automated full-text screening (224 lines); AST parsed; 28 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_error_contract.py,screened,Automated full-text screening (78 lines); AST parsed; 4 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_feedback.py,screened,Automated full-text screening (110 lines); AST parsed; 11 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_feedback_submit_contract.py,screened,Automated full-text screening (59 lines); AST parsed; 3 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_field_collections.py,screened,Automated full-text screening (354 lines); AST parsed; 22 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_financial_invariants.py,screened,Automated full-text screening (143 lines); AST parsed; 11 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_godown_uid_resolution.py,screened,Automated full-text screening (116 lines); AST parsed; 3 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_golden_set.py,screened,Automated full-text screening (62 lines); AST parsed; 3 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_groq_model_backups.py,screened,Automated full-text screening (182 lines); AST parsed; 19 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_groq_models.py,screened,Automated full-text screening (160 lines); AST parsed; 17 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_handlers.py,screened,Automated full-text screening (263 lines); AST parsed; 16 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_hash_chain.py,screened,Automated full-text screening (160 lines); AST parsed; 9 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_hosting_mode_gate.py,screened,Automated full-text screening (276 lines); AST parsed; 16 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_import.py,screened,Automated full-text screening (365 lines); AST parsed; 9 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_import_preview_and_shift_invoices.py,screened,Automated full-text screening (116 lines); AST parsed; 6 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_import_preview_contacts.py,screened,Automated full-text screening (130 lines); AST parsed; 7 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_intent_router.py,screened,Automated full-text screening (376 lines); AST parsed; 10 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_intents.py,screened,Automated full-text screening (170 lines); AST parsed; 13 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_invoice_account.py,screened,Automated full-text screening (429 lines); AST parsed; 22 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_invoice_sequence.py,screened,Automated full-text screening (501 lines); AST parsed; 26 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_journal.py,screened,Automated full-text screening (228 lines); AST parsed; 15 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_journal_repost_on_sync.py,screened,Automated full-text screening (563 lines); AST parsed; 27 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_jwt_secret_at_rest.py,screened,Automated full-text screening (157 lines); AST parsed; 11 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_line_item_invariant.py,screened,Automated full-text screening (653 lines); AST parsed; 41 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_llm_router.py,screened,Automated full-text screening (182 lines); AST parsed; 25 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_local_only_columns.py,screened,Automated full-text screening (83 lines); AST parsed; 1 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_local_only_stays_local.py,screened,Automated full-text screening (249 lines); AST parsed; 18 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_logging_config.py,screened,Automated full-text screening (100 lines); AST parsed; 8 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_memory.py,screened,Automated full-text screening (139 lines); AST parsed; 6 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_migrate_clean_ids_verify.py,screened,Automated full-text screening (62 lines); AST parsed; 8 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_migration_ddl_is_portable.py,screened,Automated full-text screening (210 lines); AST parsed; 13 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_migration_step_isolation.py,screened,Automated full-text screening (339 lines); AST parsed; 22 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_money_audit_regressions.py,test,Automated full-text screening (355 lines); AST parsed; 26 functions; Test fixtures and relevant assertions manually reviewed; execution scope in report
+backend/tests/test_money_pure_functions.py,screened,Automated full-text screening (561 lines); AST parsed; 52 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_money_reconciliation.py,screened,Automated full-text screening (477 lines); AST parsed; 21 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_negative_stock_policy.py,test,Automated full-text screening (162 lines); AST parsed; 12 functions; Test fixtures and relevant assertions manually reviewed; execution scope in report
+backend/tests/test_next_invoice_number_preview.py,screened,Automated full-text screening (126 lines); AST parsed; 6 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_no_orphaned_route_modules.py,screened,Automated full-text screening (215 lines); AST parsed; 11 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_no_unresolved_local_ids.py,screened,Automated full-text screening (109 lines); AST parsed; 3 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_normalize.py,screened,Automated full-text screening (50 lines); AST parsed; 4 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_notifications.py,screened,Automated full-text screening (352 lines); AST parsed; 20 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_ops_health.py,screened,Automated full-text screening (75 lines); AST parsed; 3 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_outbox_reenrichment.py,screened,Automated full-text screening (119 lines); AST parsed; 3 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_p0_isolation_hardening.py,screened,Automated full-text screening (246 lines); AST parsed; 11 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_parity_is_bidirectional.py,screened,Automated full-text screening (459 lines); AST parsed; 21 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_parity_presence_sweep.py,screened,Automated full-text screening (329 lines); AST parsed; 21 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_parse_dt_is_naive_utc.py,screened,Automated full-text screening (105 lines); AST parsed; 9 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_party_ledger.py,screened,Automated full-text screening (179 lines); AST parsed; 14 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_pending_invoices.py,screened,Automated full-text screening (159 lines); AST parsed; 12 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_period_lock.py,screened,Automated full-text screening (237 lines); AST parsed; 16 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_phase1b.py,test,Automated full-text screening (563 lines); AST parsed; 16 functions; Test fixtures and relevant assertions manually reviewed; execution scope in report
+backend/tests/test_phase3.py,test,Automated full-text screening (289 lines); AST parsed; 6 functions; Test fixtures and relevant assertions manually reviewed; execution scope in report
+backend/tests/test_phase4.py,test,Automated full-text screening (264 lines); AST parsed; 5 functions; Test fixtures and relevant assertions manually reviewed; execution scope in report
+backend/tests/test_phase4_sync.py,screened,Automated full-text screening (271 lines); AST parsed; 12 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_plan_expiry.py,screened,Automated full-text screening (103 lines); AST parsed; 11 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_plan_gating.py,screened,Automated full-text screening (188 lines); AST parsed; 14 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_plan_pause_self_heal.py,screened,Automated full-text screening (89 lines); AST parsed; 3 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_print_and_einvoice_pure.py,screened,Automated full-text screening (543 lines); AST parsed; 54 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_print_payload.py,screened,Automated full-text screening (290 lines); AST parsed; 18 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_pro_trial.py,screened,Automated full-text screening (273 lines); AST parsed; 27 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_product_barcode.py,screened,Automated full-text screening (164 lines); AST parsed; 11 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_product_create_idempotency.py,screened,Automated full-text screening (131 lines); AST parsed; 7 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_product_delete_and_deactivate.py,screened,Automated full-text screening (129 lines); AST parsed; 8 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_profile_is_premium.py,screened,Automated full-text screening (61 lines); AST parsed; 3 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_pull_auth_backoff.py,screened,Automated full-text screening (161 lines); AST parsed; 8 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_pull_partial.py,screened,Automated full-text screening (177 lines); AST parsed; 13 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_pull_skip_is_not_loss.py,screened,Automated full-text screening (271 lines); AST parsed; 14 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_purchase_commit.py,screened,Automated full-text screening (338 lines); AST parsed; 8 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_purchase_ocr.py,screened,Automated full-text screening (265 lines); AST parsed; 18 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_purchase_status_vocabulary.py,screened,Automated full-text screening (87 lines); AST parsed; 4 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_purchases.py,screened,Automated full-text screening (581 lines); AST parsed; 12 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_push_outcome.py,screened,Automated full-text screening (366 lines); AST parsed; 25 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_push_trigger_guard.py,screened,Automated full-text screening (177 lines); AST parsed; 8 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_rag.py,screened,Automated full-text screening (171 lines); AST parsed; 4 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_rate_limiter.py,screened,Automated full-text screening (158 lines); AST parsed; 11 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_realtime_delta.py,screened,Automated full-text screening (79 lines); AST parsed; 4 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_realtime_sync.py,screened,Automated full-text screening (50 lines); AST parsed; 2 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_reclaim_local.py,screened,Automated full-text screening (156 lines); AST parsed; 6 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_recommendations.py,screened,Automated full-text screening (177 lines); AST parsed; 14 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_reports_agree.py,screened,Automated full-text screening (473 lines); AST parsed; 25 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_repost_missing.py,screened,Automated full-text screening (38 lines); AST parsed; 1 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_revenue_month.py,screened,Automated full-text screening (127 lines); AST parsed; 11 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_review1_hardening.py,screened,Automated full-text screening (243 lines); AST parsed; 16 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_rls_policies.py,screened,Automated full-text screening (148 lines); AST parsed; 11 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_rls_postgres.py,screened,Automated full-text screening (213 lines); AST parsed; 14 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_roles.py,screened,Automated full-text screening (182 lines); AST parsed; 8 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_router_fixpack.py,screened,Automated full-text screening (183 lines); AST parsed; 17 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_router_switch.py,screened,Automated full-text screening (141 lines); AST parsed; 7 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_routing_tiers.py,screened,Automated full-text screening (726 lines); AST parsed; 46 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_sales_api.py,screened,Automated full-text screening (108 lines); AST parsed; 6 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_search_api.py,screened,Automated full-text screening (138 lines); AST parsed; 10 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_seed_scripts_cannot_touch_real_data.py,screened,Automated full-text screening (55 lines); AST parsed; 3 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_seed_users_fail_closed.py,screened,Automated full-text screening (21 lines); AST parsed; 1 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_self_healing_engine.py,screened,Automated full-text screening (43 lines); AST parsed; 1 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_serial_line_field.py,screened,Automated full-text screening (79 lines); AST parsed; 1 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_session_invalidation.py,screened,Automated full-text screening (116 lines); AST parsed; 3 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_session_title.py,screened,Automated full-text screening (49 lines); AST parsed; 3 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_settings.py,screened,Automated full-text screening (278 lines); AST parsed; 19 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_settle_dues.py,screened,Automated full-text screening (229 lines); AST parsed; 18 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_settle_fixes.py,screened,Automated full-text screening (135 lines); AST parsed; 9 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_shadow_routing.py,screened,Automated full-text screening (95 lines); AST parsed; 5 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_shift_service_unit.py,screened,Automated full-text screening (890 lines); AST parsed; 66 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_shifts.py,screened,Automated full-text screening (283 lines); AST parsed; 10 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_signup_phone.py,screened,Automated full-text screening (45 lines); AST parsed; 2 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_smart_insights.py,screened,Automated full-text screening (195 lines); AST parsed; 21 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_sse_hardening.py,screened,Automated full-text screening (122 lines); AST parsed; 5 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_staff.py,screened,Automated full-text screening (179 lines); AST parsed; 10 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_staff_login_name_unique.py,screened,Automated full-text screening (350 lines); AST parsed; 18 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_standard_tools.py,screened,Automated full-text screening (266 lines); AST parsed; 22 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_stock_ledger.py,test,Automated full-text screening (204 lines); AST parsed; 12 functions; Test fixtures and relevant assertions manually reviewed; execution scope in report
+backend/tests/test_stream_usage.py,screened,Automated full-text screening (214 lines); AST parsed; 15 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_subscription_cloud_sync.py,screened,Automated full-text screening (129 lines); AST parsed; 6 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_sync.py,screened,Automated full-text screening (279 lines); AST parsed; 3 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_sync_deferred_rows.py,screened,Automated full-text screening (536 lines); AST parsed; 35 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_sync_financial_conflicts.py,screened,Automated full-text screening (204 lines); AST parsed; 8 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_sync_halt_state.py,screened,Automated full-text screening (143 lines); AST parsed; 8 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_sync_idempotency.py,screened,Automated full-text screening (240 lines); AST parsed; 14 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_sync_inbox.py,screened,Automated full-text screening (451 lines); AST parsed; 29 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_sync_liveness_regressions.py,screened,Automated full-text screening (450 lines); AST parsed; 24 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_sync_migration_fixes.py,screened,Automated full-text screening (406 lines); AST parsed; 13 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_sync_paid_reconcile.py,screened,Automated full-text screening (100 lines); AST parsed; 8 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_sync_paid_state_parity.py,screened,Automated full-text screening (490 lines); AST parsed; 23 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_sync_profile.py,screened,Automated full-text screening (146 lines); AST parsed; 6 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_sync_pull.py,screened,Automated full-text screening (145 lines); AST parsed; 9 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_sync_pull_failure_visibility.py,screened,Automated full-text screening (319 lines); AST parsed; 20 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_sync_queue_backoff.py,screened,Automated full-text screening (241 lines); AST parsed; 17 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_sync_shift_and_push_hardening.py,screened,Automated full-text screening (430 lines); AST parsed; 25 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_sync_volume_and_tenancy.py,screened,Automated full-text screening (490 lines); AST parsed; 29 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_tenant_fk_invariants.py,screened,Automated full-text screening (263 lines); AST parsed; 17 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_tenant_scope.py,screened,Automated full-text screening (308 lines); AST parsed; 16 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_tier_pricing.py,screened,Automated full-text screening (143 lines); AST parsed; 8 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_timezone_dates.py,screened,Automated full-text screening (120 lines); AST parsed; 6 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_token_accounting.py,screened,Automated full-text screening (178 lines); AST parsed; 10 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_totp_and_metrics.py,screened,Automated full-text screening (201 lines); AST parsed; 14 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_trial_balance.py,screened,Automated full-text screening (166 lines); AST parsed; 8 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_uid_cross_db.py,screened,Automated full-text screening (177 lines); AST parsed; 4 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_uid_sync_keys.py,screened,Automated full-text screening (365 lines); AST parsed; 7 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_universal_schema.py,screened,Automated full-text screening (139 lines); AST parsed; 6 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_upload_delete_syncs.py,screened,Automated full-text screening (200 lines); AST parsed; 5 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_user_policy.py,screened,Automated full-text screening (49 lines); AST parsed; 2 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_vision_self_disable.py,screened,Automated full-text screening (96 lines); AST parsed; 5 functions; Test definitions statically screened; not executed unless named in report
+backend/tests/test_writing_router.py,screened,Automated full-text screening (43 lines); AST parsed; 2 functions; Test definitions statically screened; not executed unless named in report
+backend/voided_payment_6326fb2a_20260801-073807.json,excluded,Generated/report/data artifact: metadata classified; no claim of semantic or personal-data review.
+backend/voided_payment_6326fb2a_20260801-073808.json,excluded,Generated/report/data artifact: metadata classified; no claim of semantic or personal-data review.
+backend/voided_payment_e10f6d92_20260801-073825.json,excluded,Generated/report/data artifact: metadata classified; no claim of semantic or personal-data review.

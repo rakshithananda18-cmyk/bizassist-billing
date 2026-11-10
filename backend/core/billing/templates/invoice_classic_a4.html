@@ -242,7 +242,11 @@
                 {% if totals.cash_discount %}{{ summary_row("Cash Discount", "− ₹{:,.2f}".format(totals.cash_discount)) }}{% endif %}
                 
                 {{ summary_row("GRAND TOTAL", "₹{:,.2f}".format(totals.grand_total), big=True) }}
-                {{ summary_row("Amount Paid", "₹{:,.2f}".format(totals.amount_paid)) }}
+                {% if totals.credited_amount %}{{ summary_row("Less: Credit Notes", "₹{:,.2f}".format(totals.credited_amount)) }}{% endif %}
+                {% if totals.credited_amount %}{{ summary_row("Adjusted Payable", "₹{:,.2f}".format(totals.adjusted_total)) }}{% endif %}
+                {{ summary_row("Payments / Credit Applied", "₹{:,.2f}".format(totals.amount_paid)) }}
+                {% if totals.amount_refunded %}{{ summary_row("Refund Paid", "₹{:,.2f}".format(totals.amount_refunded)) }}{% endif %}
+                {% if totals.return_credit %}{{ summary_row("Credit Owed to Customer", "₹{:,.2f}".format(totals.return_credit)) }}{% endif %}
                 {% if totals.balance_due %}{{ summary_row("Balance Due", "₹{:,.2f}".format(totals.balance_due), big=True) }}{% endif %}
             </table>
         </div>

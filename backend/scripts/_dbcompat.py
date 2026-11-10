@@ -396,6 +396,10 @@ def ensure(con):
     """
     if isinstance(con, Conn):
         return con
+    # SQLAlchemy raw_connection() returns a pool proxy, whose module name is
+    # sqlalchemy even when its underlying driver is psycopg2. Inspect the actual
+    # driver so Postgres audits do not issue SQLite metadata/placeholder SQL.
+    con = getattr(con, "driver_connection", con)
     dialect = POSTGRES if con.__class__.__module__.startswith("psycopg") else SQLITE
     return Conn(con, dialect, f"<{type(con).__name__}>", readonly=False)
 
@@ -592,9 +596,12 @@ def _connect_postgres(url: str, readonly: bool) -> Conn:
     try:
         import psycopg2
     except ImportError:
-        sys.exit(
-            "psycopg2 is not installed, so this database cannot be opened.\n"
-            "  pip install psycopg2-binary")
+        try:
+            import psycopg as psycopg2
+        except ImportError:
+            sys.exit(
+                "Neither psycopg2 nor psycopg is installed, so this database cannot be opened.\n"
+                "  pip install psycopg2-binary  OR  pip install psycopg")
 
     if _looks_like_a_placeholder(url):        # belt; connect() is the braces
         sys.exit(_placeholder_message(url))

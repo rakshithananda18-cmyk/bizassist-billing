@@ -10,6 +10,8 @@ sys.path.insert(0, backend_path)
 
 from main_groq import app
 
+from tests.signup_fixture import signup_payload
+
 client = TestClient(app)
 
 def test_signup_policy_blocks_test_prefixes_on_non_test_db(monkeypatch):
@@ -22,11 +24,11 @@ def test_signup_policy_blocks_test_prefixes_on_non_test_db(monkeypatch):
     
     for prefix in test_prefixes:
         uname = f"{prefix}{uuid.uuid4().hex[:6]}"
-        resp = client.post("/signup", json={
+        resp = client.post("/signup", json=signup_payload({
             "username": uname,
             "password": "TestPassword123!",
             "business_name": "Test Company"
-        })
+        }))
         # Must be blocked on non-test DB
         assert resp.status_code == 400
         assert "Test user registration is not allowed on this database" in resp.json()["detail"]
@@ -37,11 +39,11 @@ def test_signup_policy_allows_test_prefixes_on_test_db(monkeypatch):
     
     # Sign up should go through (or fail with database constraints/existing, but not blocked by the prefix policy)
     uname = f"biz_test_{uuid.uuid4().hex[:8]}"
-    resp = client.post("/signup", json={
+    resp = client.post("/signup", json=signup_payload({
         "username": uname,
         "password": "TestPassword123!",
         "business_name": "Test Company"
-    })
+    }))
     # If the user creation goes through, it will return 200
     assert resp.status_code == 200
     assert resp.json()["username"] == uname

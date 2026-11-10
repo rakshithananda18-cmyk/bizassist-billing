@@ -2,6 +2,16 @@
 
 *Scope: the field-staff app of the BizAssist ecosystem (Billing → **Field Team** → AI). First customer profile: medical / pharma **wholesale distributor** delivering daily to retail medical shops.*
 
+> **29 October 2026 survey:** the [Field agent audit](release/2026-10-29-field-app-agent-audit.md)
+> inventories every owner/staff page, confirmed fixes, current test evidence and
+> remaining device/deployment checks. The [complete app survey](release/2026-10-29-complete-app-survey.md)
+> is the cross-app summary. This evidence supersedes the historical 50-backend /
+> 9-frontend test snapshot below. Registration now leads to Billing's required-phone,
+> first-time 14-day Pro trial flow. Field dues use Billing's linked-return/receipt
+> projection. The centralized Billing purge now explicitly clears the same
+> business's shared-cloud Field tree with guarded tenant checks; this does **not**
+> mean cloud account deletion remotely erases offline local Billing copies.
+
 ---
 
 ## 1. MVP requirements → what is built
@@ -119,11 +129,11 @@ Ledger is append-only (`ft_points_ledger`); completed tasks cannot be edited (40
 | Same owner login, BizID, `token_version` | Done |
 | Shops ← billing customers (`customer_id` link) | Done |
 | SSO: **Field Team** link in billing's sidebar (owner-only, like Dashboard BIZASSIST) → `?sso=<30 s ticket>` → `/api/auth/exchange` | Done in both, same repo: `frontend-billing/src/config/fieldTeam.js` (shown once billing's Vercel project has `VITE_FIELD_TEAM_URL`); the ticket format is checked against billing's own code in CI (`test_billing_contract.py`) |
-| Pro plan gate on Field Team | **Decide** (D7) — billing's link has the switch (`EXTERNAL_APPS.fieldTeam.proOnly`); a real gate must also be checked here, at owner sign-in |
+| Pro plan gate on Field Team | **Decided: Pro**, with a 7-day grace after a paid plan expires (none when revoked, and none when billing's free trial ends — a trial stops on its last day). Field Team's server checks the owner's plan (billing's `users.settings` → `subscription`, billing's own `effective_plan` rule, contract-tested) at owner sign-in, SSO, staff sign-in and on every request → HTTP 402, like billing's `require_plan`; staff follow the owner's plan. On only where `SUBSCRIPTION_ENFORCED=1` (`deploy_cloudrun.ps1 -ProGate on`). Owners see a warning 7 days before the end and during grace. Billing's sidebar shows the PRO badge (`EXTERNAL_APPS.fieldTeam.proOnly: true`) |
 | Billing autogenerate guard for `ft_*` | Done (billing `alembic/env.py`) |
 | Deliveries from billing invoices (pick invoices per shop → boxes, refs; optional collection of the amount due) | Done — `GET /api/shops/{id}/billing-invoices` reads the linked customer's `invoices` / `invoice_line_items`; tasks keep them in `ft_task_invoices` (one live delivery and one live collection per bill). Boxes come from box/carton/case lines. Shops added by hand link to a customer from Shops → Edit. Read-only: billing's tables are never written. B2B orders follow with retailer ordering (below), since a B2B order needs the shop to have its own BizAssist account |
 | Shop request → billing B2B order / sale draft (catalogue picker) | Next |
-| Collections (`payment_collect`) → billing payment (owner confirms; AI never moves money) | Next |
+| Collections (`payment_collect`) → billing payment (owner confirms; AI never moves money) | Done — staff record the amount, mode (Cash / UPI / Cheque / NEFT / Card) and reference; billing's **Contacts & Payments → Field collections** (owner only, cloud only) lists them with an oldest-bill-first split the owner can change, and Confirm records one payment per bill through billing's own `record_payment` (journal, paid status, desktop sync), keyed `ft-collect:<task uid>:<invoice id>` so it is never recorded twice. A collection can be confirmed in parts; more than the bills owe stays listed. Field Team only reads those payments back ("Recorded in billing"). Billing: `core/field_team.py`, `core/api/field_collections.py`; Field Team: `app/collections.py`, migration 0003. Both sides' table and key contracts are checked in CI |
 | Retailers ordering via BizID connections (billing D10) feeding the next day's run | Later |
 | AI advisor reads `ft_*` ("which agent misses Tuesday shops") | Later |
 
@@ -158,7 +168,7 @@ Billing is mirrored to its own Hugging Face Space, and **every push there rebuil
 | 5 | Google Cloud project with billing (trial is fine — upgrade before it ends). Install the Google Cloud CLI, `gcloud auth login`, then from `main`: `.\backend-task\deploy_cloudrun.ps1 -Project <id> -Setup` (asks for `DATABASE_URL` and `JWT_SECRET` — billing's values; typed input is hidden) | Script ends with `/api/health` → `db: postgresql`; Cloud Run log shows `Running upgrade  -> 0001_ft_initial` on the first start, then `[BOOT] BizAssist Task ready db=postgresql … purge=scheduled`; Cloud Scheduler lists `bizassist-task-purge-pings` |
 | 6 | Vercel → Add New → Project → import **bizassist-billing**. Root Directory `frontend-task`, Framework Vite, env `VITE_API_URL=<Cloud Run service URL>` → Deploy | The Vercel URL shows the Field Team sign-in page |
 | 7 | `.\backend-task\deploy_cloudrun.ps1 -Project <id> -AllowedOrigins https://<vercel-url>` | Owner signs in on the Vercel URL; no CORS error in the browser console |
-| 8 | Billing's `frontend-billing` Vercel project → env `VITE_FIELD_TEAM_URL=https://<vercel-url>` → Redeploy (Vite reads it at build time). Frontend only — no billing Space push | Billing sidebar shows **Field Team** to owners; it opens the Vercel URL already signed in |
+| 8 | Attach `task.staterbill.com` to the existing `frontend-task` Vercel project, configure its DNS/certificate, then set Billing's `VITE_FIELD_TEAM_URL=https://task.staterbill.com` and redeploy | Billing sidebar opens **Field Team** at the custom domain already signed in; the legacy Vercel origin remains accepted |
 | 9 | Owner adds one staff member, shares the BizID **and the Vercel URL** | Staff phone: sign in → Check in → location accepted |
 | 10 | Pilot one distributor for 1–2 weeks (Phase 1.1, §10) | Dashboard shows real deliveries / boxes / points |
 
@@ -178,7 +188,7 @@ Field Team runs on its own Cloud Run service and its own Vercel project: the two
 ## 10. Next phases and open decisions
 
 **Phase 1.1 (owner pilot, 1–2 weeks):** deploy Cloud Run + Vercel; billing "Field Team" link (SSO, built — §7); pilot with one distributor; tune accuracy/geofence from real data.
-**Phase 2:** Android wrapper (background GPS + mock-location flag); ~~deliveries from billing invoices~~ (done); shop request → B2B order draft; collections → payments; notifications (new run, overdue task).
+**Phase 2:** Android wrapper (background GPS + mock-location flag); ~~deliveries from billing invoices~~ (done); shop request → B2B order draft; ~~collections → payments~~ (done); notifications (new run, overdue task).
 **Phase 3:** incentive slabs and payout report; route optimisation; retailer self-ordering feeding runs; AI advisor over field data.
 
 Decisions for the owner:

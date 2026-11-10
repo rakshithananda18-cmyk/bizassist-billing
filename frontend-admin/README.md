@@ -1,8 +1,18 @@
-# React + Vite
+# BizAssist administration
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+The private STATER Bill operations workspace for business support, adoption, usage, diagnostics, and platform maintenance.
 
-Currently, two official plugins are available:
+Run commands from `frontend-admin`:
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react/README.md) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+```sh
+npm install
+npm run dev
+npm test
+npm run build
+```
+
+Development runs at `http://localhost:5175/admin/login` and uses the backend at `http://localhost:8001` by default. Set `VITE_API_URL` to override the backend and `VITE_BILLING_URL` to override the merchant sign-in destination. Use an assigned administrator account; two-factor authentication appears when required by the backend.
+
+The shared workspace palette, sidebar, controls, tables, and responsive behavior live in `src/styles/experience.css`. The overview, business directory, and sign-in screen have dedicated style files. Both light and dark themes respect the saved admin preference, with reduced motion support.
+
+Overview figures come from the business directory response. Infrastructure readings distinguish unavailable data from measured zero; cloud cost figures are labelled estimates. Failed refreshes retain known data with a retry action. Tests cover these states, authentication and two-factor flows, directory actions, and keyboard/mobile navigation.

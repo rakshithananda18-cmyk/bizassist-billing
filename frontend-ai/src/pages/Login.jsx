@@ -79,7 +79,7 @@ export default function Login() {
     {/* Decorative blurred app interface behind the login card (legacy look) */}
     <div className="login-backdrop" aria-hidden="true">
       <aside className="lb-sidebar">
-        <div className="lb-logo" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><BuildingMark size={18} /> BizAssist</div>
+        <div className="lb-logo" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><BuildingMark size={18} /> Stater</div>
         <div className="lb-navitem active">AI Assistant</div>
         <div className="lb-navitem">Dashboard</div>
         <div className="lb-navitem">Invoices</div>
@@ -106,7 +106,7 @@ export default function Login() {
       <div className="login-card">
         <div className="login-glow"></div>
         <div className="login-symbol"><BuildingMark size={42} /></div>
-        <h1 className="login-title">BIZASSIST</h1>
+        <h1 className="login-title">STATER</h1>
         <p className="login-subtitle">Enterprise Business Intelligence Portal</p>
 
         <form id="login-form" onSubmit={handleSubmit}>

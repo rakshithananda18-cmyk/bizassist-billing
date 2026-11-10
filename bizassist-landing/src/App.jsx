@@ -1,437 +1,279 @@
-import Reveal from './Reveal'
-import { useLatestRelease, detectOS, RELEASES_PAGE } from './useLatestRelease'
+import React, { useState, useEffect } from 'react'
+import MarketingPage from './MarketingPage'
 
-/* ────────────────────────── tiny inline icons ───────────────────────── */
-const Icon = {
-  bolt: (
-    <svg viewBox="0 0 24 24" fill="currentColor" className="h-6 w-6">
-      <path d="M13 2 4.5 13.5H11L10 22l8.5-11.5H12L13 2z" />
+/* ────────────────────────── Crisp Outlined Vector Icons ───────────────────────── */
+const Icons = {
+  bolt: ({ className = 'w-6 h-6', ...props }) => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}>
+      <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
     </svg>
   ),
-  offline: (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-6 w-6">
-      <path d="M12 3v3M12 18v3M3 12h3M18 12h3" strokeLinecap="round" />
-      <circle cx="12" cy="12" r="5.2" />
-      <path d="M12 9.5v2.8l1.8 1.4" strokeLinecap="round" />
+  offline: ({ className = 'w-6 h-6', ...props }) => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}>
+      <path d="M1 1l22 22" />
+      <path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55" />
+      <path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39" />
+      <path d="M10.71 5.05A16 16 0 0 1 22.58 9" />
+      <path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88" />
+      <path d="M8.53 16.11a6 6 0 0 1 6.95 0" />
+      <line x1="12" y1="20" x2="12.01" y2="20" strokeWidth="2.5" />
     </svg>
   ),
-  sync: (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-6 w-6">
-      <path d="M4 12a8 8 0 0 1 13.6-5.7L20 8.5M20 12a8 8 0 0 1-13.6 5.7L4 15.5" strokeLinecap="round" />
-      <path d="M20 4v4.5h-4.5M4 20v-4.5h4.5" strokeLinecap="round" strokeLinejoin="round" />
+  qrScan: ({ className = 'w-6 h-6', ...props }) => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}>
+      <path d="M3 7V5a2 2 0 0 1 2-2h2" />
+      <path d="M17 3h2a2 2 0 0 1 2 2v2" />
+      <path d="M21 17v2a2 2 0 0 1-2 2h-2" />
+      <path d="M7 21H5a2 2 0 0 1-2-2v-2" />
+      <rect x="7" y="7" width="3" height="3" />
+      <rect x="14" y="7" width="3" height="3" />
+      <rect x="7" y="14" width="3" height="3" />
+      <line x1="14" y1="14" x2="17" y2="14" />
+      <line x1="14" y1="17" x2="17" y2="17" />
     </svg>
   ),
-  shield: (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-6 w-6">
-      <path d="M12 3 5 6v5c0 4.5 3 8.4 7 10 4-1.6 7-5.5 7-10V6l-7-3z" strokeLinejoin="round" />
-      <path d="m9.2 12 2 2 3.6-4" strokeLinecap="round" strokeLinejoin="round" />
+  pillars: ({ className = 'w-6 h-6', ...props }) => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}>
+      <path d="M3 21h18" />
+      <path d="M3 7h18" />
+      <path d="M12 2L3 7h18L12 2z" />
+      <line x1="6" y1="7" x2="6" y2="21" />
+      <line x1="10" y1="7" x2="10" y2="21" />
+      <line x1="14" y1="7" x2="14" y2="21" />
+      <line x1="18" y1="7" x2="18" y2="21" />
     </svg>
   ),
-  chart: (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-6 w-6">
-      <path d="M4 20h16M7 16v-5M12 16V7M17 16v-8" strokeLinecap="round" />
+  chart: ({ className = 'w-6 h-6', ...props }) => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}>
+      <line x1="18" y1="20" x2="18" y2="10" />
+      <line x1="12" y1="20" x2="12" y2="4" />
+      <line x1="6" y1="20" x2="6" y2="14" />
+      <path d="M3 20h18" />
     </svg>
   ),
-  update: (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-6 w-6">
-      <path d="M12 3v10m0 0 3.5-3.5M12 13 8.5 9.5" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M4 17a8 8 0 0 0 16 0" strokeLinecap="round" />
+  chat: ({ className = 'w-6 h-6', ...props }) => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}>
+      <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
     </svg>
   ),
-  windows: (
-    <svg viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5">
-      <path d="M3 5.5 10.5 4.4v7.1H3V5.5zm0 13 7.5 1.1v-7H3v5.9zM11.5 4.2 21 3v8.5h-9.5V4.2zm0 15.6L21 21v-8.5h-9.5v7.3z" />
+  box: ({ className = 'w-6 h-6', ...props }) => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}>
+      <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+      <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
+      <line x1="12" y1="22.08" x2="12" y2="12" />
     </svg>
   ),
-  apple: (
-    <svg viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5">
-      <path d="M16.7 12.9c0-2.4 2-3.6 2-3.6-1.1-1.6-2.9-1.8-3.5-1.9-1.5-.1-2.9.9-3.6.9-.8 0-1.9-.9-3.2-.8-1.6 0-3.1 1-4 2.4-1.7 2.9-.4 7.3 1.2 9.7.8 1.2 1.8 2.5 3 2.4 1.2 0 1.7-.8 3.2-.8s1.9.8 3.2.8 2.2-1.2 3-2.3c.9-1.4 1.3-2.7 1.3-2.8-.1 0-2.6-1-2.6-4zM14.4 5.6c.7-.8 1.1-2 1-3.1-1 0-2.2.7-2.9 1.5-.6.7-1.2 1.9-1 3 1.1.1 2.2-.6 2.9-1.4z" />
+  handshake: ({ className = 'w-6 h-6', ...props }) => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}>
+      <path d="M19 14l2-2a2.83 2.83 0 0 0 0-4l-1-1a2.83 2.83 0 0 0-4 0l-2 2" />
+      <path d="M14 9l-2-2a2.83 2.83 0 0 0-4 0l-1 1a2.83 2.83 0 0 0 0 4l2 2" />
+      <path d="M8 15l-3 3a2 2 0 0 0 0 2.83l.17.17a2 2 0 0 0 2.83 0l3-3" />
+      <path d="M16 11l3 3a2 2 0 0 1 0 2.83l-.17.17a2 2 0 0 1-2.83 0l-3-3" />
+      <line x1="11" y1="12" x2="13" y2="14" />
+    </svg>
+  ),
+  cloudSync: ({ className = 'w-6 h-6', ...props }) => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}>
+      <path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242" />
+      <path d="M12 12v9" />
+      <path d="m8 17 4 4 4-4" />
+    </svg>
+  ),
+  search: ({ className = 'w-4 h-4', ...props }) => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}>
+      <circle cx="11" cy="11" r="8" />
+      <line x1="21" y1="21" x2="16.65" y2="16.65" />
+    </svg>
+  ),
+  printer: ({ className = 'w-4 h-4', ...props }) => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}>
+      <polyline points="6 9 6 2 18 2 18 9" />
+      <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+      <rect x="6" y="14" width="12" height="8" />
+    </svg>
+  ),
+  sun: ({ className = 'w-4 h-4', ...props }) => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}>
+      <circle cx="12" cy="12" r="5" />
+      <line x1="12" y1="1" x2="12" y2="3" />
+      <line x1="12" y1="21" x2="12" y2="23" />
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
+      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+      <line x1="1" y1="12" x2="3" y2="12" />
+      <line x1="21" y1="12" x2="23" y2="12" />
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
+      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+    </svg>
+  ),
+  moon: ({ className = 'w-4 h-4', ...props }) => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}>
+      <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+    </svg>
+  ),
+  sparkle: ({ className = 'w-4 h-4', ...props }) => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}>
+      <path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3L12 3z" />
+    </svg>
+  ),
+  windows: ({ className = 'w-4 h-4', ...props }) => (
+    <svg viewBox="0 0 24 24" fill="currentColor" className={className} {...props}>
+      <path d="M0 3.449L9.75 2.1v9.451H0m10.949-9.602L24 0v11.4H10.949M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-12.9-1.801" />
+    </svg>
+  ),
+  apple: ({ className = 'w-4 h-4', ...props }) => (
+    <svg viewBox="0 0 24 24" fill="currentColor" className={className} {...props}>
+      <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M15.97 6.37c.66-.82 1.11-1.96.99-3.1-.96.04-2.16.65-2.84 1.45-.61.71-1.14 1.88-1 3 .02 0 .04 0 .06 0 1.05 0 2.13-.53 2.79-1.35z" />
+    </svg>
+  ),
+  check: ({ className = 'w-4 h-4', ...props }) => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}>
+      <polyline points="20 6 9 17 4 12" />
+    </svg>
+  ),
+  cross: ({ className = 'w-4 h-4', ...props }) => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}>
+      <line x1="18" y1="6" x2="6" y2="18" />
+      <line x1="6" y1="6" x2="18" y2="18" />
+    </svg>
+  ),
+  play: ({ className = 'w-4 h-4', ...props }) => (
+    <svg viewBox="0 0 24 24" fill="currentColor" className={className} {...props}>
+      <polygon points="5 3 19 12 5 21 5 3" />
+    </svg>
+  ),
+  pause: ({ className = 'w-4 h-4', ...props }) => (
+    <svg viewBox="0 0 24 24" fill="currentColor" className={className} {...props}>
+      <rect x="6" y="4" width="4" height="16" />
+      <rect x="14" y="4" width="4" height="16" />
+    </svg>
+  ),
+  refresh: ({ className = 'w-4 h-4', ...props }) => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}>
+      <path d="M23 4v6h-6" />
+      <path d="M1 20v-6h6" />
+      <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+    </svg>
+  ),
+  expand: ({ className = 'w-4 h-4', ...props }) => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}>
+      <polyline points="15 3 21 3 21 9" />
+      <polyline points="9 21 3 21 3 15" />
+      <line x1="21" y1="3" x2="14" y2="10" />
+      <line x1="3" y1="21" x2="10" y2="14" />
+    </svg>
+  ),
+  shrink: ({ className = 'w-4 h-4', ...props }) => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}>
+      <polyline points="4 14 10 14 10 20" />
+      <polyline points="20 10 14 10 14 4" />
+      <line x1="14" y1="10" x2="21" y2="3" />
+      <line x1="3" y1="21" x2="10" y2="14" />
+    </svg>
+  ),
+  plus: ({ className = 'w-3.5 h-3.5', ...props }) => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}>
+      <line x1="12" y1="5" x2="12" y2="19" />
+      <line x1="5" y1="12" x2="19" y2="12" />
+    </svg>
+  ),
+  minus: ({ className = 'w-3.5 h-3.5', ...props }) => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}>
+      <line x1="5" y1="12" x2="19" y2="12" />
+    </svg>
+  ),
+  trash: ({ className = 'w-3.5 h-3.5', ...props }) => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} {...props}>
+      <polyline points="3 6 5 6 21 6" />
+      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
     </svg>
   ),
 }
 
-/* ────────────────────────────── logo mark ───────────────────────────── */
-function LogoMark({ size = 'h-8 w-8' }) {
+/* ────────────────────────── Brand Logo Mark ───────────────────────── */
+function BuildingMark({ size = 26, accent = '#c15f3c', strokeWidth = 1.8 }) {
+  const WINDOWS = [
+    [10.6, 39], [15.1, 39],
+    [28.5, 29], [33.2, 29], [28.5, 34], [33.2, 34],
+    [46.5, 23], [51.2, 23], [46.5, 28], [51.2, 28], [46.5, 33], [51.2, 33],
+  ]
   return (
-    <div className={`${size} relative grid place-items-center rounded-xl bg-gradient-to-br from-electric-500 to-indigo-600 shadow-lg shadow-electric-600/30`}>
-      <span className="text-sm font-black text-white">B</span>
-      <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-amber-400 shadow shadow-amber-400/60" />
-    </div>
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 -5 64 64"
+      fill="none"
+      aria-hidden="true"
+      shapeRendering="geometricPrecision"
+      className="shrink-0"
+    >
+      <g stroke="currentColor" strokeWidth={strokeWidth} strokeLinejoin="round">
+        <rect x="8" y="36" width="12" height="18" rx="1" />
+        <rect x="26" y="26" width="12" height="28" rx="1" />
+        <rect x="44" y="16" width="12" height="38" rx="1" />
+      </g>
+      <g fill="currentColor">
+        {WINDOWS.map(([x, y], i) => (
+          <rect key={i} x={x} y={y} width="2.1" height="2.1" />
+        ))}
+      </g>
+      <g stroke="currentColor" strokeWidth={strokeWidth} fill="none" strokeLinejoin="round">
+        <rect x="11.4" y="46" width="5.2" height="8" />
+        <rect x="29.4" y="43" width="5.2" height="11" />
+        <rect x="47.4" y="40" width="5.2" height="14" />
+      </g>
+      <path d="M50 0 L51.5 4.5 L56 6 L51.5 7.5 L50 12 L48.5 7.5 L44 6 L48.5 4.5 Z" fill={accent} />
+    </svg>
   )
 }
 
-/* ──────────────────────────── download button ───────────────────────── */
-function DownloadButtons({ large = false }) {
-  const rel = useLatestRelease()
-  const os = detectOS()
-
-  const primary =
-    os === 'mac'
-      ? { label: 'Download for macOS', href: rel.mac, icon: Icon.apple }
-      : { label: 'Download for Windows', href: rel.windows, icon: Icon.windows }
-  const secondary =
-    os === 'mac'
-      ? { label: 'Windows', href: rel.windows, icon: Icon.windows }
-      : { label: 'macOS', href: rel.mac, icon: Icon.apple }
-
+function BrandLogo({ size = 28, showTagline = true }) {
   return (
-    <div className={`flex flex-wrap items-center gap-4 ${large ? 'justify-center' : ''}`}>
-      <a
-        href={primary.href || rel.fallback}
-        className={`btn-sheen group inline-flex items-center gap-3 rounded-2xl bg-gradient-to-r from-electric-500 to-indigo-600 font-semibold text-white shadow-xl shadow-electric-600/30 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-2xl hover:shadow-electric-500/40 ${
-          large ? 'px-8 py-4 text-lg' : 'px-6 py-3.5'
-        }`}
-      >
-        {primary.icon}
-        {primary.label}
-        {rel.version && (
-          <span className="rounded-full bg-white/20 px-2 py-0.5 text-xs font-bold">v{rel.version}</span>
+    <div className="flex items-center gap-3">
+      <div className="grid place-items-center rounded-xl bg-obsidian-900 border border-slate-200/20 dark:border-white/10 p-1.5 shadow-md text-amber-100">
+        <BuildingMark size={size} accent="#c15f3c" />
+      </div>
+      <div className="flex flex-col leading-none">
+        <div className="text-xl font-black tracking-tight text-slate-900 dark:text-white uppercase font-sans">
+          STATER <span className="text-terracotta-500 font-semibold normal-case tracking-normal">Bill</span>
+        </div>
+        {showTagline && (
+          <div className="text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-400 font-medium mt-1">
+            στατήρ <span className="text-terracotta-500 font-bold">•</span> by ARES
+          </div>
         )}
-      </a>
-      <a
-        href={secondary.href || rel.fallback}
-        className="glass inline-flex items-center gap-2 rounded-2xl px-5 py-3.5 font-medium text-slate-200 transition-all duration-300 hover:-translate-y-0.5 hover:border-white/25 hover:bg-white/10"
-      >
-        {secondary.icon}
-        {secondary.label}
-      </a>
-      <a
-        href={RELEASES_PAGE}
-        className="text-sm text-slate-400 underline-offset-4 transition hover:text-slate-200 hover:underline"
-      >
-        All downloads →
-      </a>
+      </div>
     </div>
-  )
-}
-
-/* ─────────────────────────── hero app mockup ────────────────────────── */
-function AppMockup() {
-  const rows = [
-    ['#INV-2041', 'Sharma Traders', '₹12,480', 'Paid'],
-    ['#INV-2040', 'Café Nirvana', '₹3,150', 'Paid'],
-    ['#INV-2039', 'Patel & Sons', '₹28,900', 'Due'],
-    ['#INV-2038', 'GreenLeaf Mart', '₹7,620', 'Paid'],
-  ]
-  return (
-    <div className="glass-strong relative mx-auto w-full max-w-4xl rounded-2xl p-2 shadow-2xl shadow-black/50">
-      {/* window chrome */}
-      <div className="flex items-center gap-2 px-3 py-2">
-        <span className="h-3 w-3 rounded-full bg-rose-400/90" />
-        <span className="h-3 w-3 rounded-full bg-amber-400/90" />
-        <span className="h-3 w-3 rounded-full bg-emerald-400/90" />
-        <span className="ml-3 text-xs font-medium text-slate-400">BizAssist — Billing Counter</span>
-        <span className="ml-auto flex items-center gap-1.5 rounded-full bg-emerald-400/10 px-2.5 py-1 text-[10px] font-bold text-emerald-300">
-          <span className="h-1.5 w-1.5 animate-pulse-soft rounded-full bg-emerald-400" /> OFFLINE READY
-        </span>
-      </div>
-
-      <div className="flex overflow-hidden rounded-xl bg-ink-900/90">
-        {/* sidebar */}
-        <div className="hidden w-44 shrink-0 flex-col gap-1 border-r border-white/5 p-3 sm:flex">
-          <div className="mb-2 flex items-center gap-2 px-2">
-            <LogoMark size="h-6 w-6" />
-            <span className="text-xs font-bold text-white">BizAssist</span>
-          </div>
-          {['Home', 'Dashboard', 'Dashboard BIZASSIST', 'Billing Counter', 'Transactions', 'Inventory', 'GST Reports'].map(
-            (item, i) => (
-              <div
-                key={item}
-                className={`rounded-lg px-2.5 py-1.5 text-[11px] font-medium ${
-                  i === 3
-                    ? 'bg-electric-500/20 text-electric-400'
-                    : i === 2
-                      ? 'text-amber-300/90'
-                      : 'text-slate-400'
-                }`}
-              >
-                {item}
-              </div>
-            )
-          )}
-        </div>
-
-        {/* main panel */}
-        <div className="flex-1 p-4">
-          <div className="mb-4 grid grid-cols-3 gap-3">
-            {[
-              ["Today's Sales", '₹52,150', 'text-emerald-300'],
-              ['Invoices', '38', 'text-electric-400'],
-              ['Dues Pending', '₹28,900', 'text-amber-300'],
-            ].map(([k, v, c]) => (
-              <div key={k} className="glass rounded-xl p-3">
-                <div className="text-[10px] uppercase tracking-wider text-slate-500">{k}</div>
-                <div className={`mt-1 text-lg font-extrabold ${c}`}>{v}</div>
-              </div>
-            ))}
-          </div>
-
-          {/* mini bar chart */}
-          <div className="glass mb-4 flex h-24 items-end gap-1.5 rounded-xl p-3">
-            {[38, 52, 44, 65, 58, 80, 72, 90, 68, 84, 76, 95].map((h, i) => (
-              <div
-                key={i}
-                style={{ height: `${h}%` }}
-                className="flex-1 rounded-t bg-gradient-to-t from-electric-600/70 to-electric-400"
-              />
-            ))}
-          </div>
-
-          <div className="overflow-hidden rounded-xl border border-white/5">
-            {rows.map(([id, name, amt, status], i) => (
-              <div
-                key={id}
-                className={`flex items-center gap-3 px-3 py-2 text-[11px] ${i % 2 ? 'bg-white/[0.02]' : ''}`}
-              >
-                <span className="font-mono text-slate-500">{id}</span>
-                <span className="flex-1 font-medium text-slate-300">{name}</span>
-                <span className="font-bold text-slate-200">{amt}</span>
-                <span
-                  className={`rounded-full px-2 py-0.5 text-[9px] font-bold ${
-                    status === 'Paid' ? 'bg-emerald-400/10 text-emerald-300' : 'bg-amber-400/10 text-amber-300'
-                  }`}
-                >
-                  {status}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* glow under the mockup */}
-      <div className="absolute -bottom-10 left-1/2 -z-10 h-24 w-3/4 -translate-x-1/2 rounded-full bg-electric-600/30 blur-3xl" />
-    </div>
-  )
-}
-
-/* ────────────────────────────── sections ────────────────────────────── */
-function Navbar() {
-  return (
-    <header className="fixed inset-x-0 top-0 z-50">
-      <nav className="glass mx-auto mt-4 flex max-w-6xl items-center gap-6 rounded-2xl px-5 py-3">
-        <a href="#" className="flex items-center gap-2.5">
-          <LogoMark />
-          <span className="text-lg font-extrabold tracking-tight text-white">
-            Biz<span className="text-electric-400">Assist</span>
-          </span>
-        </a>
-        <div className="ml-auto hidden items-center gap-7 text-sm font-medium text-slate-300 md:flex">
-          <a href="#features" className="transition hover:text-white">Features</a>
-          <a href="#how" className="transition hover:text-white">How it works</a>
-          <a href={RELEASES_PAGE} className="transition hover:text-white">Releases</a>
-        </div>
-        <a
-          href="#download"
-          className="ml-auto rounded-xl bg-gradient-to-r from-electric-500 to-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-electric-600/25 transition hover:brightness-110 md:ml-0"
-        >
-          Download
-        </a>
-      </nav>
-    </header>
-  )
-}
-
-function Hero() {
-  return (
-    <section className="relative overflow-hidden pt-36 pb-24">
-      {/* ambient orbs */}
-      <div className="pointer-events-none absolute -top-32 left-1/4 h-96 w-96 animate-float-slow rounded-full bg-electric-600/25 blur-[110px]" />
-      <div className="pointer-events-none absolute top-24 right-1/5 h-80 w-80 animate-float-slower rounded-full bg-indigo-600/20 blur-[100px]" />
-      <div className="absolute inset-0 -z-10 bg-grid" />
-
-      <div className="mx-auto max-w-6xl px-6 text-center">
-        <Reveal>
-          <span className="glass inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-xs font-semibold text-electric-400">
-            <span className="h-1.5 w-1.5 animate-pulse-soft rounded-full bg-electric-400" />
-            Now with silent auto-updates & AI insights
-          </span>
-        </Reveal>
-
-        <Reveal delay={100}>
-          <h1 className="mx-auto mt-7 max-w-4xl text-5xl font-black leading-[1.06] tracking-tight md:text-7xl">
-            <span className="text-gradient">Billing at the speed</span>
-            <br />
-            <span className="text-white">of your counter.</span>
-          </h1>
-        </Reveal>
-
-        <Reveal delay={200}>
-          <p className="mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-slate-400">
-            BizAssist is the offline-first billing & POS desktop app for serious retailers.
-            Sub-second invoicing, GST reports, inventory and dues — with hybrid cloud sync
-            backing up every keystroke. No internet? No problem.
-          </p>
-        </Reveal>
-
-        <Reveal delay={300} className="mt-10">
-          <div id="download" className="flex justify-center">
-            <DownloadButtons large />
-          </div>
-          <p className="mt-4 text-xs text-slate-500">Free download · Windows 10/11 & macOS · Auto-updates forever</p>
-        </Reveal>
-
-        <Reveal delay={450} className="mt-16">
-          <AppMockup />
-        </Reveal>
-      </div>
-    </section>
-  )
-}
-
-const FEATURES = [
-  {
-    icon: Icon.bolt,
-    title: 'Sub-second execution',
-    body: 'The entire engine runs natively on your machine. Invoices open, price lookups resolve and receipts print in milliseconds — even with years of history.',
-    accent: 'text-amber-300 bg-amber-400/10',
-  },
-  {
-    icon: Icon.offline,
-    title: '100% offline uptime',
-    body: 'Power cut the internet, not your counter. Every feature — billing, inventory, dues, reports — works fully offline. Your data lives with you, not in someone else’s cloud.',
-    accent: 'text-emerald-300 bg-emerald-400/10',
-  },
-  {
-    icon: Icon.sync,
-    title: 'Hybrid cloud sync',
-    body: 'When you’re online, changes stream to a secure cloud backup in the background. Switch devices, recover instantly, or run a LAN of counters off one master.',
-    accent: 'text-electric-400 bg-electric-500/10',
-  },
-  {
-    icon: Icon.chart,
-    title: 'AI-powered dashboard',
-    body: 'Dashboard BIZASSIST turns raw sales into answers: trends, dead stock, best hours, GST summaries — asked and answered in plain language.',
-    accent: 'text-violet-300 bg-violet-400/10',
-  },
-  {
-    icon: Icon.shield,
-    title: 'Role-based lockdown',
-    body: 'Cashier mode locks staff to the billing counter with shift-wise cash tallies. Owners see everything; everyone else sees exactly what you allow.',
-    accent: 'text-rose-300 bg-rose-400/10',
-  },
-  {
-    icon: Icon.update,
-    title: 'Silent auto-updates',
-    body: 'New versions download quietly in the background and install on your schedule. You’re always on the latest build without lifting a finger.',
-    accent: 'text-cyan-300 bg-cyan-400/10',
-  },
-]
-
-function Features() {
-  return (
-    <section id="features" className="relative py-24">
-      <div className="mx-auto max-w-6xl px-6">
-        <Reveal className="text-center">
-          <h2 className="text-4xl font-extrabold tracking-tight text-white md:text-5xl">
-            Built for the counter. <span className="text-gradient">Ready for scale.</span>
-          </h2>
-          <p className="mx-auto mt-4 max-w-xl text-slate-400">
-            Everything a modern shop needs, in one fast desktop app.
-          </p>
-        </Reveal>
-
-        <div className="mt-14 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {FEATURES.map((f, i) => (
-            <Reveal key={f.title} delay={i * 90}>
-              <div className="glass group h-full rounded-2xl p-6 transition-all duration-300 hover:-translate-y-1.5 hover:border-white/20 hover:bg-white/[0.07]">
-                <div className={`mb-5 inline-flex rounded-xl p-3 ${f.accent}`}>{f.icon}</div>
-                <h3 className="text-lg font-bold text-white">{f.title}</h3>
-                <p className="mt-2 text-sm leading-relaxed text-slate-400">{f.body}</p>
-              </div>
-            </Reveal>
-          ))}
-        </div>
-      </div>
-    </section>
-  )
-}
-
-function HowItWorks() {
-  const steps = [
-    ['Download & install', 'One installer. No servers, no setup wizards, no IT guy. You’re billing in under two minutes.'],
-    ['Work fully offline', 'The engine and your data live on your machine. Internet is optional, always.'],
-    ['Sync when connected', 'Hybrid sync backs up to the cloud automatically and keeps every device consistent.'],
-  ]
-  return (
-    <section id="how" className="relative py-24">
-      <div className="pointer-events-none absolute left-1/2 top-0 h-72 w-72 -translate-x-1/2 rounded-full bg-indigo-600/15 blur-[100px]" />
-      <div className="mx-auto max-w-5xl px-6">
-        <Reveal className="text-center">
-          <h2 className="text-4xl font-extrabold tracking-tight text-white">Up and running in minutes</h2>
-        </Reveal>
-        <div className="mt-12 grid gap-6 md:grid-cols-3">
-          {steps.map(([t, b], i) => (
-            <Reveal key={t} delay={i * 120}>
-              <div className="glass relative h-full rounded-2xl p-6">
-                <span className="absolute -top-4 left-6 grid h-8 w-8 place-items-center rounded-xl bg-gradient-to-br from-electric-500 to-indigo-600 text-sm font-black text-white shadow-lg shadow-electric-600/30">
-                  {i + 1}
-                </span>
-                <h3 className="mt-3 font-bold text-white">{t}</h3>
-                <p className="mt-2 text-sm leading-relaxed text-slate-400">{b}</p>
-              </div>
-            </Reveal>
-          ))}
-        </div>
-      </div>
-    </section>
-  )
-}
-
-function FinalCta() {
-  return (
-    <section className="relative py-24">
-      <div className="mx-auto max-w-4xl px-6">
-        <Reveal>
-          <div className="glass-strong relative overflow-hidden rounded-3xl p-10 text-center md:p-14">
-            <div className="pointer-events-none absolute -top-24 left-1/2 h-64 w-[120%] -translate-x-1/2 rounded-full bg-electric-600/20 blur-3xl" />
-            <h2 className="text-3xl font-extrabold tracking-tight text-white md:text-4xl">
-              Your counter deserves better than a browser tab.
-            </h2>
-            <p className="mx-auto mt-4 max-w-xl text-slate-400">
-              Join shops running BizAssist all day, every day — rain, shine or fibre cut.
-            </p>
-            <div className="mt-8 flex justify-center">
-              <DownloadButtons large />
-            </div>
-          </div>
-        </Reveal>
-      </div>
-    </section>
-  )
-}
-
-function Footer() {
-  return (
-    <footer className="border-t border-white/5 py-10">
-      <div className="mx-auto flex max-w-6xl flex-col items-center gap-6 px-6 md:flex-row">
-        <div className="flex items-center gap-2.5">
-          <LogoMark size="h-7 w-7" />
-          <span className="font-extrabold text-white">
-            Biz<span className="text-electric-400">Assist</span>
-          </span>
-        </div>
-        <div className="flex items-center gap-6 text-sm text-slate-400 md:ml-auto">
-          <a href="#features" className="transition hover:text-white">Features</a>
-          <a href="#how" className="transition hover:text-white">How it works</a>
-          <a href={RELEASES_PAGE} className="transition hover:text-white">Releases</a>
-          <a href="mailto:rakshithananda18@gmail.com" className="transition hover:text-white">Contact</a>
-        </div>
-        <p className="text-xs text-slate-600 md:ml-6">© {new Date().getFullYear()} BizAssist. All rights reserved.</p>
-      </div>
-    </footer>
   )
 }
 
 export default function App() {
-  return (
-    <main className="relative min-h-screen bg-ink-950">
-      <Navbar />
-      <Hero />
-      <Features />
-      <HowItWorks />
-      <FinalCta />
-      <Footer />
-    </main>
-  )
+  // Theme state for entire landing page
+  const [theme, setTheme] = useState(() => {
+    try {
+      const stored = localStorage.getItem('stater_landing_theme')
+      if (stored === 'light' || stored === 'dark') return stored
+      if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        return 'dark'
+      }
+    } catch (e) {}
+    return 'light'
+  })
+
+  // Synchronize <html> dark class with theme
+  useEffect(() => {
+    try {
+      localStorage.setItem('stater_landing_theme', theme)
+    } catch (e) {}
+    if (theme === 'dark') {
+      document.documentElement.classList.add('dark')
+    } else {
+      document.documentElement.classList.remove('dark')
+    }
+  }, [theme])
+
+  const toggleTheme = () => {
+    setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'))
+  }
+
+  return <MarketingPage Icons={Icons} BrandLogo={BrandLogo} theme={theme} onToggleTheme={toggleTheme} />
 }

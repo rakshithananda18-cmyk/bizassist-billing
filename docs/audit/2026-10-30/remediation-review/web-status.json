@@ -1,0 +1,264 @@
+{
+  "date": "2026-10-30",
+  "baseline": "f5d715c",
+  "head": "6c527927cc2571cfb6a87de900bfbcd8919421d0",
+  "includes_working_tree": true,
+  "scope": "WEB-01 through WEB-13",
+  "counts": {
+    "fixed": 4,
+    "partial": 9,
+    "open": 0,
+    "unverified": 0
+  },
+  "issues": [
+    {
+      "id": "WEB-01",
+      "status": "partial",
+      "severity": "P1",
+      "current_evidence": [
+        "frontend-billing/src/sync/syncManager.js:102",
+        "frontend-billing/src/sync/syncManager.js:90",
+        "frontend-billing/src/hooks/usePaymentFlow.js:306",
+        "frontend-billing/src/hooks/usePaymentFlow.js:398"
+      ],
+      "fixed_part": "Active replay loop stops on session/scope generation change and preserves original records.",
+      "remaining_condition": "Checkout started as A can fail after unmount/logout/login B and enqueue its A payload into current B scope. Executed real-hook safe-behavior probe fails.",
+      "new_regressions": []
+    },
+    {
+      "id": "WEB-02",
+      "status": "fixed",
+      "severity": "P1",
+      "current_evidence": [
+        "frontend-billing/src/utils/share.js:18",
+        "frontend-billing/src/hooks/useInvoiceActions.jsx:96",
+        "frontend-billing/src/pages/Parties.jsx:379",
+        "frontend-billing/src/__tests__/paymentShareRemediation.test.jsx:19"
+      ],
+      "fixed_part": "Invoice share and reminders use current profile VPA and omit pay link when missing; old global payee ignored.",
+      "remaining_condition": "Related checkout follow-up: Sales.jsx:884 still uses old global/guessed/hardcoded VPA; helper lacks syntax validation and stable BizID/backend override key.",
+      "new_regressions": []
+    },
+    {
+      "id": "WEB-03",
+      "status": "fixed",
+      "severity": "P2",
+      "current_evidence": [
+        "frontend-billing/src/hooks/useInvoiceActions.jsx:89",
+        "frontend-billing/src/pages/Parties.jsx:394",
+        "frontend-billing/src/__tests__/paymentShareRemediation.test.jsx:19"
+      ],
+      "fixed_part": "Both sharing paths use authoritative row outstanding, including credit adjustment; current regression test passes.",
+      "remaining_condition": "No real payment; fresh-row retrieval before share not separately verified.",
+      "new_regressions": []
+    },
+    {
+      "id": "WEB-04",
+      "status": "partial",
+      "severity": "P2",
+      "current_evidence": [
+        "frontend-ai/src/pages/Chat.jsx:196",
+        "frontend-ai/src/pages/Chat.jsx:211",
+        "frontend-ai/src/pages/Chat.jsx:96",
+        "frontend-ai/src/pages/Chat.jsx:323"
+      ],
+      "fixed_part": "Ordinary second send is locked until stream completion; immutable bubble IDs added.",
+      "remaining_condition": "No stream abort/session generation. Missing-ID fallback appends old-stream tokens into newly selected history; executed probe observes B HISTORYA OLD TOKEN.",
+      "new_regressions": []
+    },
+    {
+      "id": "WEB-05",
+      "status": "fixed",
+      "severity": "P2",
+      "current_evidence": [
+        "frontend-ai/src/contexts/AuthContext.jsx:82",
+        "frontend-ai/src/contexts/AuthContext.jsx:94",
+        "frontend-billing/src/contexts/AuthContext.jsx:594"
+      ],
+      "fixed_part": "Already-mounted AI provider signs out when cross-window user-removal event is delivered; safe-behavior probe passes.",
+      "remaining_condition": "Cross-origin iframe delivery still needs live verification; BroadcastChannel cannot cross origins, other Billing tabs and late handoff completion are not proven.",
+      "new_regressions": []
+    },
+    {
+      "id": "WEB-06",
+      "status": "partial",
+      "severity": "P2",
+      "current_evidence": [
+        "frontend-ai/src/contexts/AuthContext.jsx:120",
+        "frontend-ai/src/contexts/AuthContext.jsx:128",
+        "frontend-admin/src/contexts/AuthContext.jsx:85"
+      ],
+      "fixed_part": "Exact parsed loopback hostname rejects localhost.attacker.invalid; negative probe passes.",
+      "remaining_condition": "No event.source/opener binding or configured production Billing origin; all loopback ports trusted. Safe-behavior source-binding probe fails.",
+      "new_regressions": []
+    },
+    {
+      "id": "WEB-07",
+      "status": "partial",
+      "severity": "P2",
+      "current_evidence": [
+        "frontend-billing/src/hooks/useBillingProfile.js:30",
+        "frontend-billing/src/hooks/useBillingProfile.js:87",
+        "frontend-billing/src/hooks/useBillingProfile.js:99",
+        "frontend-billing/src/contexts/AuthContext.jsx:586"
+      ],
+      "fixed_part": "Cache has user integer identifier and logout clears it.",
+      "remaining_condition": "Late A response repopulates after clear; B with same integer ID/different BizID receives A profile in executed probe. Key excludes backend; effect excludes identity; no generation.",
+      "new_regressions": []
+    },
+    {
+      "id": "WEB-08",
+      "status": "partial",
+      "severity": "P2",
+      "current_evidence": [
+        "frontend-billing/src/components/payments/InvoicesListView.jsx:68",
+        "frontend-billing/src/pages/Stock.jsx:230",
+        "frontend-billing/src/pages/Purchases.jsx:197"
+      ],
+      "fixed_part": "Purchase and Stock product/godown failures now expose unavailable/retry states.",
+      "remaining_condition": "Invoice-list new catch crashes before setting error; transfer HTTP failure still becomes empty list; no latest-load or identity generation guards.",
+      "new_regressions": [
+        {
+          "file": "frontend-billing/src/components/payments/InvoicesListView.jsx",
+          "line": 68,
+          "description": "New catch references undefined logger; executed exact callback yields ReferenceError and leaves loadError false."
+        }
+      ]
+    },
+    {
+      "id": "WEB-09",
+      "status": "partial",
+      "severity": "P2",
+      "current_evidence": [
+        "frontend-billing/src/components/payments/InvoicesListView.jsx:60",
+        "frontend-billing/src/pages/Parties.jsx:116",
+        "frontend-billing/src/pages/Money.jsx:56",
+        "frontend-billing/src/pages/Sales.jsx:1006",
+        "frontend-billing/src/pages/Sales.jsx:1015",
+        "backend/core/api/sales.py:519",
+        "backend/tests/test_wp4_wp5_operational.py:69"
+      ],
+      "fixed_part": "Shared invoice list removes cap500. Backend invoices now implements page/per_page/search; root operational pagination/search test passed.",
+      "remaining_condition": "Frontend invoice list does not consume new backend pagination/search; Contacts/Money/checkout customers remain capped500 and checkout products1000, with no continuation or server-search requests in those consumers.",
+      "new_regressions": []
+    },
+    {
+      "id": "WEB-10",
+      "status": "partial",
+      "severity": "P2",
+      "current_evidence": [
+        "frontend-admin/src/pages/admin/AdminBusinessDetail.jsx:50",
+        "frontend-admin/src/pages/admin/AdminBusinessDetail.jsx:97",
+        "frontend-admin/src/pages/admin/AdminBusinessDetail.jsx:109",
+        "frontend-admin/src/pages/admin/AdminBusinessDetail.jsx:124",
+        "frontend-admin/src/pages/admin/AdminBusinessDetail.jsx:221"
+      ],
+      "fixed_part": "Route changes clear state and mutations check displayed business ID matches current route.",
+      "remaining_condition": "Old async responses can refill stale merchant info; failed required reads still render not-found/no-data. No generation/cancellation/error state.",
+      "new_regressions": []
+    },
+    {
+      "id": "WEB-11",
+      "status": "fixed",
+      "severity": "P2",
+      "current_evidence": [
+        "frontend-billing/src/components/sales/CheckoutModal.jsx:1305"
+      ],
+      "fixed_part": "Checkout QR is generated locally using installed QRCodeSVG; production build passes.",
+      "remaining_condition": "Recipient validity and real UPI/hardware verification separate; old helper import remains unused.",
+      "new_regressions": []
+    },
+    {
+      "id": "WEB-12",
+      "status": "partial",
+      "severity": "P3",
+      "current_evidence": [
+        "frontend-billing/src/__tests__/sidebarNotifications.test.jsx:84",
+        "frontend-admin/.eslintrc.cjs:15",
+        "bizassist-landing/package.json:9",
+        "frontend-billing/src/hooks/useInvoiceActions.jsx:103"
+      ],
+      "fixed_part": "Existing suites all green; Admin lint passes with modified rules.",
+      "remaining_condition": "Lint green achieved by disabling multiple checks including hook dependencies/unused vars, not repairing all diagnostics. Landing build dependencies missing. Root diff-check finds trailing whitespace.",
+      "new_regressions": [
+        {
+          "file": "frontend-admin/.eslintrc.cjs",
+          "line": 15,
+          "description": "Quality-gate weakening: hook-dependency and unused-variable diagnostics disabled wholesale."
+        }
+      ]
+    },
+    {
+      "id": "WEB-13",
+      "status": "partial",
+      "severity": "P3",
+      "current_evidence": [
+        "bizassist-landing/src/useLatestRelease.js:48",
+        "bizassist-landing/src/App.jsx:70",
+        "bizassist-landing/src/App.jsx:106"
+      ],
+      "fixed_part": "Explicit Intel/Apple Silicon alternatives added when both assets exist; named universal build preferred.",
+      "remaining_condition": "Generic primary Mac button still chooses arm64 for unknown/Intel architecture when no universal asset exists. Landing build/live assets unverified.",
+      "new_regressions": []
+    }
+  ],
+  "verification": {
+    "billing_tests": {
+      "passed": 871,
+      "files": 112
+    },
+    "admin_tests": {
+      "passed": 47,
+      "files": 3
+    },
+    "ai_tests": {
+      "passed": 13,
+      "files": 1
+    },
+    "builds": {
+      "billing": "passed",
+      "admin": "passed",
+      "ai": "passed",
+      "landing": "unverified_missing_local_vite"
+    },
+    "admin_lint": "passed_with_rules_relaxed",
+    "safe_behavior_component_probes": {
+      "passed": 3,
+      "failed": 4,
+      "total": 7,
+      "failed_cases": [
+        "WEB-01 late checkout enqueue under B",
+        "WEB-04 old stream corrupts selected history",
+        "WEB-06 missing source binding",
+        "WEB-07 late response cache contamination"
+      ]
+    },
+    "outbox_replay_containment": "passed",
+    "invoice_failure_callback": {
+      "error": "logger is not defined",
+      "error_state_reached": false
+    },
+    "backend_invoice_pagination": "Root independently reports test_web09_invoices_search_and_pagination passed"
+  },
+  "limitations": [
+    "Mocked network/in-memory data in custom probes",
+    "No deployment, real payments, external messages or real business database access",
+    "No actual two-device or cross-origin iframe/printer/payment-app acceptance run",
+    "Original bug-asserting probe failures are not counted as regressions"
+  ],
+  "report": "web-apps.md",
+  "proof_artifacts": [
+    "web-proof/vitest.config.cjs.txt",
+    "web-proof/ai-stream.test.jsx.txt",
+    "web-proof/ai-auth.test.jsx.txt",
+    "web-proof/billing-cache.test.jsx.txt",
+    "web-proof/billing-late-queue.test.jsx.txt",
+    "web-proof/outbox-replay.cjs",
+    "web-proof/outbox-replay-result.json",
+    "web-proof/invoice-read-error.cjs",
+    "web-proof/invoice-read-error-result.json",
+    "web-proof/component-probes.log",
+    "web-proof/late-queue-probe.log",
+    "web-proof/README.md"
+  ]
+}

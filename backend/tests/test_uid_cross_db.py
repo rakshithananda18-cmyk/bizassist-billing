@@ -33,14 +33,16 @@ from database.db import SessionLocal
 # duplicate; data_transfer.py is what is actually mounted and served.
 from routes.data_transfer import _import_with_remap
 
+from tests.signup_fixture import signup_payload
+
 client = TestClient(app)
 
 
 def _signup(business_name: str) -> dict:
     uname = f"own_{uuid.uuid4().hex[:8]}"
-    r = client.post("/signup", json={
+    r = client.post("/signup", json=signup_payload({
         "username": uname, "password": "TestPass123!", "business_name": business_name,
-    })
+    }))
     assert r.status_code == 200, r.text
     return {"bid": r.json()["id"], "username": uname}
 

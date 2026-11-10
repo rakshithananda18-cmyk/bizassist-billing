@@ -32,15 +32,17 @@ from database.models import Product, Inventory, User, Customer, Invoice
 from core.models import InvoicePayment
 from core.billing.print_payload import amount_in_words
 
+from tests.signup_fixture import signup_payload
+
 client = TestClient(app)
 
 
 def _signup(prefix: str) -> dict:
     username = f"{prefix}_{uuid.uuid4().hex[:8]}"
-    resp = client.post("/signup", json={
+    resp = client.post("/signup", json=signup_payload({
         "username": username, "password": "TestPass123!",
         "business_name": f"{prefix} Biz",
-    })
+    }))
     assert resp.status_code == 200, f"Signup failed: {resp.text}"
     body = resp.json()
     return {"headers": {"Authorization": f"Bearer {body['token']}"}, "bid": body["id"]}

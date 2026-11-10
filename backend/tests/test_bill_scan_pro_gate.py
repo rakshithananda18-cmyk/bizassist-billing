@@ -31,6 +31,8 @@ from database.db import SessionLocal              # noqa: E402
 from database.models import User                  # noqa: E402
 from tests.planhelpers import grant_pro           # noqa: E402
 
+from tests.signup_fixture import signup_payload
+
 client = TestClient(app)
 UPLOAD = "/purchases/upload"
 
@@ -42,8 +44,8 @@ def _paywall_off(monkeypatch):
 
 def _account():
     uname = f"scan_{uuid.uuid4().hex[:8]}"
-    r = client.post("/signup", json={
-        "username": uname, "password": "TestPass123!", "business_name": "Scan Co"})
+    r = client.post("/signup", json=signup_payload({
+        "username": uname, "password": "TestPass123!", "business_name": "Scan Co"}))
     assert r.status_code == 200, r.text
     b = r.json()
     return uname, {"Authorization": f"Bearer {b['token']}"}

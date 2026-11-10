@@ -1,0 +1,353 @@
+bringing up nodes...
+bringing up nodes...
+
+........................................................................ [  2%]
+........................................................................ [  5%]
+........................................................................ [  8%]
+...............................s...........s......s..........s.......... [ 10%]
+s.......s................s............s.......s......................... [ 13%]
+........................................................................ [ 16%]
+........................................................................ [ 18%]
+........................................................................ [ 21%]
+........................................................................ [ 24%]
+........................................................................ [ 26%]
+.........................................................s.............. [ 29%]
+........................................................................ [ 32%]
+........................................................................ [ 34%]
+........................................................................ [ 37%]
+.....................................................................s.. [ 40%]
+........................................................................ [ 42%]
+...............................................F........................ [ 45%]
+........................................................................ [ 48%]
+........................................................................ [ 50%]
+........................................................................ [ 53%]
+........................................................................ [ 56%]
+........................................................................ [ 58%]
+..................s..................................................... [ 61%]
+..............................s.s.ss.s.................................. [ 64%]
+........................................................................ [ 66%]
+........................................................................ [ 69%]
+................................uuuu..uuuu.uuu..uuuu.uuu..uuuuuuuu...... [ 71%]
+........................................................................ [ 73%]
+.............................................................sssss...... [ 76%]
+........................................................................ [ 79%]
+........................................................................ [ 81%]
+..........................FF............................................ [ 84%]
+......................................sssss............................. [ 87%]
+.............F.......................................................... [ 89%]
+........................................................................ [ 92%]
+........................................................................ [ 95%]
+........................................................................ [ 97%]
+.......................FF.F...............................               [100%]
+================================== FAILURES ===================================
+__________ test_private_control_state_does_not_write_business_audit ___________
+[gw1] win32 -- Python 3.12.2 C:\Users\91957\AppData\Local\Programs\Python\Python312\python.exe
+C:\Users\91957\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\engine\base.py:1967: in _exec_single_context
+    self.dialect.do_execute(
+C:\Users\91957\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\engine\default.py:941: in do_execute
+    cursor.execute(statement, parameters)
+E   sqlite3.OperationalError: no such table: table_alterations
+
+The above exception was the direct cause of the following exception:
+tests\test_cloud_hardening_auth_admin.py:92: in test_private_control_state_does_not_write_business_audit
+    db.commit()
+C:\Users\91957\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\orm\session.py:2028: in commit
+    trans.commit(_to_root=True)
+<string>:2: in commit
+    ???
+C:\Users\91957\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\orm\state_changes.py:139: in _go
+    ret_value = fn(self, *arg, **kw)
+                ^^^^^^^^^^^^^^^^^^^^
+C:\Users\91957\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\orm\session.py:1313: in commit
+    self._prepare_impl()
+<string>:2: in _prepare_impl
+    ???
+C:\Users\91957\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\orm\state_changes.py:139: in _go
+    ret_value = fn(self, *arg, **kw)
+                ^^^^^^^^^^^^^^^^^^^^
+C:\Users\91957\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\orm\session.py:1288: in _prepare_impl
+    self.session.flush()
+C:\Users\91957\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\orm\session.py:4352: in flush
+    self._flush(objects)
+C:\Users\91957\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\orm\session.py:4487: in _flush
+    with util.safe_reraise():
+C:\Users\91957\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\util\langhelpers.py:146: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+C:\Users\91957\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\orm\session.py:4452: in _flush
+    self.dispatch.after_flush(self, flush_context)
+C:\Users\91957\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\event\attr.py:378: in __call__
+    fn(*args, **kw)
+database\models.py:2123: in audit_after_flush
+    actor_scope = session.info.get("business_id") or item["business_id"]
+C:\Users\91957\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\engine\base.py:1418: in execute
+    return meth(
+C:\Users\91957\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\sql\elements.py:515: in _execute_on_connection
+    return connection._execute_clauseelement(
+C:\Users\91957\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\engine\base.py:1640: in _execute_clauseelement
+    ret = self._execute_context(
+C:\Users\91957\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\engine\base.py:1846: in _execute_context
+    return self._exec_single_context(
+C:\Users\91957\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\engine\base.py:1986: in _exec_single_context
+    self._handle_dbapi_exception(
+C:\Users\91957\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\engine\base.py:2355: in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+C:\Users\91957\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\engine\base.py:1967: in _exec_single_context
+    self.dialect.do_execute(
+C:\Users\91957\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\engine\default.py:941: in do_execute
+    cursor.execute(statement, parameters)
+E   sqlalchemy.exc.OperationalError: (sqlite3.OperationalError) no such table: table_alterations
+E   [SQL: INSERT INTO table_alterations (user_id, username, business_id, public_id, table_name, action, record_id, old_values, new_values, created_at, uid) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)]
+E   [parameters: (None, None, None, None, 'spent_tickets', 'INSERT', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', None, '{"digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "expires_at": "2026-11-07T18:36:58.135012"}', datetime.datetime(2026, 11, 7, 18, 36, 58, 183675), '3e1d9f88-43b0-40b7-af9e-60f331a95357')]
+E   (Background on this error at: https://sqlalche.me/e/20/e3q8)
+___________ test_cron_retries_resume_and_duplicate_delivery_is_noop ___________
+[gw1] win32 -- Python 3.12.2 C:\Users\91957\AppData\Local\Programs\Python\Python312\python.exe
+C:\Users\91957\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\engine\base.py:1967: in _exec_single_context
+    self.dialect.do_execute(
+C:\Users\91957\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\engine\default.py:941: in do_execute
+    cursor.execute(statement, parameters)
+E   sqlite3.OperationalError: no such table: table_alterations
+
+The above exception was the direct cause of the following exception:
+tests\test_cron_discovery_hardening.py:36: in test_cron_retries_resume_and_duplicate_delivery_is_noop
+    assert runner.run("fake","2026-11-07") == "partial"
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+services\cron_runner.py:42: in run
+    db.commit()
+C:\Users\91957\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\orm\session.py:2028: in commit
+    trans.commit(_to_root=True)
+<string>:2: in commit
+    ???
+C:\Users\91957\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\orm\state_changes.py:139: in _go
+    ret_value = fn(self, *arg, **kw)
+                ^^^^^^^^^^^^^^^^^^^^
+C:\Users\91957\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\orm\session.py:1313: in commit
+    self._prepare_impl()
+<string>:2: in _prepare_impl
+    ???
+C:\Users\91957\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\orm\state_changes.py:139: in _go
+    ret_value = fn(self, *arg, **kw)
+                ^^^^^^^^^^^^^^^^^^^^
+C:\Users\91957\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\orm\session.py:1288: in _prepare_impl
+    self.session.flush()
+C:\Users\91957\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\orm\session.py:4352: in flush
+    self._flush(objects)
+C:\Users\91957\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\orm\session.py:4487: in _flush
+    with util.safe_reraise():
+C:\Users\91957\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\util\langhelpers.py:146: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+C:\Users\91957\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\orm\session.py:4452: in _flush
+    self.dispatch.after_flush(self, flush_context)
+C:\Users\91957\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\event\attr.py:378: in __call__
+    fn(*args, **kw)
+database\models.py:2123: in audit_after_flush
+    actor_scope = session.info.get("business_id") or item["business_id"]
+C:\Users\91957\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\engine\base.py:1418: in execute
+    return meth(
+C:\Users\91957\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\sql\elements.py:515: in _execute_on_connection
+    return connection._execute_clauseelement(
+C:\Users\91957\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\engine\base.py:1640: in _execute_clauseelement
+    ret = self._execute_context(
+C:\Users\91957\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\engine\base.py:1846: in _execute_context
+    return self._exec_single_context(
+C:\Users\91957\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\engine\base.py:1986: in _exec_single_context
+    self._handle_dbapi_exception(
+C:\Users\91957\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\engine\base.py:2355: in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+C:\Users\91957\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\engine\base.py:1967: in _exec_single_context
+    self.dialect.do_execute(
+C:\Users\91957\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\engine\default.py:941: in do_execute
+    cursor.execute(statement, parameters)
+E   sqlalchemy.exc.OperationalError: (sqlite3.OperationalError) no such table: table_alterations
+E   [SQL: INSERT INTO table_alterations (user_id, username, business_id, public_id, table_name, action, record_id, old_values, new_values, created_at, uid) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)]
+E   [parameters: (None, None, None, None, 'scheduled_job_runs', 'INSERT', 'fake', None, '{"job": "fake", "period": "2026-11-07", "status": "running", "cursor": null, "lease_until": "2026-11-07T18:45:40.349630", "started_at": "2026-11-07T18:43:35.349630", "finished_at": null, "error": null}', datetime.datetime(2026, 11, 7, 18, 43, 35, 359878), '58837e10-9308-4ec5-b597-6825cb70dfa4')]
+E   (Background on this error at: https://sqlalche.me/e/20/e3q8)
+______________ test_cron_secret_is_required_and_route_is_hidden _______________
+[gw1] win32 -- Python 3.12.2 C:\Users\91957\AppData\Local\Programs\Python\Python312\python.exe
+tests\test_cron_discovery_hardening.py:51: in test_cron_secret_is_required_and_route_is_hidden
+    assert client.post("/internal/cron/fake",headers={"X-Cron-Secret":"private-test-value"}).json()["status"] == "done"
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   KeyError: 'status'
+---------------------------- Captured stderr call -----------------------------
+00:13:37 ERROR cron                   [BizId=-] Scheduled job fake failed
+Traceback (most recent call last):
+  File "C:\Users\91957\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\engine\base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+  File "C:\Users\91957\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\engine\default.py", line 941, in do_execute
+    cursor.execute(statement, parameters)
+sqlite3.OperationalError: no such table: table_alterations
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "D:\Dev Workspace\bizassist-billing\backend\routes\internal_cron.py", line 24, in invoke_cron
+    status = cron_runner.run(job, period)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Dev Workspace\bizassist-billing\backend\services\cron_runner.py", line 42, in run
+    db.commit()
+  File "C:\Users\91957\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\orm\session.py", line 2028, in commit
+    trans.commit(_to_root=True)
+  File "<string>", line 2, in commit
+  File "C:\Users\91957\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\orm\state_changes.py", line 139, in _go
+    ret_value = fn(self, *arg, **kw)
+                ^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\91957\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\orm\session.py", line 1313, in commit
+    self._prepare_impl()
+  File "<string>", line 2, in _prepare_impl
+  File "C:\Users\91957\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\orm\state_changes.py", line 139, in _go
+    ret_value = fn(self, *arg, **kw)
+                ^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\91957\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\orm\session.py", line 1288, in _prepare_impl
+    self.session.flush()
+  File "C:\Users\91957\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\orm\session.py", line 4352, in flush
+    self._flush(objects)
+  File "C:\Users\91957\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\orm\session.py", line 4487, in _flush
+    with util.safe_reraise():
+  File "C:\Users\91957\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\util\langhelpers.py", line 146, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "C:\Users\91957\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\orm\session.py", line 4452, in _flush
+    self.dispatch.after_flush(self, flush_context)
+  File "C:\Users\91957\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\event\attr.py", line 378, in __call__
+    fn(*args, **kw)
+  File "D:\Dev Workspace\bizassist-billing\backend\database\models.py", line 2123, in audit_after_flush
+    actor_scope = session.info.get("business_id") or item["business_id"]
+  File "C:\Users\91957\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\engine\base.py", line 1418, in execute
+    return meth(
+           ^^^^^
+  File "C:\Users\91957\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\sql\elements.py", line 515, in _execute_on_connection
+    return connection._execute_clauseelement(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\91957\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\engine\base.py", line 1640, in _execute_clauseelement
+    ret = self._execute_context(
+          ^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\91957\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\engine\base.py", line 1846, in _execute_context
+    return self._exec_single_context(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\91957\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\engine\base.py", line 1986, in _exec_single_context
+    self._handle_dbapi_exception(
+  File "C:\Users\91957\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\engine\base.py", line 2355, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "C:\Users\91957\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\engine\base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+  File "C:\Users\91957\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\engine\default.py", line 941, in do_execute
+    cursor.execute(statement, parameters)
+sqlalchemy.exc.OperationalError: (sqlite3.OperationalError) no such table: table_alterations
+[SQL: INSERT INTO table_alterations (user_id, username, business_id, public_id, table_name, action, record_id, old_values, new_values, created_at, uid) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)]
+[parameters: (None, None, None, None, 'scheduled_job_runs', 'INSERT', 'fake', None, '{"job": "fake", "period": "2026-11-08", "status": "running", "cursor": null, "lease_until": "2026-11-07T18:45:42.621879", "started_at": "2026-11-07T18:43:37.621879", "finished_at": null, "error": null}', datetime.datetime(2026, 11, 7, 18, 43, 37, 632847), '7a3f7776-4365-48e9-b131-6b6706cc145c')]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+------------------------------ Captured log call ------------------------------
+ERROR    bizassist.cron:internal_cron.py:26 Scheduled job fake failed
+Traceback (most recent call last):
+  File "C:\Users\91957\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\engine\base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+  File "C:\Users\91957\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\engine\default.py", line 941, in do_execute
+    cursor.execute(statement, parameters)
+sqlite3.OperationalError: no such table: table_alterations
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "D:\Dev Workspace\bizassist-billing\backend\routes\internal_cron.py", line 24, in invoke_cron
+    status = cron_runner.run(job, period)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\Dev Workspace\bizassist-billing\backend\services\cron_runner.py", line 42, in run
+    db.commit()
+  File "C:\Users\91957\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\orm\session.py", line 2028, in commit
+    trans.commit(_to_root=True)
+  File "<string>", line 2, in commit
+  File "C:\Users\91957\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\orm\state_changes.py", line 139, in _go
+    ret_value = fn(self, *arg, **kw)
+                ^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\91957\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\orm\session.py", line 1313, in commit
+    self._prepare_impl()
+  File "<string>", line 2, in _prepare_impl
+  File "C:\Users\91957\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\orm\state_changes.py", line 139, in _go
+    ret_value = fn(self, *arg, **kw)
+                ^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\91957\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\orm\session.py", line 1288, in _prepare_impl
+    self.session.flush()
+  File "C:\Users\91957\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\orm\session.py", line 4352, in flush
+    self._flush(objects)
+  File "C:\Users\91957\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\orm\session.py", line 4487, in _flush
+    with util.safe_reraise():
+  File "C:\Users\91957\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\util\langhelpers.py", line 146, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "C:\Users\91957\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\orm\session.py", line 4452, in _flush
+    self.dispatch.after_flush(self, flush_context)
+  File "C:\Users\91957\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\event\attr.py", line 378, in __call__
+    fn(*args, **kw)
+  File "D:\Dev Workspace\bizassist-billing\backend\database\models.py", line 2123, in audit_after_flush
+    actor_scope = session.info.get("business_id") or item["business_id"]
+  File "C:\Users\91957\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\engine\base.py", line 1418, in execute
+    return meth(
+           ^^^^^
+  File "C:\Users\91957\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\sql\elements.py", line 515, in _execute_on_connection
+    return connection._execute_clauseelement(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\91957\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\engine\base.py", line 1640, in _execute_clauseelement
+    ret = self._execute_context(
+          ^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\91957\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\engine\base.py", line 1846, in _execute_context
+    return self._exec_single_context(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\91957\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\engine\base.py", line 1986, in _exec_single_context
+    self._handle_dbapi_exception(
+  File "C:\Users\91957\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\engine\base.py", line 2355, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "C:\Users\91957\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\engine\base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+  File "C:\Users\91957\AppData\Local\Programs\Python\Python312\Lib\site-packages\sqlalchemy\engine\default.py", line 941, in do_execute
+    cursor.execute(statement, parameters)
+sqlalchemy.exc.OperationalError: (sqlite3.OperationalError) no such table: table_alterations
+[SQL: INSERT INTO table_alterations (user_id, username, business_id, public_id, table_name, action, record_id, old_values, new_values, created_at, uid) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)]
+[parameters: (None, None, None, None, 'scheduled_job_runs', 'INSERT', 'fake', None, '{"job": "fake", "period": "2026-11-08", "status": "running", "cursor": null, "lease_until": "2026-11-07T18:45:42.621879", "started_at": "2026-11-07T18:43:37.621879", "finished_at": null, "error": null}', datetime.datetime(2026, 11, 7, 18, 43, 37, 632847), '7a3f7776-4365-48e9-b131-6b6706cc145c')]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+_ TestTheAuditLogRecordsTheBizID.test_the_listener_captures_it_from_the_request_context _
+[gw1] win32 -- Python 3.12.2 C:\Users\91957\AppData\Local\Programs\Python\Python312\python.exe
+tests\test_sync_volume_and_tenancy.py:279: in test_the_listener_captures_it_from_the_request_context
+    assert "current_bizid_var" in src, (
+E   AssertionError: the BizID is on the request context (set by the middleware from the token's public_id claim) and must be recorded � the integer business_id alone cannot survive crossing databases
+E   assert 'current_bizid_var' in 'def _audit_owners(obj, connection):\n    if hasattr(obj, "seller_business_id") and hasattr(obj, "buyer_business_id"):... not None}) if row else []\n    bid = _get_business_id(obj, connection)\n    return [bid] if bid is not None else []\n'
+_______ TestItIsWiredIntoTheBootPath.test_the_migration_runner_calls_it _______
+[gw1] win32 -- Python 3.12.2 C:\Users\91957\AppData\Local\Programs\Python\Python312\python.exe
+tests\test_staff_login_name_unique.py:197: in test_the_migration_runner_calls_it
+    assert "_ensure_staff_login_name_unique_index" in src
+E   assert '_ensure_staff_login_name_unique_index' in 'def run_migrations_and_seed():\n    """Cheap catalog readiness on warm cloud boots; one serialized slow path."""\n   ...         lock_connection.execute(text("SELECT pg_advisory_unlock(724839101)"))\n            lock_connection.commit()\n'
+_ TestItIsWiredIntoTheBootPath.test_it_runs_through_step_so_a_failure_cannot_abort_the_boot _
+[gw1] win32 -- Python 3.12.2 C:\Users\91957\AppData\Local\Programs\Python\Python312\python.exe
+tests\test_staff_login_name_unique.py:205: in test_it_runs_through_step_so_a_failure_cannot_abort_the_boot
+    assert "_step(conn, _ensure_staff_login_name_unique_index)" in src
+E   assert '_step(conn, _ensure_staff_login_name_unique_index)' in 'def run_migrations_and_seed():\n    """Cheap catalog readiness on warm cloud boots; one serialized slow path."""\n   ...         lock_connection.execute(text("SELECT pg_advisory_unlock(724839101)"))\n            lock_connection.commit()\n'
+_ TestTheAuditLogCanIdentifyInsertedRows.test_the_helper_is_what_the_listener_uses _
+[gw1] win32 -- Python 3.12.2 C:\Users\91957\AppData\Local\Programs\Python\Python312\python.exe
+tests\test_sync_volume_and_tenancy.py:246: in test_the_helper_is_what_the_listener_uses
+    assert "inspect(obj).identity" not in src
+E   AssertionError: assert 'inspect(obj).identity' not in 'def _audit_...eturn None\n'
+E     
+E     'inspect(obj).identity' is contained here:
+E        was `str(inspect(obj).identity[0]) if identity else None`. For an
+E           INSERT, `identity` is populated in `after_flush_postexec` � AFTER this
+E           listener runs � so it is `None` here and every INSERT in the audit log was
+E           written with `record_id = NULL`.
+E       ...
+E     
+E     ...Full output truncated (30 lines hidden), use '-vv' to show
+============================ slowest 10 durations =============================
+11.24s call     tests/test_cloud_endpoint.py::test_cloud_callers_default_to_cloud_run_without_any_variable
+11.09s call     tests/test_backend.py::test_admin_endpoints
+11.09s call     tests/test_routing_tiers.py::TestTier5aAISimple::test_ai_simple_source
+10.51s call     tests/test_local_only_stays_local.py::test_daily_upload_sends_only_local_plus_cloud_and_only_their_lines
+9.66s setup    tests/test_dbcompat_and_sql_portability.py::test_sqlite_sql_is_returned_byte_identical
+9.60s setup    tests/test_money_pure_functions.py::test_posting_r2[None-0.0]
+7.40s call     tests/test_totp_and_metrics.py::test_2fa_full_lifecycle_and_login_gate
+6.63s call     tests/test_no_orphaned_route_modules.py::test_no_test_imports_an_unreachable_module
+5.18s call     tests/test_staff.py::test_same_staff_name_allowed_across_businesses
+4.96s call     tests/test_plan_pause_self_heal.py::test_pause_holds_while_the_plan_is_still_free
+=========================== short test summary info ===========================
+FAILED tests/test_cloud_hardening_auth_admin.py::test_private_control_state_does_not_write_business_audit
+FAILED tests/test_cron_discovery_hardening.py::test_cron_retries_resume_and_duplicate_delivery_is_noop
+FAILED tests/test_cron_discovery_hardening.py::test_cron_secret_is_required_and_route_is_hidden
+FAILED tests/test_sync_volume_and_tenancy.py::TestTheAuditLogRecordsTheBizID::test_the_listener_captures_it_from_the_request_context
+FAILED tests/test_staff_login_name_unique.py::TestItIsWiredIntoTheBootPath::test_the_migration_runner_calls_it
+FAILED tests/test_staff_login_name_unique.py::TestItIsWiredIntoTheBootPath::test_it_runs_through_step_so_a_failure_cannot_abort_the_boot
+FAILED tests/test_sync_volume_and_tenancy.py::TestTheAuditLogCanIdentifyInsertedRows::test_the_helper_is_what_the_listener_uses
+7 failed, 2662 passed, 27 skipped, 26 subtests passed in 851.29s (0:14:11)

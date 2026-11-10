@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
-import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react'
+import { screen, fireEvent, cleanup, waitFor } from '@testing-library/react'
+import { renderWithAuth as render } from './renderWithAuth'
 import React from 'react'
 import ReadinessPanel from '../components/hosting/ReadinessPanel'
 import PreflightModal from '../components/hosting/PreflightModal'
@@ -21,7 +22,7 @@ describe('ReadinessPanel', () => {
     )
 
     expect(screen.getByText('Local Backend')).toBeInTheDocument()
-    expect(screen.getByText('Cloud Backend')).toBeInTheDocument()
+    expect(screen.getByText('Google Cloud Run (Mumbai)')).toBeInTheDocument()
     expect(screen.getByText('Internet')).toBeInTheDocument()
 
     // Online labels with ms should be displayed
@@ -33,6 +34,21 @@ describe('ReadinessPanel', () => {
     const recheckBtn = screen.getByText(/Recheck/i)
     fireEvent.click(recheckBtn)
     expect(onRecheck).toHaveBeenCalledTimes(1)
+  })
+
+  it('renders Google Cloud Run (Mumbai) infrastructure card', () => {
+    render(
+      <ReadinessPanel
+        localProbe={{ status: 'online', ms: 10, error: null }}
+        googleProbe={{ status: 'online', ms: 330, error: null }}
+        internetProbe={{ status: 'online', ms: 50, error: null }}
+        onRecheck={() => {}}
+      />
+    )
+
+    expect(screen.getByText('Google Cloud Run (Mumbai)')).toBeInTheDocument()
+    expect(screen.getByText('Primary API · asia-south1')).toBeInTheDocument()
+    expect(screen.getByText('Online (330ms)')).toBeInTheDocument()
   })
 
   it('renders offline/checking/cors states correctly', () => {
@@ -54,7 +70,7 @@ describe('PreflightModal', () => {
   it('renders required probes for target mode and handles cancel/proceed', () => {
     const onClose = vi.fn()
     const onProceed = vi.fn()
-    
+
     // Test for Hybrid target mode (which needs local, cloud, internet)
     render(
       <PreflightModal
@@ -122,6 +138,35 @@ describe('MigrationModal', () => {
   afterEach(() => {
     localStorage.removeItem('bizassist_cloud_token')
     vi.unstubAllGlobals()
+  })
+
+  it.each(['partial', 'unavailable', 'unknown', 'settings'])('does not switch mode when migration result is %s', async failure => {
+    let counts = 0
+    const mockFetch = vi.fn(async url => {
+      if (url.endsWith('/api/data-transfer/count')) {
+        counts++
+        if (counts > 1 && failure === 'unavailable') return { ok: false, status: 503 }
+        return { ok: true, json: async () => counts > 1 && failure === 'unknown' ? {} : { customers: 1 } }
+      }
+      if (url.endsWith('/api/data-transfer/export')) return { ok: true, json: async () => ({ tables: { customers: [{ id: 1 }] } }) }
+      if (url.includes('/api/data-transfer/import')) return { ok: true, json: async () => ({
+        imported: { customers: 1 }, total: 1,
+        ...(failure === 'partial' ? { complete: false, b2b_skipped: [{ reason: 'missing party' }] } : {}),
+      }) }
+      if (url.endsWith('/settings')) return { ok: failure !== 'settings', status: 503, json: async () => ({}) }
+      return { ok: false, status: 404 }
+    })
+    vi.stubGlobal('fetch', mockFetch)
+    const onComplete = vi.fn()
+    render(<MigrationModal fromMode="local" toMode="cloud" token="test-token" onComplete={onComplete} onError={vi.fn()} />)
+    if (failure === 'unknown') {
+      await waitFor(() => expect(screen.getByText(/Continue anyway/i)).toBeInTheDocument())
+    } else {
+      await waitFor(() => expect(screen.getByText(/Migration Failed/i)).toBeInTheDocument())
+    }
+    expect(screen.queryByText(/Sign out & continue/i)).not.toBeInTheDocument()
+    expect(onComplete).not.toHaveBeenCalled()
+    if (failure !== 'settings') expect(mockFetch.mock.calls.some(([url]) => url.endsWith('/settings'))).toBe(false)
   })
 
   it('runs through the migration steps successfully', async () => {
@@ -199,7 +244,7 @@ describe('MigrationModal', () => {
       }
       return { ok: false, status: 404 }
     })
-    
+
     vi.stubGlobal('fetch', mockFetch)
 
     const onComplete = vi.fn()

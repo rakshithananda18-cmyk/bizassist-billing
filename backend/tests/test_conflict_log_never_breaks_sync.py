@@ -41,14 +41,16 @@ from database.db import SessionLocal                # noqa: E402
 from database.models import ConflictLog, Invoice    # noqa: E402
 from database.sync_map import resolve_parent_fk_uids  # noqa: E402
 
+from tests.signup_fixture import signup_payload
+
 client = TestClient(app)
 
 
 def _business():
     uname = f"cl_{uuid.uuid4().hex[:8]}"
-    r = client.post("/signup", json={
+    r = client.post("/signup", json=signup_payload({
         "username": uname, "password": "TestPass123!", "business_name": "Conflict Co",
-    })
+    }))
     assert r.status_code == 200, r.text
     acct = r.json()
     return acct["user"]["id"] if isinstance(acct.get("user"), dict) else acct["id"]

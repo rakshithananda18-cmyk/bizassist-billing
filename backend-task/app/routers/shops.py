@@ -15,9 +15,9 @@ from sqlalchemy.orm import Session
 from app.billing_models import BillingCustomer
 from app.db import get_db
 from app.invoices import shop_invoices
-from app.models import FieldRoute, FieldRouteStop, FieldShop, FieldStaff
+from app.models import FieldRoute, FieldRouteStop, FieldShop, FieldStaff, FieldTask, FieldTaskInvoice
 from app.security import Principal, current_principal, require_owner
-from app.services import get_scoped, log_activity, route_out, shop_out
+from app.services import get_scoped, log_activity, prime_billing_reads, route_out, shop_out
 from app.timeutil import parse_hhmm
 
 router = APIRouter(prefix="/api", tags=["shops", "routes"])
@@ -59,7 +59,9 @@ def list_shops(p: Principal = Depends(current_principal), db: Session = Depends(
     q = db.query(FieldShop).filter(FieldShop.business_id == p.business_id)
     if p.kind == "staff":
         q = q.filter(FieldShop.is_active.is_(True))
-    return [shop_out(s) for s in q.order_by(FieldShop.name.asc()).all()]
+    rows = q.order_by(FieldShop.name.asc()).all()
+    prime_billing_reads(shops=rows)
+    return sorted((shop_out(s) for s in rows), key=lambda s: (s["name"] or "").casefold())
 
 
 @router.post("/shops", status_code=201)
@@ -76,7 +78,29 @@ def create_shop(req: ShopIn, p: Principal = Depends(require_owner), db: Session 
 
 
 def _link_customer(db: Session, p: Principal, shop: FieldShop, customer_id: Optional[int]) -> None:
+    if customer_id != shop.customer_id:
+        pending = (db.query(FieldTask.id).join(FieldTaskInvoice, FieldTaskInvoice.task_id == FieldTask.id)
+                   .filter(FieldTask.business_id == p.business_id, FieldTask.shop_id == shop.id,
+                           FieldTask.status == "pending").first())
+        if pending:
+            raise HTTPException(status_code=409,
+                                detail="Complete or cancel this shop's pending invoice tasks before changing its billing customer")
+        # Collected cash still awaiting Billing approval belongs to the original
+        # customer, even though the staff task itself has already finished.
+        from app.collections import confirmed_in_billing
+        awaiting = (db.query(FieldTask).filter(FieldTask.business_id == p.business_id,
+                    FieldTask.shop_id == shop.id, FieldTask.task_type == "payment_collect",
+                    FieldTask.status == "done", FieldTask.amount_collected > 0).all())
+        confirmed = confirmed_in_billing(db, p.business_id, [task.uid for task in awaiting])
+        if any(float(task.amount_collected or 0) - confirmed.get(task.uid, 0) > 0.005 for task in awaiting):
+            raise HTTPException(status_code=409, detail="Confirm this shop's collected money in Billing before changing its billing customer")
     if customer_id is None:
+        # Keep the current contact identity as a field-owned snapshot on unlink.
+        current = (db.query(BillingCustomer).filter(BillingCustomer.business_id == p.business_id,
+                                                   BillingCustomer.id == shop.customer_id).first())
+        if current:
+            shop.name = current.name or f"Customer {current.id}"
+            shop.phone, shop.address = current.phone, current.address
         shop.customer_id = None
         return
     customer = (db.query(BillingCustomer)
@@ -89,14 +113,26 @@ def _link_customer(db: Session, p: Principal, shop: FieldShop, customer_id: Opti
     if other:
         raise HTTPException(status_code=409, detail=f"{customer.name} is already linked to {other.name}")
     shop.customer_id = customer_id
+    shop.name = customer.name or f"Customer {customer.id}"
+    shop.phone, shop.address = customer.phone, customer.address
 
 
 @router.patch("/shops/{shop_id}")
 def update_shop(shop_id: int, req: ShopPatch, p: Principal = Depends(require_owner), db: Session = Depends(get_db)):
     shop = get_scoped(db, FieldShop, p.business_id, shop_id, "Shop")
-    _apply_shop(shop, req, partial=True)
     if "customer_id" in req.model_fields_set:
         _link_customer(db, p, shop, req.customer_id)
+    data = req.model_dump(exclude_unset=True)
+    if shop.customer_id is not None:
+        customer = (db.query(BillingCustomer).filter(BillingCustomer.business_id == p.business_id,
+                                                    BillingCustomer.id == shop.customer_id).first())
+        for key in ("name", "phone", "address"):
+            canonical = (customer.name or f"Customer {customer.id}") if key == "name" and customer else getattr(customer, key, None)
+            supplied = data.get(key)
+            if key in data and (supplied or "").strip() != (canonical or "").strip():
+                raise HTTPException(status_code=422, detail="Linked customer name, phone and address are managed in BizAssist Billing")
+        data = {k: v for k, v in data.items() if k not in ("name", "phone", "address")}
+    _apply_shop(shop, ShopPatch.model_validate(data), partial=True)
     log_activity(db, p, "shop.update", entity="shop", entity_id=shop.id, summary=shop.name)
     db.commit()
     return shop_out(shop)
@@ -206,6 +242,7 @@ def _write_route(route: FieldRoute, req: RouteIn, business_id: int) -> None:
 @router.get("/routes")
 def list_routes(p: Principal = Depends(require_owner), db: Session = Depends(get_db)):
     rows = db.query(FieldRoute).filter(FieldRoute.business_id == p.business_id).order_by(FieldRoute.name).all()
+    prime_billing_reads(shops=[stop.shop for route in rows for stop in route.stops])
     return [route_out(r) for r in rows]
 
 

@@ -13,7 +13,7 @@
  * Dev mode:  BIZASSIST_DEV=1 npx electron .
  *   → loads Vite dev servers (5174 / 5173) and expects `start_dev.bat`'s backend.
  */
-const { app, BrowserWindow, Tray, Menu, shell, nativeImage, dialog } = require('electron');
+const { app, BrowserWindow, Tray, Menu, shell, nativeImage, dialog, ipcMain } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const log = require('electron-log');
@@ -22,6 +22,7 @@ const { serveDist } = require('./static-server');
 const { startBackend, stopBackend } = require('./backend');
 const { initAutoUpdater, checkNow } = require('./updater');
 const { sendTelemetry, logTail } = require('./telemetry');
+const { createPrintHandler, pdfWindowOpenOptions } = require('./printing');
 
 const IS_DEV = !app.isPackaged || process.env.BIZASSIST_DEV === '1';
 const BILLING_PORT = 8450;
@@ -38,6 +39,8 @@ let aiWindow = null;
 let tray = null;
 let servers = [];
 let quitting = false;
+
+ipcMain.handle('billing:print', createPrintHandler({ getWindow: () => mainWindow, billingUrl: BILLING_URL }));
 
 log.transports.file.level = 'info';
 log.info(`BizAssist desktop starting (dev=${IS_DEV})`);
@@ -138,6 +141,13 @@ function createMainWindow() {
     // app only, because a browser allows the popup. A blank target is our own
     // document, never somebody else's page, so it is safe to allow.
     if (!url || url === 'about:blank') return { action: 'allow' };
+    // POS keeps a validated PDF blob as a recovery path when a print dialog
+    // cannot open. Its local viewer needs PDF plugins, but never the app bridge.
+    const pdfViewer = pdfWindowOpenOptions({
+      url, billingUrl: BILLING_URL,
+      pageUrl: mainWindow && !mainWindow.isDestroyed() ? mainWindow.webContents.getURL() : '',
+    });
+    if (pdfViewer) return pdfViewer;
     if (/^https?:\/\//.test(url)) shell.openExternal(url);
     return { action: 'deny' };
   });

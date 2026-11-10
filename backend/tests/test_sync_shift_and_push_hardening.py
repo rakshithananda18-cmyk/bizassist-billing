@@ -42,6 +42,8 @@ from database.models import (
 )
 import services.sync_worker as sw
 
+from tests.signup_fixture import signup_payload
+
 client = TestClient(app)
 
 
@@ -50,9 +52,9 @@ client = TestClient(app)
 # ---------------------------------------------------------------------------
 def _signup(business_name="Shift Sync Shop"):
     uname = f"own_{uuid.uuid4().hex[:8]}"
-    r = client.post("/signup", json={
+    r = client.post("/signup", json=signup_payload({
         "username": uname, "password": "TestPass123!", "business_name": business_name,
-    })
+    }))
     assert r.status_code == 200, r.text
     b = r.json()
     return {"headers": {"Authorization": f"Bearer {b['token']}"}, "bid": b["id"], "username": uname}
@@ -306,8 +308,12 @@ def test_worker_chunks_push_and_marks_all_synced(monkeypatch):
     _make_customers(owner["bid"], n)
 
     sizes = []
+    cloud_token = "synthetic-cloud-issued-chunk-token"
+    monkeypatch.setattr(sw, "_get_cloud_token", lambda bid: cloud_token if bid == owner["bid"] else None)
 
     def fake_post(url, json=None, headers=None, timeout=None):
+        assert url.endswith("/api/sync/push")
+        assert headers["Authorization"] == "Bearer " + cloud_token
         sizes.append(len(json["changes"]))
         return _FakeResp(200, {"status": "success", "applied": len(json["changes"])})
 
@@ -334,8 +340,12 @@ def test_worker_chunk_failure_preserves_prior_chunks(monkeypatch):
     _make_customers(owner["bid"], n)
 
     calls = {"n": 0}
+    cloud_token = "synthetic-cloud-issued-chunk-token"
+    monkeypatch.setattr(sw, "_get_cloud_token", lambda bid: cloud_token if bid == owner["bid"] else None)
 
     def flaky_post(url, json=None, headers=None, timeout=None):
+        assert url.endswith("/api/sync/push")
+        assert headers["Authorization"] == "Bearer " + cloud_token
         calls["n"] += 1
         if calls["n"] == 1:
             return _FakeResp(200, {"status": "success", "applied": len(json["changes"])})

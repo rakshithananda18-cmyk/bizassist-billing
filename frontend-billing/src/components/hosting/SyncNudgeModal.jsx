@@ -177,7 +177,7 @@ export default function SyncNudgeModal() {
             onClick={() => setSyncing(true)}
             style={{
               padding: '8px 20px', borderRadius: 8, fontSize: '0.84rem', fontWeight: 700,
-              background: 'var(--accent)', color: '#fff', border: 'none', cursor: 'pointer',
+              background: 'var(--accent-solid, var(--accent))', color: 'var(--accent-foreground, #fff)', border: 'none', cursor: 'pointer',
               display: 'inline-flex', alignItems: 'center', gap: 7,
             }}
           >

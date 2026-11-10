@@ -23,6 +23,8 @@ sys.path.insert(0, backend_path)
 from fastapi.testclient import TestClient
 from main_groq import app
 
+from tests.signup_fixture import signup_payload
+
 client = TestClient(app)
 
 
@@ -35,14 +37,23 @@ def clear_rate_limit_windows():
     _upload_window.clear()
 
 
+def _cloud_accepts(monkeypatch, public_id, business_name):
+    """The cloud signs these credentials in as the NEW account (reclaim now
+    checks that itself - tests/test_desktop_recovery_checks_cloud.py)."""
+    import routes.auth as auth_routes
+    monkeypatch.setattr(auth_routes, "_confirm_with_cloud",
+                        lambda u, p: {"public_id": public_id, "business_name": business_name})
+
+
 def _signup(uname, public_id=None):
     body = {"username": uname, "password": "TestPass123!", "business_name": "Orphan Co"}
     if public_id:
         body["public_id"] = public_id
-    return client.post("/signup", json=body)
+    return client.post("/signup", json=signup_payload(body))
 
 
-def test_reclaim_rekeys_orphan_and_logs_in():
+def test_reclaim_rekeys_orphan_and_logs_in(monkeypatch):
+    _cloud_accepts(monkeypatch, "BA-NEWID2", "Reborn Co")
     uname = f"own_{uuid.uuid4().hex[:8]}"
     r = _signup(uname, public_id="BA-OLDID1")
     assert r.status_code == 200, r.text
@@ -67,7 +78,7 @@ def test_reclaim_rekeys_orphan_and_logs_in():
     assert client.post("/login", json={"username": uname, "password": "TestPass123!"}).status_code == 401
 
 
-def test_reclaim_rekey_purges_staff_and_data_and_writes_tombstone():
+def test_reclaim_rekey_purges_staff_and_data_and_writes_tombstone(monkeypatch):
     """T1.3 (MASTER_REVIEW §9.A): delete-and-recreate lifecycle must leave a
     CLEAN business — re-key + 0 stale staff + 0 stale data + a tombstone row
     recording the retired BizID."""
@@ -88,6 +99,7 @@ def test_reclaim_rekey_purges_staff_and_data_and_writes_tombstone():
     assert rp.status_code in (200, 201), rp.text
 
     # Cloud account deleted + re-registered → reclaim onto the NEW BizID.
+    _cloud_accepts(monkeypatch, "BA-T13-NEW", "Clean Slate Co")
     rc = client.post("/api/auth/reclaim_local", json={
         "username": uname,
         "password": "NewPass456!",

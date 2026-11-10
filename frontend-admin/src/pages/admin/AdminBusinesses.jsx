@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useCallback, useState, useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { logger } from '../../utils/logger'
@@ -6,12 +6,29 @@ import { useDialog } from '../../contexts/DialogContext'
 import { API_BASE } from '../../config'
 import { Section } from '../../components/ui'
 import { Icon } from '../../components/icons'
+import '../../styles/directory.css'
+
+const OWNER_EDIT_FIELDS = [
+  ['business_name', 'Business Name', 'text'],
+  ['username', 'Store Username', 'text'],
+  ['email', 'Owner Email', 'email'],
+  ['phone', 'Mobile Phone', 'tel'],
+  ['gstin', 'GSTIN', 'text'],
+  ['pan', 'PAN Number', 'text'],
+  ['state_code', 'State Code', 'text'],
+  ['upi_vpa', 'UPI VPA', 'text'],
+  ['counter_prefix', 'Counter Prefix', 'text'],
+]
+const OWNER_EDIT_KEYS = [...OWNER_EDIT_FIELDS.map(([key]) => key), 'address', 'logo', 'hosting_mode']
 
 export default function AdminBusinesses() {
-  const { authFetch, adminUser } = useAuth()
+  const { authFetch } = useAuth()
   const { showAlert, showConfirm, showError } = useDialog()
   const [businesses, setBusinesses] = useState([])
   const [loading, setLoading] = useState(true)
+  const [hasLoaded, setHasLoaded] = useState(false)
+  const [loadError, setLoadError] = useState(null)
+  const listRequest = useRef(0)
 
   // Modals visibility
   const [showCreateModal, setShowCreateModal] = useState(false)
@@ -26,6 +43,8 @@ export default function AdminBusinesses() {
   // Edit form states
   const [editForm, setEditForm] = useState({ id: null, business_name: '', username: '', password: '' })
   const [editError, setEditError] = useState('')
+  const [editSaving, setEditSaving] = useState(false)
+  const editOriginal = useRef({})
 
   // Rate limits form states
   const [limitsForm, setLimitsForm] = useState({ id: null, businessName: '', rpm: 10, rpd: 500, tokens: 50000, complex: 20, active: true })
@@ -34,6 +53,8 @@ export default function AdminBusinesses() {
   // Inspector details states
   const [inspectDetails, setInspectDetails] = useState(null)
   const [inspectLoading, setInspectLoading] = useState(false)
+  const [inspectMoreLoading, setInspectMoreLoading] = useState(null)
+  const inspectRequest = useRef(0)
 
   // Subscription modal states (Phase B.5)
   const [showPlanModal, setShowPlanModal] = useState(false)
@@ -43,24 +64,73 @@ export default function AdminBusinesses() {
   // Type-the-name wipe confirmation (danger guard)
   const [wipeTarget, setWipeTarget] = useState(null)   // { id, name }
   const [wipeTyped, setWipeTyped] = useState('')
+  const [viewTab, setViewTab] = useState('active') // 'active' | 'deleted'
+  const [deletedBusinesses, setDeletedBusinesses] = useState([])
 
-  useEffect(() => {
-    loadBusinesses()
-  }, [])
+  // Search & Copy BizID
+  const [search, setSearch] = useState('')
+  const [focus, setFocus] = useState('all')
+  const [deletedLoaded, setDeletedLoaded] = useState(false)
+  const [deletedLoading, setDeletedLoading] = useState(false)
+  const [deletedError, setDeletedError] = useState(null)
+  const [copiedId, setCopiedId] = useState(null)
 
-  async function loadBusinesses() {
+  async function copyBusinessId(bizid) {
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('Clipboard is unavailable. Select the BizID and copy it manually.')
+      await navigator.clipboard.writeText(bizid)
+      setCopiedId(bizid)
+      setTimeout(() => setCopiedId(null), 2000)
+    } catch (error) { await showError(error) }
+  }
+
+
+
+  const loadBusinesses = useCallback(async () => {
+    const requestId = ++listRequest.current
     setLoading(true)
+    setLoadError(null)
     try {
       const res = await authFetch(`${API_BASE}/admin/businesses`)
       if (!res.ok) throw new Error('Failed to load merchant directory')
       const data = await res.json()
-      setBusinesses(data)
+      if (!Array.isArray(data) || data.some(b => !b || b.id == null || typeof b.username !== 'string'
+        || (b.business_name != null && typeof b.business_name !== 'string') || b.total_revenue == null
+        || !Number.isFinite(Number(b.total_revenue)))) throw new Error('Invalid merchant directory response')
+      if (requestId !== listRequest.current) return
+      setBusinesses(data.map(b => ({ ...b, total_revenue: Number(b.total_revenue) })))
+      setHasLoaded(true)
+      setDeletedLoading(true)
+      setDeletedError(null)
+      try {
+        const delRes = await authFetch(`${API_BASE}/admin/deleted-businesses`)
+        if (!delRes.ok) throw new Error('Could not load deleted stores')
+        const delData = await delRes.json()
+        if (requestId !== listRequest.current) return
+        if (!Array.isArray(delData)) throw new Error('Invalid deleted stores response')
+        setDeletedBusinesses(delData)
+        setDeletedLoaded(true)
+      } catch (e) {
+        if (requestId !== listRequest.current) return
+        logger.debug('Could not load deleted businesses:', e)
+        setDeletedError('Deleted store records could not be loaded.')
+      } finally {
+        if (requestId === listRequest.current) setDeletedLoading(false)
+      }
     } catch (err) {
+      if (requestId !== listRequest.current) return
       logger.error(err)
+      setLoadError('Business directory could not be loaded.')
     } finally {
-      setLoading(false)
+      if (requestId === listRequest.current) setLoading(false)
     }
-  }
+  }, [authFetch])
+
+  useEffect(() => {
+    const requestCounter = listRequest
+    loadBusinesses()
+    return () => { ++requestCounter.current }
+  }, [loadBusinesses])
 
   // --- WIPE USER DATA (type-the-name confirmation) ---
   function handleWipeUser(id, name) {
@@ -75,6 +145,7 @@ export default function AdminBusinesses() {
     try {
       const res = await authFetch(`${API_BASE}/admin/wipe-user-data/${id}`, { method: 'DELETE' })
       const data = await res.json()
+      if (!res.ok) throw new Error(data.detail || data.error || 'Data wipe failed')
       await showAlert(data.message || `Wiped all data for ${name} successfully.`)
       loadBusinesses()
     } catch (err) {
@@ -146,6 +217,7 @@ export default function AdminBusinesses() {
     try {
       const res = await authFetch(`${API_BASE}/admin/flush-cache/${id}`, { method: 'POST' })
       const data = await res.json()
+      if (!res.ok) throw new Error(data.detail || data.error || 'Cache flush failed')
       await showAlert(data.message || `Flushed cache for ${name} successfully.`)
     } catch (err) {
       await showError(err)
@@ -176,17 +248,23 @@ export default function AdminBusinesses() {
 
   // --- EDIT MERCHANT ---
   function openEditModal(b) {
-    setEditForm({ id: b.id, business_name: b.business_name, username: b.username, password: '' })
+    const values = Object.fromEntries(OWNER_EDIT_KEYS.map(key => [key, b[key] || '']))
+    editOriginal.current = values
+    setEditForm({ ...values, id: b.id, password: '' })
     setEditError('')
     setShowEditModal(true)
   }
 
   async function handleEditSubmit(e) {
     e.preventDefault()
+    if (editSaving) return
     setEditError('')
-    const body = { username: editForm.username, business_name: editForm.business_name }
+    const body = Object.fromEntries(OWNER_EDIT_KEYS
+      .filter(key => editForm[key] !== editOriginal.current[key])
+      .map(key => [key, editForm[key]]))
     if (editForm.password) body.password = editForm.password
 
+    setEditSaving(true)
     try {
       const res = await authFetch(`${API_BASE}/admin/update-user/${editForm.id}`, {
         method: 'PUT',
@@ -201,6 +279,8 @@ export default function AdminBusinesses() {
       loadBusinesses()
     } catch (err) {
       setEditError(err.message)
+    } finally {
+      setEditSaving(false)
     }
   }
 
@@ -266,141 +346,204 @@ export default function AdminBusinesses() {
 
   // --- INSPECTOR ---
   async function openInspectModal(b) {
+    const request = ++inspectRequest.current
     setInspectDetails(null)
     setInspectLoading(true)
+    setInspectMoreLoading(null)
     setShowInspectModal(true)
     try {
-      const res = await authFetch(`${API_BASE}/admin/business-details/${b.id}`)
+      const res = await authFetch(`${API_BASE}/admin/business-details/${b.id}?limit=50&offset=0`)
       if (!res.ok) throw new Error('Could not inspect business explorer data')
       const data = await res.json()
+      if (request !== inspectRequest.current) return
       setInspectDetails(data)
     } catch (err) {
+      if (request !== inspectRequest.current) return
       await showError(err)
       setShowInspectModal(false)
     } finally {
-      setInspectLoading(false)
+      if (request === inspectRequest.current) setInspectLoading(false)
     }
   }
 
+  async function loadMoreDetails(section) {
+    if (!inspectDetails || inspectMoreLoading) return
+    const request = inspectRequest.current
+    const businessId = inspectDetails.id
+    const offset = inspectDetails[section]?.length || 0
+    setInspectMoreLoading(section)
+    try {
+      const response = await authFetch(`${API_BASE}/admin/business-details/${businessId}?section=${encodeURIComponent(section)}&limit=50&offset=${offset}`)
+      if (!response.ok) throw new Error('Could not load more business records')
+      const page = await response.json()
+      if (request !== inspectRequest.current) return
+      setInspectDetails(previous => !previous || previous.id !== businessId ? previous : ({
+        ...previous, [section]: [...(previous[section] || []), ...(page[section] || [])],
+        pagination: { ...previous.pagination, sections: { ...previous.pagination?.sections, [section]: page.has_more } },
+      }))
+    } catch (error) { if (request === inspectRequest.current) await showError(error) }
+    finally { if (request === inspectRequest.current) setInspectMoreLoading(null) }
+  }
+
+  const matchesFocus = b => focus === 'all'
+    || (focus === 'pro' && b.plan === 'pro')
+    || (focus === 'recent' && b.online_last_24h === true)
+    || (focus === 'attention' && Boolean(b.needs_attention))
+  const filteredBusinesses = businesses.filter(b => {
+    if (!matchesFocus(b)) return false
+    const q = search.trim().toLowerCase()
+    return !q || [b.business_name, b.username, b.bizid, b.email, b.phone, b.login_method]
+      .some(value => String(value ?? '').toLowerCase().includes(q))
+  })
+  const filteredDeletedBusinesses = deletedBusinesses.filter(d => {
+    const q = search.trim().toLowerCase()
+    return !q || [d.business_name, d.username, d.bizid, d.reason]
+      .some(value => String(value ?? '').toLowerCase().includes(q))
+  })
+  const summary = [
+    { key: 'all', label: 'Merchant accounts', count: businesses.length, note: 'In the current directory', icon: 'building' },
+    { key: 'pro', label: 'Pro accounts', count: businesses.filter(b => b.plan === 'pro').length, note: 'Saved subscription plan', icon: 'sparkle' },
+    { key: 'recent', label: 'Reported in 24h', count: businesses.filter(b => b.online_last_24h === true).length, note: 'Recently connected stores', icon: 'activity' },
+    { key: 'attention', label: 'Needs attention', count: businesses.filter(b => b.needs_attention).length, note: 'Reported sync errors or conflicts', icon: 'alert' },
+  ]
+  const visibleCount = viewTab === 'deleted' ? filteredDeletedBusinesses.length : filteredBusinesses.length
+  const sourceCount = viewTab === 'deleted' ? deletedBusinesses.length : businesses.length
+  const focusLabels = { all: 'All merchants', pro: 'Pro accounts', recent: 'Reported in 24h', attention: 'Needs attention' }
+  const emptyFocus = { pro: 'No Pro accounts match this view.', recent: 'No stores reported a connection in the last 24 hours.', attention: 'No businesses are currently flagged for attention.' }
+
   return (
-    <div className="admin-main" style={{ margin: 0, padding: 0 }}>
-      {/* Header */}
-      <div className="admin-header-row" style={{ borderBottom: '1.5px solid var(--border-color)', paddingBottom: 20 }}>
+    <div className="admin-main directory-page">
+      <div className="admin-header-row directory-heading">
         <div className="admin-title-group">
-          <h1>✦ REGISTERED ENTERPRISES</h1>
-          <p>Manage sandbox accounts, directory credentials, data wipe, and rate limits</p>
+          <span className="directory-eyebrow">MERCHANT OPERATIONS</span>
+          <h1>Every store, in view.</h1>
+          <p>Find a merchant, understand their account, and take the next support action.</p>
         </div>
-        <button className="btn-flush" onClick={() => setShowCreateModal(true)} style={{ padding: '10px 16px', fontSize: 13 }}>
-          + Add New Merchant
-        </button>
+        <div className="admin-header-actions directory-heading-actions">
+          <button type="button" className="btn-flush" onClick={loadBusinesses} disabled={loading}>
+            <Icon name="refresh" size={14} /> Refresh directory
+          </button>
+          <button type="button" className="btn-primary" onClick={() => setShowCreateModal(true)}>
+            <Icon name="plus" size={14} /><span>Add New Merchant</span>
+          </button>
+        </div>
       </div>
+
+      <div className="directory-summary" role="group" aria-label="Merchant directory focus">
+        {summary.map(item => <button type="button" key={item.key}
+          className={`directory-summary-item ${focus === item.key && viewTab === 'active' ? 'is-selected' : ''} ${item.key === 'attention' ? 'is-attention' : ''}`}
+          aria-pressed={focus === item.key && viewTab === 'active'} disabled={!hasLoaded}
+          onClick={() => { setFocus(item.key); setViewTab('active') }}>
+          <span className="directory-summary-top"><Icon name={item.icon} size={16} /><span>{item.label}</span></span>
+          <strong>{hasLoaded ? item.count : '—'}</strong>
+          <span className="directory-summary-note">{hasLoaded ? item.note : 'Waiting for the directory'}</span>
+        </button>)}
+      </div>
+
+      {loadError && <div role="alert" className="directory-load-alert">
+        <Icon name="alert" size={18} /><div><strong>{loadError}</strong><p>{hasLoaded ? 'Showing the last loaded directory. Refresh again to bring it up to date.' : 'The directory is unavailable. Try again to load merchant accounts.'}</p></div>
+        <button type="button" className="btn-flush" onClick={loadBusinesses} disabled={loading}>Retry directory</button>
+      </div>}
 
       {/* Directory Table */}
       <Section
-        title="Enterprise Business Directory"
+        title="Business directory"
+        persistKey="section_open_enterprise_business_directory"
+        className="directory-workspace"
         icon={<Icon name="database" size={16} />}
         collapsible
         noPad
-        style={{ marginTop: 24 }}
+        style={{ marginTop: 0 }}
       >
-        {loading ? (
-          <div className="vskel" style={{ padding: 20 }}></div>
-        ) : (
-          <div className="admin-table-wrap" style={{ overflowX: 'auto', width: '100%' }}>
-            {(() => {
-              const flagged = businesses.filter(b => b.needs_attention)
-              if (flagged.length === 0) return null
-              return (
-                <div style={{
-                  margin: '10px 0 4px', padding: '9px 14px', borderRadius: 8,
-                  background: 'rgba(180,70,47,0.10)', border: '1px solid rgba(180,70,47,0.30)',
-                  color: 'var(--danger, #b4462f)', fontSize: 13, fontWeight: 600,
-                }}>
-                  ⚠ {flagged.length} business{flagged.length > 1 ? 'es' : ''} need attention —
-                  {' '}sync errors or unreviewed financial conflicts. Look for the “Attention” tag below.
-                </div>
-              )
-            })()}
-            <table className="admin-table" style={{ width: '100%', marginTop: 12 }}>
+        <div className="directory-tabs" role="group" aria-label="Store records">
+          <button type="button" onClick={() => setViewTab('active')} className={viewTab === 'active' ? 'is-active' : ''} aria-pressed={viewTab === 'active'}>
+            <Icon name="building" size={14} /><span>Active Stores</span><b>{hasLoaded ? businesses.length : '—'}</b>
+          </button>
+          <button type="button" onClick={() => setViewTab('deleted')} className={viewTab === 'deleted' ? 'is-active is-deleted' : ''} aria-pressed={viewTab === 'deleted'}>
+            <Icon name="shield" size={14} /><span>Deleted / Wiped Stores</span><b>{deletedLoaded ? deletedBusinesses.length : '—'}</b>
+          </button>
+          <span className="directory-source-note">{loading ? 'Refreshing directory…' : hasLoaded ? 'Latest loaded records' : 'Loading records…'}</span>
+        </div>
+
+        <div className="directory-toolbar">
+          <label className="directory-search">
+            <Icon name="search" size={16} />
+            <input type="search" className="admin-input" aria-label="Search merchant accounts"
+              placeholder={viewTab === 'deleted' ? 'Search deleted stores or a wipe reason…' : 'Search stores, BizID, email or phone…'}
+              value={search} onChange={e => setSearch(e.target.value)} />
+          </label>
+          {viewTab === 'active' && <label className="directory-focus-control"><span>View</span><select className="admin-input" aria-label="Directory focus" value={focus} onChange={e => setFocus(e.target.value)}>
+            {Object.entries(focusLabels).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+          </select></label>}
+          {(search || (viewTab === 'active' && focus !== 'all')) && <button type="button" className="btn-flush directory-clear" onClick={() => { setSearch(''); setFocus('all') }}>Clear Filter</button>}
+          {(viewTab === 'active' ? hasLoaded : deletedLoaded) && <span className="directory-result-count" role="status">Showing <b>{visibleCount}</b> of <b>{sourceCount}</b> {viewTab === 'deleted' ? 'deleted stores' : 'businesses'}</span>}
+        </div>
+
+        {loading && !hasLoaded ? (
+          <div className="directory-loading" role="status"><span className="directory-loading-lines" aria-hidden="true" /><span>Loading merchant accounts…</span></div>
+        ) : hasLoaded && viewTab === 'deleted' && deletedError && !deletedLoaded ? (
+          <div role="alert" className="directory-empty"><Icon name="alert" size={24} /><strong>{deletedError}</strong><p>{deletedLoaded ? 'The last loaded deleted-store records are retained. Retry to refresh this view.' : 'Retry before reviewing the deleted-store audit records.'}</p><button type="button" className="btn-flush" onClick={loadBusinesses} disabled={loading}>Retry deleted stores</button></div>
+        ) : hasLoaded && viewTab === 'deleted' && !deletedLoaded ? (
+          <div className="directory-loading" role="status">{deletedLoading ? 'Loading deleted store records…' : 'Deleted store records have not loaded yet.'}</div>
+        ) : hasLoaded && viewTab === 'deleted' ? (
+          <div className="admin-table-wrap" style={{ overflowX: 'auto', width: '100%', padding: '12px 18px 24px' }}>
+            {deletedError && <div role="alert" className="directory-load-alert"><Icon name="alert" size={17} /><div><strong>{deletedError}</strong><p>Showing the last loaded deleted-store records.</p></div><button type="button" className="btn-flush" onClick={loadBusinesses} disabled={loading}>Retry deleted stores</button></div>}
+            <div style={{ margin: '4px 0 14px', padding: '10px 14px', borderRadius: 8, background: 'var(--bg-2)', border: '1px solid var(--border)', fontSize: 12.5, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Icon name="shield" size={15} style={{ color: 'var(--accent)' }} />
+              <span><b>Tombstone Audit Ledger:</b> Permanently wiped stores. All private operational data (invoices, inventory, journal ledgers, credentials, session tokens) has been destroyed. BizID and basic store metadata are preserved to prevent identity recycling.</span>
+            </div>
+            <table className="admin-table" aria-label="Deleted store audit records" style={{ width: '100%' }}>
               <thead>
                 <tr>
                   <th>ID</th>
                   <th>BizID</th>
-                  <th>Business Name</th>
+                  <th>Store Name</th>
                   <th>Username</th>
-                  <th>Mode</th>
-                  <th>Sync</th>
-                  <th>Plan</th>
-                  <th>Total Invoices</th>
-                  <th>Tracked Revenue</th>
-                  <th>Inventory Stock Count</th>
-                  <th>Upload History</th>
-                  <th>Actions</th>
+                  <th>Status</th>
+                  <th>Wiped On</th>
+                  <th>Reason</th>
                 </tr>
               </thead>
               <tbody>
-                {businesses.length === 0 ? (
+                {filteredDeletedBusinesses.length === 0 ? (
                   <tr>
-                    <td colSpan="12" style={{ textAlign: 'center', color: 'var(--secondary-text)', padding: 30 }}>
-                      No enterprise businesses registered yet.
+                    <td colSpan="7" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 36 }}>
+                      {search ? 'No deleted stores match the search filter.' : 'No stores have been wiped yet.'}
                     </td>
                   </tr>
                 ) : (
-                  businesses.map(b => (
-                    <tr key={b.id}>
-                      <td style={{ fontFamily: "'Geist Mono',monospace", opacity: 0.75 }}>{b.id}</td>
-                      <td style={{ fontFamily: "'Geist Mono',monospace", fontSize: 11, opacity: 0.85 }} title="Stable identity across cloud & local databases">{b.bizid || '—'}</td>
-                      <td style={{ fontWeight: 600 }}>
-                        <Link to={`/admin/businesses/${b.id}`} title="Open drill-down: sync health, telemetry, logs, force logout"
-                          style={{ color: 'var(--accent-color)', textDecoration: 'none' }}>
-                          {b.business_name}
-                        </Link>
-                        {b.needs_attention && (
-                          <span
-                            title={`Needs attention — ${b.sync_errors || 0} sync error(s), ${b.unreviewed_conflicts || 0} unreviewed conflict(s)`}
-                            style={{
-                              marginLeft: 8, fontSize: 10, fontWeight: 700, textTransform: 'uppercase',
-                              letterSpacing: '0.04em', padding: '2px 7px', borderRadius: 10,
-                              background: 'rgba(180,70,47,0.12)', color: 'var(--danger, #b4462f)',
-                            }}
-                          >
-                            ⚠ Attention
-                          </span>
-                        )}
-                      </td>
-                      <td>{b.username}</td>
-                      <td><span className="tag">{b.hosting_mode || 'local'}</span></td>
-                      <td>
-                        <span title={b.last_sync_at ? `Last sync ${b.last_sync_at}${b.sync_queue_depth ? ` · ${b.sync_queue_depth} queued` : ''}` : 'Never synced'} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12 }}>
-                          <span style={{ width: 8, height: 8, borderRadius: '50%', background: b.online_last_24h ? '#3a9a5c' : 'var(--border-color)', display: 'inline-block' }}></span>
-                          {b.online_last_24h ? '24h' : (b.last_sync_at ? 'stale' : '—')}
-                          {b.sync_queue_depth > 0 && <span style={{ color: 'var(--accent-color)', fontWeight: 600 }}>+{b.sync_queue_depth}</span>}
+                  filteredDeletedBusinesses.map(d => (
+                    <tr key={d.id || d.bizid}>
+                      <td style={{ fontFamily: "var(--font-mono, monospace)", fontSize: 12, color: 'var(--text-muted)' }}>{d.id}</td>
+                      <td style={{ fontFamily: "var(--font-mono, monospace)", fontSize: 12 }}>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                          <span>{d.bizid || '—'}</span>
+                          {d.bizid && (
+                            <button
+                              type="button"
+                              onClick={() => copyBusinessId(d.bizid)}
+                              style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: copiedId === d.bizid ? 'var(--success)' : 'var(--text-muted)' }}
+                              title="Copy BizID"
+                            >
+                              <Icon name={copiedId === d.bizid ? 'check' : 'copy'} size={12} />
+                            </button>
+                          )}
                         </span>
                       </td>
+                      <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{d.business_name}</td>
+                      <td style={{ color: 'var(--text-secondary)' }}>@{d.username || '—'}</td>
                       <td>
-                        <span className="tag" style={{
-                          background: b.plan === 'pro' ? 'rgba(58,154,92,0.12)' : 'var(--accent-soft)',
-                          color: b.plan === 'pro' ? '#3a9a5c' : 'var(--secondary-text)',
-                          fontWeight: 700, textTransform: 'uppercase', fontSize: 10
-                        }}>{b.plan || 'free'}</span>
+                        <span className="tag" style={{ background: 'var(--danger-dim)', color: 'var(--danger)', border: '1px solid rgba(197,48,48,0.3)', fontWeight: 700 }}>
+                          DELETED
+                        </span>
                       </td>
-                      <td>{b.invoice_count}</td>
-                      <td style={{ fontFamily: "'Crimson Pro',serif", fontSize: 16, fontWeight: 600 }}>
-                        ₹{b.total_revenue.toLocaleString('en-IN')}
+                      <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                        {d.deleted_at ? new Date(d.deleted_at).toLocaleString() : '—'}
                       </td>
-                      <td>{b.inventory_count} items</td>
-                      <td>{b.upload_count} datasets</td>
                       <td>
-                        <div style={{ display: 'flex', gap: 6 }}>
-                          <Link to={`/admin/businesses/${b.id}`} className="btn-flush" style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}>Open</Link>
-                          <button className="btn-flush" onClick={() => openInspectModal(b)}>Inspect</button>
-                          <button className="btn-flush" onClick={() => openEditModal(b)}>Edit</button>
-                          <button className="btn-flush" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }} onClick={() => openLimitsModal(b)}><Icon name="settings" size={12} /> Limits</button>
-                          <button className="btn-flush" onClick={() => openPlanModal(b)}>Plan</button>
-                          <button className="btn-flush" onClick={() => handleFlushCache(b.id, b.business_name)}>Flush Cache</button>
-                          <button className="btn-flush" onClick={() => handleDownloadLogs(b.id, b.business_name)}>Logs</button>
-                          <button className="btn-wipe-row" onClick={() => handleWipeUser(b.id, b.business_name)}>Wipe Data</button>
-                        </div>
+                        <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                          {d.reason === 'admin_wipe' ? 'Admin Wipe (Data & Sessions Purged)' : d.reason}
+                        </span>
                       </td>
                     </tr>
                   ))
@@ -408,7 +551,45 @@ export default function AdminBusinesses() {
               </tbody>
             </table>
           </div>
-        )}
+        ) : hasLoaded ? (
+          <div className="admin-table-wrap" style={{ overflowX: 'auto', width: '100%' }}>
+            {(() => {
+              const flagged = businesses.filter(b => b.needs_attention)
+              if (flagged.length === 0) return null
+              return (
+                <div style={{
+                  margin: '12px 18px 4px', padding: '10px 14px', borderRadius: 'var(--radius-md, 8px)',
+                  background: 'var(--danger-dim)', border: '1px solid rgba(155,28,28,0.25)',
+                  color: 'var(--danger)', fontSize: 13, fontWeight: 600,
+                  display: 'flex', alignItems: 'center', gap: 8,
+                }}>
+                  <Icon name="alert" size={16} />
+                  <span>
+                    {flagged.length} business{flagged.length > 1 ? 'es need' : ' needs'} attention —
+                    {' '}sync errors or unreviewed financial conflicts detected. Look for the Attention badge below.
+                  </span>
+                </div>
+              )
+            })()}
+            <table className="admin-table directory-table" aria-label="Merchant accounts">
+              <thead><tr><th>Business</th><th>BizID</th><th>Contact &amp; sign-in</th><th>Store setup</th><th>Plan</th><th>Activity</th><th>Sales recorded</th><th>Actions</th></tr></thead>
+              <tbody>
+                {filteredBusinesses.length === 0 ? <tr><td colSpan={8}><div className="directory-empty"><Icon name="building" size={27} /><strong>{search ? 'No businesses match the search query.' : focus !== 'all' && businesses.length ? emptyFocus[focus] : 'No enterprise businesses registered yet.'}</strong><p>{search || focus !== 'all' ? 'Try another search or clear the current filter.' : 'Add a merchant account to start managing your network here.'}</p>{(search || focus !== 'all') && <button type="button" className="btn-flush" onClick={() => { setSearch(''); setFocus('all') }}>Show all merchants</button>}</div></td></tr> : filteredBusinesses.map(b => (
+                  <tr key={b.id}>
+                    <td><div className="directory-merchant"><span className="directory-merchant-monogram" aria-hidden="true">{String(b.business_name || b.username).slice(0, 2).toUpperCase()}</span><div><Link to={`/admin/businesses/${b.id}`} className="directory-merchant-name" title="Open drill-down: sync health, telemetry, logs, force logout">{b.business_name || b.username}</Link><span className="directory-merchant-meta">@{b.username}<i />Account #{b.id}</span>{b.needs_attention && <span className="directory-attention" title={`Needs attention — ${b.sync_errors || 0} sync error(s), ${b.unreviewed_conflicts || 0} unreviewed conflict(s)`}><Icon name="alert" size={11} />Attention</span>}</div></div></td>
+                    <td><span className="directory-bizid" title="Stable identity across cloud & local databases"><span>{b.bizid || '—'}</span>{b.bizid && <button type="button" className="directory-copy" onClick={() => copyBusinessId(b.bizid)} title={copiedId === b.bizid ? 'Copied!' : 'Copy BizID'} aria-label={`Copy BizID for ${b.business_name || b.username}`}><Icon name={copiedId === b.bizid ? 'check' : 'copy'} size={13} /></button>}</span></td>
+                    <td><div className="directory-contact"><span className="directory-contact-email">{b.email || 'No email recorded'}</span>{b.phone && <span>{b.phone}</span>}<div className="directory-account-tags"><span className="directory-login-method"><Icon name={b.login_method === 'google' ? 'google' : 'key'} size={11} />{b.login_method === 'google' ? 'Google' : 'Password'}</span><span title={b.mails_sent_count > 0 ? `${b.mails_sent_count} system email(s) sent (welcome, OTPs)` : 'No emails dispatched'}><Icon name="mail" size={11} />{b.mails_sent_count || 0} sent</span></div></div></td>
+                    <td><div className="directory-store-setup"><span className="directory-mode">{b.hosting_mode || 'Mode not reported'}</span><span className={`directory-sync ${b.online_last_24h === true ? 'is-recent' : ''}`} title={b.last_sync_at ? `Last sync ${b.last_sync_at}${b.sync_queue_depth ? ` · ${b.sync_queue_depth} queued` : ''}` : 'No sync timestamp reported'}><i />{b.online_last_24h === true ? 'Reported in 24h' : b.last_sync_at ? 'Earlier sync recorded' : 'No sync reported'}</span>{b.sync_queue_depth > 0 && <span className="directory-queued">{b.sync_queue_depth} queued</span>}</div></td>
+                    <td><span className={`directory-plan ${b.plan === 'pro' ? 'is-pro' : ''}`}>{b.plan || 'free'}</span></td>
+                    <td><div className="directory-activity"><span><b>{b.invoice_count ?? '—'}</b> invoices</span><span><b>{b.inventory_count ?? '—'}</b> stock items</span></div></td>
+                    <td className="directory-revenue">₹{b.total_revenue.toLocaleString('en-IN')}</td>
+                    <td><div className="directory-row-actions"><Link to={`/admin/businesses/${b.id}`} className="btn-flush directory-open">Open <span aria-hidden="true">↗</span></Link><button type="button" className="btn-flush" onClick={() => openInspectModal(b)}>Inspect</button><details className="directory-row-menu"><summary aria-label={`More actions for ${b.business_name || b.username}`}>More <Icon name="chevronDown" size={11} /></summary><div><button type="button" className="btn-flush" onClick={() => openEditModal(b)}>Edit</button><button type="button" className="btn-flush" onClick={() => openLimitsModal(b)}><Icon name="settings" size={12} />Limits</button><button type="button" className="btn-flush" onClick={() => openPlanModal(b)}>Plan</button><button type="button" className="btn-flush" onClick={() => handleFlushCache(b.id, b.business_name)}>Flush</button><button type="button" className="btn-flush" onClick={() => handleDownloadLogs(b.id, b.business_name)}>Logs</button><button type="button" className="btn-wipe-row" onClick={() => handleWipeUser(b.id, b.business_name)}>Wipe</button></div></details></div></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
       </Section>
 
       {/* CREATE MERCHANT MODAL */}
@@ -464,43 +645,80 @@ export default function AdminBusinesses() {
       {/* EDIT MERCHANT MODAL */}
       {showEditModal && (
         <div className="custom-modal-overlay">
-          <div className="custom-modal-card admin-modal-card" style={{ maxWidth: 450 }}>
-            <div className="custom-modal-title">Edit Merchant Credentials</div>
-            <form onSubmit={handleEditSubmit} className="auth-form" style={{ marginTop: 16 }}>
-              <div className="form-group">
-                <label>Business Name</label>
+          <div className="custom-modal-card admin-modal-card" role="dialog" aria-modal="true" aria-labelledby="owner-edit-title" style={{ maxWidth: 560, width: '92%', maxHeight: '90dvh', overflowY: 'auto' }}>
+            <div id="owner-edit-title" className="custom-modal-title">Edit Business &amp; Owner Profile</div>
+            <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '4px 0 16px 0' }}>
+              Update business details, account contacts, storage configuration, or assign a new login password.
+            </p>
+            <form onSubmit={handleEditSubmit} className="auth-form" style={{ marginTop: 8 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px 14px' }}>
+                {OWNER_EDIT_FIELDS.map(([key, label, type]) => (
+                  <div className="form-group" key={key}>
+                    <label htmlFor={`owner-edit-${key}`}>{label}</label>
+                    <input
+                      id={`owner-edit-${key}`}
+                      type={type}
+                      required={key === 'business_name' || key === 'username' || (key === 'email' && Boolean(editForm.password))}
+                      maxLength={key === 'counter_prefix' ? 8 : undefined}
+                      value={editForm[key]}
+                      onChange={e => setEditForm(f => ({ ...f, [key]: ['gstin', 'pan'].includes(key) ? e.target.value.toUpperCase() : e.target.value }))}
+                    />
+                  </div>
+                ))}
+                <div className="form-group">
+                  <label htmlFor="owner-edit-hosting_mode">Store Storage Setup</label>
+                  <select
+                    id="owner-edit-hosting_mode"
+                    value={editForm.hosting_mode}
+                    onChange={e => setEditForm(f => ({ ...f, hosting_mode: e.target.value }))}
+                    style={{ height: 38, borderRadius: 6 }}
+                  >
+                    <option value="" disabled>Setup not reported</option>
+                    <option value="cloud">Cloud (Web)</option>
+                    <option value="local">Local (Offline Desktop)</option>
+                    <option value="hybrid">Hybrid (Local + Cloud Mirror)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="form-group" style={{ marginTop: 8 }}>
+                <label htmlFor="owner-edit-address">Trade / Physical Address</label>
                 <input
+                  id="owner-edit-address"
                   type="text"
-                  required
-                  value={editForm.business_name}
-                  onChange={e => setEditForm(f => ({ ...f, business_name: e.target.value }))}
+                  placeholder="Street, City, Pin Code"
+                  value={editForm.address}
+                  onChange={e => setEditForm(f => ({ ...f, address: e.target.value }))}
                 />
               </div>
-              <div className="form-group">
-                <label>Username</label>
-                <input
-                  type="text"
-                  required
-                  value={editForm.username}
-                  onChange={e => setEditForm(f => ({ ...f, username: e.target.value }))}
-                />
+              <div className="form-group" style={{ marginTop: 8 }}>
+                <label htmlFor="owner-edit-logo">Business Logo (URL or image data)</label>
+                <textarea id="owner-edit-logo" rows={2} value={editForm.logo} onChange={e => setEditForm(f => ({ ...f, logo: e.target.value }))} />
               </div>
-              <div className="form-group">
-                <label>New Password (leave blank to keep current)</label>
+
+              <div className="form-group" style={{ marginTop: 8 }}>
+                <label htmlFor="owner-edit-password">New Password (leave blank to keep current)</label>
                 <input
+                  id="owner-edit-password"
                   type="password"
+                  autoComplete="new-password"
+                  minLength={8}
                   placeholder="••••••••"
                   value={editForm.password}
                   onChange={e => setEditForm(f => ({ ...f, password: e.target.value }))}
                 />
+                <span style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 3, display: 'block' }}>
+                  A confirmation email will be sent to the owner's email address upon password update.
+                </span>
               </div>
-              {editError && <div className="auth-error">{editError}</div>}
-              <div className="custom-modal-actions" style={{ marginTop: 24 }}>
-                <button type="button" className="custom-modal-btn cancel-btn" onClick={() => setShowEditModal(false)}>
+
+              {editError && <div className="auth-error" style={{ marginTop: 12 }}>{editError}</div>}
+              <div className="custom-modal-actions" style={{ marginTop: 20 }}>
+                <button type="button" disabled={editSaving} className="custom-modal-btn cancel-btn" onClick={() => setShowEditModal(false)}>
                   Cancel
                 </button>
-                <button type="submit" className="custom-modal-btn confirm-btn" style={{ background: 'var(--accent-color)' }}>
-                  Save Credentials
+                <button type="submit" disabled={editSaving} className="custom-modal-btn confirm-btn" style={{ background: 'var(--accent-color)' }}>
+                  {editSaving ? 'Saving...' : 'Save Business Details'}
                 </button>
               </div>
             </form>
@@ -631,10 +849,14 @@ export default function AdminBusinesses() {
       {wipeTarget && (
         <div className="custom-modal-overlay">
           <div className="custom-modal-card admin-modal-card" style={{ maxWidth: 460 }}>
-            <div className="custom-modal-title" style={{ color: 'var(--accent-color)' }}>⚠ Permanently wipe {wipeTarget.name}?</div>
+            <div className="custom-modal-title" style={{ color: 'var(--danger)', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Icon name="warn" size={18} />
+              <span>Permanently wipe {wipeTarget.name}?</span>
+            </div>
             <p style={{ fontSize: 13, color: 'var(--secondary-text)', marginTop: 12, lineHeight: 1.5 }}>
-              This deletes the account and ALL its business data — invoices, inventory,
+              This deletes the account and its business data from this server — invoices, inventory,
               payments, uploads, embeddings and chat history. This cannot be undone.
+              Downloaded app copies are not automatically erased.
               Type the business name <strong style={{ color: 'var(--text-color)' }}>{wipeTarget.name}</strong> to confirm.
             </p>
             <div className="form-group" style={{ marginTop: 12 }}>
@@ -674,7 +896,7 @@ export default function AdminBusinesses() {
                   <Icon name="search" size={20} /> Inspect: {inspectDetails?.business_name || 'Loading...'}
                 </div>
                 <div style={{ fontSize: 12, color: 'var(--secondary-text)', marginTop: 4 }}>
-                  User ID: {inspectDetails?.id} | Username: {inspectDetails?.username}
+                  User ID: {inspectDetails?.id} | BizID: {inspectDetails?.bizid || '—'} | Username: @{inspectDetails?.username}
                 </div>
               </div>
               <button
@@ -690,6 +912,56 @@ export default function AdminBusinesses() {
               <div className="vskel" style={{ marginTop: 24 }}></div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 16, marginTop: 24 }}>
+                {/* Merchant Account Details Strip */}
+                <div style={{ background: 'var(--bg-1, #1a1d24)', border: '1px solid var(--border, #2d3343)', borderRadius: 10, padding: 14, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 12 }}>
+                  <div>
+                    <div style={{ fontSize: 11, textTransform: 'uppercase', color: 'var(--text-muted)' }}>Login Method</div>
+                    <div style={{ fontSize: 13, fontWeight: 600, marginTop: 3, display: 'flex', alignItems: 'center', gap: 6 }}>
+                      {inspectDetails.login_method === 'google' ? (
+                        <span style={{ color: '#60a5fa', display: 'inline-flex', alignItems: 'center', gap: 4 }}><Icon name="google" size={13} /> Google SSO</span>
+                      ) : (
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Icon name="key" size={13} /> Password</span>
+                      )}
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 11, textTransform: 'uppercase', color: 'var(--text-muted)' }}>Google / Account Email</div>
+                    <div style={{ fontSize: 13, fontWeight: 600, marginTop: 3, wordBreak: 'break-all' }}>
+                      {inspectDetails.email || '—'}
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 11, textTransform: 'uppercase', color: 'var(--text-muted)' }}>Phone Number</div>
+                    <div style={{ fontSize: 13, fontWeight: 600, marginTop: 3 }}>
+                      {inspectDetails.phone || '—'}
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 11, textTransform: 'uppercase', color: 'var(--text-muted)' }}>Staff Accounts</div>
+                    <div style={{ fontSize: 13, fontWeight: 600, marginTop: 3 }}>
+                      {inspectDetails.staff_count ?? 0} counter(s)
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 11, textTransform: 'uppercase', color: 'var(--text-muted)' }}>Joined Platform</div>
+                    <div style={{ fontSize: 12, marginTop: 3 }}>
+                      {inspectDetails.created_at ? new Date(inspectDetails.created_at).toLocaleDateString() : '—'}
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 11, textTransform: 'uppercase', color: 'var(--text-muted)' }}>Last Authentication</div>
+                    <div style={{ fontSize: 12, marginTop: 3 }}>
+                      {inspectDetails.last_login ? new Date(inspectDetails.last_login).toLocaleString() : 'Never logged in'}
+                    </div>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  {Object.entries(inspectDetails.pagination?.sections || {}).filter(([, more]) => more).map(([section]) => (
+                    <button type="button" key={section} onClick={() => loadMoreDetails(section)} disabled={Boolean(inspectMoreLoading)}>
+                      {inspectMoreLoading === section ? 'Loading…' : `Load more ${section.replace('_', ' ')}`}
+                    </button>
+                  ))}
+                </div>
                 {/* Uploaded datasets */}
                 <details className="tree-node">
                   <summary className="tree-summary" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Icon name="package" size={14} /> Uploaded Datasets ({inspectDetails.uploads.length})</summary>
@@ -742,7 +1014,7 @@ export default function AdminBusinesses() {
                           </tr>
                         </thead>
                         <tbody>
-                          {inspectDetails.invoices.slice(0, 50).map((inv, i) => (
+                          {inspectDetails.invoices.map((inv, i) => (
                             <tr key={i}>
                               <td style={{ fontFamily: 'monospace' }}>{inv.invoice_id || 'N/A'}</td>
                               <td style={{ fontWeight: 500 }}>{inv.customer}</td>
@@ -762,7 +1034,7 @@ export default function AdminBusinesses() {
                           {inspectDetails.invoices.length > 50 && (
                             <tr>
                               <td colSpan="6" style={{ textAlign: 'center', color: 'var(--secondary-text)', padding: 8 }}>
-                                Showing first 50 of {inspectDetails.invoices.length} invoices.
+                                Loaded {inspectDetails.invoices.length} invoices.
                               </td>
                             </tr>
                           )}
@@ -789,7 +1061,7 @@ export default function AdminBusinesses() {
                           </tr>
                         </thead>
                         <tbody>
-                          {inspectDetails.inventory.slice(0, 50).map((item, i) => (
+                          {inspectDetails.inventory.map((item, i) => (
                             <tr key={i}>
                               <td style={{ fontWeight: 600, color: 'var(--accent-color)' }}>{item.product_name}</td>
                               <td>{item.stock} items</td>
@@ -800,7 +1072,7 @@ export default function AdminBusinesses() {
                           {inspectDetails.inventory.length > 50 && (
                             <tr>
                               <td colSpan="4" style={{ textAlign: 'center', color: 'var(--secondary-text)', padding: 8 }}>
-                                Showing first 50 of {inspectDetails.inventory.length} products.
+                                Loaded {inspectDetails.inventory.length} products.
                               </td>
                             </tr>
                           )}
@@ -827,7 +1099,7 @@ export default function AdminBusinesses() {
                           </tr>
                         </thead>
                         <tbody>
-                          {inspectDetails.payments.slice(0, 50).map((p, i) => (
+                          {inspectDetails.payments.map((p, i) => (
                             <tr key={i}>
                               <td style={{ fontWeight: 500 }}>{p.customer}</td>
                               <td style={{ fontWeight: 600 }}>₹{p.amount.toLocaleString('en-IN')}</td>
@@ -845,7 +1117,7 @@ export default function AdminBusinesses() {
                           {inspectDetails.payments.length > 50 && (
                             <tr>
                               <td colSpan="4" style={{ textAlign: 'center', color: 'var(--secondary-text)', padding: 8 }}>
-                                Showing first 50 of {inspectDetails.payments.length} payments.
+                                Loaded {inspectDetails.payments.length} payments.
                               </td>
                             </tr>
                           )}
@@ -910,6 +1182,56 @@ export default function AdminBusinesses() {
                         )
                       })
                     })()}
+                  </div>
+                </details>
+
+                {/* Mails & Communications Sent */}
+                <details className="tree-node" open>
+                  <summary className="tree-summary" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <Icon name="mail" size={14} /> Mails & Communications Sent ({inspectDetails.emails?.length || 0})
+                  </summary>
+                  <div className="tree-content">
+                    {!inspectDetails.emails || inspectDetails.emails.length === 0 ? (
+                      <div style={{ color: 'var(--secondary-text)', padding: '10px 0' }}>No emails recorded for this merchant.</div>
+                    ) : (
+                      <table className="admin-table" style={{ width: '100%', marginTop: 8 }}>
+                        <thead>
+                          <tr>
+                            <th>Date & Time</th>
+                            <th>Template</th>
+                            <th>Recipient</th>
+                            <th>Subject</th>
+                            <th>Status</th>
+                            <th>Details</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {inspectDetails.emails.map((m, idx) => (
+                            <tr key={m.id || idx}>
+                              <td style={{ fontSize: 12, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                                {m.sent_at ? new Date(m.sent_at).toLocaleString() : '—'}
+                              </td>
+                              <td>
+                                <span className="tag" style={{ textTransform: 'capitalize' }}>
+                                  {m.template || 'email'}
+                                </span>
+                              </td>
+                              <td style={{ fontSize: 12 }}>{m.recipient}</td>
+                              <td style={{ fontWeight: 600, fontSize: 12.5 }}>{m.subject}</td>
+                              <td>
+                                <span className="tag" style={{
+                                  background: m.status === 'sent' ? 'var(--success-dim)' : 'var(--accent-dim)',
+                                  color: m.status === 'sent' ? 'var(--success)' : 'var(--text-secondary)'
+                                }}>
+                                  {m.status}
+                                </span>
+                              </td>
+                              <td style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>{m.details || '—'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
                   </div>
                 </details>
               </div>

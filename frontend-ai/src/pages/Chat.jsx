@@ -65,6 +65,27 @@ export default function Chat({ isFullWidth = true, mobileOpen = false, onCloseMo
   const activeBotMessageRef = useRef(null)
   const typingTimeoutRef   = useRef(null)
   const justCreatedRef     = useRef(null)   // session_id we created locally; skip its history re-fetch
+  const requestGeneration = useRef(0)
+  const streamRequest = useRef(null)
+  const sending = useRef(false)
+  const identity = `${user?.public_id || user?.user_id || user?.username || ''}|${user?.token || ''}`
+  const previousIdentity = useRef(identity)
+  const invalidateRequests = useCallback(() => {
+    requestGeneration.current++
+    sending.current = false
+    streamRequest.current?.controller?.abort()
+    streamRequest.current?.reader?.cancel?.().catch?.(() => {})
+    streamRequest.current = null
+  }, [])
+  useEffect(() => {
+    if (previousIdentity.current !== identity) {
+      invalidateRequests()
+      setMessages([]); setActiveId(null); setLoading(false)
+      setSuggestions([]); setActionPreview(null); setMemoryFacts([])
+      previousIdentity.current = identity
+    }
+    return invalidateRequests
+  }, [identity, invalidateRequests])
 
   // ── Helpers ───────────────────────────────────────────────────────────────
   const scrollToBottom = useCallback((behavior = 'smooth') => {
@@ -94,6 +115,9 @@ export default function Chat({ isFullWidth = true, mobileOpen = false, onCloseMo
   }, [authFetch])
 
   const selectSession = useCallback(async (id) => {
+    invalidateRequests()
+    const generation = requestGeneration.current
+    setLoading(false)
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current)
     setActiveId(id)
     localStorage.setItem('active_session_id', id || '')
@@ -103,19 +127,21 @@ export default function Chat({ isFullWidth = true, mobileOpen = false, onCloseMo
       const res = await authFetch(`${API_BASE}/chat/history?session_id=${id}`)
       if (res.ok) {
         const data = await res.json()
-        setMessages(data.map(m => ({ role: m.role, content: m.content, source: m.source, model_tier: m.model_tier, cached: m.cached })))
+        if (generation === requestGeneration.current) setMessages(data.map(m => ({ role: m.role, content: m.content, source: m.source, model_tier: m.model_tier, cached: m.cached })))
       }
     } catch {}
-  }, [authFetch])
+  }, [authFetch, invalidateRequests])
 
   const startNewChat = useCallback(() => {
+    invalidateRequests()
+    setLoading(false)
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current)
     setActiveId(null)
     setMessages([])
     localStorage.removeItem('active_session_id')
     window.dispatchEvent(new CustomEvent('ai-active-changed', { detail: { session_id: null } }))
     loadSessions()
-  }, [loadSessions])
+  }, [loadSessions, invalidateRequests])
 
   const deleteSession = useCallback(async (e, id) => {
     if (e) e.stopPropagation()
@@ -158,7 +184,13 @@ export default function Chat({ isFullWidth = true, mobileOpen = false, onCloseMo
   // ── Send message ──────────────────────────────────────────────────────────
   const sendMessage = useCallback(async (text) => {
     const msg = (text || input).trim()
-    if (!msg || loading || rateLimited) return
+    if (!msg || loading || sending.current || rateLimited) return
+    invalidateRequests()
+    const generation = requestGeneration.current
+    const controller = new AbortController()
+    sending.current = true
+    streamRequest.current = { controller }
+    const current = () => generation === requestGeneration.current
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current)
     setInput('')
     if (inputRef.current) inputRef.current.style.height = 'auto'
@@ -172,7 +204,9 @@ export default function Chat({ isFullWidth = true, mobileOpen = false, onCloseMo
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({ message: msg, session_id: activeId }),
+        signal: controller.signal,
       })
+      if (!current()) return
 
       if (!res.ok || !res.body) {
         // Server failed BEFORE streaming started. Two different envelopes reach
@@ -192,23 +226,27 @@ export default function Chat({ isFullWidth = true, mobileOpen = false, onCloseMo
         return
       }
 
-      // Add a placeholder message that will be filled as tokens arrive
+      // Add a placeholder message with an immutable request ID (WEB-04)
+      const reqMsgId = 'msg_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8)
       setMessages(prev => [...prev, {
+        id: reqMsgId,
         role: 'assistant', content: '', source: null,
         model_tier: null, cached: false, chart: null, alerts: [],
         _streamStatus: null,
       }])
-      setLoading(false)
 
       const reader  = res.body.getReader()
+      streamRequest.current.reader = reader
       const decoder = new TextDecoder()
       let buffer    = ''
 
-      const updateLast = (updater) =>
+      const updateTarget = (updater) =>
         setMessages(prev => {
+          if (!current()) return prev
+          const idx = prev.findIndex(m => m.id === reqMsgId)
+          if (idx === -1) return prev
           const msgs = [...prev]
-          const i    = msgs.length - 1
-          if (i >= 0 && msgs[i].role === 'assistant') msgs[i] = updater(msgs[i])
+          msgs[idx] = updater(msgs[idx])
           return msgs
         })
 
@@ -223,6 +261,7 @@ export default function Chat({ isFullWidth = true, mobileOpen = false, onCloseMo
 
       while (true) {
         const { done, value } = await reader.read()
+        if (!current()) return
         if (done) break
         buffer += decoder.decode(value, { stream: true })
 
@@ -238,16 +277,16 @@ export default function Chat({ isFullWidth = true, mobileOpen = false, onCloseMo
 
           switch (evt.type) {
             case 'status':
-              updateLast(m => ({ ...m, _streamStatus: evt.content }))
+              updateTarget(m => ({ ...m, _streamStatus: evt.content }))
               break
 
             case 'token':
-              updateLast(m => ({ ...m, content: m.content + evt.content, _streamStatus: null }))
+              updateTarget(m => ({ ...m, content: m.content + evt.content, _streamStatus: null }))
               chatRef.current?.scrollTo({ top: chatRef.current.scrollHeight, behavior: 'auto' })
               break
 
             case 'replace':
-              updateLast(m => ({ ...m, content: evt.content, _streamStatus: null }))
+              updateTarget(m => ({ ...m, content: evt.content, _streamStatus: null }))
               setTimeout(() => scrollToBottom('smooth'), 50)
               break
 
@@ -267,7 +306,7 @@ export default function Chat({ isFullWidth = true, mobileOpen = false, onCloseMo
               const sugg = Array.isArray(evt.suggestions) ? evt.suggestions : []
               setSuggestions(sugg)
               if (sugg.length > 0) setChipsExpanded(true)
-              updateLast(m => ({
+              updateTarget(m => ({
                 ...m,
                 source:     evt.source,
                 model_tier: evt.meta?.model_tier,
@@ -284,7 +323,7 @@ export default function Chat({ isFullWidth = true, mobileOpen = false, onCloseMo
             case 'error':
               sawTerminal = true
               if (evt.status_code === 429) triggerRateLimit(60)
-              updateLast(m => ({ ...m, content: `❌ ${evt.message}`, source: 'error', _streamStatus: null }))
+              updateTarget(m => ({ ...m, content: `❌ ${evt.message}`, source: 'error', _streamStatus: null }))
               break
           }
         }
@@ -295,7 +334,7 @@ export default function Chat({ isFullWidth = true, mobileOpen = false, onCloseMo
       // cannot act on. Partial text is kept — it is real output the model
       // produced — but the bubble is closed so the loader stops.
       if (!sawTerminal) {
-        updateLast(m => ((m.content || '').trim()
+        updateTarget(m => ((m.content || '').trim()
           ? { ...m, source: m.source || 'ai', _streamStatus: null, _truncated: true }
           : {
               ...m,
@@ -305,14 +344,16 @@ export default function Chat({ isFullWidth = true, mobileOpen = false, onCloseMo
             }))
       }
     } catch (err) {
-      setLoading(false)
+      if (!current() || err.name === 'AbortError') return
       setMessages(prev => [...prev, {
         role: 'assistant',
         content: `❌ Failed to connect. Is the backend running?\n\n${err.message}`,
         source: 'error',
       }])
+    } finally {
+      if (current()) { sending.current = false; streamRequest.current = null; setLoading(false) }
     }
-  }, [input, activeId, loading, rateLimited, authFetch, loadSessions])
+  }, [input, activeId, loading, rateLimited, authFetch, loadSessions, invalidateRequests])
 
   // ── Smart Insights advisor (on-demand) ────────────────────────────────────
   const runSmartInsights = useCallback(async () => {
@@ -633,7 +674,7 @@ export default function Chat({ isFullWidth = true, mobileOpen = false, onCloseMo
               }}
             />
           ) : (
-            <div className="ah-biz-name" id="ai-biz-banner-name" onClick={() => setIsRenamingBanner(true)} title="Click to rename">
+            <div className="ah-biz-name" id="ai-biz-banner-name" role="button" tabIndex={0} onClick={() => setIsRenamingBanner(true)} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setIsRenamingBanner(true) } }} title="Click to rename">
               {bizName}
             </div>
           )}

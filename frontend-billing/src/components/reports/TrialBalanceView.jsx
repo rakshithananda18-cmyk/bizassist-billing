@@ -95,7 +95,7 @@ export default function TrialBalanceView({ reportData, fmt }) {
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         background: reportData.totals?.balanced ? 'rgba(46, 125, 50, 0.08)' : 'rgba(220, 38, 38, 0.08)',
         border: `1px solid ${reportData.totals?.balanced ? 'rgba(46, 125, 50, 0.2)' : 'rgba(220, 38, 38, 0.2)'}`,
-        color: reportData.totals?.balanced ? '#2e7d32' : 'var(--danger)',
+        color: reportData.totals?.balanced ? 'var(--success)' : 'var(--danger)',
       }}>
           {reportData.totals?.balanced ? (
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>

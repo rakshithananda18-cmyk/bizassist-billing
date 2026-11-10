@@ -20,7 +20,7 @@ from app.geo import GeoFix, validate_fix
 from app.models import FieldItemRequest, FieldRunStop, FieldShop
 from app.routers.attendance import require_checked_in
 from app.security import Principal, get_settings, require_owner, require_staff
-from app.services import get_scoped, item_request_out, log_activity, record_fix
+from app.services import get_scoped, item_request_out, log_activity, prime_billing_reads, record_fix
 
 router = APIRouter(prefix="/api", tags=["requests"])
 
@@ -71,7 +71,9 @@ def list_requests(status: Optional[str] = None, p: Principal = Depends(require_o
     q = db.query(FieldItemRequest).filter(FieldItemRequest.business_id == p.business_id)
     if status:
         q = q.filter(FieldItemRequest.status == status)
-    return [item_request_out(r) for r in q.order_by(FieldItemRequest.id.desc()).limit(300).all()]
+    rows = q.order_by(FieldItemRequest.id.desc()).limit(300).all()
+    prime_billing_reads(shops=[r.shop for r in rows if r.shop is not None])
+    return [item_request_out(r) for r in rows]
 
 
 @router.get("/my/requests")
@@ -79,6 +81,7 @@ def my_requests(p: Principal = Depends(require_staff), db: Session = Depends(get
     rows = (db.query(FieldItemRequest)
             .filter(FieldItemRequest.business_id == p.business_id, FieldItemRequest.staff_id == p.staff.id)
             .order_by(FieldItemRequest.id.desc()).limit(50).all())
+    prime_billing_reads(shops=[r.shop for r in rows if r.shop is not None])
     return [item_request_out(r) for r in rows]
 
 

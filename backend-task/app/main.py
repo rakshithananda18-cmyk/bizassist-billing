@@ -18,9 +18,10 @@ from typing import Optional
 
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy import inspect
+from sqlalchemy import inspect, text
 
 from app import config
 from app.logging_config import TAG, configure_logging, current_bizid_var, get_logger
@@ -63,7 +64,9 @@ def run_migrations(bind=None) -> bool:
     on the newer schema, and failing here would block every rollback."""
     from alembic import command
     from alembic.config import Config
+    from alembic.migration import MigrationContext
     from alembic.script import ScriptDirectory
+    from app.migration_scope import VERSION_TABLE
 
     cfg = Config(os.path.join(BACKEND_DIR, "alembic.ini"))
     cfg.set_main_option("script_location", os.path.join(BACKEND_DIR, "alembic"))
@@ -78,14 +81,48 @@ def run_migrations(bind=None) -> bool:
                 TAG.BOOT, ", ".join(ahead), script.get_current_head(),
             )
             return False
+        heads = MigrationContext.configure(conn, opts={"version_table": VERSION_TABLE}).get_current_heads()
+        if set(heads) == set(script.get_heads()):
+            logger.info("%s ft schema at head %s, upgrade skipped", TAG.BOOT, ", ".join(heads))
+            return True
         cfg.attributes["connection"] = conn
         command.upgrade(cfg, "head")
     return True
 
 
+def add_missing_mirror_columns(bind=None) -> list:
+    """Standalone dev databases only (TASK_CREATE_BILLING_MIRROR). `create_all`
+    creates a missing mirror table but never adds a column to one that exists,
+    so a local database made before the mirror gained a column (users.settings,
+    for the Pro gate) failed every query on that table. Add those columns —
+    nullable ones, which is all the mirror ever adds. Billing's real tables are
+    never touched: the mirror is off wherever billing owns the database."""
+    bind = bind or engine
+    insp = inspect(bind)
+    added = []
+    with bind.begin() as conn:
+        for table in BillingBase.metadata.sorted_tables:
+            if not insp.has_table(table.name):
+                continue
+            have = {c["name"] for c in insp.get_columns(table.name)}
+            for col in table.columns:
+                if col.name in have:
+                    continue
+                if not col.nullable and col.server_default is None:
+                    logger.warning("%s local %s has no %s and it cannot be added (NOT NULL) — recreate the dev database",
+                                   TAG.BOOT, table.name, col.name)
+                    continue
+                conn.execute(text(f"ALTER TABLE {table.name} ADD COLUMN {col.name} {col.type.compile(dialect=bind.dialect)}"))
+                added.append(f"{table.name}.{col.name}")
+    if added:
+        logger.info("%s added %s to the local billing mirror", TAG.BOOT, ", ".join(added))
+    return added
+
+
 def prepare_database() -> None:
     if config.CREATE_BILLING_MIRROR:
         BillingBase.metadata.create_all(bind=engine)
+        add_missing_mirror_columns()
     tables = set(inspect(engine).get_table_names())
     if "users" not in tables:
         raise RuntimeError(
@@ -132,6 +169,7 @@ app.add_middleware(
     allow_credentials=False,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type"],
+    expose_headers=["WWW-Authenticate", "Retry-After"],
 )
 
 
@@ -154,6 +192,16 @@ async def _unhandled_exception(request: Request, exc: Exception):
     return JSONResponse({"detail": "Internal server error"}, status_code=500)
 
 
+@app.exception_handler(RequestValidationError)
+async def _invalid_request(request: Request, exc: RequestValidationError):
+    # Echoing raw rejected inputs can expose credentials and cannot JSON-encode
+    # non-finite numbers. Preserve useful field errors without returning inputs.
+    detail = [{"type": error["type"], "loc": error["loc"], "msg": error["msg"]}
+              for error in exc.errors()]
+    logger.info("%s validation refused %s %s", TAG.HTTP, request.method, request.url.path)
+    return JSONResponse({"detail": detail}, status_code=422)
+
+
 for r in (auth, staff, attendance, shops, runs, tasks, requests, tracking, dashboard):
     app.include_router(r.router)
 
@@ -161,10 +209,20 @@ for r in (auth, staff, attendance, shops, runs, tasks, requests, tracking, dashb
 @app.get("/api/health")
 def health():
     from app.timeutil import biz_today, iso_utc
-    # `db` (like billing's /health db_type): a deploy that lost its DATABASE_URL
-    # secret still boots — on a throw-away SQLite file — and this shows it.
-    return {"ok": True, "server_time": iso_utc(utc_now()), "business_date": biz_today(),
-            "tz": config.BIZ_TIMEZONE, "db": engine.dialect.name}
+    # A dialect name alone does not prove that the configured database is
+    # reachable. Probe without touching business rows, and expose only safe
+    # operational flags; never return driver errors or connection strings.
+    result = {"ok": True, "server_time": iso_utc(utc_now()), "business_date": biz_today(),
+              "tz": config.BIZ_TIMEZONE, "db": engine.dialect.name,
+              "pro_required": config.REQUIRE_PRO, "billing_mirror": config.CREATE_BILLING_MIRROR,
+              "cloud_only": True}
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+    except Exception:
+        logger.warning("%s database health probe failed", TAG.BOOT)
+        return JSONResponse({**result, "ok": False, "reason": "database_unavailable"}, status_code=503)
+    return result
 
 
 @app.post("/api/internal/purge-pings", include_in_schema=False)

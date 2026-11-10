@@ -1,0 +1,15 @@
+const path = require('path')
+const { defineConfig } = require('../frontend-billing/node_modules/vitest/dist/config.cjs')
+const react = require('../frontend-billing/node_modules/@vitejs/plugin-react/dist/index.cjs')
+const repo = path.resolve(__dirname, '..')
+module.exports = defineConfig({
+  root: repo,
+  plugins: [react()],
+  resolve: { alias: {
+    react: path.join(repo, 'frontend-billing/node_modules/react'),
+    'react-dom': path.join(repo, 'frontend-billing/node_modules/react-dom'),
+    vitest: path.join(repo, 'frontend-billing/node_modules/vitest/dist/index.js'),
+    '@testing-library/react': path.join(repo, 'frontend-billing/node_modules/@testing-library/react/dist/index.js'),
+  } },
+  test: { globals: true, environment: 'jsdom', setupFiles: [path.join(repo, 'frontend-billing/src/__tests__/setup.js')], include: ['scratch/remediation-web-tests/**/*.test.jsx'], testTimeout: 10000, css: false },
+})

@@ -74,6 +74,9 @@ _EXPORT_ORDER: list[str] = [
     "customers",            # buyer-side parties
     "vendors",              # supplier-side parties
     "products",
+    # Tier 2.5 – register shifts (parents of invoices and cash movements)
+    "register_shifts",
+    "shift_cash_movements",
     # Tier 3 – transactional documents (parents before children)
     "invoices",
     "purchase_invoices",    # received bills / purchases
@@ -89,6 +92,10 @@ _EXPORT_ORDER: list[str] = [
     # Tier 6 – financial auxiliaries
     "payments",
     "invoice_payments",
+    "supplier_payments",
+    "customer_refunds",
+    "customer_credit_allocations",
+    "document_party_snapshots",
     # Tier 7 – stock / inventory
     "inventory",            # legacy cached projection
     "stock_ledger",         # append-only truth
@@ -148,7 +155,7 @@ _resolve_owner_id_by_username = _resolve_owner_id
 
 def _existing_tables(db: Session) -> set[str]:
     """Return the set of table names that actually exist in the live DB."""
-    return set(inspect(db.bind).get_table_names())
+    return set(inspect(db.connection()).get_table_names())
 
 
 def _row_to_dict(row) -> dict:
@@ -194,7 +201,7 @@ def _fetch_table(db: Session, table_name: str, business_id: int) -> list[dict]:
       4. No usable filter → return empty list (system/global table).
     """
     try:
-        insp = inspect(db.bind)
+        insp = inspect(db.connection())
         cols = {c["name"] for c in insp.get_columns(table_name)}
 
         if table_name == "users":
@@ -230,8 +237,12 @@ def _fetch_table(db: Session, table_name: str, business_id: int) -> list[dict]:
         return []
 
     except Exception as exc:
-        logger.warning("migrate/export: could not read table %s — %s", table_name, exc)
-        return []
+        logger.error("migrate/export: could not read table %s — %s", table_name, exc)
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        raise RuntimeError(f"Database read failure on table '{table_name}': {exc}") from exc
 
 
 def _detect_source_owner_id(tables: dict) -> int | None:
@@ -246,7 +257,8 @@ def _detect_source_owner_id(tables: dict) -> int | None:
     return None
 
 
-def _upsert_users(db: Session, rows: list[dict], dest_owner_id: int, existing_tables: set) -> int:
+def _upsert_users(db: Session, rows: list[dict], dest_owner_id: int, existing_tables: set,
+                  skipped_out: list = None) -> int:
     """
     Upsert the users table carefully:
     - Owner row (parent_business_id IS NULL): UPDATE the existing cloud owner row
@@ -255,23 +267,25 @@ def _upsert_users(db: Session, rows: list[dict], dest_owner_id: int, existing_ta
     - Staff rows (parent_business_id IS NOT NULL): upsert by username, remapping
       parent_business_id → dest_owner_id.
     """
+    skipped_out = skipped_out if skipped_out is not None else []
     if "users" not in existing_tables:
+        skipped_out.append({"table": "users", "reason": "destination table unavailable"})
         return 0
 
     count = 0
 
     try:
-        insp = inspect(db.bind)
+        insp = inspect(db.connection())
         col_info = insp.get_columns("users")
         bool_cols = {c["name"] for c in col_info if isinstance(c["type"], sa.Boolean)}
     except Exception as exc:
         logger.warning("migrate/import: cannot inspect users for boolean coercion — %s", exc)
-        bool_cols = set()
+        raise
 
     allowed_staff_roles = {"cashier", "supply adder"}
     allowed_staff_fields = {
         "username", "staff_login_name", "password", "business_name", "role",
-        "parent_business_id", "counter_prefix", "created_at", "updated_at",
+        "parent_business_id", "counter_prefix", "phone", "created_at", "updated_at",
     }
     user_columns = {c["name"] for c in col_info}
 
@@ -314,13 +328,19 @@ def _upsert_users(db: Session, rows: list[dict], dest_owner_id: int, existing_ta
                 count += 1
             except Exception as exc:
                 logger.warning("migrate/import: owner user update failed for %s — %s", r.get("username"), exc)
+                skipped_out.append({"table": "users", "reason": "owner profile could not be restored"})
         else:
             # Staff: remap parent → cloud owner
             r = {k: v for k, v in r.items() if k in user_columns and k in allowed_staff_fields}
+            # Legacy exports have no staff phone. Preserve a destination phone
+            # rather than removing its working login when restoring an old file.
+            if r.get("phone") is None:
+                r.pop("phone", None)
             r["parent_business_id"] = dest_owner_id
             r["role"] = (r.get("role") or "cashier").lower()
             if not r.get("username") or r["role"] not in allowed_staff_roles:
                 logger.warning("migrate/import: refused invalid staff record for destination owner %s", dest_owner_id)
+                skipped_out.append({"table": "users", "reason": "invalid staff record"})
                 continue
 
             # ── MATCH ON THE PER-BUSINESS LOGIN NAME, NOT THE INTERNAL ONE ───
@@ -366,6 +386,7 @@ def _upsert_users(db: Session, rows: list[dict], dest_owner_id: int, existing_ta
                 with db.begin_nested():   # (M-1) per-row savepoint
                     if existing:
                         if existing[1] != dest_owner_id:
+                            skipped_out.append({"table": "users", "reason": "staff identity belongs to another business"})
                             logger.warning(
                                 "migrate/import: refused staff username collision for '%s' outside business %s",
                                 r["username"], dest_owner_id,
@@ -377,7 +398,7 @@ def _upsert_users(db: Session, rows: list[dict], dest_owner_id: int, existing_ta
                         # rename the row to a foreign scheme and re-open the
                         # mismatch on the next transfer.
                         update_fields = [
-                            field for field in ("staff_login_name", "password", "business_name", "role", "counter_prefix")
+                            field for field in ("staff_login_name", "password", "business_name", "role", "counter_prefix", "phone")
                             if field in r
                         ]
                         if update_fields:
@@ -396,6 +417,7 @@ def _upsert_users(db: Session, rows: list[dict], dest_owner_id: int, existing_ta
                 count += 1
             except Exception as exc:
                 logger.warning("migrate/import: staff user upsert failed for %s — %s", r.get("username"), exc)
+                skipped_out.append({"table": "users", "reason": "staff record could not be restored"})
 
     return count
 
@@ -559,7 +581,7 @@ def _uid_lookup(db: Session, table: str, col_names: set, business_id: int, filte
 
 def _import_with_remap(db: Session, table_name: str, rows: list[dict],
                        dest_owner_id: int, source_owner_id: int,
-                       existing_tables: set[str], id_maps: dict) -> int:
+                       existing_tables: set[str], id_maps: dict, skipped_out: list = None) -> int:
     """
     (R-3) Import rows WITHOUT forcing their source ids. The destination assigns
     fresh ids; we record old→new per table in `id_maps` and rewrite every
@@ -570,15 +592,19 @@ def _import_with_remap(db: Session, table_name: str, rows: list[dict],
     has its own rows without overwriting them — the cross-DB-safe path.
     Process tables parent-before-child (the caller uses _EXPORT_ORDER).
     """
-    if not rows or table_name not in existing_tables:
+    skipped_out = skipped_out if skipped_out is not None else []
+    if not rows:
+        return 0
+    if table_name not in existing_tables:
+        skipped_out.append({"table": table_name, "reason": "destination table unavailable"})
         return 0
     try:
-        insp = inspect(db.bind)
+        insp = inspect(db.connection())
         col_info = insp.get_columns(table_name)
         fks = insp.get_foreign_keys(table_name)
     except Exception as exc:
         logger.warning("migrate/import[remap]: cannot inspect %s — %s", table_name, exc)
-        return 0
+        raise
 
     col_names = {c["name"] for c in col_info}
     nullable_cols = {c["name"]: c.get("nullable", True) for c in col_info}
@@ -603,6 +629,7 @@ def _import_with_remap(db: Session, table_name: str, rows: list[dict],
         old_id = row.get("id")
         filtered = {k: v for k, v in row.items() if k in col_names and k != "id"}
         if not filtered:
+            skipped_out.append({"table": table_name, "source_id": old_id, "reason": "no supported fields"})
             continue
         # Tenant fields come exclusively from the authenticated destination
         # owner.  Do not preserve a foreign value merely because it differs from
@@ -611,6 +638,8 @@ def _import_with_remap(db: Session, table_name: str, rows: list[dict],
             filtered["business_id"] = dest_owner_id
         if filtered.get("parent_business_id") is not None:
             filtered["parent_business_id"] = dest_owner_id
+        if table_name in {"supplier_payments", "customer_refunds", "customer_credit_allocations"}:
+            filtered["operator_id"] = dest_owner_id
         if filtered.get("user_id") is not None:
             # Cross-database staff ids are not portable. Attribution falls back
             # to the verified destination owner rather than linking to an
@@ -632,7 +661,7 @@ def _import_with_remap(db: Session, table_name: str, rows: list[dict],
                 if ref_table not in referenced_table_columns:
                     try:
                         referenced_table_columns[ref_table] = {
-                            c["name"] for c in inspect(db.bind).get_columns(ref_table)
+                            c["name"] for c in inspect(db.connection()).get_columns(ref_table)
                         }
                     except Exception:
                         # The database constraint remains the safe fallback if
@@ -662,6 +691,7 @@ def _import_with_remap(db: Session, table_name: str, rows: list[dict],
                             break
 
         if invalid_required_fk:
+            skipped_out.append({"table": table_name, "source_id": old_id, "reason": "required parent is missing or belongs to another business"})
             continue
 
         # Idempotent dedup. (Phase C) Match strictly on the durable `uid`.
@@ -781,6 +811,36 @@ def _import_with_remap(db: Session, table_name: str, rows: list[dict],
             reason = str(orig).strip().splitlines()[0] if orig else str(exc)
             logger.warning("migrate/import[remap]: row skip in %s (old_id=%s): %s",
                            table_name, old_id, reason)
+            is_overfill_rejection = any(
+                phrase in reason.lower() for phrase in (
+                    "overfill guard", "would exceed", "completed document", "completed invoice"
+                )
+            )
+            if is_overfill_rejection and table_name in ("invoice_line_items", "b2b_order_line_items"):
+                parent_table = "invoices" if table_name == "invoice_line_items" else "b2b_orders"
+                fk_col = "invoice_id" if table_name == "invoice_line_items" else "order_id"
+                parent_id = filtered.get(fk_col)
+                if parent_id:
+                    try:
+                        parent_row = db.execute(
+                            text(f'SELECT total_amount FROM "{parent_table}" WHERE id = :pid'),
+                            {"pid": parent_id}
+                        ).first()
+                        if parent_row:
+                            current_sum = db.execute(
+                                text(f'SELECT COALESCE(SUM(line_total), 0) FROM "{table_name}" WHERE "{fk_col}" = :pid'),
+                                {"pid": parent_id}
+                            ).scalar() or 0.0
+                            target_total = float(parent_row[0] or 0.0)
+                            if current_sum >= target_total - 1.0:
+                                logger.info(
+                                    "migrate/import[remap]: safely ignored overfill phantom line item (old_id=%s) for already complete %s id=%s",
+                                    old_id, parent_table, parent_id
+                                )
+                                continue
+                    except Exception:
+                        pass
+            skipped_out.append({"table": table_name, "source_id": old_id, "reason": "destination rejected the record; check its required fields and references"})
 
     return count
 
@@ -828,24 +888,32 @@ def export_data(
     existing = _existing_tables(db)
 
     tables_data: dict[str, list[dict]] = {}
-    for table_name in _EXPORT_ORDER:
-        if table_name not in existing:
-            continue
-        if table_name in b2b_transfer.B2B_RELATIONSHIP_TABLES:
-            continue  # two-sided tables export below via BizID keys
-        rows = _fetch_table(db, table_name, business_id)
-        if rows:
-            tables_data[table_name] = rows
-
-    # B2B relationship tables (connections / orders / order lines): two-sided
-    # rows exported with portable BizID identity keys (bug fix — these were
-    # previously dropped by every migration, orphaning the B2B network).
     try:
+        for table_name in _EXPORT_ORDER:
+            if table_name not in existing:
+                continue
+            if table_name in b2b_transfer.B2B_RELATIONSHIP_TABLES:
+                continue  # two-sided tables export below via BizID keys
+            rows = _fetch_table(db, table_name, business_id)
+            if rows:
+                tables_data[table_name] = rows
+
+        # B2B relationship tables (connections / orders / order lines): two-sided
+        # rows exported with portable BizID identity keys (bug fix — these were
+        # previously dropped by every migration, orphaning the B2B network).
         for tname, rows in b2b_transfer.export_b2b_tables(db, business_id).items():
             if rows and tname in existing:
                 tables_data[tname] = rows
     except Exception as exc:
-        logger.warning("migrate/export: b2b relationship export failed — %s", exc)
+        logger.error("migrate/export: atomic export aborted on read error: %s", exc)
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        raise HTTPException(
+            status_code=500,
+            detail=f"Data export failed: {exc}. Incomplete backups are rejected to prevent data loss (TS-07)."
+        )
 
     logger.info(
         "migrate/export: business_id=%s tables=%s total_rows=%s",
@@ -935,6 +1003,8 @@ def import_data(
     # can report them; the importer used to log skips and discard the count, so a
     # partial import was indistinguishable from a complete one.
     b2b_skipped: list = []
+    b2b_state: dict = {}
+    skipped_records: list = []
 
     # Detect the source owner id embedded in the exported payload. Direction-
     # neutral: for a local→cloud upload this is the local owner; for a cloud→local
@@ -957,6 +1027,13 @@ def import_data(
     id_maps: dict[str, dict] = {}
 
     try:
+        # Python sqlite3's legacy transaction mode does not BEGIN for reads or
+        # SAVEPOINT. Without an explicit outer BEGIN, releasing the first row's
+        # savepoint commits it, so a later conflict cannot roll back the import.
+        if db.bind.dialect.name == "sqlite":
+            connection = db.connection()
+            if not connection.connection.driver_connection.in_transaction:
+                connection.exec_driver_sql("BEGIN")
         for table_name in process_order:
             rows = body.tables.get(table_name, [])
             if not rows:
@@ -965,7 +1042,7 @@ def import_data(
             if table_name == "users":
                 # Users are always identity-matched by username (owner/staff),
                 # never id-remapped — they define the business scope itself.
-                n = _upsert_users(db, rows, dest_owner_id, existing)
+                n = _upsert_users(db, rows, dest_owner_id, existing, skipped_out=skipped_records)
             elif table_name in b2b_transfer.B2B_RELATIONSHIP_TABLES:
                 # Two-sided B2B rows: both parties re-resolved by BizID; rows
                 # whose counterparty isn't in this DB are skipped + logged.
@@ -977,23 +1054,36 @@ def import_data(
                     # breaks the order's header/lines invariant (audit check J).
                     n = b2b_transfer.import_b2b_tables(
                         db, table_name, rows, dest_owner_id,
-                        skipped_out=b2b_skipped)
+                        skipped_out=b2b_skipped, state=b2b_state)
                 else:
                     n = 0
+                    skipped_records.append({"table": table_name, "reason": "destination table unavailable"})
             else:
                 n = _import_with_remap(
-                    db, table_name, rows, dest_owner_id, source_owner_id, existing, id_maps
+                    db, table_name, rows, dest_owner_id, source_owner_id, existing, id_maps,
+                    skipped_out=skipped_records
                 )
 
             if n > 0:
                 imported[table_name] = n
 
+        b2b_transfer.validate_new_orders(db, b2b_state)
+        financial_tables = {"invoices", "invoice_line_items", "invoice_payments", "payments",
+                            "purchase_invoices", "purchase_invoice_line_items", "purchase_orders",
+                            "purchase_order_line_items", "journal_entries", "journal_lines",
+                            "register_shifts", "shift_cash_movements", "b2b_orders", "b2b_order_line_items"}
+        if any(row["table"] in financial_tables for row in skipped_records):
+            raise b2b_transfer.B2BImportConflict("A financial record could not be restored. Nothing was imported. Resolve the source record's fields or references and retry.")
         db.commit()
 
+    except b2b_transfer.B2BImportConflict as exc:
+        db.rollback()
+        logger.warning("migrate/import: rejected conflicting financial document — %s", exc)
+        raise HTTPException(status_code=409, detail=str(exc)) from None
     except Exception as exc:
         db.rollback()
         logger.error("migrate/import: fatal error — %s", exc, exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Import failed: {exc}")
+        raise HTTPException(status_code=500, detail="Import failed. Nothing was imported. Check the server logs and retry after resolving the conflict.") from None
 
     total = sum(imported.values())
     # Still reported, now constant: the other two values ("mirror", "merge-lww")
@@ -1005,7 +1095,11 @@ def import_data(
         "migrate/import: dest_owner_id=%s imported=%s total=%s remap=%s mode=%s",
         dest_owner_id, imported, total, remap_info, _mode,
     )
-    result = {"imported": imported, "total": total, "mode": _mode}
+    result = {"imported": imported, "total": total, "mode": _mode,
+              "complete": not (b2b_skipped or skipped_records)}
+    if skipped_records:
+        result["skipped_records"] = skipped_records
+        logger.warning("migrate/import: %d record(s) not restored", len(skipped_records))
     if remap_info:
         result["id_remap"] = remap_info
     if b2b_skipped:
@@ -1048,7 +1142,7 @@ def count_records(
     existing = _existing_tables(db)
 
     try:
-        insp = inspect(db.bind)
+        insp = inspect(db.connection())
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"DB inspect failed: {exc}")
 
@@ -1056,6 +1150,7 @@ def count_records(
 
     for table_name in _EXPORT_ORDER:
         if table_name not in existing:
+            counts[table_name] = 0
             continue
         try:
             col_names = {c["name"] for c in insp.get_columns(table_name)}
@@ -1092,6 +1187,26 @@ def count_records(
                         {"bid": business_id},
                     )
                     counts[table_name] = result.scalar() or 0
+
+            elif table_name in ("b2b_connections", "b2b_orders"):
+                result = db.execute(
+                    text(
+                        f'SELECT COUNT(*) FROM "{table_name}" '
+                        f'WHERE seller_business_id = :bid OR buyer_business_id = :bid'
+                    ),
+                    {"bid": business_id},
+                )
+                counts[table_name] = result.scalar() or 0
+
+            elif table_name == "b2b_order_line_items":
+                result = db.execute(
+                    text(
+                        'SELECT COUNT(*) FROM b2b_order_line_items WHERE order_id IN '
+                        '(SELECT id FROM b2b_orders WHERE seller_business_id = :bid OR buyer_business_id = :bid)'
+                    ),
+                    {"bid": business_id},
+                )
+                counts[table_name] = result.scalar() or 0
 
             # Other tables without business_id are not counted (system/global)
 

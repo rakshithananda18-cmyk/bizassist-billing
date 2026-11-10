@@ -9,6 +9,8 @@
 // secondary text, and a properly weighted totals ladder. All content, column
 // logic and test hooks are unchanged.
 import { inr, n2, qty, pct, has } from '../formatters'
+import DeletedPartyNotice from '../DeletedPartyNotice'
+import SettlementSummary from '../SettlementSummary'
 
 const INK = '#111'
 const MUTED = '#555'
@@ -60,6 +62,7 @@ export default function ClassicA4({ payload }) {
 
   return (
     <div style={S.page} data-testid="invoice-classic">
+      <DeletedPartyNotice seller={seller} buyer={buyer} />
       {/* ── A. Header ── */}
       <div style={{ display: 'flex', gap: 14, alignItems: 'center', marginBottom: 12, borderBottom: `2px solid ${FRAME}`, paddingBottom: 10 }}>
         {seller.logo_url ? (
@@ -220,6 +223,7 @@ export default function ClassicA4({ payload }) {
             {totals.round_off ? <Row k="Round Off" v={inr(totals.round_off)} /> : null}
             {totals.cash_discount ? <Row k="Cash Discount" v={`− ${inr(totals.cash_discount)}`} /> : null}
             <Row k="GRAND TOTAL" v={inr(totals.grand_total)} big />
+            <SettlementSummary totals={totals} />
             <Row k="Amount Paid" v={inr(totals.amount_paid)} muted />
             {totals.balance_due ? <Row k="Balance Due" v={inr(totals.balance_due)} big /> : null}
           </tbody></table>

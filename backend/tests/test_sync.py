@@ -18,13 +18,15 @@ from database.db import SessionLocal
 from database.models import Customer, Product, Invoice, SyncQueue, SyncLog, ConflictLog, User
 from services.sync_worker import run_hybrid_sync, trigger_sync_run
 
+from tests.signup_fixture import signup_payload
+
 client = TestClient(app)
 
 def _signup(business_name):
     uname = f"own_{uuid.uuid4().hex[:8]}"
-    r = client.post("/signup", json={
+    r = client.post("/signup", json=signup_payload({
         "username": uname, "password": "TestPass123!", "business_name": business_name,
-    })
+    }))
     assert r.status_code == 200, r.text
     b = r.json()
     return {"headers": {"Authorization": f"Bearer {b['token']}"}, "bid": b["id"], "username": uname}
@@ -222,13 +224,16 @@ def test_sync_lifecycle():
     r_pull = client.get(
         "/api/sync/pull",
         headers=local_user["headers"],
-        params={"last_sync_at": (datetime.utcnow() - timedelta(minutes=5)).isoformat()}
+        params={"protocol": 2}
     )
     assert r_pull.status_code == 200, r_pull.text
     pull_data = r_pull.json()
     assert "customers" in pull_data["changes"]
-    assert len(pull_data["changes"]["customers"]) == 1
-    assert pull_data["changes"]["customers"][0]["phone"] == "1111111111"
+    # A revision feed may carry more than one committed event for the same
+    # customer. All snapshots still identify the one customer and current value.
+    customer_events = pull_data["changes"]["customers"]
+    assert len({row["uid"] for row in customer_events}) == 1
+    assert all(row["phone"] == "1111111111" for row in customer_events)
 
 
 def test_sync_push_rejects_append_only_delete():

@@ -13,6 +13,27 @@ env/
 # Tests
 tests/
 .pytest_cache/
+
+# Local credentials, databases and operational evidence never enter an image.
+.git
+.env
+.env.*
+.private/
+logs/
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+*.dump
+*.bak
+*.log
+*.log.*
+voided_payment_*.json
+fk_orphans_export_*.json
+quarantined_payments_*.json
+phantom_line_items_export_*.json
+line-repair-*.encrypted.json
+*.vault.json
 test_*.db
 *.test.db
 

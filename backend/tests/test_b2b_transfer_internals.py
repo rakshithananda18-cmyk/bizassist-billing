@@ -149,13 +149,14 @@ def test_clean_strips_timestamps_so_column_defaults_stamp_them():
 
 
 def test_clean_strips_the_export_only_identity_helpers():
-    """`seller_bizid` etc. exist only to carry portable identity in the payload.
-    They are not columns; passing them to the model constructor is a TypeError."""
+    """`seller_name` etc. exist only to carry portable identity in the payload.
+    They are not columns; passing them to the model constructor is a TypeError.
+    `seller_bizid` and `buyer_bizid` are now actual persisted columns on B2BConnection."""
     row = {"seller_bizid": "BA-X", "buyer_bizid": "BA-Y", "buyer_name": "N",
            "seller_name": "M", "seller_invoice_no": "INV-1",
            "order_number_ref": "ORD-1", "product_uid": "u", "status": "accepted"}
     out = T._clean(row, B2BConnection)
-    assert set(out) == {"status"}
+    assert set(out) == {"status", "seller_bizid", "buyer_bizid"}
 
 
 def test_clean_drops_columns_the_destination_model_does_not_have():

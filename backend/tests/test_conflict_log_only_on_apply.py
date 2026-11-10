@@ -37,14 +37,16 @@ from database.db import SessionLocal                   # noqa: E402
 from database.models import ConflictLog, Invoice, Customer  # noqa: E402
 from services.sync_worker import _apply_pulled_row     # noqa: E402
 
+from tests.signup_fixture import signup_payload
+
 client = TestClient(app)
 
 
 def _signup(name="Conflict Co"):
     uname = f"cfl_{uuid.uuid4().hex[:8]}"
-    r = client.post("/signup", json={
+    r = client.post("/signup", json=signup_payload({
         "username": uname, "password": "TestPass123!", "business_name": name,
-    })
+    }))
     assert r.status_code == 200, r.text
     b = r.json()
     return (b["user"]["id"] if isinstance(b.get("user"), dict) else b["id"])

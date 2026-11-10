@@ -25,7 +25,11 @@ def generate_bizid(db: Session) -> str:
         bizid = f"BA-{suffix}"
         
         # Check collision in users table
-        exists = db.query(User).filter(User.public_id == bizid).first()
+        if db.bind.dialect.name == "postgresql":
+            from sqlalchemy import text
+            exists = db.execute(text("SELECT bizassist_public_id_taken(:p)"), {"p": bizid}).scalar()
+        else:
+            exists = db.query(User).filter(User.public_id == bizid).first()
         if not exists:
             return bizid
 

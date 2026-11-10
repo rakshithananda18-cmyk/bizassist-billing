@@ -104,9 +104,8 @@ def _reminders_preview(user_id: int, params: dict) -> dict:
         if not selected:
             target = params.get("customer")
             inv_id = params.get("invoice_id")
-            overdue_names = [r[0] for r in db.query(Invoice.customer)
-                             .filter(Invoice.business_id == user_id,
-                                     Invoice.status == "Overdue").distinct().all()]
+            from core.billing.balances import grouped_overdue_rows
+            overdue_names = [row.customer for row in grouped_overdue_rows(db, user_id)]
             if not target and inv_id:
                 row = (db.query(Invoice.customer)
                        .filter(Invoice.business_id == user_id,
@@ -120,18 +119,9 @@ def _reminders_preview(user_id: int, params: dict) -> dict:
                     (target if target in overdue_names else None)
                 if resolved:
                     selected = [resolved]
-        q = (
-            db.query(
-                Invoice.customer,
-                func.sum(Invoice.amount).label("total"),
-                func.max(Invoice.due_date).label("due"),
-                func.count(Invoice.id).label("invoices"),
-            )
-            .filter(Invoice.business_id == user_id, Invoice.status == "Overdue")
-        )
-        if selected:
-            q = q.filter(Invoice.customer.in_(selected))
-        rows = q.group_by(Invoice.customer).order_by(func.sum(Invoice.amount).desc()).all()
+        from core.billing.balances import grouped_overdue_rows
+        rows = grouped_overdue_rows(db, user_id, selected=selected)
+
 
         smtp_ok = email_configured()
         items = []
@@ -266,7 +256,8 @@ def _mark_paid_preview(user_id: int, params: dict) -> dict:
             "items": [{"invoice_id": r.invoice_id, "customer": r.customer,
                        "amount": float(r.amount or 0), "status": r.status}],
             "confirm_label": "Mark as Paid",
-            "executable": not already,
+            "executable": False,
+            "warning": "Status-only payment updates are disabled (BD-01). Please record payments through the POS/Billing screen.",
             "params": {"invoice_id": r.invoice_id},
         }
     finally:
@@ -274,49 +265,19 @@ def _mark_paid_preview(user_id: int, params: dict) -> dict:
 
 
 def _mark_paid_execute(user_id: int, params: dict) -> dict:
-    inv_id = (params or {}).get("invoice_id")
-    if not inv_id:
-        pv = _mark_paid_preview(user_id, params)
-        inv_id = (pv.get("params") or {}).get("invoice_id")
-    if not inv_id:
-        return {"ok": False, "executed": 0, "markdown": "❌ No invoice specified."}
-    db = SessionLocal()
-    try:
-        r = (db.query(Invoice)
-             .filter(Invoice.business_id == user_id,
-                     func.lower(Invoice.invoice_id) == inv_id.lower())
-             .first())
-        if not r:
-            return {"ok": False, "executed": 0, "markdown": f"❌ Invoice {inv_id} not found."}
-        if r.status == "Paid":
-            return {"ok": True, "executed": 0, "markdown": f"✅ {r.invoice_id} was already marked Paid."}
-        prev = r.status
-        r.status = "Paid"
-        db.add(ActionLog(business_id=user_id, action="mark_invoice_paid",
-                         target=r.invoice_id, amount=r.amount,
-                         detail=f"status {prev} → Paid", status="done"))
-        db.commit()
-        try:
-            from services.context_cache import invalidate_user_cache
-            invalidate_user_cache(user_id)   # invoice data changed
-        except Exception:
-            pass
-        return {"ok": True, "executed": 1,
-                "markdown": f"✅ **{r.invoice_id}** marked **Paid** (was {prev})."}
-    except Exception as e:
-        db.rollback()
-        logger.error(f"[ACTION] mark_invoice_paid failed: {e}", exc_info=True)
-        return {"ok": False, "executed": 0, "markdown": "❌ Could not update the invoice."}
-    finally:
-        db.close()
+    # BD-01: Status-only payment updates bypass receipts, journals, and period locks.
+    # Refuse execution until routed through a complete idempotent receipt command.
+    return {
+        "ok": False,
+        "executed": 0,
+        "markdown": "❌ Status-only payment updates are disabled (BD-01). Please record payments through Billing so receipts and ledger entries are posted."
+    }
 
 
 # ── email_reminder_digest (owner digest — works without customer emails) ───
 def _digest_rows(db, user_id: int):
-    return (db.query(Invoice.customer, func.sum(Invoice.amount).label("total"),
-                     func.max(Invoice.due_date).label("due"), func.count(Invoice.id).label("n"))
-            .filter(Invoice.business_id == user_id, Invoice.status == "Overdue")
-            .group_by(Invoice.customer).order_by(func.sum(Invoice.amount).desc()).all())
+    from core.billing.balances import grouped_overdue_rows
+    return grouped_overdue_rows(db, user_id)
 
 
 def _digest_preview(user_id: int, params: dict) -> dict:
@@ -401,7 +362,8 @@ def _escalate_preview(user_id: int, params: dict) -> dict:
     try:
         business = _business_name(db, user_id)
         now = utc_now()
-        rows = db.query(Invoice).filter(Invoice.business_id == user_id, Invoice.status == "Overdue").all()
+        from core.billing.balances import outstanding_rows
+        rows = outstanding_rows(db, user_id, overdue=True)
         agg = {}
         for r in rows:
             due = parse_date(r.due_date)

@@ -18,6 +18,7 @@ No business logic about *why* a movement happens lives here — that belongs to 
 billing/purchase/order modules, which call `record_movement()`.
 """
 import logging
+import math
 from typing import Optional
 
 from sqlalchemy import func
@@ -56,11 +57,17 @@ def current_stock(db, business_id: int, *,
                   product_id: Optional[int] = None,
                   product_name: Optional[str] = None,
                   godown_id: Optional[int] = None,
-                  batch_no: Optional[str] = None) -> float:
+                  batch_no: Optional[str] = None,
+                  exact_bucket: bool = False) -> float:
     """
     The authoritative quantity for a product = SUM(qty_delta) over its ledger.
     Identify the product by product_id (preferred) or product_name. Returns 0.0
     if there are no movements. This is what `inventory.stock` is a cache of.
+
+    When exact_bucket is True, godown_id=None filters for godown_id IS NULL and
+    batch_no=None filters for batch_no IS NULL (targeting an exact cache bucket).
+    When exact_bucket is False (default), None means omit that filter (aggregating
+    across all godowns/batches).
     """
     q = db.query(func.coalesce(func.sum(StockLedger.qty_delta), 0.0)).filter(
         StockLedger.business_id == business_id
@@ -72,10 +79,20 @@ def current_stock(db, business_id: int, *,
     else:
         raise ValueError("current_stock needs product_id or product_name")
 
-    if godown_id is not None:
-        q = q.filter(StockLedger.godown_id == godown_id)
-    if batch_no is not None:
-        q = q.filter(StockLedger.batch_no == batch_no)
+    if exact_bucket:
+        if godown_id is not None:
+            q = q.filter(StockLedger.godown_id == godown_id)
+        else:
+            q = q.filter(StockLedger.godown_id.is_(None))
+        if batch_no is not None:
+            q = q.filter(StockLedger.batch_no == batch_no)
+        else:
+            q = q.filter(StockLedger.batch_no.is_(None))
+    else:
+        if godown_id is not None:
+            q = q.filter(StockLedger.godown_id == godown_id)
+        if batch_no is not None:
+            q = q.filter(StockLedger.batch_no == batch_no)
 
     return float(q.scalar() or 0.0)
 
@@ -104,14 +121,19 @@ def record_movement(db, *, business_id: int, movement_type: str, qty_delta: floa
         raise ValueError(f"unknown movement_type '{movement_type}'")
     if product_id is None and not product_name:
         raise ValueError("record_movement needs product_id or product_name")
+    qty_delta = float(qty_delta)
+    if not math.isfinite(qty_delta):
+        raise ValueError("Stock movement quantity must be finite")
 
     # Flush so earlier movements added in THIS transaction (not yet committed)
     # are visible to the SUM below — otherwise `prior` ignores them and the
     # running balance is wrong for consecutive movements before a commit.
     db.flush()
     prior = current_stock(db, business_id, product_id=product_id, product_name=product_name,
-                          godown_id=godown_id, batch_no=batch_no)
+                          godown_id=godown_id, batch_no=batch_no, exact_bucket=True)
     balance_after = prior + float(qty_delta)
+    if not math.isfinite(balance_after):
+        raise ValueError("Stock balance is invalid; reconcile existing movements before adding more")
 
     row = StockLedger(
         business_id=business_id,
@@ -175,7 +197,7 @@ def _refresh_inventory_cache(db, business_id: int, *, product_id, product_name, 
                     business_id=business_id,
                     product_id=product_id,
                     product_name=prod.name,
-                    stock=int(round(new_balance)),
+                    stock=float(new_balance),
                     godown_id=godown_id,
                     batch_no=batch_no,
                     expiry_date=expiry_date,
@@ -210,7 +232,8 @@ def rebuild_inventory_cache(db, business_id: int) -> int:
                             product_id=inv.product_id,
                             product_name=inv.product_name,
                             godown_id=inv.godown_id,
-                            batch_no=inv.batch_no)
+                            batch_no=inv.batch_no,
+                            exact_bucket=True)
         new = float(bal)
         if inv.stock != new:
             inv.stock = new

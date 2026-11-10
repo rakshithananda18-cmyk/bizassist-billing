@@ -44,7 +44,7 @@ export default function ThermalReceipt({
         return <div key="logo" style={{ textAlign, marginBottom: 2 }}><img src={profile.logo} alt="logo" style={{ maxHeight: 26, maxWidth: 96, objectFit: 'contain' }} /></div>
       case 'company_name':
         if (p.print_company_name === false) return null
-        return <h3 key="company_name" style={{ textAlign }}>{(profile?.business_name || 'BIZASSIST POS').toUpperCase()}</h3>
+        return <h3 key="company_name" style={{ textAlign }}>{(profile?.business_name || 'STATER POS').toUpperCase()}</h3>
       case 'company_address':
         if (p.print_company_address === false || !profile?.address) return null
         return <p key="company_address" style={{ textAlign }}>{profile.address}</p>
@@ -362,7 +362,7 @@ export default function ThermalReceipt({
       <div className="dashed" />
       <div className="receipt-footer">
         <p>Thank you for shopping with us!</p>
-        <p>Powered by BizAssist</p>
+        <p>Powered by Stater</p>
       </div>
     </div>,
     document.body

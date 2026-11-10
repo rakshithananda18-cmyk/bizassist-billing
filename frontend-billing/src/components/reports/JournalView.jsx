@@ -40,7 +40,7 @@ export default function JournalView({ reportData, fmt, isAudit }) {
         marginTop: 16, padding: '12px 16px', borderRadius: 'var(--radius-md)',
         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
         background: reportData.totals?.balanced ? 'rgba(46, 125, 50, 0.08)' : 'rgba(220, 38, 38, 0.08)',
-        color: reportData.totals?.balanced ? '#2e7d32' : 'var(--danger)',
+        color: reportData.totals?.balanced ? 'var(--success)' : 'var(--danger)',
         border: `1px solid ${reportData.totals?.balanced ? 'rgba(46, 125, 50, 0.2)' : 'rgba(220, 38, 38, 0.2)'}`,
       }}>
           {reportData.totals?.balanced ? (

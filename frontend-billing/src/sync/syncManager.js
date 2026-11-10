@@ -39,12 +39,17 @@ export function createSyncManager({ transport = defaultTransport(), store: suppl
   const online = isOnline || (() => (typeof navigator === 'undefined' ? true : navigator.onLine !== false))
   let activeScope = null
   let store = suppliedStore
+  let generation = 0
 
   const requireStore = () => {
     if (!store) throw new Error('Offline sync is unavailable until an authenticated business/user scope is set')
     return store
   }
   const scopedMetaKey = () => activeScope ? `${SYNC_CURSOR_KEY}:${activeScope}` : SYNC_CURSOR_KEY
+  // Capture ownership before an asynchronous intent starts. Retaining the
+  // original store lets an ambiguous completion be quarantined for its owner.
+  const captureIntent = () => store ? Object.freeze({ scope: activeScope, store, generation }) : null
+  const isIntentCurrent = intent => Boolean(intent && intent.scope === activeScope && intent.generation === generation && intent.store === store)
 
   // Replay/send one op with its stable id attached.
   const send = (op) =>
@@ -62,9 +67,10 @@ export function createSyncManager({ transport = defaultTransport(), store: suppl
   async function mutate({ method, path, body } = {}) {
     const id = newClientRequestId()
     const scopedStore = requireStore()
+    const intent = captureIntent()
 
     if (!online()) {
-      await enqueue(scopedStore, { method, path, body, clientRequestId: id, scope: activeScope })
+      await enqueue(scopedStore, { method, path, body, clientRequestId: id, scope: intent.scope })
       logger.info('[SYNC] queued (offline)', method, path)
       return { queued: true, clientRequestId: id }
     }
@@ -75,7 +81,7 @@ export function createSyncManager({ transport = defaultTransport(), store: suppl
     } catch (err) {
       const status = err && typeof err.status === 'number' ? err.status : 0
       if (isTransient(status)) {
-        await enqueue(scopedStore, { method, path, body, clientRequestId: id, scope: activeScope })
+        await enqueue(scopedStore, { method, path, body, clientRequestId: id, scope: intent.scope })
         logger.warn('[SYNC] send failed — queued for retry', method, path, status)
         return { queued: true, clientRequestId: id, error: err }
       }
@@ -85,8 +91,10 @@ export function createSyncManager({ transport = defaultTransport(), store: suppl
 
   /** Enqueue a mutation WITHOUT trying to send it now (used by the POS offline
    * save path, which has already decided it's offline). Returns the stored op. */
-  async function queue({ method, path, body, clientRequestId } = {}) {
-    const rec = await enqueue(requireStore(), { method, path, body, clientRequestId, scope: activeScope })
+  async function queue({ method, path, body, clientRequestId, ownership } = {}) {
+    const intent = ownership || captureIntent()
+    if (!intent?.store) throw new Error('An authenticated intent owner is required to save offline')
+    const rec = await enqueue(intent.store, { method, path, body, clientRequestId, scope: intent.scope })
     logger.info('[SYNC] queued', method, path)
     return rec
   }
@@ -101,7 +109,25 @@ export function createSyncManager({ transport = defaultTransport(), store: suppl
   async function flushOutbox(opts) {
     if (!store) return { skipped: true, reason: 'no_authenticated_scope', sent: 0, remaining: 0 }
     if (!online()) return { skipped: true, sent: 0, remaining: (await pending(store, { scope: activeScope })).length }
-    const summary = await flush(store, send, { ...opts, scope: activeScope })
+
+    const flushScope = activeScope
+    const flushGeneration = generation
+    const isScopeValid = () => activeScope === flushScope && generation === flushGeneration
+
+    const scopedSend = async (op) => {
+      if (!isScopeValid()) {
+        const err = new Error(`Sync scope changed mid-flush (was ${flushScope}, now ${activeScope})`)
+        err.scopeChanged = true
+        throw err
+      }
+      return send(op)
+    }
+
+    const summary = await flush(store, scopedSend, {
+      ...opts,
+      scope: flushScope,
+      shouldContinue: isScopeValid,
+    })
     if (summary.sent || summary.deadLettered) logger.info('[SYNC] flush', summary)
     return summary
   }
@@ -132,6 +158,7 @@ export function createSyncManager({ transport = defaultTransport(), store: suppl
       throw new Error('A non-empty business/user sync scope is required')
     }
     if (activeScope === scope && store) return
+    generation++
     activeScope = scope
     if (!suppliedStore) store = createDefaultStore(scope)
   }
@@ -139,6 +166,7 @@ export function createSyncManager({ transport = defaultTransport(), store: suppl
   /** Drop the active reference on logout; queued records stay quarantined in
    * their original scope and can never be flushed by the next login. */
   function clearScope() {
+    generation++
     activeScope = null
     if (!suppliedStore) store = null
   }
@@ -151,6 +179,8 @@ export function createSyncManager({ transport = defaultTransport(), store: suppl
     start,
     setScope,
     clearScope,
+    captureIntent,
+    isIntentCurrent,
     getScope: () => activeScope,
     get store() { return store },
     pending: listPending,

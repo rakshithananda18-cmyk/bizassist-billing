@@ -145,6 +145,10 @@ def test_without_dpapi_it_falls_back_to_plaintext(tmp_path, monkeypatch):
 
 
 def test_a_dotenv_secret_still_wins(tmp_path, monkeypatch, fake_dpapi):
+    from dotenv.main import load_dotenv as load_fixture_dotenv
+    # The isolated runner blocks implicit project dotenv loading. This test
+    # explicitly loads only the synthetic file under tmp_path via server_entry.
+    monkeypatch.setattr("dotenv.load_dotenv", load_fixture_dotenv)
     """Regression guard. Hybrid sync REQUIRES the cloud's shared secret from
     .env; if this ordering broke, every device would 401 against the cloud."""
     (tmp_path / ".env").write_text("JWT_SECRET=shared-with-cloud\n", encoding="utf-8")

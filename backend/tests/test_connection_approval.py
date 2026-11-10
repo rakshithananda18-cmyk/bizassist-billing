@@ -35,6 +35,8 @@ from database.db import SessionLocal
 from database.models import User
 from core.models import B2BConnection
 
+from tests.signup_fixture import signup_payload
+
 client = TestClient(app)
 
 SELLER = ("approval_seller", "ApprovalSeller123", "Approval Seller Co")
@@ -52,9 +54,9 @@ def clear_rate_limit_windows():
 
 
 def _signup(username, password, business_name):
-    client.post("/signup", json={
+    client.post("/signup", json=signup_payload({
         "username": username, "password": password, "business_name": business_name,
-    })
+    }))
 
 
 def _headers(username, password):

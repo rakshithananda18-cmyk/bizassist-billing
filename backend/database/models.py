@@ -18,8 +18,8 @@ from services.dates import utc_now
 import uuid
 from datetime import datetime
 from sqlalchemy import (
-    Column, Integer, String, Float, DateTime,
-    Boolean, Text, ForeignKey, Index, UniqueConstraint
+    Column, Integer, BigInteger, String, Float, DateTime,
+    Boolean, Text, LargeBinary, ForeignKey, Index, UniqueConstraint, text
 )
 from sqlalchemy.orm import relationship
 from database.db import Base
@@ -125,6 +125,37 @@ class User(Base, TimestampMixin):
     # Staff Management screen showed a name, a role and nothing else, so 22
     # abandoned accounts sat indistinguishable from the 2 real ones.
     last_login    = Column(DateTime, nullable=True)
+    # Google OAuth subject identifier (sub claim)
+    google_id     = Column(String, unique=True, index=True, nullable=True)
+
+
+class PasswordResetOTP(Base, TimestampMixin):
+    """Temporary 6-digit OTP tokens for forgot-password and account recovery."""
+    __tablename__ = "password_reset_otps"
+
+    id         = Column(Integer, primary_key=True, index=True)
+    user_id    = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    identifier = Column(String, index=True, nullable=False)  # Phone, email, or username typed
+    otp_hash   = Column(String, nullable=False)
+    purpose    = Column(String, default="password_reset", nullable=False)
+    expires_at = Column(DateTime, nullable=False)
+    attempts   = Column(Integer, default=0, nullable=False)
+    used       = Column(Boolean, default=False, nullable=False)
+
+
+class EmailLog(Base, TimestampMixin):
+    """Log of transactional and promotional emails dispatched to users."""
+    __tablename__ = "email_logs"
+
+    id              = Column(Integer, primary_key=True, index=True)
+    business_id     = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
+    recipient_email = Column(String, index=True, nullable=False)
+    subject         = Column(String, nullable=False)
+    template_type   = Column(String, nullable=False)  # welcome, otp, reminder_digest, alert, invoice_receipt
+    status          = Column(String, default="sent", nullable=False)  # sent, dev_mode, failed
+    provider        = Column(String, default="brevo", nullable=False) # brevo, smtp, mock
+    details         = Column(Text, nullable=True)
+    sent_at         = Column(DateTime, default=utc_now, nullable=False)
 
 
 class DeletedBusiness(Base):
@@ -147,6 +178,13 @@ class DeletedBusiness(Base):
     business_name = Column(String, nullable=True)
     reason        = Column(String, nullable=True)               # 'admin_wipe' | 'reclaim_rekey'
     deleted_at    = Column(DateTime, default=utc_now, nullable=False)
+
+
+class TrialPhoneClaim(Base):
+    """Private signup eligibility ledger; survives deletion without an account FK."""
+    __tablename__ = "trial_phone_claims"
+    phone_hash = Column(String(64), primary_key=True)
+    claimed_at = Column(DateTime, default=utc_now, nullable=False)
 
 
 class UploadedFile(Base, TimestampMixin):
@@ -297,6 +335,11 @@ class Invoice(Base, BusinessOwnedMixin, GSTFieldsMixin):
 
     # Payment tracking
     paid_amount  = Column(Float,  nullable=True, default=0.0)
+    # Explicit evidence captured when a header-only legacy bill first receives
+    # a modern receipt. NULL remains unverified; authored bills start at zero.
+    legacy_paid_baseline = Column(Float, nullable=True)
+    legacy_paid_baseline_source = Column(String, nullable=True)
+    legacy_paid_baseline_date = Column(String, nullable=True)
     payment_date = Column(String, nullable=True)
     payment_mode = Column(String, nullable=True)
     notes        = Column(Text,   nullable=True)
@@ -364,6 +407,8 @@ class InvoiceLineItem(Base, TimestampMixin):
     # Invoice-template system (plan Phase 1) — sale-time snapshots so historical
     # invoices print exactly what was sold. All nullable/additive.
     mrp           = Column(Float,  nullable=True)                  # MRP at sale time (retail/pharma column)
+    cost_price    = Column(Float,  nullable=True)     # NULL means historical valuation is unknown; zero is a real snapshot
+    cost_snapshot_known = Column(Boolean, nullable=True)  # only authored/reconciled evidence may set True
     expiry_date   = Column(String, nullable=True)                  # expiry at sale time (pharma column)
     attributes    = Column(Text,   nullable=True)                  # JSON snapshot of vertical fields (size/color/warranty…)
 
@@ -612,6 +657,9 @@ class PurchaseInvoice(Base, BusinessOwnedMixin, GSTFieldsMixin):
     __table_args__ = (
         Index("ix_purchase_invoice_business_status", "business_id", "status"),
         Index("ix_purchase_invoice_business_date",   "business_id", "invoice_date"),
+        Index("uq_purchase_invoices_biz_dn", "business_id", "invoice_number", unique=True,
+              sqlite_where=text("invoice_type = 'debit_note'"),
+              postgresql_where=text("invoice_type = 'debit_note'")),
     )
 
 
@@ -836,6 +884,7 @@ from core.models import (  # noqa: E402,F401
     Expense, Godown, StockTransfer, StockTransferLineItem,
     JournalEntry, JournalLine, PeriodLock,
 )
+from core.accounting.settlement_models import SupplierPayment, CustomerRefund, CustomerCreditAllocation  # noqa: E402,F401
 
 
 # ---------------------------------------------------------------------------
@@ -987,6 +1036,82 @@ class SyncCursor(Base):
     )
 
 
+class SyncControlOutbox(Base):
+    """
+    Durable outbox for control-plane mutations (staff credentials/roles, profile updates, tombstones)
+    that must reliably synchronize to cloud even if the network is temporarily offline,
+    tokens are not yet available, or the process restarts.
+    (TS-05)
+    """
+    __tablename__ = "sync_control_outbox"
+
+    id              = Column(Integer, primary_key=True, index=True)
+    business_id     = Column(Integer, index=True, nullable=False)
+    business_public_id = Column(String, nullable=True)
+    source_id       = Column(String, nullable=True)
+    source_revision = Column(Integer, nullable=True)
+    lease_id        = Column(String, nullable=True)
+    lease_until     = Column(DateTime, nullable=True)
+    event_type      = Column(String, index=True, nullable=False)   # 'staff_mutation', 'profile_update'
+    event_id        = Column(String, unique=True, index=True, nullable=False)  # idempotency UUID
+    payload         = Column(Text, nullable=False)                 # JSON serialized payload
+    status          = Column(String, index=True, default="pending", nullable=False) # 'pending', 'completed', 'failed'
+    attempts        = Column(Integer, default=0, nullable=False)
+    created_at      = Column(DateTime, default=utc_now, nullable=False)
+    last_attempt_at = Column(DateTime, nullable=True)
+    next_attempt_at = Column(DateTime, index=True, nullable=True)
+    completed_at    = Column(DateTime, nullable=True)
+    error           = Column(Text, nullable=True)
+
+    __table_args__ = (
+        Index("ix_sync_control_outbox_pending", "business_id", "status", "next_attempt_at"),
+    )
+
+
+class SyncFeedClock(Base):
+    __tablename__ = "sync_feed_clock"
+    business_id = Column(Integer, primary_key=True)
+    revision = Column(BigInteger, nullable=False, default=0, server_default="0")
+
+
+class SyncFeedEvent(Base):
+    __tablename__ = "sync_feed_events"
+    id = Column(Integer, primary_key=True)
+    business_id = Column(Integer, nullable=False, index=True)
+    revision = Column(BigInteger, nullable=False)
+    entity = Column(String, nullable=False)
+    row_uid = Column(String, nullable=False)
+    operation = Column(String, nullable=False)
+    payload = Column(Text, nullable=False)
+    __table_args__ = (UniqueConstraint("business_id", "revision", name="uq_feed_business_revision"), Index("ix_sync_feed_events_business_entity_row_uid", "business_id", "entity", "row_uid"))
+
+
+class SyncControlReceipt(Base):
+    __tablename__ = "sync_control_receipts"
+    id = Column(Integer, primary_key=True)
+    business_id = Column(Integer, nullable=False, index=True)
+    event_id = Column(String, nullable=False)
+    source_id = Column(String, nullable=False)
+    source_revision = Column(Integer, nullable=False)
+    __table_args__ = (UniqueConstraint("business_id", "event_id", name="uq_control_receipt_event"),
+                      UniqueConstraint("business_id", "source_id", "source_revision", name="uq_control_receipt_revision"))
+
+
+class SyncControlStream(Base):
+    __tablename__ = "sync_control_streams"
+    business_id = Column(Integer, primary_key=True)
+    source_id = Column(String, primary_key=True)
+    revision = Column(Integer, nullable=False, default=0)
+
+
+class SyncControlOrigin(Base):
+    __tablename__ = "sync_control_origins"
+    business_id = Column(Integer, primary_key=True)
+    business_public_id = Column(String, nullable=False)
+    source_id = Column(String, nullable=False)
+    revision = Column(Integer, nullable=False, default=0)
+
+
 class SyncLog(Base):
     __tablename__ = "sync_logs"
 
@@ -1016,6 +1141,7 @@ class ConflictLog(Base):
 
 
 _SYNC_TABLES = {
+    "supplier_payments", "customer_refunds", "customer_credit_allocations", "document_party_snapshots",
     # NOTE: "businesses" used to be listed here. There is no `businesses` table
     # and no model that maps to one — a business IS a `users` row with
     # `parent_business_id IS NULL`. It was a name that could never match a
@@ -1802,6 +1928,13 @@ from sqlalchemy import inspect
 import json
 
 EXCLUDED_TABLES = {
+    # Private control-plane state is neither business data nor a mutation
+    # payload. In particular, never duplicate archives, session identifiers or
+    # ticket digests into the tenant-visible table-alteration audit.
+    "spent_tickets", "revoked_sessions", "platform_settings", "client_log_archives",
+    "schema_state", "scheduled_job_runs", "discovery_registrations",
+    "sync_control_outbox", "sync_control_origins", "sync_control_receipts", "sync_control_streams",
+    "sync_feed_events", "sync_feed_clock",
     "table_alterations", "action_log", "action_logs", "token_usage",
     "chat_messages", "document_embeddings", "alembic_version",
     "uploaded_files", "sync_queue", "sync_logs", "conflict_logs",
@@ -1820,13 +1953,43 @@ def serialize_val(val):
         return val
     return str(val)
 
+def _audit_safe_value(table, column, value):
+    if table == "users" and column == "password":
+        return "[redacted]" if value is not None else None
+    if table == "users" and column == "settings" and value:
+        try:
+            parsed = json.loads(value)
+        except (ValueError, TypeError):
+            return "[invalid settings JSON]"
+        def scrub(item):
+            if isinstance(item, dict):
+                return {key: "[redacted]" if any(word in key.lower() for word in ("secret", "password", "token", "api_key")) else scrub(val) for key, val in item.items()}
+            if isinstance(item, list):
+                return [scrub(val) for val in item]
+            return item
+        return json.dumps(scrub(parsed), sort_keys=True)
+    return serialize_val(value)
+
+
+def _audit_owners(obj, connection):
+    if hasattr(obj, "seller_business_id") and hasattr(obj, "buyer_business_id"):
+        return sorted({int(x) for x in (obj.seller_business_id, obj.buyer_business_id) if x is not None})
+    if hasattr(obj, "seller_business_id") and obj.seller_business_id is not None:
+        return [int(obj.seller_business_id)]
+    if getattr(obj, "__tablename__", None) == "b2b_order_line_items" and obj.order_id:
+        row = connection.execute(text("SELECT seller_business_id,buyer_business_id FROM b2b_orders WHERE id=:i"), {"i": obj.order_id}).first()
+        return sorted({int(x) for x in row if x is not None}) if row else []
+    bid = _get_business_id(obj, connection)
+    return [bid] if bid is not None else []
+
+
 @event.listens_for(Session, "before_flush")
 def audit_before_flush(session, flush_context, instances):
     # Retrieve context variables
     from database.db import current_user_id_var, current_username_var, current_business_id_var
     user_id = current_user_id_var.get()
     username = current_username_var.get()
-    business_id = current_business_id_var.get()
+    business_id = current_business_id_var.get() or session.info.get("business_id")
     # BizID — the ONE identifier that means the same thing in the local and the
     # cloud database. `business_id` above is a per-database integer, so an audit
     # row carrying only that is unattributable the moment it is read anywhere
@@ -1853,7 +2016,7 @@ def audit_before_flush(session, flush_context, instances):
         new_vals = {}
         for col in obj.__table__.columns:
             val = getattr(obj, col.name, None)
-            new_vals[col.name] = serialize_val(val)
+            new_vals[col.name] = _audit_safe_value(tbl, col.name, val)
         pending.append({
             "action": "INSERT",
             "table_name": tbl,
@@ -1863,6 +2026,7 @@ def audit_before_flush(session, flush_context, instances):
             "user_id": user_id,
             "username": username,
             "business_id": business_id or getattr(obj, "business_id", None),
+            "owners": _audit_owners(obj, session.connection()),
             # BizID: stable across databases, unlike the integer above.
             "public_id": public_id
         })
@@ -1883,8 +2047,8 @@ def audit_before_flush(session, flush_context, instances):
                 col_name = attr.key
                 old_val = attr.history.deleted[0] if attr.history.deleted else None
                 new_val = attr.value
-                old_vals[col_name] = serialize_val(old_val)
-                new_vals[col_name] = serialize_val(new_val)
+                old_vals[col_name] = _audit_safe_value(tbl, col_name, old_val)
+                new_vals[col_name] = _audit_safe_value(tbl, col_name, new_val)
                 
         if old_vals:
             pending.append({
@@ -1896,6 +2060,7 @@ def audit_before_flush(session, flush_context, instances):
                 "user_id": user_id,
                 "username": username,
                 "business_id": business_id or getattr(obj, "business_id", None),
+            "owners": _audit_owners(obj, session.connection()),
             # BizID: stable across databases, unlike the integer above.
             "public_id": public_id
             })
@@ -1908,7 +2073,7 @@ def audit_before_flush(session, flush_context, instances):
         old_vals = {}
         for col in obj.__table__.columns:
             val = getattr(obj, col.name, None)
-            old_vals[col.name] = serialize_val(val)
+            old_vals[col.name] = _audit_safe_value(tbl, col.name, val)
         pending.append({
             "action": "DELETE",
             "table_name": tbl,
@@ -1918,6 +2083,7 @@ def audit_before_flush(session, flush_context, instances):
             "user_id": user_id,
             "username": username,
             "business_id": business_id or getattr(obj, "business_id", None),
+            "owners": _audit_owners(obj, session.connection()),
             # BizID: stable across databases, unlike the integer above.
             "public_id": public_id
         })
@@ -1978,22 +2144,75 @@ def audit_after_flush(session, flush_context):
 
         # Insert raw SQL directly on the connection to prevent session flushes recursive loops
         connection = session.connection()
-        connection.execute(
-            text(
-                "INSERT INTO table_alterations (user_id, username, business_id, public_id, table_name, action, record_id, old_values, new_values, created_at, uid) "
-                "VALUES (:user_id, :username, :business_id, :public_id, :table_name, :action, :record_id, :old_values, :new_values, :created_at, :uid)"
-            ),
-            {
-                "user_id": item["user_id"],
-                "username": item["username"],
-                "business_id": item["business_id"],
-                "public_id": item.get("public_id"),
-                "table_name": item["table_name"],
-                "action": item["action"],
-                "record_id": record_id,
-                "old_values": item["old_values"],
-                "new_values": item["new_values"],
-                "created_at": utc_now(),
-                "uid": str(uuid.uuid4())
-            }
-        )
+        owners = item.pop("owners", []) or _audit_owners(obj, connection) or [item["business_id"]]
+        if len(owners) > 1 and connection.dialect.name == "postgresql":
+            privileged = connection.execute(text("SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname=current_user")).scalar()
+            if not privileged:
+                # A normal HTTP mutation can audit its own slice of a shared
+                # record, but cannot insert into the partner's private log.
+                # The commit-ordered shared feed records the change for both.
+                actor_scope = session.info.get("business_id") or item["business_id"]
+                owners = [bid for bid in owners if bid == actor_scope]
+        for owning_bid in owners:
+            row = connection.execute(text("SELECT public_id FROM users WHERE id=:b"), {"b": owning_bid}).first() if owning_bid is not None else None
+            owning_public_id = row[0] if row else None
+            connection.execute(
+                text(
+                    "INSERT INTO table_alterations (user_id, username, business_id, public_id, table_name, action, record_id, old_values, new_values, created_at, uid) "
+                    "VALUES (:user_id, :username, :business_id, :public_id, :table_name, :action, :record_id, :old_values, :new_values, :created_at, :uid)"
+                ),
+                {
+                    "user_id": item["user_id"],
+                    "username": item["username"],
+                    "business_id": owning_bid,
+                    "public_id": owning_public_id,
+                    "table_name": item["table_name"],
+                    "action": item["action"],
+                    "record_id": record_id,
+                    "old_values": item["old_values"],
+                    "new_values": item["new_values"],
+                    "created_at": utc_now(),
+                    "uid": str(uuid.uuid4())
+                }
+            )
+
+
+# Cloud control-plane state is deliberately excluded from the sync MODEL_MAP.
+class SpentTicket(Base):
+    __tablename__ = "spent_tickets"
+    digest = Column(String(64), primary_key=True)
+    expires_at = Column(DateTime, nullable=False, index=True)
+
+
+class RevokedSession(Base):
+    __tablename__ = "revoked_sessions"
+    sid = Column(String(64), primary_key=True)
+    expires_at = Column(DateTime, nullable=False, index=True)
+
+
+class PlatformSetting(Base):
+    __tablename__ = "platform_settings"
+    key = Column(String(100), primary_key=True)
+    value = Column(Text, nullable=False)
+    updated_at = Column(DateTime, default=utc_now, nullable=False)
+    updated_by = Column(Integer, nullable=True)
+
+
+class ClientLogArchive(Base):
+    __tablename__ = "client_log_archives"
+    id = Column(Integer, primary_key=True)
+    business_id = Column(Integer, nullable=False)
+    feedback_id = Column(Integer, nullable=True, index=True)
+    kind = Column(String(16), nullable=False)
+    filename = Column(String(255), nullable=False)
+    content = Column(LargeBinary, nullable=False)
+    size = Column(Integer, nullable=False)
+    created_at = Column(DateTime, default=utc_now, nullable=False)
+    __table_args__ = (Index("ix_client_log_archives_business_created", "business_id", "created_at"),)
+
+
+from database.runtime_state import SchemaState, ScheduledJobRun, DiscoveryRegistration
+
+# Install capture on disposable/new schemas as well as migrated installations.
+from database.change_feed import register_metadata_hook
+register_metadata_hook(Base.metadata)

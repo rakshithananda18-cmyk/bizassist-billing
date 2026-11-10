@@ -75,7 +75,7 @@ export default function LockScreen() {
       confirmText: 'Sign out',
     })
     if (ok) {
-      logout()
+      await logout()
       navigate('/login')
       logger.info('[LOCK] User signed out from lock screen')
     }
@@ -136,7 +136,7 @@ export default function LockScreen() {
           </div>
           <div style={{ textAlign: 'center' }}>
             <div style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-primary, #f1f5f9)', letterSpacing: '-0.01em' }}>
-              {user?.business_name || 'BizAssist'}
+              {user?.business_name || 'STATER Bill'}
             </div>
             <div style={{ fontSize: '0.8rem', color: 'var(--text-muted, #64748b)', marginTop: 2 }}>
               Session Locked · {user?.username}
@@ -205,8 +205,8 @@ export default function LockScreen() {
             style={{
               padding: '11px 0',
               borderRadius: 'var(--radius-md, 10px)',
-              background: 'var(--accent, #C2714F)',
-              color: '#fff',
+              background: 'var(--accent-solid, var(--accent, #C2714F))',
+              color: 'var(--accent-foreground, #fff)',
               fontWeight: 700,
               fontSize: '0.9rem',
               border: 'none',

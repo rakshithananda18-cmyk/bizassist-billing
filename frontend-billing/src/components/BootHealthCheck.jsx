@@ -84,12 +84,12 @@ export default function BootHealthCheck({ auto = true, onClose = null }) {
   const skewBad = skew != null && skew > 120000  // >2 min → JWT trouble
 
   const report = () => {
-    sendDiagnostics('boot_health_check', {
+    const queued = sendDiagnostics('boot_health_check', {
       active_ok: !!active?.ok, active_ms: active?.ms, active_detail: active?.detail,
       cloud_ok: cloud ? !!cloud.ok : null, cloud_detail: cloud?.detail,
       db: active?.db, skew_ms: skew,
-    })
-    setSent(true)
+    }, { userInitiated: true })
+    setSent(queued === true)
   }
 
   return (
@@ -118,11 +118,11 @@ export default function BootHealthCheck({ auto = true, onClose = null }) {
           {running ? 'Checking…' : 'Re-check'}
         </button>
         <button className="btn" onClick={report} disabled={running || sent} style={{ flex: 1 }}>
-          {sent ? 'Diagnostics sent ✓' : 'Send diagnostics'}
+          {sent ? 'Diagnostics queued ✓' : 'Send diagnostics'}
         </button>
       </div>
       <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 8, lineHeight: 1.4 }}>
-        "Send diagnostics" uploads this device's recent app events (tagged with your business id) so support can debug remotely. No business data is included.
+        "Send diagnostics" sends this system check and, if you allow optional diagnostics, recent app errors to support. It includes your business id when signed in, but no invoice or customer records.
       </div>
     </div>
   )

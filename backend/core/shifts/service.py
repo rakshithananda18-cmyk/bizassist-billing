@@ -29,6 +29,7 @@ Tally definition:
 """
 from services.dates import utc_now
 import logging
+import math
 from datetime import datetime
 from typing import Optional
 
@@ -48,6 +49,23 @@ REMOVAL_DESTINATIONS = {"bank_deposit", "owner_withdrawal"}
 
 def _round2(x: float) -> float:
     return round(float(x or 0.0) + 1e-9, 2)
+
+
+def _cash_amount(value, field, *, positive=False):
+    requirement = "greater than 0" if positive else "zero or positive"
+    message = f"{field} must be finite and {requirement}"
+    if field == "leave_in_drawer":
+        message = "leave_in_drawer must be finite and between 0 and the counted cash"
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        raise ValueError(message) from None
+    if not math.isfinite(number) or number < 0 or (positive and number <= 0):
+        raise ValueError(message)
+    number = _round2(number)
+    if positive and number <= 0:
+        raise ValueError(f"{field} must be at least 0.01")
+    return number
 
 
 def _norm_mode(mode: Optional[str]) -> str:
@@ -82,9 +100,9 @@ def _norm_mode(mode: Optional[str]) -> str:
 
 # ── Queries ──────────────────────────────────────────────────────────────────
 
-def get_open_shift(db, *, business_id: int, user_id: int) -> Optional[RegisterShift]:
+def get_open_shift(db, *, business_id: int, user_id: int, lock: bool = False) -> Optional[RegisterShift]:
     """The user's active OPEN shift, or None."""
-    return (
+    query = (
         db.query(RegisterShift)
         .filter(
             RegisterShift.business_id == business_id,
@@ -92,8 +110,10 @@ def get_open_shift(db, *, business_id: int, user_id: int) -> Optional[RegisterSh
             RegisterShift.status == "OPEN",
         )
         .order_by(RegisterShift.start_time.desc())
-        .first()
     )
+    if lock:
+        query = query.with_for_update().populate_existing()
+    return query.first()
 
 
 def require_open_shift(db, *, business_id: int, user_id: int) -> RegisterShift:
@@ -102,7 +122,7 @@ def require_open_shift(db, *, business_id: int, user_id: int) -> RegisterShift:
     an open shift to ring a sale — this is what makes end-of-day tallies exact.
     Raises ValueError('shift_required') when there is none; routes map it to 409.
     """
-    shift = get_open_shift(db, business_id=business_id, user_id=user_id)
+    shift = get_open_shift(db, business_id=business_id, user_id=user_id, lock=True)
     if shift is None:
         raise ValueError("shift_required")
     return shift
@@ -142,8 +162,7 @@ def open_shift(db, *, business_id: int, user_id: int,
     Records the carry-forward expectation (`opening_expected`) and, when the
     operator opens with a DIFFERENT amount, an audit-only `opening_variance`
     movement — so a float that changed overnight is visible, not silent."""
-    if opening_cash is None or float(opening_cash) < 0:
-        raise ValueError("opening_cash must be zero or positive")
+    opening_cash = _cash_amount(opening_cash, "opening_cash")
 
     existing = get_open_shift(db, business_id=business_id, user_id=user_id)
     if existing is not None:
@@ -198,8 +217,7 @@ def record_cash_movement(db, *, business_id: int, user_id: int,
     """
     shift = require_open_shift(db, business_id=business_id, user_id=user_id)
 
-    if amount is None or float(amount) <= 0:
-        raise ValueError("amount must be greater than 0")
+    amount = _cash_amount(amount, "amount", positive=True)
     if movement_type == "paid_in":
         if category not in PAID_IN_CATEGORIES:
             raise ValueError(f"invalid paid_in category '{category}'")
@@ -266,23 +284,42 @@ def compute_tally(db, shift: RegisterShift) -> dict:
     plus the shift's counted cash movements. No side effects.
     """
     rows = (
-        db.query(InvoicePayment.payment_mode,
+        db.query(InvoicePayment.payment_mode, InvoicePayment.idempotency_key, InvoicePayment.note,
                  func.coalesce(func.sum(InvoicePayment.amount_paid), 0.0))
         .filter(
             InvoicePayment.business_id == shift.business_id,
             InvoicePayment.shift_id == shift.id,
         )
-        .group_by(InvoicePayment.payment_mode)
+        .group_by(InvoicePayment.payment_mode, InvoicePayment.idempotency_key, InvoicePayment.note)
         .all()
     )
     by_mode = {"cash": 0.0, "upi": 0.0, "card": 0.0, "other": 0.0}
-    for mode, total in rows:
+    from core.accounting.repost import _is_advance_application
+    from types import SimpleNamespace
+    for mode, key, note, total in rows:
+        if _is_advance_application(SimpleNamespace(idempotency_key=key, note=note)):
+            continue
         by_mode[_norm_mode(mode)] += float(total or 0.0)
+    from core.accounting.settlement_models import SupplierPayment, CustomerRefund
+    settlements_out = {"cash": 0.0, "upi": 0.0, "card": 0.0, "other": 0.0}
+    for model in (SupplierPayment, CustomerRefund):
+        for mode, total in db.query(model.payment_mode, func.sum(model.amount)).filter(
+            model.business_id == shift.business_id, model.shift_id == shift.id).group_by(model.payment_mode):
+            settlements_out[_norm_mode(mode)] += float(total or 0)
+    from core.models import JournalEntry, JournalLine
+    from core.accounting.posting import ACC_CASH
+    for mode, total in db.query(InvoicePayment.payment_mode, func.sum(JournalLine.debit)).join(
+        JournalEntry, (JournalEntry.source_id == InvoicePayment.id) & (JournalEntry.source_type == "advance_receipt")
+    ).join(JournalLine, JournalLine.entry_id == JournalEntry.id).filter(
+        InvoicePayment.business_id == shift.business_id, InvoicePayment.shift_id == shift.id,
+        JournalEntry.business_id == shift.business_id, JournalLine.account == ACC_CASH
+    ).group_by(InvoicePayment.payment_mode):
+        by_mode[_norm_mode(mode)] += float(total or 0)
 
     moves = _movement_sums(db, shift)
     expected_cash = _round2(shift.opening_cash + by_mode["cash"]
-                            + moves["paid_in"] - moves["paid_out"])
-    expected_upi = _round2(by_mode["upi"])
+                            + moves["paid_in"] - moves["paid_out"] - settlements_out["cash"])
+    expected_upi = _round2(by_mode["upi"] - settlements_out["upi"])
     return {
         "shift_id": shift.id,
         "opening_cash": _round2(shift.opening_cash),
@@ -292,6 +329,7 @@ def compute_tally(db, shift: RegisterShift) -> dict:
         "sales_other": _round2(by_mode["other"]),
         "paid_in": _round2(moves["paid_in"]),
         "paid_out": _round2(moves["paid_out"]),
+        "supplier_and_refund_out": {mode: _round2(value) for mode, value in settlements_out.items()},
         "expected_cash": expected_cash,
         "expected_upi": expected_upi,
     }
@@ -314,16 +352,16 @@ def close_shift(db, *, business_id: int, user_id: int,
          an audit-only `closing_removal` movement tagged with its destination
          (bank deposit / owner withdrawal).
     """
-    shift = get_open_shift(db, business_id=business_id, user_id=user_id)
+    shift = get_open_shift(db, business_id=business_id, user_id=user_id, lock=True)
     if shift is None:
         raise ValueError("no_open_shift")
-    if closing_cash_actual is None or float(closing_cash_actual) < 0:
-        raise ValueError("closing_cash_actual must be zero or positive")
+    closing_cash_actual = _cash_amount(closing_cash_actual, "closing_cash_actual")
+    closing_upi_actual = _cash_amount(closing_upi_actual, "closing_upi_actual")
     if removal_destination not in REMOVAL_DESTINATIONS:
         raise ValueError("removal_destination must be bank_deposit or owner_withdrawal")
 
     counted = _round2(closing_cash_actual)
-    left = counted if leave_in_drawer is None else _round2(leave_in_drawer)
+    left = counted if leave_in_drawer is None else _cash_amount(leave_in_drawer, "leave_in_drawer")
     if left < 0 or left > counted:
         raise ValueError("leave_in_drawer must be between 0 and the counted cash")
 

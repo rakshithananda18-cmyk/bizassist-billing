@@ -7,6 +7,10 @@ import { MemoryRouter, Routes, Route } from 'react-router-dom'
 vi.mock('../config', () => ({
   IS_LOCAL_APP: true,
   CLOUD_URL: 'http://cloud-backend',
+  FALLBACK_CLOUD_URL: 'http://fallback-backend',
+  getActiveCloudUrl: () => 'http://cloud-backend',
+  switchActiveCloudUrl: vi.fn(),
+  getAlternateCloudUrl: () => 'http://fallback-backend',
   LOCAL_URL: 'http://local-backend',
   API_BASE: 'http://local-backend',
   isLocalHost: (hostname) => true,
@@ -81,6 +85,10 @@ let mockSettings = { general: { hosting_mode: 'local' } }
 let mockProfile = { is_premium: true }
 let mockTemplates = []
 let mockStaffCounters = { business_name: 'Store', staff: [] }
+// The cloud's Pro trial: GET /trial-offer (null = an older cloud without it),
+// and what its /signup says (undefined = an older cloud that says nothing).
+let mockTrialOffer = null
+let mockCloudTrial
 
 const globalMockFetch = vi.fn(async (url) => {
   const u = String(url)
@@ -93,6 +101,9 @@ const globalMockFetch = vi.fn(async (url) => {
     clone() { return this },
   })
 
+  if (u.includes('/trial-offer')) {
+    return mockTrialOffer ? jsonResponse(mockTrialOffer) : jsonResponse({ detail: 'Not Found' }, 404, false)
+  }
   if (u.includes('/business/templates')) {
     return jsonResponse({ templates: mockTemplates })
   }
@@ -109,6 +120,13 @@ const globalMockFetch = vi.fn(async (url) => {
   if (u.includes('/api/sync/conflicts')) {
     return jsonResponse({ unreviewed_count: 0, conflicts: [] })
   }
+  // The shared profile bell also checks alerts and sync status on mount.
+  if (u.includes('/alerts/notifications')) {
+    return jsonResponse({ items: [], count: 0, severity: null })
+  }
+  if (u.includes('/api/sync/queue-depth')) {
+    return jsonResponse({ pending_count: 0, halt: { reason: null } })
+  }
   if (u.includes('/settings')) {
     return jsonResponse(mockSettings)
   }
@@ -117,6 +135,9 @@ const globalMockFetch = vi.fn(async (url) => {
   }
   if (u.includes('/staff-counters')) {
     return jsonResponse(mockStaffCounters)
+  }
+  if (u.includes('/api/auth/lookup-business')) {
+    return jsonResponse({ ...mockStaffCounters, found: true, public_id: 'BA-OWNER', has_staff: mockStaffCounters.staff.length > 0 })
   }
   if (u.includes('/health')) {
     return jsonResponse({ status: 'ok', db: 'connected' })
@@ -137,7 +158,9 @@ const globalMockFetch = vi.fn(async (url) => {
     })
   }
   if (u.includes('/signup')) {
-    return jsonResponse({ public_id: 'BA-NEW', token: 'mock-local-token' })
+    const body = { public_id: 'BA-NEW', token: 'mock-local-token' }
+    if (u.startsWith('http://cloud-backend') && mockCloudTrial !== undefined) body.trial = mockCloudTrial
+    return jsonResponse(body)
   }
   if (u.includes('/login')) {
     if (localStorage.getItem('fail_all_login') === 'true') {
@@ -150,6 +173,9 @@ const globalMockFetch = vi.fn(async (url) => {
   }
   if (u.includes('/business/setup')) {
     return jsonResponse({ status: 'ok' })
+  }
+  if (u.includes('/business/config')) {
+    return jsonResponse({ config: {}, attributes_schema: [] })
   }
 
   return { ok: false, status: 404, json: async () => ({}), clone() { return this } }
@@ -165,6 +191,8 @@ beforeEach(() => {
   mockProfile = { is_premium: true }
   mockTemplates = []
   mockStaffCounters = { business_name: 'Store', staff: [] }
+  mockTrialOffer = null
+  mockCloudTrial = undefined
   mockReadinessProbe = {
     localProbe: { status: 'online', ms: 10, error: null },
     cloudProbe: { status: 'online', ms: 120, error: null },
@@ -183,20 +211,20 @@ afterEach(() => {
 })
 
 describe('Login staff resolution (T2)', () => {
-  it('shows the Staff button when local /staff-counters is empty but cloud has staff', async () => {
+  it('finds the cloud business and its staff when it is absent from the local database', async () => {
     mockStaffCounters = { business_name: 'Cloud Store', staff: [{ username: 'cashier1', role: 'cashier', counter_prefix: 'CS' }] }
     
     // Stub fetch to return empty local, but populated cloud staff counters
     vi.stubGlobal('fetch', vi.fn(async (url) => {
       const u = String(url)
       const jsonResponse = (body) => ({ ok: true, status: 200, json: async () => body, clone() { return this } })
-      if (u.includes('/staff-counters')) {
+      if (u.includes('/api/auth/lookup-business')) {
         if (u.startsWith('http://local-backend')) {
-          return jsonResponse({ business_name: 'Local Store', staff: [] })
+          return jsonResponse({ found: false, staff: [] })
         }
         if (u.startsWith('http://cloud-backend')) {
           return jsonResponse({
-            business_name: 'Cloud Store',
+            found: true, public_id: 'BA-OWNER', has_staff: true, business_name: 'Cloud Store',
             staff: [{ username: 'cashier1', role: 'cashier', counter_prefix: 'CS' }]
           })
         }
@@ -215,7 +243,7 @@ describe('Login staff resolution (T2)', () => {
     )
 
     // Type owner username and click continue
-    fireEvent.change(screen.getByPlaceholderText(/store/), { target: { value: 'owner1' } })
+    fireEvent.change(screen.getByLabelText('Business Owner Username'), { target: { value: 'owner1' } })
     fireEvent.click(screen.getByRole('button', { name: /Continue/i }))
 
     // Verify fallback to cloud, detected staff, and shows choice options
@@ -281,7 +309,7 @@ describe('Login staff resolution (T2)', () => {
 
     await expect(
       actionRef.current.staffLogin('owner1', 'cashier1', 'wrongpassword')
-    ).rejects.toThrow('Invalid credentials')
+    ).rejects.toThrow('Wrong username or password.')
   })
 
   it('recent-login: an empty local result does not wipe cached staff or hide the choice', async () => {
@@ -317,6 +345,34 @@ describe('Login staff resolution (T2)', () => {
     await waitFor(() => {
       expect(screen.getByText(/cashier1/)).toBeInTheDocument()
     })
+  })
+
+  it('recent-login: preselects the counter this device last signed in to', async () => {
+    // Staff no longer get a public list of a business's counters, so the
+    // device remembers the one it used (Login.jsx lastStaff).
+    localStorage.setItem('bizassist_recent_logins', JSON.stringify([{
+      username: 'owner1',
+      businessName: 'Counter Store',
+      staffAccounts: [{ username: 'cashier1', role: 'cashier' }, { username: 'cashier2', role: 'cashier' }],
+      lastStaff: 'cashier2',
+    }]))
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 500, json: async () => ({}), clone() { return this } })))
+
+    render(
+      <MemoryRouter initialEntries={['/login']}>
+        <AuthProvider>
+          <Routes>
+            <Route path="/login" element={<Login />} />
+          </Routes>
+        </AuthProvider>
+      </MemoryRouter>
+    )
+    fireEvent.click(screen.getByText('Counter Store'))
+    await waitFor(() => expect(screen.getByText('Staff Login')).toBeInTheDocument())
+    fireEvent.click(screen.getByText('Staff Login'))
+    // CustomSelect shows only the chosen option until it is opened.
+    await waitFor(() => expect(screen.getByText(/cashier2/)).toBeInTheDocument())
+    expect(screen.queryByText(/cashier1/)).toBeNull()
   })
 
   it('navigates after a valid owner login without waiting for the optional staff refresh', async () => {
@@ -459,7 +515,7 @@ describe('Register two options (T4)', () => {
     })
 
     expect(hostingButtons).toHaveLength(2)
-    expect(screen.getByText('Local')).toBeInTheDocument()
+    expect(screen.getByText('Local only')).toBeInTheDocument()
     expect(screen.getByText('Local + Cloud')).toBeInTheDocument()
     expect(screen.queryByText('Cloud Only')).not.toBeInTheDocument()
   })
@@ -490,12 +546,13 @@ describe('Register two options (T4)', () => {
     )
 
     // Fill registration form
-    fireEvent.change(screen.getByPlaceholderText('e.g. store'), { target: { value: 'testshop' } })
+    fireEvent.change(screen.getByLabelText('Store Username'), { target: { value: 'testshop' } })
     fireEvent.change(screen.getByPlaceholderText('••••••••'), { target: { value: 'Password123!' } })
     
     // Select Confirm Password by id since it has no placeholder
     const confirmPasswordInput = container.querySelector('#confirmPassword')
     fireEvent.change(confirmPasswordInput, { target: { value: 'Password123!' } })
+    fireEvent.change(screen.getByLabelText('Phone'), { target: { value: '9876543210' } })
     
     fireEvent.click(screen.getByLabelText(/I agree to/i))
 
@@ -503,7 +560,7 @@ describe('Register two options (T4)', () => {
     fireEvent.click(screen.getByText('Local + Cloud'))
 
     // Submit form
-    fireEvent.submit(screen.getByRole('button', { name: /Register/i }))
+    fireEvent.submit(container.querySelector('#register-form'))
 
     await waitFor(() => {
       // Local mirror signup is called
@@ -625,5 +682,76 @@ describe('Settings two-mode switch (T5)', () => {
     expect(toastSpy.mock.calls[0][0].detail.msg).toContain('offline/unreachable')
 
     window.removeEventListener('show_toast', toastSpy)
+  })
+})
+
+describe('Pro trial and Local + Cloud (T6)', () => {
+  const renderAuth = async () => {
+    const actionRef = React.createRef()
+    render(<AuthProvider><AuthTestConsumer actionRef={actionRef} /></AuthProvider>)
+    await waitFor(() => expect(actionRef.current).not.toBeNull())
+    return actionRef
+  }
+  const renderRegister = () => render(
+    <MemoryRouter><AuthProvider><Register /></AuthProvider></MemoryRouter>
+  )
+  const localBtn = () => screen.getByRole('button', { name: /^Local only/ })
+  const hybridBtn = () => screen.getByRole('button', { name: /^Local \+ Cloud/ })
+
+  it('signup: Local + Cloud without a Pro trial is set up as Local, and says so', async () => {
+    mockCloudTrial = null
+    const auth = await renderAuth()
+    const result = await auth.current.signup({ username: 'notrial', password: 'password123', business_name: 'Shop', hosting: 'hybrid', template_key: 'general' })
+    expect(result.fellBackToLocal).toBe(true)
+    expect(result.hosting).toBe('local')
+    expect(localStorage.getItem('bizassist_hosting_mode')).toBe('local')
+    expect(localStorage.getItem('bizassist_cloud_token')).toBeNull()
+  })
+
+  it('signup: Local + Cloud with the trial syncs as chosen', async () => {
+    mockCloudTrial = { days: 14, expires_at: '2026-11-07' }
+    const auth = await renderAuth()
+    const result = await auth.current.signup({ username: 'trialist', password: 'password123', business_name: 'Shop', hosting: 'hybrid', template_key: 'general' })
+    expect(result.fellBackToLocal).toBe(false)
+    expect(localStorage.getItem('bizassist_hosting_mode')).toBe('hybrid')
+    await waitFor(() => expect(localStorage.getItem('bizassist_cloud_token')).toBe('mock-cloud-token'))
+  })
+
+  it('Register preselects Local + Cloud during the trial and explains what happens after it', async () => {
+    mockTrialOffer = { days: 14 }
+    renderRegister()
+    await waitFor(() => expect(hybridBtn()).toHaveAttribute('aria-pressed', 'true'))
+    expect(screen.getByText('14 DAYS FREE')).toBeInTheDocument()
+    expect(screen.getByText(/Sync is included during your eligible 14-day Pro trial/)).toBeInTheDocument()
+    expect(screen.getByText(/Upgrade to Pro to keep syncing afterward/)).toBeInTheDocument()
+
+    fireEvent.click(localBtn())  // Local stays one click away
+    expect(localBtn()).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.queryByText(/Sync is included during your eligible 14-day Pro trial/)).not.toBeInTheDocument()
+  })
+
+  it('Register keeps the mandatory Local + Cloud trial selected without a legacy offer response', async () => {
+    renderRegister()
+    await waitFor(() => expect(hybridBtn()).toHaveAttribute('aria-pressed', 'true'))
+    expect(screen.getByText('14 DAYS FREE')).toBeInTheDocument()
+  })
+
+  it('Register explains the switch to Local when no trial was given, then lets you in', async () => {
+    mockTrialOffer = { days: 14 }
+    mockCloudTrial = null
+    const { container } = renderRegister()
+    await waitFor(() => expect(hybridBtn()).toHaveAttribute('aria-pressed', 'true'))
+    fireEvent.change(screen.getByLabelText('Store Username'), { target: { value: 'repeatphone' } })
+    fireEvent.change(screen.getByLabelText('Phone'), { target: { value: '9876543210' } })
+    fireEvent.change(screen.getByPlaceholderText('••••••••'), { target: { value: 'Password123!' } })
+    fireEvent.change(container.querySelector('#confirmPassword'), { target: { value: 'Password123!' } })
+    fireEvent.click(screen.getByLabelText(/I agree to/i))
+    fireEvent.submit(container.querySelector('#register-form'))
+
+    const note = await screen.findByTestId('hosting-fallback')
+    expect(note).toHaveTextContent(/did not get a Pro trial/)
+    expect(note).toHaveTextContent(/your data stays on this computer \(Local\)/)
+    expect(screen.getByRole('button', { name: /Continue to (STATER Bill|BizAssist)/ })).toBeInTheDocument()
+    expect(localStorage.getItem('bizassist_hosting_mode')).toBe('local')
   })
 })

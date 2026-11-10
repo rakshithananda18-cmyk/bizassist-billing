@@ -30,13 +30,15 @@ from database.db import SessionLocal                 # noqa: E402
 from database.models import Product                  # noqa: E402
 from services import actions as A                    # noqa: E402
 
+from tests.signup_fixture import signup_payload
+
 client = TestClient(app)
 
 
 def _signup(name="Bulk Co"):
     uname = f"blk_{uuid.uuid4().hex[:8]}"
-    r = client.post("/signup", json={
-        "username": uname, "password": "TestPass123!", "business_name": name})
+    r = client.post("/signup", json=signup_payload({
+        "username": uname, "password": "TestPass123!", "business_name": name}))
     assert r.status_code == 200, r.text
     b = r.json()
     return b["id"], {"Authorization": f"Bearer {b['token']}"}

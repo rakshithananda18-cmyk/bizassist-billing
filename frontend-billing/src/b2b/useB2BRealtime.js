@@ -21,66 +21,28 @@
 // ============================================================================
 import { useEffect, useRef } from 'react'
 import { API_BASE } from '../config'
-import { logger } from '../utils/logger'
-
-const RECONNECT_MS = 5000
+import { createSseConnection } from '../sync/sseConnection'
 
 export function useB2BRealtime({ token, enabled = true, onEvent }) {
   const onEventRef = useRef(onEvent)
   useEffect(() => { onEventRef.current = onEvent })
-
   useEffect(() => {
     if (!token || !enabled) return
-
-    let stopped = false
-    let timer = null
-    let es = null
-
-    const connect = async () => {
-      if (stopped) return
-      try {
-        const ticketRes = await fetch(`${API_BASE}/realtime/ticket`, {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${token}` },
+    const connection = createSseConnection({
+      fetchTicket: async () => {
+        const response = await fetch(`${API_BASE}/realtime/ticket`, {
+          method: 'POST', headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(65000),
         })
-        if (!ticketRes.ok) throw new Error(`ticket ${ticketRes.status}`)
-        const { ticket } = await ticketRes.json()
-        if (stopped) return
-
-        es = new EventSource(`${API_BASE}/realtime/events?ticket=${encodeURIComponent(ticket)}`)
-
-        es.onmessage = (e) => {
-          try {
-            onEventRef.current?.(JSON.parse(e.data))
-          } catch (err) {
-            logger.error('[B2B] unparseable realtime event', err)
-          }
-        }
-
-        es.onerror = () => {
-          es?.close()
-          es = null
-          if (!stopped) {
-            logger.warn('[B2B] realtime stream dropped — retrying')
-            timer = setTimeout(connect, RECONNECT_MS)
-          }
-        }
-      } catch (err) {
-        if (!stopped) {
-          logger.warn('[B2B] realtime connect failed — retrying', err)
-          timer = setTimeout(connect, RECONNECT_MS)
-        }
-      }
-    }
-
-    connect()
-
-    return () => {
-      stopped = true
-      if (timer) clearTimeout(timer)
-      if (es) { es.close(); es = null }
-    }
+        if (!response.ok) throw new Error(`Ticket ${response.status}`)
+        const { ticket } = await response.json()
+        return `${API_BASE}/realtime/events?ticket=${encodeURIComponent(ticket)}`
+      },
+      onEvent: data => onEventRef.current?.(data),
+      onGap: () => onEventRef.current?.({ type: 'sync.reconnect' }),
+    })
+    const online = () => connection.reconnect()
+    window.addEventListener('online', online)
+    return () => { connection.close(); window.removeEventListener('online', online) }
   }, [token, enabled])
 }
-
 export default useB2BRealtime

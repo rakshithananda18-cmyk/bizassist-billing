@@ -1,0 +1,11 @@
+/* Keep every action reachable when the inline purchase toolbar runs out of room. */
+.ws-top-bar.ws-top-bar--wrap {
+  height: auto;
+  min-height: 48px;
+  flex-wrap: wrap;
+  row-gap: 8px;
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+
+.ws-top-bar--wrap > button { flex-shrink: 0; }

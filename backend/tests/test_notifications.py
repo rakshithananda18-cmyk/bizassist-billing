@@ -30,14 +30,16 @@ from database.models import Inventory, AlertConfig, Product  # noqa: E402
 from core.models import StockLedger                 # noqa: E402
 from services.dates import biz_now                  # noqa: E402
 
+from tests.signup_fixture import signup_payload
+
 client = TestClient(app)
 
 
 def _signup(name="Notify Co"):
     uname = f"ntf_{uuid.uuid4().hex[:8]}"
-    r = client.post("/signup", json={
+    r = client.post("/signup", json=signup_payload({
         "username": uname, "password": "TestPass123!", "business_name": name,
-    })
+    }))
     assert r.status_code == 200, r.text
     b = r.json()
     bid = b["user"]["id"] if isinstance(b.get("user"), dict) else b["id"]

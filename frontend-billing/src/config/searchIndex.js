@@ -44,8 +44,12 @@ export const PAGE_INDEX = [
   { label: 'B2B — Outgoing orders', route: '/b2b?tab=outgoing',    keywords: 'sent orders' },
   { label: 'B2B — Incoming orders', route: '/b2b?tab=incoming',    keywords: 'received orders' },
   { label: 'B2B — Connections',   route: '/b2b?tab=connections',   keywords: 'partners network link' },
-  { label: 'Data Migration',      route: '/import',                keywords: 'import csv excel upload', ownerOnly: true },
+  { label: 'Data Migration',      route: '/settings?tab=migration', keywords: 'import csv excel upload export', ownerOnly: true },
+  { label: 'Business Activity',   route: '/settings?tab=activity', keywords: 'audit trail events log history changes who changed', ownerOnly: true },
+  { label: 'Feedback & Support',  route: '/settings?tab=support',  keywords: 'help ticket diagnostics bug issue contact support desk faq' },
   { label: 'Settings',            route: '/settings',              keywords: 'preferences configuration options' },
+  { label: 'Business Profile',    route: '/settings?tab=profile',  keywords: 'company branding logo address gstin phone pan upi', ownerOnly: true },
+  { label: 'Appearance',          route: '/settings?tab=general&field=appearance', keywords: 'theme colour color accent palette dark light system' },
   { label: 'Hosting & Sync',      route: '/settings?tab=advanced', keywords: 'cloud backup local sync', ownerOnly: true },
   { label: 'Staff',               route: '/settings?tab=staff',    keywords: 'users roles cashier permissions', ownerOnly: true },
 ]
@@ -65,6 +69,7 @@ export const PAGE_INDEX = [
  */
 export const SETTINGS_INDEX = [
   { tab: 'general', key: 'ai_search_enabled',    label: 'Ask AI from Search' },
+  { tab: 'general', key: 'privacy_mode',         label: 'Privacy Mode' },
   { tab: 'print', key: 'theme_color',            label: 'Invoice Theme Colour' },
   { tab: 'print', key: 'text_size',              label: 'Text Size' },
   { tab: 'print', key: 'thermal_page_size',      label: 'Thermal Page Size' },

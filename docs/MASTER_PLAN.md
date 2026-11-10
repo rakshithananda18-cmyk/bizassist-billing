@@ -1,10 +1,12 @@
 # BizAssist — Master Plan (Core)
 
-*The lean, navigable index of the plan. Last aligned: 2026-06-26.*
+*The lean, navigable index of the plan. Current work: [31 October remediation and review](audit/2026-10-31/README.md); original baseline: [30 October audit plan](audit/2026-10-30/PLAN.md).*
 
 > **Why this file:** the full plan is large. This is the **map**; the full plan is the **territory**. Each section here links to the authoritative detail. Keep both aligned — when a decision or status changes, edit it in the full plan and update the one-line summary here.
 
 **Companion docs:** [Full plan → `BIZASSIST_ECOSYSTEM_MASTER_PLAN.md`](plans/BIZASSIST_ECOSYSTEM_MASTER_PLAN.md) · [Review → `PRODUCT_REVIEW.md`](plans/PRODUCT_REVIEW.md) · [Hosting modes → `HOSTING_MODE_MASTER_PLAN.md`](plans/HOSTING_MODE_MASTER_PLAN.md) · [DoD gate → `PHASE_COMPLETION_CHECKLIST.md`](plans/PHASE_COMPLETION_CHECKLIST.md)
+
+**Current verification & execution:** Use the [31 October record](audit/2026-10-31/README.md) and [execution plan](audit/2026-10-31/PLAN.md). The 30 October audit and its 18-fixed/20-partial/2-open follow-up are historical snapshots, not a current release clearance. Database credential rotation remains open until externally confirmed.
 
 ---
 
@@ -31,30 +33,33 @@ One app for the whole B2B trade chain — distributor → wholesaler → retaile
 - **Modular monolith:** thin `main_groq.py` entrypoint; logic in `services/` + `routes/` (AI/ops) and `core/` (billing domain, split by area); two model modules on one shared `Base`.
 - **Hosting modes:** local (SQLite) · cloud (Postgres/Supabase, source of truth) · hybrid (local cache + background sync). `DATABASE_URL`-driven; `/health` reports the mode.
 - **AI:** 4-tier cost-gated router, grounded, advisory-only. Money is deterministic; AI never writes the books.
-- **Sync:** offline outbox + two-wall idempotency + delta-pull cursor + hybrid LWW.
+- **Sync:** offline outbox + two-wall idempotency + protocol-2 commit-ordered revision feed + hybrid LWW; durable profile/staff control outbox. Legacy incremental clients hold their queues until upgraded.
 → Detail: [full plan §4–§5](plans/BIZASSIST_ECOSYSTEM_MASTER_PLAN.md) · [`HOSTING_MODE_MASTER_PLAN.md`](plans/HOSTING_MODE_MASTER_PLAN.md) · [`PRODUCT_REVIEW.md` §B1](plans/PRODUCT_REVIEW.md)
 
 ## 4. Security model (essentials)
 - JWT HS256 (env secret, 24h) · bcrypt · single-use SSE tickets.
 - RBAC: owner vs cashier, single-source guard, backend-authoritative.
 - Tenancy in depth: app-layer `business_id` filters **+** Postgres RLS (FORCE, per-table policies). Staff JWT carries the owner's `business_id`.
+- Database authority: constrained HTTP runtime, fixed bootstrap functions, and separately configured internal trade/admin services. Local role proofs and the external deployment requirements are in the [31 October record](audit/2026-10-31/implementation/trust-role-deployment.md).
 - Integrity: posted double-entry journal, SHA-256 hash chain, append-only period locks, idempotency.
-- ⚠️ **Open item S-1:** RLS is *fail-open* when tenant context is unset → harden to fail-closed. See [`PRODUCT_REVIEW.md` §B2](plans/PRODUCT_REVIEW.md).
+- **S-1 implementation closed:** fail-closed tenant policies landed in migration `9c2f4b8a1d3e`, with subsequent B2B/policy hardening. Request transactions bind tenant context locally and pooled connections reset it. Named gates: `test_rls_policies.py` and `test_rls_postgres.py`; SQLite/mock passes do not establish a live Postgres deployment result. See the [dated verification record](release/2026-10-28-verification.md).
 → Detail: [full plan §6](plans/BIZASSIST_ECOSYSTEM_MASTER_PLAN.md)
 
-## 5. Build status (current — 2026-06-26)
+## 5. Historical build snapshot — 2026-10-28
+
+Current remediation status and exact checks are in the [31 October ledger](audit/2026-10-31/implementation/STATUS.md). The snapshot below records the prior phase tracker; it does not clear current credential, financial-data or release gates.
 | Area | Status |
 |---|---|
 | Phase 1 — Billing/POS/Reports + accounting depth | ✅ |
 | Phase 2 — Purchase + OCR | ✅ |
 | Phase 3 — B2B connections (security gate passed) | ✅ |
 | Phase 4 — B2B invoice sync / shared ledger (core) | ✅ |
-| Hardening — Postgres RLS | ✅ landed (harden S-1 fail-open) |
-| R7b — Offline client sync | 🟡 built; live offline QA pending |
-| Hosting modes (local/cloud/hybrid switching + sync engine) | 🟡 built; depth QA pending |
-| UI polish (print/preview, sticky bars) | 🟡 needs visual QA |
-| **Test suite green-stamp** | 🟡 **open** — run `run_tests.ps1`, pin count (code has 541 test fns; docs cite 555/431 — reconcile) |
-→ Authoritative tracker: [full plan §10.0](plans/BIZASSIST_ECOSYSTEM_MASTER_PLAN.md) · gaps & evidence: [`PRODUCT_REVIEW.md` §B3–B4](plans/PRODUCT_REVIEW.md)
+| Hardening — Postgres RLS | ✅ fail-closed implementation and automated gates exist; live Postgres verification is recorded separately |
+| R7b — Offline client sync | 🟡 built with automated coverage; real offline/reconnect and two-server depth QA remain pending unless demonstrated in the dated record |
+| Hosting modes (local/cloud/hybrid switching + sync engine) | 🟡 built; live local/cloud/hybrid switching requires separate evidence |
+| UI polish (print/preview, sticky bars) | Current responsive/theme checks are in the dated record; physical printer output remains a separate check |
+| **Test suite green-stamp** | Use the dated verification record for each suite's command, pass/fail/skip count and scope; historical counts are not current totals |
+→ Authoritative tracker: [full plan §10.0](plans/BIZASSIST_ECOSYSTEM_MASTER_PLAN.md) · current evidence: [2026-10-28 release checks](release/2026-10-28-verification.md)
 
 ## 6. USP / moats (where the company is)
 **Moats (compound, hard to copy):** BizID identity spine · private ordering network · tamper-evident shared ledger · BizID reputation/trust score · data gravity (AI over the network).
@@ -63,11 +68,11 @@ One app for the whole B2B trade chain — distributor → wholesaler → retaile
 → Detail + marketing hierarchy: [full plan §14, §16](plans/BIZASSIST_ECOSYSTEM_MASTER_PLAN.md)
 
 ## 7. Risks (top)
-Adoption of the network USP (behaviour risk #1) · single-worker scaling ceiling · RLS fail-open (S-1) · GST/e-way legality (CA-validate) · sync correctness · unverified test-green.
+Adoption of the network USP (behaviour risk #1) · single-worker scaling ceiling · live Postgres/deployment verification · GST/e-way legality (CA-validate) · live sync/restore correctness · the manual checks and environment limits stated in the dated verification record.
 → Detail: [full plan §12](plans/BIZASSIST_ECOSYSTEM_MASTER_PLAN.md) · [`PRODUCT_REVIEW.md` Part A](plans/PRODUCT_REVIEW.md)
 
 ## 8. Decisions needing sign-off
-1. Reuse `invoices` vs add `sales_invoices` (rec: extend `invoices`). 2. Cloud realtime own-stack vs Supabase (rec: own first). 3. First business format to nail (pilot owner). 4. Pilot price.
+1. Reuse `invoices` vs add `sales_invoices` (settled: extended `invoices`). 2. Cloud realtime own-stack vs Supabase (rec: own first). 3. First business format to nail (pilot owner). 4. Pilot price.
 → Detail: [full plan §13](plans/BIZASSIST_ECOSYSTEM_MASTER_PLAN.md)
 
 ## 9. Cardinal rules + Definition of Done

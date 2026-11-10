@@ -8,29 +8,38 @@ app_port: 7860
 pinned: false
 ---
 
-# BizAssist — API (backend)
+# BizAssist API
 
-This Hugging Face Space runs the **BizAssist FastAPI backend** as a Docker image
-(port 7860). The React frontend is deployed separately (Vercel) and points its
-`VITE_API_URL` at this Space.
+Production runs on Google Cloud Run in `asia-south1`:
+`https://staterbill-api-1076771386585.asia-south1.run.app`.
+Billing is served at `https://staterbill.com`; Field Team and the AI dashboard
+retain their Vercel addresses. `GET /health` must report `status: ok` and
+`db: connected` before traffic moves to a new revision.
 
-Build context is this folder: `Dockerfile` + `requirements_hf.txt` here.
+Deploy from the repository root with `backend/deploy_cloudrun.ps1 -Project
+staterbill -Setup` (first deployment) or `bash backend/deploy_cloudrun.sh
+--setup staterbill`. Later deploys omit Setup. Both scripts preserve unmanaged
+variables and secrets, keep one instance/worker, allow scale-to-zero, check a
+release candidate before moving traffic, and configure external scheduled jobs.
 
-## Required Space secrets / variables
-Set these in **Settings → Variables and secrets**:
+Keep DATABASE_URL, JWT_SECRET, GROQ_API_KEY and BILLING_CRON_SECRET in Secret
+Manager. Field Team must use the same database and signing secret. A constrained
+runtime needs ADMIN_SERVICE_URL for privileged admin operations. Set public
+settings through --update-env-vars. Uploaded diagnostic archives, handoff replay
+records, session revocations, discovery and scheduler state live in PostgreSQL.
+Vector/file storage requires a separately configured durable store.
 
-| Name | Type | Notes |
-|---|---|---|
-| `GROQ_API_KEY` | secret | required — LLM tiers + router |
-| `JWT_SECRET` | secret | required — random string |
-| `EMAIL_USER` / `EMAIL_PASS` / `EMAIL_FROM` | secret | optional — real reminder emails |
-| `LLM_ROUTER` | variable | `off` (default) / `shadow` / `on` |
-| `AGENT_MODE` | variable | `pipeline` (default) / `loop` |
-| `INTENT_ROUTER` | variable | `off` / `shadow` / `on` |
-| `ALLOWED_ORIGINS` | variable | comma-separated; add your Vercel URL if it differs from the defaults |
+The old Hugging Face Space becomes the compatibility proxy from
+`ops/hf-forwarder/` so already-installed desktops can sync while users upgrade.
+The Space front matter above remains for compatibility; production VITE_API_URL
+must point to Cloud Run.
 
-> ⚠ **Storage is ephemeral.** SQLite (`bizassist.db`), `chroma_db/`, and uploads
-> reset on every Space rebuild/restart. For durable data, attach HF persistent
-> storage and point `DATABASE_URL` at `/data/…`.
+Before release, back up the database and apply `python -m alembic upgrade head`
+with the schema operator's private environment. Current head is
+`h4_auth_admin_runtime_state`. Startup verifies constrained runtime readiness;
+a privileged startup serializes migration work under one advisory lock and
+skips unchanged schemas. Additive control tables permit application rollback
+without dropping data. Field Team owns its separate `ft_*` migration chain.
 
-The full project (frontend + docs) lives in the main repository.
+Follow [the migration runbook](../docs/runbooks/cloud-run-migration.md) for deploy
+order, environment variables, verification, and rollback.

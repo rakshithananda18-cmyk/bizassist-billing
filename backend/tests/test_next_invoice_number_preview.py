@@ -32,13 +32,15 @@ from database.db import SessionLocal                # noqa: E402
 from core.models import DocumentSequence            # noqa: E402
 from core.billing import commands as billing        # noqa: E402
 
+from tests.signup_fixture import signup_payload
+
 client = TestClient(app)
 
 
 def _account():
     uname = f"nn_{uuid.uuid4().hex[:8]}"
-    r = client.post("/signup", json={
-        "username": uname, "password": "TestPass123!", "business_name": "Preview Co"})
+    r = client.post("/signup", json=signup_payload({
+        "username": uname, "password": "TestPass123!", "business_name": "Preview Co"}))
     assert r.status_code == 200, r.text
     b = r.json()
     tok = b.get("access_token") or b.get("token")

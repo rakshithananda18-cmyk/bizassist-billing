@@ -6,6 +6,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 from database.models import PurchaseInvoice, PurchaseInvoiceLineItem, Product, Vendor, Inventory
 from core.stock import ledger as SL
+from core.billing import sequence as SEQ
 
 logger = logging.getLogger("bizassist.purchase")
 
@@ -276,6 +277,18 @@ def accept_supplier_invoice(db: Session, business_id: int, invoice_data: dict) -
                 Product.business_id == business_id
             ).first()
             
+        conv_factor = float(item.get("conversion_factor") or 1.0)
+        if conv_factor <= 0:
+            conv_factor = 1.0
+        unit_price = float(item.get("unit_price") or 0.0)
+        base_unit_cost = (
+            float(item.get("cost_price"))
+            if item.get("cost_price") is not None
+            else (unit_price / conv_factor if conv_factor > 0 else unit_price)
+        )
+        if not math.isfinite(base_unit_cost) or base_unit_cost < 0:
+            raise ValueError("Base-unit cost must be finite and non-negative")
+
         if not product:
             # Create new Product
             product = Product(
@@ -284,9 +297,9 @@ def accept_supplier_invoice(db: Session, business_id: int, invoice_data: dict) -
                 hsn_sac=item.get("hsn_sac"),
                 unit=item.get("unit") or "Nos",
                 purchase_unit=item.get("purchase_unit"),
-                conversion_factor=float(item.get("conversion_factor") or 1.0),
-                cost_price=float(item.get("unit_price") or 0.0),
-                selling_price=float(item.get("unit_price") or 0.0) * 1.2, # default markup
+                conversion_factor=conv_factor,
+                cost_price=base_unit_cost,
+                selling_price=base_unit_cost * 1.2, # default markup on base stock unit
                 cgst_rate=float(item.get("cgst_rate") or 0.0),
                 sgst_rate=float(item.get("sgst_rate") or 0.0),
                 igst_rate=float(item.get("igst_rate") or 0.0),
@@ -297,11 +310,11 @@ def accept_supplier_invoice(db: Session, business_id: int, invoice_data: dict) -
             db.flush() # Populate product.id
         else:
             # Update existing Product's cost price
-            product.cost_price = float(item.get("unit_price") or 0.0)
+            product.cost_price = base_unit_cost
             if item.get("purchase_unit"):
                 product.purchase_unit = item.get("purchase_unit")
             if item.get("conversion_factor") is not None:
-                product.conversion_factor = float(item.get("conversion_factor") or 1.0)
+                product.conversion_factor = conv_factor
             if item.get("hsn_sac"):
                 product.hsn_sac = item.get("hsn_sac")
             db.flush()
@@ -332,7 +345,7 @@ def accept_supplier_invoice(db: Session, business_id: int, invoice_data: dict) -
                 stock=0,
                 unit=product.unit,
                 hsn_sac=product.hsn_sac,
-                cost_price=item.get("cost_price") or product.cost_price,
+                cost_price=base_unit_cost,
                 selling_price=item.get("selling_price") or product.selling_price,
                 mrp=item.get("mrp") or product.mrp,
                 supplier=vendor.name,
@@ -345,7 +358,7 @@ def accept_supplier_invoice(db: Session, business_id: int, invoice_data: dict) -
             db.flush()
         else:
             # Keep vendor and prices in sync
-            inv.cost_price = item.get("cost_price") or product.cost_price
+            inv.cost_price = base_unit_cost
             inv.selling_price = item.get("selling_price") or product.selling_price
             inv.mrp = item.get("mrp") or product.mrp
             inv.supplier = vendor.name
@@ -401,6 +414,10 @@ def accept_supplier_invoice(db: Session, business_id: int, invoice_data: dict) -
     # Post the balanced double-entry journal (audit trail) within this same txn.
     from core.accounting import posting
     posting.post_purchase(db, purchase_invoice)
+    from core.party_archive import capture_document_parties
+    from database.models import User
+    capture_document_parties(db, purchase_invoice, kind="purchase", seller=vendor,
+                            buyer=db.query(User).filter(User.id == business_id).first())
 
     db.commit()
     return purchase_invoice
@@ -421,47 +438,75 @@ def create_debit_note(
     orig = db.query(PurchaseInvoice).filter(
         PurchaseInvoice.id == original_purchase_id,
         PurchaseInvoice.business_id == business_id
-    ).first()
+    ).with_for_update().first()
     
     if not orig:
         raise ValueError(f"Purchase invoice {original_purchase_id} not found.")
+    if orig.invoice_type == "debit_note":
+        raise ValueError("A return must refer to an original purchase, not another debit note.")
 
-    # 2. Auto-generate debit note number
+    # 2. Auto-generate debit note number (monotonic series, BD-13)
     dn_number = (debit_note_no or "").strip()
+    if dn_number and db.query(PurchaseInvoice.id).filter(PurchaseInvoice.business_id == business_id,
+        PurchaseInvoice.invoice_type == "debit_note", PurchaseInvoice.invoice_number == dn_number).first():
+        raise ValueError("This debit-note number already exists for this business")
     if not dn_number:
-        n = db.query(func.count(PurchaseInvoice.id)).filter(
-            PurchaseInvoice.business_id == business_id,
-            PurchaseInvoice.invoice_type == "debit_note"
-        ).scalar() or 0
-        dn_number = f"DN-{n + 1:04d}"
+        def _dn_series_max():
+            rows = (
+                db.query(PurchaseInvoice.invoice_number)
+                .filter(PurchaseInvoice.business_id == business_id,
+                        PurchaseInvoice.invoice_type == "debit_note",
+                        PurchaseInvoice.invoice_number.like(SEQ.like_prefix(SEQ.DEBIT_NOTE_SERIES), escape="\\"))
+                .all()
+            )
+            return SEQ.max_suffix((r[0] for r in rows), SEQ.DEBIT_NOTE_SERIES)
+
+        def _dn_number_taken(num: str) -> bool:
+            return (
+                db.query(PurchaseInvoice.id)
+                .filter(PurchaseInvoice.business_id == business_id,
+                        PurchaseInvoice.invoice_number == num)
+                .first()
+                is not None
+            )
+
+        dn_number = SEQ.next_number(
+            db, business_id, SEQ.DEBIT_NOTE_SERIES,
+            scan_max=_dn_series_max,
+            is_taken=_dn_number_taken,
+        )
 
     # 3. Process line items
     dn_lines = []
+    requested_products = set()
     for ln in lines:
         pid = ln.get("product_id")
-        qty = float(ln.get("quantity") or ln.get("qty") or 0)
+        qty = _finite_number(ln.get("quantity") or ln.get("qty") or 0, "Return quantity", minimum=0)
         reason = ln.get("reason", "return")
         if qty <= 0:
             raise ValueError(f"Return quantity must be > 0 for product ID {pid}")
+        if pid in requested_products:
+            raise ValueError("Combine duplicate product rows before submitting a return.")
+        requested_products.add(pid)
 
         # Find the original line item to get price and tax rates
-        orig_line = None
-        for li in orig.line_items:
-            if li.product_id == pid:
-                orig_line = li
-                break
+        candidates = [li for li in orig.line_items if li.product_id == pid]
+        if len(candidates) > 1:
+            raise ValueError("This product has multiple original purchase lines. Select a specific source line before returning it; a product-only return is ambiguous.")
+        orig_line = candidates[0] if candidates else None
         
         if not orig_line:
             raise ValueError(f"Product ID {pid} was not found on the original purchase invoice.")
 
-        already_returned = float(db.query(func.coalesce(func.sum(PurchaseInvoiceLineItem.quantity), 0.0)).join(
+        prior_lines = db.query(PurchaseInvoiceLineItem).join(
             PurchaseInvoice, PurchaseInvoice.id == PurchaseInvoiceLineItem.purchase_invoice_id
         ).filter(
             PurchaseInvoice.business_id == business_id,
             PurchaseInvoice.parent_invoice_id == original_purchase_id,
             PurchaseInvoice.invoice_type == "debit_note",
             PurchaseInvoiceLineItem.product_id == pid,
-        ).scalar() or 0.0)
+        ).all()
+        already_returned = sum(float(line.quantity or 0) for line in prior_lines)
         max_returnable = round(float(orig_line.quantity) - already_returned, 4)
         if qty > max_returnable:
             raise ValueError(
@@ -472,15 +517,32 @@ def create_debit_note(
 
         orig_line.returned_qty = round(already_returned + qty, 4)
 
+        original_qty = _finite_number(orig_line.quantity, "Original quantity", minimum=0)
+        if not original_qty:
+            raise ValueError("Original purchase quantity is invalid; reconcile it before returning.")
+        original_components = sum(_finite_number(getattr(orig_line, field) or 0, "Original " + field, minimum=0)
+                                  for field in ("taxable_value", "cgst_amount", "sgst_amount", "igst_amount"))
+        if abs(round(original_components, 2) - round(float(orig_line.line_total or 0), 2)) > 0.01:
+            raise ValueError("Original purchase line has incomplete financial snapshots; reconcile it before returning.")
+        ratio = min((already_returned + qty) / original_qty, 1.0)
+
+        def remaining_snapshot(field):
+            value = _finite_number(getattr(orig_line, field) or 0, "Original " + field, minimum=0)
+            credited = sum(_finite_number(getattr(line, field) or 0, "Returned " + field, minimum=0) for line in prior_lines)
+            result = round(round(value * ratio, 2) - round(credited, 2), 2)
+            if result < 0:
+                raise ValueError("Existing returns exceed the original purchase snapshot; reconcile them before returning more.")
+            return max(result, 0.0)
+
         unit_price = orig_line.unit_price or 0.0
-        taxable = round(qty * unit_price, 2)
+        taxable = remaining_snapshot("taxable_value")
         cgst_r = orig_line.cgst_rate or 0.0
         sgst_r = orig_line.sgst_rate or 0.0
         igst_r = orig_line.igst_rate or 0.0
         
-        cgst_a = round(taxable * cgst_r / 100.0, 2)
-        sgst_a = round(taxable * sgst_r / 100.0, 2)
-        igst_a = round(taxable * igst_r / 100.0, 2)
+        cgst_a = remaining_snapshot("cgst_amount")
+        sgst_a = remaining_snapshot("sgst_amount")
+        igst_a = remaining_snapshot("igst_amount")
         line_total = round(taxable + cgst_a + sgst_a + igst_a, 2)
 
         # We also need conversion factor
@@ -512,7 +574,29 @@ def create_debit_note(
     cgst_t   = round(sum(l["cgst_amount"]   for l in dn_lines), 2)
     sgst_t   = round(sum(l["sgst_amount"]   for l in dn_lines), 2)
     igst_t   = round(sum(l["igst_amount"]   for l in dn_lines), 2)
-    grand    = round(subtotal + cgst_t + sgst_t + igst_t, 2)
+    raw_total = round(subtotal + cgst_t + sgst_t + igst_t, 2)
+    original_raw = round(sum(float(line.line_total or 0) for line in orig.line_items), 2)
+    expected_raw = round(float(orig.total_amount or 0) + float(orig.discount_total or 0)
+                         - float(orig.round_off or 0) - float(orig.cess_total or 0), 2)
+    if not math.isfinite(original_raw) or not math.isfinite(expected_raw) or abs(original_raw - expected_raw) > 0.01:
+        raise ValueError("Original purchase lines do not reconcile with its billed total; reconcile it before returning.")
+    prior_notes = db.query(PurchaseInvoice).filter(
+        PurchaseInvoice.business_id == business_id, PurchaseInvoice.parent_invoice_id == orig.id,
+        PurchaseInvoice.invoice_type == "debit_note").all()
+    prior_raw = round(sum(float(note.total_amount or 0) + float(note.discount_total or 0)
+                          - float(note.round_off or 0) - float(note.cess_total or 0) for note in prior_notes), 2)
+    if prior_raw + raw_total > original_raw + 0.01:
+        raise ValueError("Return value exceeds the original purchase's remaining billed value.")
+    ratio = min((prior_raw + raw_total) / original_raw, 1.0) if original_raw else 0.0
+    discount = round(round(float(orig.discount_total or 0) * ratio, 2)
+                     - sum(float(note.discount_total or 0) for note in prior_notes), 2)
+    round_off = round(round(float(orig.round_off or 0) * ratio, 2)
+                      - sum(float(note.round_off or 0) for note in prior_notes), 2)
+    cess = round(round(float(orig.cess_total or 0) * ratio, 2)
+                 - sum(float(note.cess_total or 0) for note in prior_notes), 2)
+    grand = round(raw_total + cess + round_off - discount, 2)
+    if not math.isfinite(grand) or discount < 0 or cess < 0 or grand < 0:
+        raise ValueError("Return amount is invalid after allocating the original purchase discount.")
 
     # 4. Create the Debit Note header
     dn = PurchaseInvoice(
@@ -520,6 +604,7 @@ def create_debit_note(
         parent_invoice_id=orig.id,
         supplier_id=orig.supplier_id,
         supplier_name=orig.supplier_name,
+        godown_id=orig.godown_id,
         invoice_number=dn_number,
         invoice_type="debit_note",
         invoice_date=datetime.today().strftime("%Y-%m-%d"),
@@ -529,6 +614,7 @@ def create_debit_note(
         cgst_total=cgst_t,
         sgst_total=sgst_t,
         igst_total=igst_t,
+        cess_total=cess, discount_total=discount, round_off=round_off,
         notes=f"Debit note against purchase invoice #{orig.invoice_number}. {note or ''}".strip(),
     )
     db.add(dn)
@@ -579,7 +665,10 @@ def create_debit_note(
                 product_name=ln["product_name"],
                 reference_type="purchase_invoice",
                 reference_id=dn.id,
-                note=f"Purchase return for invoice #{orig.invoice_number}"
+                note=f"Purchase return for invoice #{orig.invoice_number}",
+                godown_id=orig.godown_id,
+                batch_no=ln["batch"],
+                expiry_date=ln["expiry"],
             )
 
     # Post the reversal to the journal (Dr Cash/AP, Cr Purchases/GST Input).

@@ -9,7 +9,7 @@
 //   * Offers: redeemable codes granting Pro for N days, capped + expiring.
 //     The funnel (delivered → seen → clicked / dismissed / redeemed) renders
 //     per campaign from campaign_deliveries.
-import { useState, useEffect } from 'react'
+import { useCallback, useState, useEffect } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useDialog } from '../../contexts/DialogContext'
 import { logger } from '../../utils/logger'
@@ -62,7 +62,7 @@ const EMPTY_OFFER = { code: '', description: '', days: 30, max_redemptions: '', 
 
 export default function AdminCampaigns() {
   const { authFetch } = useAuth()
-  const { showAlert, showConfirm, showError } = useDialog()
+  const { showConfirm, showError } = useDialog()
 
   const [campaigns, setCampaigns] = useState([])
   const [offers, setOffers] = useState([])
@@ -77,7 +77,7 @@ export default function AdminCampaigns() {
   const [offerForm, setOfferForm] = useState(EMPTY_OFFER)
   const [offerError, setOfferError] = useState('')
 
-  useEffect(() => { loadAll() }, [])
+
 
   // Win-back loop (REVIEW_1 §4.4): arriving from the Metrics churn-risk table
   // with ?winback=<BizID> opens the create modal pre-targeted to that merchant.
@@ -96,7 +96,7 @@ export default function AdminCampaigns() {
     window.history.replaceState({}, '', '/admin/campaigns')
   }, [])
 
-  async function loadAll() {
+  const loadAll = useCallback(async () => {
     setLoading(true)
     try {
       const [cRes, oRes] = await Promise.all([
@@ -110,7 +110,9 @@ export default function AdminCampaigns() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [authFetch])
+
+  useEffect(() => { loadAll() }, [loadAll])
 
   // ── Campaign form helpers ──────────────────────────────────────────────────
 
@@ -250,17 +252,22 @@ export default function AdminCampaigns() {
   return (
     <div className="admin-main" style={{ margin: 0, padding: 0 }}>
       {/* Header */}
-      <div className="admin-header-row" style={{ borderBottom: '1.5px solid var(--border-color)', paddingBottom: 20 }}>
+      <div className="admin-header-row">
         <div className="admin-title-group">
-          <h1>✦ CAMPAIGNS & OFFERS</h1>
-          <p>Author announcements, target the fleet, ship offers — and watch the funnel</p>
+          <h1 style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Icon name="rocket" size={22} style={{ color: 'var(--accent)' }} />
+            <span>Campaigns & Offers</span>
+          </h1>
+          <p>Author promotions, broadcast in-app announcements, target audiences, and track funnel redemptions</p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn-flush" onClick={() => { setOfferError(''); setShowOfferModal(true) }} style={{ padding: '10px 16px', fontSize: 13 }}>
-            + New Offer
+          <button className="btn-flush" onClick={() => { setOfferError(''); setShowOfferModal(true) }}>
+            <Icon name="plus" size={14} />
+            <span>New Offer Code</span>
           </button>
-          <button className="btn-flush" onClick={() => { setCampaignError(''); setAudiencePreview(null); setShowCampaignModal(true) }} style={{ padding: '10px 16px', fontSize: 13 }}>
-            + New Campaign
+          <button className="btn-primary" onClick={() => { setCampaignError(''); setAudiencePreview(null); setShowCampaignModal(true) }}>
+            <Icon name="plus" size={14} />
+            <span>New Campaign</span>
           </button>
         </div>
       </div>
@@ -411,20 +418,20 @@ export default function AdminCampaigns() {
             </div>
 
             {/* Audience */}
-            <div style={{ border: '1px solid var(--border-color)', borderRadius: 8, padding: '12px 14px', marginBottom: 12 }}>
-              <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--secondary-text)', marginBottom: 10 }}>
+            <div style={{ border: '1px solid var(--border-color, var(--border))', borderRadius: 8, padding: '12px 14px', marginBottom: 12, background: 'var(--bg-1, rgba(0,0,0,0.02))' }}>
+              <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--secondary-text, var(--text-muted))', marginBottom: 10 }}>
                 Audience — leave everything empty to reach everyone
               </div>
               <div className="form-group">
-                <label>Plans</label>
-                <div style={{ display: 'flex', gap: 16 }}>
+                <label style={{ marginBottom: 4 }}>Plans</label>
+                <div style={{ display: 'flex', gap: 20, alignItems: 'center' }}>
                   {['free', 'pro'].map(p => (
-                    <label key={p} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
+                    <label key={p} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 500, textTransform: 'none', cursor: 'pointer', whiteSpace: 'nowrap' }}>
                       <input type="checkbox" checked={campaignForm.plans.includes(p)}
                         onChange={e => setCampaignForm(f => ({
                           ...f, plans: e.target.checked ? [...f.plans, p] : f.plans.filter(x => x !== p)
                         }))} />
-                      {p.toUpperCase()}
+                      <span>{p.toUpperCase()}</span>
                     </label>
                   ))}
                 </div>

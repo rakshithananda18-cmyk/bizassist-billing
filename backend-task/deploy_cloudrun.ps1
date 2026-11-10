@@ -17,6 +17,11 @@
     # once the Vercel URL exists (kept on later deploys until changed)
     .\backend-task\deploy_cloudrun.ps1 -Project <id> -AllowedOrigins https://<vercel-url>
 
+    # Field Team is part of BizAssist Pro: deployments always enforce the gate.
+    # Kept on later deploys until changed. Grant Pro to your own business in
+    # billing's admin console FIRST, or you are refused too.
+    .\backend-task\deploy_cloudrun.ps1 -Project <id> -ProGate on
+
   Service shape (docs/FIELD_TEAM_MASTER_PLAN.md section 8):
     - max 1 instance: login throttling is in-memory (one process, like billing)
     - min 0 instances: free tier; wakes in seconds (-MinInstances 1 = always
@@ -30,11 +35,16 @@ param(
     [Parameter(Mandatory = $true)][string]$Project,
     [string]$Region = "asia-south1",
     [string]$Service = "bizassist-task",
-    [string]$AllowedOrigins = "",
+    [string]$AllowedOrigins = "https://task.staterbill.com,https://bizassist-task.vercel.app",
     [int]$MinInstances = 0,
+    [ValidateSet("", "on", "off")][string]$ProGate = "",
     [switch]$Setup,
     [switch]$ResetSecrets
 )
+
+if ($ProGate -eq "off") {
+    throw "Deployed Field Team is Pro-only. A disabled gate is supported only by isolated development/test fixtures."
+}
 
 # No global ErrorActionPreference=Stop: on Windows PowerShell 5.1 it turns a
 # native command's ordinary stderr (gcloud's progress lines) into a failure.
@@ -47,7 +57,8 @@ $runSa = "$Service-run@$Project.iam.gserviceaccount.com"
 function Invoke-Gcloud {
     # Run gcloud; stop on failure (native exit codes do not trip ErrorActionPreference).
     & gcloud @args
-    if ($LASTEXITCODE -ne 0) { throw "gcloud $($args -join ' ') failed ($LASTEXITCODE)" }
+    # Scheduler arguments include the cron secret; never echo the argument list.
+    if ($LASTEXITCODE -ne 0) { throw "gcloud command failed ($LASTEXITCODE) - see the command output above." }
 }
 
 function Set-SecretValue([string]$Name, [string]$Value) {
@@ -132,6 +143,8 @@ try {
         $origins = ($AllowedOrigins -split "," | ForEach-Object { $_.Trim().TrimEnd("/") } | Where-Object { $_ }) -join ","
         $envVars += ";ALLOWED_ORIGINS=$origins"
     }
+    # Same switch name as billing's (SUBSCRIPTION_ENFORCED); see app/plan.py.
+    if ($ProGate) { $envVars += ";SUBSCRIPTION_ENFORCED=$(if ($ProGate -eq 'on') { '1' } else { '0' })" }
     # New IAM grants can take a minute or two to apply, so a first-time build may
     # still be refused: try up to 3 times, a minute apart.
     for ($attempt = 1; ; $attempt++) {
@@ -140,7 +153,7 @@ try {
             --allow-unauthenticated --min-instances $MinInstances --max-instances 1 --cpu 1 --memory 512Mi `
             --cpu-boost --concurrency 80 --timeout 60 `
             --update-env-vars $envVars `
-            --set-secrets "DATABASE_URL=DATABASE_URL:latest,JWT_SECRET=JWT_SECRET:latest,TASK_CRON_SECRET=TASK_CRON_SECRET:latest" `
+            --update-secrets "DATABASE_URL=DATABASE_URL:latest,JWT_SECRET=JWT_SECRET:latest,TASK_CRON_SECRET=TASK_CRON_SECRET:latest" `
             --quiet
         if ($LASTEXITCODE -eq 0) { break }
         if ($attempt -ge 3) { throw "gcloud run deploy failed $attempt times - see the error above." }
@@ -165,11 +178,17 @@ try {
     }
 
     Write-Host "== Health check" -ForegroundColor Cyan
-    try { $health = Invoke-RestMethod "$url/api/health" -TimeoutSec 60 -ErrorAction Stop }
-    catch { Write-Host "Health check failed: $($_.Exception.Message) - see Cloud Run > $Service > Logs." -ForegroundColor Red; exit 1 }
+    $health = $null
+    for ($check = 0; $check -lt 6; $check++) {
+        try {
+            $health = Invoke-RestMethod "$url/api/health" -TimeoutSec 60 -ErrorAction Stop
+            if ($health.ok -eq $true -and $health.pro_required -eq $true -and $health.billing_mirror -eq $false -and $health.cloud_only -eq $true) { break }
+        } catch { $health = $null }
+        if ($check -lt 5) { Start-Sleep -Seconds 5 }
+    }
     $health | ConvertTo-Json -Compress | Write-Host
-    if ($health.db -ne "postgresql") {
-        Write-Host "WARNING: db is '$($health.db)', not postgresql - check the DATABASE_URL secret." -ForegroundColor Red
+    if ($health.ok -ne $true -or $health.db -ne "postgresql" -or $health.pro_required -ne $true -or $health.billing_mirror -ne $false -or $health.cloud_only -ne $true) {
+        Write-Host "Field Team readiness failed: expected a reachable PostgreSQL database, enforced Pro, and no Billing mirror." -ForegroundColor Red
         exit 1
     }
     Write-Host "Field Team API is live on Supabase: $url" -ForegroundColor Green

@@ -9,21 +9,25 @@
 // background, the browser pauses GPS. The "keep screen on" switch (Screen Wake
 // Lock API) keeps the trail alive while the phone sits in a holder; a pocketed
 // phone leaves gaps, and each field action still carries its own fix.
-import { api } from './api'
+import { api, tokenStore } from './api'
 import { batteryPct, toFix } from './geo'
 
 const BUFFER_KEY = 'task_ping_buffer'
 export const MAX_BUFFER = 120
 
 export class PingBuffer {
-  constructor(storage = globalThis.localStorage) {
+  constructor(storage = globalThis.localStorage, key = BUFFER_KEY) {
     this.storage = storage
+    this.key = key
   }
   read() {
-    try { return JSON.parse(this.storage?.getItem(BUFFER_KEY) || '[]') } catch { return [] }
+    try {
+      const items = JSON.parse(this.storage?.getItem(this.key) || '[]')
+      return Array.isArray(items) ? items : []
+    } catch { return [] }
   }
   write(items) {
-    try { this.storage?.setItem(BUFFER_KEY, JSON.stringify(items)) } catch { /* quota / private mode */ }
+    try { this.storage?.setItem(this.key, JSON.stringify(items)) } catch { /* quota / private mode */ }
   }
   push(fix) {
     const items = this.read()
@@ -43,8 +47,11 @@ export class PingBuffer {
 }
 
 export class Tracker {
-  constructor({ onStatus } = {}) {
-    this.buffer = new PingBuffer()
+  constructor({ onStatus, scope } = {}) {
+    // A device may serve several workers/businesses. Legacy unowned points
+    // cannot safely be attributed to the next person signing in.
+    this.buffer = new PingBuffer(undefined, `${BUFFER_KEY}:${encodeURIComponent(scope || 'unscoped')}`)
+    this.sessionToken = tokenStore.get()
     this.watchId = null
     this.timer = null
     this.latest = null
@@ -88,26 +95,35 @@ export class Tracker {
   }
 
   tick() {
-    if (!this.latest) return
+    if (!this.latest) { this.flush(); return }
     const t = new Date(this.latest.client_time).getTime()
-    if (t <= this.lastSentAt) return // phone has not produced a newer fix
+    if (t <= this.lastSentAt) { this.flush(); return } // retry queued points even with no new fix
     this.lastSentAt = t
     this.buffer.push(this.latest)
     this.flush()
   }
 
   async flush() {
-    if (this.flushing || !navigator.onLine) return
+    if (this.flushing || !navigator.onLine || tokenStore.get() !== this.sessionToken) return
     const items = this.buffer.take()
     if (!items.length) return
     this.flushing = true
+    let sent = 0
     try {
       for (let i = 0; i < items.length; i += 100) {
+        if (tokenStore.get() !== this.sessionToken) {
+          this.buffer.putBack(items.slice(sent))
+          return
+        }
         await api.post('/api/track/pings', { pings: items.slice(i, i + 100) })
+        sent = Math.min(items.length, i + 100)
       }
       this.onStatus({ state: 'tracking', fix: this.latest, buffered: 0, sentAt: Date.now() })
     } catch (e) {
-      if (e.status === 0) this.buffer.putBack(items) // offline: keep for later
+      const retryable = e.status === 0 || e.status === 408 || e.status === 429 || e.status >= 500
+      // Preserve unsent evidence in its ORIGINAL identity scope after an account
+      // switch; that scope is never loaded by the newly signed-in person.
+      if (retryable || tokenStore.get() !== this.sessionToken) this.buffer.putBack(items.slice(sent))
       this.onStatus({ state: 'tracking', fix: this.latest, buffered: this.buffer.size(), error: e.message })
     } finally {
       this.flushing = false

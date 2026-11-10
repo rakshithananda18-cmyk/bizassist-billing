@@ -7,7 +7,10 @@
 // ============================================================================
 import React, { useEffect, useMemo, useState } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
+import { isDemoMode } from '../demo/demoEngine'
+import DemoGate from '../components/demo/DemoGate'
 import AppLayout from '../layouts/AppLayout'
+import HeaderSearchSlot from '../components/common/HeaderSearchSlot'
 import { useAuth } from '../contexts/AuthContext'
 import { useReadinessProbe } from '../hooks/useReadinessProbe'
 import { logger } from '../utils/logger'
@@ -273,6 +276,22 @@ function CounterTile({ s, highlight, onClick }) {
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 export default function POSLiveCounter() {
+  if (isDemoMode()) {
+    return (
+      <AppLayout title="POS Live Counter">
+        <DemoGate
+          label="POS Live Counter Terminal"
+          description="Real-time multi-counter monitoring, customer till display, and synchronized lane checkout. Start your free 14-day trial to monitor active counters."
+        />
+      </AppLayout>
+    )
+  }
+  return <LiveCounterWorkspace />
+}
+
+// Demo visitors see the same locked feature card as B2B without starting any
+// counter polling, readiness probes, or live-session subscriptions.
+function LiveCounterWorkspace() {
   const { user, authFetch, settings, networkMode } = useAuth()
   const { sseProbe } = useReadinessProbe()
   const isOwner = (user?.role || '').toLowerCase() !== 'cashier'
@@ -453,6 +472,7 @@ export default function POSLiveCounter() {
             <p className="page-subtitle">Watch each till in real time — active carts, cashier presence, and LAN/cloud network status</p>
           </div>
           <div className="page-actions" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <HeaderSearchSlot compact />
             {/* Stat chips */}
             {isOwner && tiles.length > 0 && (
               <>
@@ -520,7 +540,7 @@ export default function POSLiveCounter() {
                 <button
                   onClick={() => navigate('/settings?tab=network')}
                   style={{
-                    background: 'var(--accent)', color: '#fff', border: 'none',
+                    background: 'var(--accent-solid, var(--accent))', color: 'var(--accent-foreground, #fff)', border: 'none',
                     padding: '10px 24px', borderRadius: 8, fontWeight: 700,
                     cursor: 'pointer', fontSize: '0.88rem', transition: 'opacity 0.2s',
                   }}

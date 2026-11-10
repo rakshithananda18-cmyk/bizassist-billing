@@ -1,0 +1,21 @@
+{
+  "date": "2026-10-31",
+  "engine": "PostgreSQL 16 disposable loopback fixture",
+  "schema_operator": "NOSUPERUSER BYPASSRLS CREATEROLE",
+  "existing_shared_bootstrap_preserved": true,
+  "passed": 9,
+  "failed": 0,
+  "seconds": 14.88,
+  "checks": [
+    "non-superuser BYPASSRLS CREATEROLE operator creates NOLOGIN BYPASSRLS role",
+    "fresh complete historical Alembic upgrade under non-superuser operator",
+    "retry complete Alembic upgrade is idempotent",
+    "explicit repeated CREATE OR REPLACE after bootstrap ownership transfer",
+    "operator SET/inherited owner rights and explicit EXECUTE persist; bootstrap CREATE revoked; PUBLIC EXECUTE absent",
+    "legacy non-superuser operator invokes fixed bootstrap helper after installation",
+    "constrained runtime has no privileged memberships/CREATE and authenticates only its tenant",
+    "constrained runtime staff login works via narrow bootstrap",
+    "public invoice token binds its constrained tenant without global SELECT"
+  ],
+  "production_access": false
+}

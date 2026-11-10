@@ -4,7 +4,8 @@
 // and the Save button delegates to onSaveInvoice. Deep keyboard/customer-dropdown
 // flows are covered by the pure helpers (invoiceMath, TenderChips) elsewhere.
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { screen, fireEvent } from '@testing-library/react'
+import { renderWithAuth as render } from './renderWithAuth'
 import CheckoutModal from '../components/sales/CheckoutModal'
 
 const baseProps = () => ({
@@ -123,23 +124,23 @@ describe('CheckoutModal', () => {
   it('opens and closes the inline customer drawer', () => {
     const props = baseProps()
     render(<CheckoutModal {...props} />)
-    
+
     // The drawer should be closed initially
     expect(screen.queryByText('Customer Name *')).not.toBeInTheDocument()
-    
+
     // Click the Plus button next to the customer name input
     const plusBtn = screen.getByTitle('Add New Customer')
     fireEvent.click(plusBtn)
-    
+
     // Now the drawer should be open and display customer fields
     expect(screen.getByText('Customer Name *')).toBeInTheDocument()
     expect(screen.getByText('Phone Number')).toBeInTheDocument()
     expect(screen.getByText('GSTIN')).toBeInTheDocument()
-    
+
     // Click the Cancel button in the drawer to close it
     const cancelBtn = screen.getByText('Cancel')
     fireEvent.click(cancelBtn)
-    
+
     // The drawer should be closed now
     expect(screen.queryByText('Customer Name *')).not.toBeInTheDocument()
   })

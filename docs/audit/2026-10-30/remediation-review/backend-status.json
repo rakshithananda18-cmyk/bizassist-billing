@@ -1,0 +1,120 @@
+{
+  "review_date": "2026-10-30",
+  "baseline": "f5d715c",
+  "head": "6c52792",
+  "scope": "Current working tree, including unstaged implementation changes and untracked WP1/WP3/WP4-WP5 tests; not HEAD alone.",
+  "counts": {"fixed": 8, "partial": 4, "open": 1, "unverified": 0},
+  "validation": {
+    "selected_current_tests": {"passed": 271, "failed": 0, "seconds": 37.10},
+    "additional_existing_integration_tests": {"passed": 117, "failed": 4, "skipped": 1, "seconds": 28.58, "failure_reason": "All four failures occur in test_phase4_sync.py's helper, which still jumps accepted->completed rather than traversing the newly required packed/dispatched states."},
+    "correctness_proofs": {"checks": 20, "passed": 10, "failed": 10, "artifact": "backend-proof-results.json", "meaning": "Each check expects corrected behavior. False flags identify remaining/new counterexamples. Script exit 0 means all observations were recorded, not that all expectations passed."},
+    "database": "Disposable worker-specific SQLite for pytest; in-memory SQLite for independent proofs.",
+    "not_verified": ["Live merchant data reconciliation", "Disposable PostgreSQL upgrade/concurrency behavior", "Production deployment", "Physical cash/refunds/printers", "Updated bilateral integration fixtures after the intended state-machine change"]
+  },
+  "issues": [
+    {
+      "id": "BD-01", "status": "fixed", "resolution": "Contained by disabling the unsafe feature",
+      "evidence_type": ["source trace", "current regression tests", "independent in-memory proof"],
+      "current_file_line": ["backend/services/actions.py:269", "backend/services/actions.py:277", "backend/tests/test_actions.py:116"],
+      "evidence": "Preview is non-executable; direct execution returns ok=false and leaves the unpaid invoice Pending with paid_amount=0. Selected suite passes.",
+      "remaining": "A complete AI-triggered receipt workflow is still unavailable; disabling the old action satisfies the original containment option.",
+      "regressions": []
+    },
+    {
+      "id": "BD-02", "status": "fixed", "resolution": "Exact bucket queries used by ledger writes, rebuild and self-heal projection",
+      "evidence_type": ["source trace", "WP1 regression test", "independent in-memory proof"],
+      "current_file_line": ["backend/core/stock/ledger.py:61", "backend/core/stock/ledger.py:82", "backend/core/stock/ledger.py:133", "backend/core/stock/ledger.py:236", "backend/services/self_healing.py:173"],
+      "evidence": "Batches 5+7 followed by an unbatched -1 movement and cache rebuild yield inventory sum 11, matching the ledger.",
+      "remaining": "Existing merchant caches have not been reconciled; this is code closure, not a claim that old drift is already repaired.",
+      "regressions": []
+    },
+    {
+      "id": "BD-03", "status": "fixed", "resolution": "Purchase price divided by conversion factor for base-unit cost and default markup",
+      "evidence_type": ["source trace", "WP1 regression test", "purchase API tests", "independent in-memory proof"],
+      "current_file_line": ["backend/core/purchase/commands.py:283", "backend/core/purchase/commands.py:286", "backend/core/purchase/commands.py:301", "backend/core/purchase/commands.py:348"],
+      "evidence": "One carton of 12 purchased for 120 creates stock 12 with unit cost 10 and inventory value 120; current purchase API tests pass.",
+      "remaining": "Historical valuation reconciliation and a broader landed-cost policy are not established by this verification.",
+      "regressions": []
+    },
+    {
+      "id": "BD-04", "status": "partial", "resolution": "Simple overview return bug fixed; financial projections remain inconsistent",
+      "evidence_type": ["source trace", "passing narrow WP1 test", "independent counterexamples"],
+      "current_file_line": ["backend/core/billing/balances.py:34", "backend/core/billing/balances.py:43", "backend/core/billing/balances.py:52", "backend/core/billing/balances.py:56", "backend/services/handlers/invoices.py:229", "backend/services/recommendations.py:191"],
+      "evidence": "Business overview nets a full unpaid return to zero, but the deterministic revenue handler and AI prompt snapshot still show revenue 200/collected 100. A legacy paid 100 plus one new receipt 10 is summarized as collected 10 rather than 110. A 100 invoice with receipt 20 and return 50 is reported overdue 100 rather than 30.",
+      "remaining": "Use per-invoice legacy fallback, actual receipt/advance semantics and return-adjusted balances; route every exposed handler/tool/prompt snapshot through the shared contract.",
+      "regressions": ["NEW: tenant-wide fallback drops legitimate legacy collections as soon as any new receipt exists.", "RESIDUAL: unchanged deterministic handler and AI prompt snapshot still add returns as sales/cash.", "RESIDUAL: new overdue metric sums original gross invoice values, ignoring partial receipts and linked returns."]
+    },
+    {
+      "id": "BD-05", "status": "fixed", "resolution": "Automatic re-sealing refused for integrity mismatches",
+      "evidence_type": ["source trace", "independent in-memory proof"],
+      "current_file_line": ["backend/services/self_healing.py:71", "backend/services/self_healing.py:76"],
+      "evidence": "After a posted narration is changed, heal_hash_chain leaves the original hash untouched and verify_chain remains false.",
+      "remaining": "An evidence-backed recovery process is still needed for legitimate repair; this patch correctly preserves the primary integrity alarm.",
+      "regressions": []
+    },
+    {
+      "id": "BD-06", "status": "partial", "resolution": "GST head choice fixed for stable simple quotes; final pricing contract still diverges",
+      "evidence_type": ["source trace", "passing narrow WP1 test", "independent counterexamples"],
+      "current_file_line": ["backend/core/order/service.py:258", "backend/core/order/service.py:269", "backend/core/order/service.py:274", "backend/core/order/service.py:299", "backend/core/order/service.py:687"],
+      "evidence": "Simple same-state 100+18% now matches at 118. With normal round-off enabled, price 100.50 quotes 118.59 but invoices 119. Changing buyer state from 29 to 27 after the same-state quote produces a final invoice of 100 with zero GST instead of an 18 GST quote/requote.",
+      "remaining": "Use the same rounded deterministic quote/invoice calculator; preserve destination policy and tax facts or explicitly requote when the destination changes. Do not lose the alternate tax rates by zeroing them before final destination is fixed.",
+      "regressions": ["NEW: zeroed unused tax heads combined with reading the current buyer state at completion can suppress all GST after a state change.", "RESIDUAL: raw order math still differs from per-line/whole-invoice rounding."]
+    },
+    {
+      "id": "BD-07", "status": "fixed", "resolution": "Create-order applies the connection's catalogue category predicate",
+      "evidence_type": ["source trace", "WP3 negative policy test", "independent in-memory proof"],
+      "current_file_line": ["backend/core/order/service.py:238", "backend/tests/test_wp3_authorization_lifecycle.py:65"],
+      "evidence": "A direct hidden-category product ID is rejected while a permitted category is accepted.",
+      "remaining": "No additional issue for this original category bypass was reproduced.",
+      "regressions": []
+    },
+    {
+      "id": "BD-08", "status": "fixed", "resolution": "Explicit graph protects terminal states and invalid edges",
+      "evidence_type": ["source trace", "WP3 graph test", "independent valid-progression proof", "existing integration test compatibility check"],
+      "current_file_line": ["backend/core/order/service.py:327", "backend/core/order/service.py:350", "frontend-billing/src/b2b/orderStatus.js:5", "backend/tests/test_phase4_sync.py:99"],
+      "evidence": "Valid accepted/packed/dispatched/completed progression posts documents; a completed->rejected mutation is denied. Current frontend flow already matches the graph.",
+      "remaining": "Four existing bilateral posting/repair tests are red because their fixture still jumps accepted->completed. Update the fixture to traverse the supported graph and rerun the financial assertions before claiming integration green.",
+      "regressions": ["VALIDATION/COMPATIBILITY: test_phase4_sync.py helper no longer reaches its financial assertions after intentional API tightening; not evidence the forbidden terminal mutation remains possible."]
+    },
+    {
+      "id": "BD-09", "status": "fixed", "resolution": "Contained by refusing unsupported standalone advances",
+      "evidence_type": ["source trace", "independent in-memory proof"],
+      "current_file_line": ["backend/core/billing/commands.py:977", "backend/core/billing/commands.py:982"],
+      "evidence": "A 100 standalone advance with no invoice dues raises before changing credit_balance, which remains zero.",
+      "remaining": "A durable standalone advance-receipt model remains a future capability; current containment prevents the original unjournaled/non-idempotent write.",
+      "regressions": []
+    },
+    {
+      "id": "BD-10", "status": "partial", "resolution": "Positive new sale costs snapshot correctly; upgrade and zero-cost return semantics are unsafe",
+      "evidence_type": ["source trace", "passing narrow WP1 test", "independent upgrade-shape and return counterexamples"],
+      "current_file_line": ["backend/database/models.py:374", "backend/database/migration.py:314", "backend/core/api/reports.py:267", "backend/core/billing/commands.py:181", "backend/core/billing/commands.py:1153"],
+      "evidence": "New sale at cost 80 stays at COGS 80 after catalogue cost changes to 140. However, the upgrade DDL backfills old unknown costs to zero and P&L trusts that zero. A genuine zero-cost sale returned after catalogue cost becomes 40 records return cost 40 and net COGS -40.",
+      "remaining": "Represent unknown historical snapshots as NULL/unknown, not zero; add the actual upgrade migration and an explicit reporting policy for missing history; preserve legitimate zero costs when creating returns.",
+      "regressions": ["NEW: applying the added DDL to predecessor-shaped data changes reported historical COGS from a prior 80 valuation to zero without evidence.", "NEW: `snapshot or current_cost` replaces an original zero with today's nonzero cost on returns.", "DEPLOYMENT: no Alembic revision for the new invoice_line_items.cost_price column was found."]
+    },
+    {
+      "id": "BD-11", "status": "open", "resolution": "Existing fail-closed boundary retained; missing workflows not implemented",
+      "evidence_type": ["source trace", "WP4/WP5 HTTP refusal test", "prior audit comparison"],
+      "current_file_line": ["backend/core/api/payments.py:291", "backend/core/billing/balances.py:3", "backend/core/accounting/posting.py:307", "backend/tests/test_wp4_wp5_operational.py:127"],
+      "evidence": "The customer receipt endpoint still correctly refuses supplier payments. No append-only supplier payment, linked real customer refund, or return-credit allocation workflow was added. The new test verifies rejection, not completion of those workflows.",
+      "remaining": "Implement the missing commands/models/journals/shift integration or retain an explicit, limited product scope. Keep supplier/refund actions disabled until supported.",
+      "regressions": []
+    },
+    {
+      "id": "BD-12", "status": "fixed", "resolution": "Catalogue query sums per-product stock buckets",
+      "evidence_type": ["source trace", "WP1 aggregation test", "independent in-memory proof"],
+      "current_file_line": ["backend/core/order/service.py:126", "backend/core/order/service.py:133"],
+      "evidence": "SUM/GROUP BY replaces last-row overwrite; current catalogue total agrees with the corrected ledger/cache total.",
+      "remaining": "Historical drift caused by the earlier bucket bug is a separate reconciliation task.",
+      "regressions": []
+    },
+    {
+      "id": "BD-13", "status": "partial", "resolution": "Durable DN allocator added, but uniqueness is installed only for new tables",
+      "evidence_type": ["source trace", "WP1 fresh-database numbering test", "independent existing-schema counterexample"],
+      "current_file_line": ["backend/core/purchase/commands.py:466", "backend/core/billing/sequence.py:76", "backend/database/models.py:623", "backend/database/migration.py:1624", "backend/core/api/purchases.py:224"],
+      "evidence": "Auto numbers use the durable DN sequence. The new unique index exists on fresh metadata-created tables, but create_all does not install it onto an existing purchase_invoices table and no explicit upgrade installer/revision exists. With the predecessor index state, current create_debit_note accepts two manual DN-SAME numbers for one business.",
+      "remaining": "Add an explicit upgrade migration with duplicate diagnostics/reconciliation, install the partial unique index on existing SQLite/PostgreSQL, and verify concurrent allocation/duplicate rejection on a disposable PostgreSQL upgrade.",
+      "regressions": ["RESIDUAL DEPLOYMENT GAP: model-only uniqueness leaves existing merchants without the intended database backstop."]
+    }
+  ]
+}

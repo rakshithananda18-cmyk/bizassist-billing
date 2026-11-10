@@ -69,9 +69,13 @@ def heal_hash_chain(db: Session, business_id: int) -> int:
                 expected_hash = posting.compute_entry_hash(entry, prev_hash)
 
                 if entry.prev_hash != prev_hash or entry.entry_hash != expected_hash:
-                    entry.prev_hash = prev_hash
-                    entry.entry_hash = expected_hash
-                    healed_count += 1
+                    # BD-05: Automatic re-sealing of content mismatches destroys audit trails
+                    # and clears the primary integrity alarm. Preserve mismatch evidence.
+                    logger.error(
+                        "[SELF_HEAL][ACCT] Journal integrity mismatch at entry id=%s ref=%s: "
+                        "expected=%s, stored=%s. Automatic re-seal refused (BD-05).",
+                        entry.id, entry.ref_no, expected_hash, entry.entry_hash
+                    )
 
                 prev_hash = entry.entry_hash
 
@@ -166,7 +170,7 @@ def heal_stock_ledger_drift(db: Session, business_id: int, auto_fix_import_drift
                 ).first()
 
                 correct_stock = SL.current_stock(
-                    db, business_id, product_id=pid, godown_id=godown_id, batch_no=batch_no
+                    db, business_id, product_id=pid, godown_id=godown_id, batch_no=batch_no, exact_bucket=True
                 )
 
                 if not inv_row:

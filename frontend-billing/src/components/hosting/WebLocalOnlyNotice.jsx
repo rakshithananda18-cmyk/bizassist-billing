@@ -39,6 +39,10 @@ export default function WebLocalOnlyNotice() {
   // regardless of premium. Only a genuinely Local-only account lands here.
   const hostingMode = settings?.general?.hosting_mode
   if (hostingMode === 'hybrid' || hostingMode === 'cloud') return null
+  // Same for a business that started on the signup Pro trial: it worked on the
+  // cloud, so after the trial its data is THERE, not on a desktop. The
+  // trial-ended screen covers that case instead.
+  if (settings?.subscription?.trial === true || settings?.subscription?.status === 'trial') return null
   if (!profile || profile.is_premium !== false) return null
 
   const dismiss = () => {

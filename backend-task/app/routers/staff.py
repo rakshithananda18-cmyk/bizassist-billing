@@ -13,6 +13,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.db import get_db
+from app.identity import normalize_phone, phone_filter
 from app.models import FieldPointsEntry, FieldStaff
 from app.security import Principal, get_settings, hash_password, require_owner, validate_password_policy
 from app.services import get_scoped, log_activity, settings_out, staff_out
@@ -37,13 +38,13 @@ class StaffCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=80)
     login_name: str
     password: str
-    phone: Optional[str] = Field(None, max_length=20)
+    phone: str = Field(..., min_length=1, max_length=40)
     role: Literal["delivery", "field", "supervisor"] = "delivery"
 
 
 class StaffUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=80)
-    phone: Optional[str] = Field(None, max_length=20)
+    phone: Optional[str] = Field(None, max_length=40)
     role: Optional[Literal["delivery", "field", "supervisor"]] = None
     is_active: Optional[bool] = None
     password: Optional[str] = None
@@ -71,16 +72,24 @@ def list_staff(p: Principal = Depends(require_owner), db: Session = Depends(get_
 def create_staff(req: StaffCreate, p: Principal = Depends(require_owner), db: Session = Depends(get_db)):
     login = _login_name(req.login_name)
     validate_password_policy(req.password)
+    try:
+        phone = normalize_phone(req.phone)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     dup = db.query(FieldStaff.id).filter(
         FieldStaff.business_id == p.business_id, FieldStaff.login_name == login,
     ).first()
     if dup:
         raise HTTPException(status_code=400, detail="A staff member with this login name already exists")
+    if db.query(FieldStaff.id).filter(
+        FieldStaff.business_id == p.business_id, phone_filter(FieldStaff.phone, phone),
+    ).first():
+        raise HTTPException(status_code=400, detail="A staff member with this phone number already exists")
     staff = FieldStaff(
         business_id=p.business_id,
         name=req.name.strip(),
         login_name=login,
-        phone=(req.phone or "").strip() or None,
+        phone=phone,
         role=req.role,
         password_hash=hash_password(req.password),
     )
@@ -100,7 +109,16 @@ def update_staff(staff_id: int, req: StaffUpdate, p: Principal = Depends(require
         staff.name = req.name.strip()
         changes.append("name")
     if req.phone is not None:
-        staff.phone = req.phone.strip() or None
+        try:
+            phone = normalize_phone(req.phone) if req.phone.strip() else None
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        if phone and db.query(FieldStaff.id).filter(
+            FieldStaff.business_id == p.business_id, FieldStaff.id != staff.id,
+            phone_filter(FieldStaff.phone, phone),
+        ).first():
+            raise HTTPException(status_code=400, detail="A staff member with this phone number already exists")
+        staff.phone = phone
         changes.append("phone")
     if req.role is not None:
         staff.role = req.role

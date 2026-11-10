@@ -3,14 +3,16 @@
 // Description: Inventory & Catalog Manager. Handles product item catalog creation,
 //              stock adjustments, barcode bindings, and stock transfers between godowns — v9.
 // ============================================================================
-import React, { useEffect, useState, useCallback, useRef } from 'react'
+import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import PageShell from '../components/common/PageShell'
 import WorkspaceTopBar, { WsDivider } from '../components/common/WorkspaceTopBar'
 import { useAuth, useBusinessConfig } from '../contexts/AuthContext'
-import { AlertIcon, CheckIcon, CopyIcon, CloseIcon, DownloadIcon, EditIcon, InventoryIcon, PlusIcon, SearchIcon, SyncIcon, UploadIcon, ZapIcon, ExpandIcon, SidebarIcon } from '../components/Icons'
+import { AlertIcon, CheckIcon, PrinterIcon, CopyIcon, CloseIcon, DownloadIcon, EditIcon, InventoryIcon, PlusIcon, SearchIcon, SyncIcon, UploadIcon, ZapIcon, ExpandIcon, SidebarIcon } from '../components/Icons'
 import { logger } from '../utils/logger'
+import { readAllPages, readList } from '../utils/readPages'
 import { formatApiError } from '../utils/apiError'
+import { getTodayDateStr } from '../utils/format'
 import CustomSelect from '../components/common/CustomSelect'
 import AdjustStockModal from '../components/stock/AdjustStockModal'
 import TransferStockModal from '../components/stock/TransferStockModal'
@@ -29,6 +31,8 @@ import { useConfirm } from '../contexts/ConfirmContext'
 import ColumnResizer from '../components/common/ColumnResizer'
 import BulkActionBar from '../components/common/BulkActionBar'
 import BulkPreviewModal from '../components/common/BulkPreviewModal'
+import { isProtectedTourPreview, PRIVATE_STOCK_COLUMNS } from '../demo/tourPrivacy'
+import { TourPrivateValue } from '../demo/TourPrivatePreview'
 
 const fmt = (n) =>
   n != null ? `₹${Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '—'
@@ -128,6 +132,9 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
   // StockWorkspace.jsx passes it. Remove the prop and the branches with
   // StockPurchases.jsx once the new page is signed off.
   const { authFetch, settings, user } = useAuth()
+  const protectTour = isProtectedTourPreview(user)
+  // Sample intake stays separate from the owner's saved working draft.
+  const intakeDraftPrefix = user?.is_demo ? 'stater_demo_' : ''
   const confirm = useConfirm()
   const { attributesSchema } = useBusinessConfig()
   const settingsRef = useRef(settings)
@@ -139,6 +146,8 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
   const [godowns, setGodowns]               = useState([])
   const [transfers, setTransfers]           = useState([])
   const [loading, setLoading]               = useState(true)
+  const [loadError, setLoadError]           = useState(false)
+  const loadGeneration = useRef(0)
   // Seeded from ?q= so universal search can land on a filtered list. Products
   // have no record route, so the palette hands the term to this box — same
   // pattern Purchases.jsx uses for ?vendor=.
@@ -205,26 +214,34 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
   const [showTransferModal, setShowTransferModal] = useState(false)
   const [adjustForm, setAdjustForm]         = useState(defaultAdjust)
   const [transferForm, setTransferForm]     = useState(defaultTransfer)
-  
+
   const [newGodownName, setNewGodownName]   = useState('')
   const [newGodownAddress, setNewGodownAddress] = useState('')
-  
+
   const [submitting, setSubmitting]         = useState(false)
   const [alert, setAlert]                   = useState(null)
 
   const load = useCallback(() => {
+    const generation = ++loadGeneration.current
     setLoading(true)
+    setLoadError(false)
     Promise.all([
-      authFetch('/billing/products').then(r => r.ok ? r.json() : []).catch(() => []),
-      authFetch('/billing/godowns').then(r => r.ok ? r.json() : []).catch(() => []),
-      authFetch('/billing/stock-transfers').then(r => r.ok ? r.json() : []).catch(() => []),
+      readAllPages(authFetch, '/billing/products'),
+      readList(authFetch, '/billing/godowns'),
+      readList(authFetch, '/billing/stock-transfers'),
     ]).then(([prodData, godData, transData]) => {
+      if (generation !== loadGeneration.current) return
       const items = Array.isArray(prodData) ? prodData : (prodData && Array.isArray(prodData.items) ? prodData.items : [])
       setProducts(items)
       setGodowns(godData)
       setTransfers(transData)
-    }).finally(() => setLoading(false))
+    }).catch(err => {
+      if (generation !== loadGeneration.current) return
+      logger.error('[STOCK] Failed to load inventory data:', err)
+      setLoadError(true)
+    }).finally(() => { if (generation === loadGeneration.current) setLoading(false) })
   }, [authFetch])
+  useEffect(() => () => { loadGeneration.current++ }, [authFetch])
 
   useEffect(() => {
     load()
@@ -252,6 +269,8 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
   // is that it leaves the catalogue. The dropdown is what makes it findable
   // again — without it, deactivating would look like deletion.
   const [activeFilter, setActiveFilter] = useState('active')
+  const [godownFilter, setGodownFilter] = useState('')
+  const [viewPreset, setViewPreset] = useState('all')
   const [sortConfig, setSortConfig] = useState({ key: '', direction: '' })
 
   const handleSort = (key) => {
@@ -313,11 +332,12 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
   const getFilteredProducts = () => {
     let items = products.filter(p => {
       if (catFilter && p.category !== catFilter) return false
-      
+
       // `is_active` may be undefined on older payloads — treat missing as active
       // so a stale cache never hides a live product.
       const isActive = p.is_active !== false
       if (activeFilter === 'active' && !isActive) return false
+      if (godownFilter && p.godown_id && String(p.godown_id) !== String(godownFilter)) return false
       if (activeFilter === 'inactive' && isActive) return false
 
       const status = getStatus(p)
@@ -514,7 +534,7 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
   const [ctxMenu, setCtxMenu] = useState(null)  // { x, y, items } for right-click context menu
   const [intakeRows, setIntakeRows] = useState(() => {
     try {
-      const saved = localStorage.getItem('bizassist_intake_rows')
+      const saved = localStorage.getItem(`${intakeDraftPrefix}bizassist_intake_rows`)
       return saved ? JSON.parse(saved) : []
     } catch (e) {
       return []
@@ -524,7 +544,7 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
 
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
     try {
-      const saved = localStorage.getItem('bizassist_intake_sidebar_collapsed')
+      const saved = localStorage.getItem(`${intakeDraftPrefix}bizassist_intake_sidebar_collapsed`)
       return saved ? JSON.parse(saved) : false
     } catch (e) {
       return false
@@ -532,13 +552,13 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
   })
 
   useEffect(() => {
-    localStorage.setItem('bizassist_intake_sidebar_collapsed', JSON.stringify(isSidebarCollapsed))
-  }, [isSidebarCollapsed])
+    localStorage.setItem(`${intakeDraftPrefix}bizassist_intake_sidebar_collapsed`, JSON.stringify(isSidebarCollapsed))
+  }, [intakeDraftPrefix, isSidebarCollapsed])
 
   const [intakeDistributor, setIntakeDistributor] = useState(() => {
     const todayISO = new Date().toISOString().slice(0, 10)
     try {
-      const saved = localStorage.getItem('bizassist_intake_distributor')
+      const saved = localStorage.getItem(`${intakeDraftPrefix}bizassist_intake_distributor`)
       return saved ? JSON.parse(saved) : { vendor_id: null, name: '', gstin: '', pan: '', fssai: '', phone: '', address: '', invoice_no: '', invoice_date: todayISO }
     } catch (e) {
       return { vendor_id: null, name: '', gstin: '', pan: '', fssai: '', phone: '', address: '', invoice_no: '', invoice_date: todayISO }
@@ -547,7 +567,7 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
 
   const [intakeAdjustments, setIntakeAdjustments] = useState(() => {
     try {
-      const saved = localStorage.getItem('bizassist_intake_adjustments')
+      const saved = localStorage.getItem(`${intakeDraftPrefix}bizassist_intake_adjustments`)
       return saved ? JSON.parse(saved) : { item_disc: '', cess: '', cash_disc: '' }
     } catch (e) {
       return { item_disc: '', cess: '', cash_disc: '' }
@@ -556,7 +576,7 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
 
   const [intakePayment, setIntakePayment] = useState(() => {
     try {
-      const saved = localStorage.getItem('bizassist_intake_payment')
+      const saved = localStorage.getItem(`${intakeDraftPrefix}bizassist_intake_payment`)
       return saved ? JSON.parse(saved) : { mode: 'Credit', due_date: '' }
     } catch (e) {
       return { mode: 'Credit', due_date: '' }
@@ -565,20 +585,20 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
 
   // Persist drafts to localStorage
   useEffect(() => {
-    localStorage.setItem('bizassist_intake_rows', JSON.stringify(intakeRows))
-  }, [intakeRows])
+    localStorage.setItem(`${intakeDraftPrefix}bizassist_intake_rows`, JSON.stringify(intakeRows))
+  }, [intakeDraftPrefix, intakeRows])
 
   useEffect(() => {
-    localStorage.setItem('bizassist_intake_distributor', JSON.stringify(intakeDistributor))
-  }, [intakeDistributor])
+    localStorage.setItem(`${intakeDraftPrefix}bizassist_intake_distributor`, JSON.stringify(intakeDistributor))
+  }, [intakeDraftPrefix, intakeDistributor])
 
   useEffect(() => {
-    localStorage.setItem('bizassist_intake_adjustments', JSON.stringify(intakeAdjustments))
-  }, [intakeAdjustments])
+    localStorage.setItem(`${intakeDraftPrefix}bizassist_intake_adjustments`, JSON.stringify(intakeAdjustments))
+  }, [intakeDraftPrefix, intakeAdjustments])
 
   useEffect(() => {
-    localStorage.setItem('bizassist_intake_payment', JSON.stringify(intakePayment))
-  }, [intakePayment])
+    localStorage.setItem(`${intakeDraftPrefix}bizassist_intake_payment`, JSON.stringify(intakePayment))
+  }, [intakeDraftPrefix, intakePayment])
 
   const lowStockItems = products.filter(p => getStatus(p) !== 'In Stock').slice(0, 10)
 
@@ -591,12 +611,15 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
 
   const clearIntakeState = useCallback(() => {
     setIntakeRows([])
-    localStorage.removeItem('bizassist_intake_rows')
-    localStorage.removeItem('bizassist_intake_distributor')
-    localStorage.removeItem('bizassist_intake_adjustments')
-    localStorage.removeItem('bizassist_intake_payment')
+    setIntakeDistributor({ vendor_id: null, name: '', gstin: '', pan: '', fssai: '', phone: '', address: '', invoice_no: '', invoice_date: getTodayDateStr() })
+    setIntakeAdjustments({ item_disc: '', cess: '', cash_disc: '' })
+    setIntakePayment({ mode: 'Credit', due_date: '' })
+    localStorage.removeItem(`${intakeDraftPrefix}bizassist_intake_rows`)
+    localStorage.removeItem(`${intakeDraftPrefix}bizassist_intake_distributor`)
+    localStorage.removeItem(`${intakeDraftPrefix}bizassist_intake_adjustments`)
+    localStorage.removeItem(`${intakeDraftPrefix}bizassist_intake_payment`)
     setPrefillProduct(null)
-  }, [])
+  }, [intakeDraftPrefix])
 
   // Close button callback: warns if unsaved intake items exist, clears intake state, and exits to home
   const handleCloseStockPage = useCallback(() => {
@@ -621,6 +644,7 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
   }
 
   const printGRN = () => {
+    const escapeText = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]))
     const gstOfLocal = (r) => (parseFloat(r.cgst_rate) || 0) + (parseFloat(r.sgst_rate) || 0) || (parseFloat(r.igst_rate) || 0)
     const money = (n) =>
       n != null
@@ -647,7 +671,7 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
     })
     const slabList = Object.values(slabMap).sort((a, b) => a.rate - b.rate)
     const taxTotal = slabList.reduce((s, x) => s + x.tax, 0)
-    
+
     const itemDisc = parseFloat(intakeAdjustments?.item_disc) || 0
     const cess = parseFloat(intakeAdjustments?.cess) || 0
     const cashDisc = parseFloat(intakeAdjustments?.cash_disc) || 0
@@ -655,13 +679,16 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
     const payable = taxable + taxTotal + cess - cashDisc
 
     const w = window.open('', '_blank', 'width=800,height=900')
-    if (!w) return
+    if (!w) {
+      setAlert({ type: 'warning', msg: 'Allow pop-ups for STATER Bill, then use Print GRN again.' })
+      return
+    }
     const rowsHtml = intakeRows.map((r, i) => {
       const q = parseFloat(r.qty) || 0, f = parseFloat(r.free) || 0
       const c = parseFloat(r.cost_price) || 0, g = gstOfLocal(r)
       const amt = q * c, taxAmt = amt * g / 100
       return `<tr>
-        <td>${i + 1}</td><td>${r.name || ''}</td><td style="text-align:right">${q}</td>
+        <td>${i + 1}</td><td>${escapeText(r.name)}</td><td style="text-align:right">${q}</td>
         <td style="text-align:right">${f}</td><td style="text-align:right">${c.toFixed(2)}</td>
         <td style="text-align:right">${g}%</td><td style="text-align:right">${taxAmt.toFixed(2)}</td>
         <td style="text-align:right">${(amt + taxAmt).toFixed(2)}</td></tr>`
@@ -681,16 +708,16 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
       <div style="color:#555">${new Date().toLocaleString('en-IN')}</div>
       <div class="grid">
         <div><h2>Distributor</h2>
-          <div>${intakeDistributor.name || '—'}</div>
-          <div>GSTIN: ${intakeDistributor.gstin || '—'}</div>
-          <div>PAN: ${intakeDistributor.pan || '—'}</div>
-          <div>FSSAI: ${intakeDistributor.fssai || '—'}</div>
-          <div>Phone: ${intakeDistributor.phone || '—'}</div>
-          <div>Address: ${intakeDistributor.address || '—'}</div>
+          <div>${escapeText(intakeDistributor.name || '—')}</div>
+          <div>GSTIN: ${escapeText(intakeDistributor.gstin || '—')}</div>
+          <div>PAN: ${escapeText(intakeDistributor.pan || '—')}</div>
+          <div>FSSAI: ${escapeText(intakeDistributor.fssai || '—')}</div>
+          <div>Phone: ${escapeText(intakeDistributor.phone || '—')}</div>
+          <div>Address: ${escapeText(intakeDistributor.address || '—')}</div>
         </div>
         <div><h2>Invoice / Payment</h2>
-          <div>Invoice No: ${intakeDistributor.invoice_no || '—'}</div><div>Invoice Date: ${intakeDistributor.invoice_date || '—'}</div>
-          <div>Payment: ${intakePayment.mode}${intakePayment.due_date ? ' · due ' + intakePayment.due_date : ''}</div></div>
+          <div>Invoice No: ${escapeText(intakeDistributor.invoice_no || '—')}</div><div>Invoice Date: ${escapeText(intakeDistributor.invoice_date || '—')}</div>
+          <div>Payment: ${escapeText(intakePayment.mode)}${intakePayment.due_date ? ' · due ' + escapeText(intakePayment.due_date) : ''}</div></div>
       </div>
       <h2>Items</h2>
       <table><thead><tr><th>#</th><th>Product</th><th style="text-align:right">Qty</th><th style="text-align:right">Free</th>
@@ -725,7 +752,7 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
         })
         const data = await res.json().catch(() => ({}))
         if (!res.ok) throw new Error(data.detail || 'Could not add barcode.')
-        
+
         setIntakeRows(prev => prev.map(r => r._key === editingRowKey ? {
           ...r,
           barcodes: [...(r.barcodes || []), data.barcode ? data : { barcode: code }],
@@ -771,14 +798,122 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
   // hold these CLIPS the trailing ones. Below the breakpoint the buttons are
   // hidden and the same list is handed to the ⋯ menu instead (see index.css).
   // One array so the two renderings cannot drift apart.
-  const toolbarActions = [
-    { label: 'Adjust Stock',   icon: <ZapIcon size={13} />,      action: () => { setAdjustForm(defaultAdjust); setShowAdjustModal(true) } },
-    { label: 'Transfer Stock', icon: <SyncIcon size={13} />,     action: () => { setTransferForm(defaultTransfer); setShowTransferModal(true) } },
-    { label: 'Labels',                                           action: () => setShowLabelModal(true) },
-    { label: exporting ? 'Exporting…' : 'Export',
-      icon: <DownloadIcon size={13} />, action: handleExport, disabled: exporting },
-    { label: 'New Product',    icon: <PlusIcon size={13} />,     action: () => { setEditProduct(null); setShowAddModal(true) }, primary: true },
-  ]
+  // Smart toolbar actions aligned to the current active sub-view
+  const toolbarActions = useMemo(() => {
+    if (activeView === 'intake') {
+      if (intakeRows.length > 0) {
+        return [
+          {
+            label: 'Clear Intake',
+            icon: <CloseIcon size={13} />,
+            action: () => {
+              if (window.confirm('Clear all unsaved intake items?')) {
+                clearIntakeState()
+              }
+            },
+            secondary: true,
+          },
+          {
+            label: 'New Product',
+            icon: <PlusIcon size={13} />,
+            action: () => { setEditProduct(null); setShowAddModal(true) },
+            secondary: true,
+          },
+          {
+            label: 'Print GRN',
+            icon: <PrinterIcon size={13} />,
+            action: printGRN,
+            primary: true,
+          },
+        ]
+      }
+      return [
+        {
+          label: 'Adjust Stock',
+          icon: <ZapIcon size={13} />,
+          action: () => { setAdjustForm(defaultAdjust); setShowAdjustModal(true) },
+          secondary: true,
+        },
+        {
+          label: exporting ? 'Exporting…' : 'Export',
+          icon: <DownloadIcon size={13} />,
+          action: handleExport,
+          disabled: exporting,
+          secondary: true,
+        },
+        {
+          label: 'New Product',
+          icon: <PlusIcon size={13} />,
+          action: () => { setEditProduct(null); setShowAddModal(true) },
+          primary: true,
+        },
+      ]
+    }
+
+    if (activeView === 'godowns') {
+      return [
+        {
+          label: 'Adjust Stock',
+          icon: <ZapIcon size={13} />,
+          action: () => { setAdjustForm(defaultAdjust); setShowAdjustModal(true) },
+          secondary: true,
+        },
+        {
+          label: exporting ? 'Exporting…' : 'Export',
+          icon: <DownloadIcon size={13} />,
+          action: handleExport,
+          disabled: exporting,
+          secondary: true,
+        },
+        {
+          label: 'New Product',
+          icon: <PlusIcon size={13} />,
+          action: () => { setEditProduct(null); setShowAddModal(true) },
+          secondary: true,
+        },
+        {
+          label: 'Transfer Stock',
+          icon: <SyncIcon size={13} />,
+          action: () => { setTransferForm(defaultTransfer); setShowTransferModal(true) },
+          primary: true,
+        },
+      ]
+    }
+
+    // Default: 'catalogue' view
+    return [
+      {
+        label: 'Adjust Stock',
+        icon: <ZapIcon size={13} />,
+        action: () => { setAdjustForm(defaultAdjust); setShowAdjustModal(true) },
+        secondary: true,
+      },
+      {
+        label: 'Transfer Stock',
+        icon: <SyncIcon size={13} />,
+        action: () => { setTransferForm(defaultTransfer); setShowTransferModal(true) },
+        secondary: true,
+      },
+      {
+        label: 'Labels',
+        action: () => setShowLabelModal(true),
+        secondary: true,
+      },
+      {
+        label: exporting ? 'Exporting…' : 'Export',
+        icon: <DownloadIcon size={13} />,
+        action: handleExport,
+        disabled: exporting,
+        secondary: true,
+      },
+      {
+        label: 'New Product',
+        icon: <PlusIcon size={13} />,
+        action: () => { setEditProduct(null); setShowAddModal(true) },
+        primary: true,
+      },
+    ]
+  }, [activeView, intakeRows.length, exporting, handleExport, clearIntakeState, printGRN, defaultAdjust, defaultTransfer])
 
   return (
     <PageShell embedded={embedded} title="Stock & Inventory">
@@ -888,7 +1023,7 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
               {toolbarActions.map((a, i) => (
                 <button
                   key={i}
-                  className={`btn ${a.primary ? 'btn-primary' : 'btn-secondary'} btn-sm ws-bar-action`}
+                  className={`btn ${a.primary ? 'btn-primary' : 'btn-secondary'} btn-sm ${a.primary ? '' : 'ws-bar-action'}`}
                   disabled={a.disabled}
                   onClick={a.action}
                 >
@@ -937,6 +1072,7 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
           {TABS.map(tab => (
             <button
               key={tab.key}
+              data-tour={`stock-tab-${tab.key}`}
               className={`ws-tab ${activeView === tab.key ? 'active' : ''}`}
               onClick={() => setActiveView(tab.key)}
             >
@@ -1005,6 +1141,34 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
                     <option value="inactive">Inactive</option>
                     <option value="">All</option>
                   </CustomSelect>
+                  {godowns?.length > 0 && (
+                    <CustomSelect
+                      className="form-select"
+                      style={{ height: 34, fontSize: '0.82rem', minWidth: 125, width: 'auto', flexShrink: 0 }}
+                      value={godownFilter}
+                      onChange={e => setGodownFilter(e.target.value)}
+                    >
+                      <option value="">All Godowns</option>
+                      {godowns.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                    </CustomSelect>
+                  )}
+                  <div style={{ display: 'inline-flex', background: 'var(--bg-3)', padding: 2, borderRadius: 'var(--radius-md)', height: 34 }}>
+                    {[
+                      { id: 'all', label: 'All Cols' },
+                      { id: 'operations', label: 'Operations' },
+                      { id: 'margins', label: 'Margins' }
+                    ].map(vp => (
+                      <button
+                        key={vp.id}
+                        type="button"
+                        className={`btn btn-xs ${viewPreset === vp.id ? 'btn-primary' : 'btn-ghost'}`}
+                        style={{ padding: '0 8px', fontSize: '0.72rem' }}
+                        onClick={() => setViewPreset(vp.id)}
+                      >
+                        {vp.label}
+                      </button>
+                    ))}
+                  </div>
                   <div style={{ flex: 1 }} />
                   {isRefreshing && (
                     <span className="toolbar-refresh-spinner">
@@ -1047,9 +1211,57 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
                     .data-table.inv-dense td { padding: 4px 7px; font-size: 11.5px; }
                     .data-table.inv-dense .td-primary { font-size: 11.5px; line-height: 1.2; }
                     .data-table.inv-dense .td-mono { font-size: 10.5px; }
+                    /* Sticky freeze panes */
+                    .data-table.inv-dense th:first-child,
+                    .data-table.inv-dense td:first-child {
+                      position: sticky;
+                      left: 0;
+                      z-index: 4;
+                      background: var(--bg-1);
+                    }
+                    .data-table.inv-dense th:nth-child(2),
+                    .data-table.inv-dense td:nth-child(2) {
+                      position: sticky;
+                      left: 32px;
+                      z-index: 4;
+                      background: var(--bg-1);
+                    }
+                    .data-table.inv-dense th:nth-child(3),
+                    .data-table.inv-dense td:nth-child(3) {
+                      position: sticky;
+                      left: 98px;
+                      z-index: 4;
+                      background: var(--bg-1);
+                      box-shadow: 2px 0 6px -2px rgba(0,0,0,0.12);
+                    }
+                    .data-table.inv-dense th:last-child,
+                    .data-table.inv-dense td:last-child {
+                      position: sticky;
+                      right: 0;
+                      z-index: 4;
+                      background: var(--bg-1);
+                      box-shadow: -2px 0 6px -2px rgba(0,0,0,0.12);
+                    }
+                    .data-table.inv-dense thead tr th {
+                      z-index: 5 !important;
+                    }
+                    .data-table.inv-dense tr:hover td:first-child,
+                    .data-table.inv-dense tr:hover td:nth-child(2),
+                    .data-table.inv-dense tr:hover td:nth-child(3),
+                    .data-table.inv-dense tr:hover td:last-child {
+                      background: var(--bg-2);
+                    }
                   `}</style>
+                  {protectTour && <p className="tour-private-stock-note">Some pricing and margin details are protected in this preview. Full workflow available after sign-in.</p>}
                   {loading ? (
                     <div className="page-loader"><span className="spinner" /> Loading…</div>
+                  ) : loadError ? (
+                    <div className="empty-state" role="alert" style={{ padding: '3rem 1rem', textAlign: 'center' }}>
+                      <div className="empty-icon"><InventoryIcon size={28} /></div>
+                      <h3>Stock data is unavailable</h3>
+                      <p style={{ color: 'var(--text-muted)', marginBottom: '1rem' }}>Could not reach the server to load inventory records. Please check your connection.</p>
+                      <button onClick={load} className="btn btn-secondary">Retry</button>
+                    </div>
                   ) : (
                     <table ref={invCols.tableRef} className={`data-table inv-dense ${invCols.tableClassName}`.trim()}>
                       <thead><tr>
@@ -1067,11 +1279,11 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
                             key={c.key}
                             {...invCols.headerProps(c.key, {
                               style: { textAlign: c.align || 'center', ...(c.width && !invCols.widths[c.key] ? { width: c.width } : {}) },
-                              title: c.title,
+                              title: protectTour && PRIVATE_STOCK_COLUMNS.has(c.key) ? undefined : c.title,
                             })}
                           >
-                            {c.label}
-                            <ColumnResizer {...invCols.resizerProps(c.key)} />
+                            {protectTour && PRIVATE_STOCK_COLUMNS.has(c.key) ? <TourPrivateValue label="Protected pricing or margin column" /> : c.label}
+                            {!(protectTour && PRIVATE_STOCK_COLUMNS.has(c.key)) && <ColumnResizer {...invCols.resizerProps(c.key)} />}
                           </th>
                         ))}
                       </tr></thead>
@@ -1089,7 +1301,11 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
                             <tr
                               key={p.id}
                               className={p.is_active === false ? 'row-inactive' : undefined}
-                              style={{ background: isLow ? 'rgba(239,68,68,.03)' : undefined, cursor: 'context-menu' }}
+                              style={{
+                                background: status === 'Out' ? 'var(--danger-dim, rgba(239,68,68,0.06))' : status === 'Low' ? 'var(--warning-dim, rgba(245,158,11,0.06))' : undefined,
+                                borderLeft: status === 'Out' ? '3px solid var(--danger)' : status === 'Low' ? '3px solid var(--warning)' : undefined,
+                                cursor: 'context-menu'
+                              }}
                               onContextMenu={e => {
                                 e.preventDefault()
                                 setCtxMenu({
@@ -1160,29 +1376,34 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
                                 {p.barcode && <div style={{ color: 'var(--text-muted)', fontFamily: 'monospace', fontSize: '0.66rem' }}>{p.barcode}</div>}
                               </td>
                               <td className="td-mono">{p.hsn_sac || '—'}</td>
-                              <td style={{ textAlign: 'right', fontWeight: 700, color: isLow ? 'var(--danger)' : 'inherit' }}>
-                                {p.stock_qty ?? p.quantity ?? 0}
+                              <td style={{ textAlign: 'right', fontWeight: 700, color: status === 'Out' ? 'var(--danger)' : status === 'Low' ? 'var(--warning)' : 'inherit' }}>
+                                <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-end', gap: 1 }}>
+                                  <span>{p.stock_qty ?? p.quantity ?? 0}</span>
+                                  {p.min_stock > 0 && status !== 'In Stock' && (
+                                    <span style={{ fontSize: '0.62rem', fontWeight: 500, color: 'var(--text-muted)' }}>min {p.min_stock}</span>
+                                  )}
+                                </div>
                               </td>
                               <td style={{ color: 'var(--text-muted)' }}>{p.unit || 'pcs'}</td>
                               <td style={{ textAlign: 'right' }}>{num(d.mrp || null)}</td>
-                              <td style={{ textAlign: 'right' }}>{num(d.cost || null)}</td>
+                              <td data-tour-private={protectTour ? 'stock-cost' : undefined} style={{ textAlign: 'right' }}>{protectTour ? <TourPrivateValue /> : num(d.cost || null)}</td>
                               <td style={{ textAlign: 'right', fontWeight: 600 }}>{num(d.sell || null)}</td>
                               {/* A tier left at 0 is not "free" — it is unset, and
                                   getPriceOptions drops it, so POS never offers it.
                                   Show that as an em dash rather than ₹0. */}
                               <td style={{ textAlign: 'right', color: p.wholesale_price > 0 ? 'inherit' : 'var(--text-muted)' }}>
-                                {p.wholesale_price > 0 ? num(p.wholesale_price) : '—'}
+                                {protectTour ? <TourPrivateValue /> : p.wholesale_price > 0 ? num(p.wholesale_price) : '—'}
                               </td>
                               <td style={{ textAlign: 'right', color: p.distributor_price > 0 ? 'inherit' : 'var(--text-muted)' }}>
-                                {p.distributor_price > 0 ? num(p.distributor_price) : '—'}
+                                {protectTour ? <TourPrivateValue /> : p.distributor_price > 0 ? num(p.distributor_price) : '—'}
                               </td>
                               <td style={{ textAlign: 'right', color: 'var(--text-muted)' }}>{d.gst ? `${d.gst.toFixed(0)}%` : '—'}</td>
                               <td style={{ textAlign: 'right', color: 'var(--text-muted)' }}>{pct(d.discPct)}</td>
-                              <td style={{ textAlign: 'right', color: d.roi == null ? 'var(--text-muted)' : d.roi >= 0 ? good : 'var(--danger)' }}>{pct(d.roi)}</td>
-                              <td style={{ textAlign: 'right', color: d.profit == null ? 'var(--text-muted)' : d.profit >= 0 ? good : 'var(--danger)' }}>{pct(d.profit)}</td>
-                              <td style={{ textAlign: 'right' }}>{num(d.netCost)}</td>
-                              <td style={{ textAlign: 'right' }}>{num(d.netMrp)}</td>
-                              <td><span className={`badge ${status === 'In Stock' ? 'badge-success' : status === 'Low' ? 'badge-warning' : 'badge-danger'}`}>{status}</span></td>
+                              <td style={{ textAlign: 'right', color: protectTour || d.roi == null ? 'var(--text-muted)' : d.roi >= 0 ? good : 'var(--danger)' }}>{protectTour ? <TourPrivateValue /> : pct(d.roi)}</td>
+                              <td style={{ textAlign: 'right', color: protectTour || d.profit == null ? 'var(--text-muted)' : d.profit >= 0 ? good : 'var(--danger)' }}>{protectTour ? <TourPrivateValue /> : pct(d.profit)}</td>
+                              <td style={{ textAlign: 'right' }}>{protectTour ? <TourPrivateValue /> : num(d.netCost)}</td>
+                              <td style={{ textAlign: 'right' }}>{protectTour ? <TourPrivateValue /> : num(d.netMrp)}</td>
+                              <td><span className={`badge ${status === 'In Stock' ? 'badge-success' : status === 'Low' ? 'badge-warning' : 'badge-danger'}`} style={{ fontWeight: 700 }}>{status === 'Out' ? 'Out of Stock' : status === 'Low' ? 'Low Stock' : 'In Stock'}</span></td>
                               <td>
                                 <div style={{ display: 'flex', gap: 4 }}>
                                   <button
@@ -1447,6 +1668,8 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
                   </div>
                   {loading ? (
                     <div style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>Loading…</div>
+                  ) : loadError ? (
+                    <div style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>Alerts unavailable</div>
                   ) : lowStockItems.length === 0 ? (
                     <div style={{ color: '#22c55e', fontSize: '0.78rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
                       <CheckIcon size={14} /> All products have stock

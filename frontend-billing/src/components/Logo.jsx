@@ -32,7 +32,7 @@ export function BuildingMark({ size = 28, accent = 'var(--accent)', strokeWidth 
       shapeRendering="geometricPrecision"
       style={{ display: 'block', flexShrink: 0, ...style }}
     >
-      {/* Tower outlines */}
+      {/* Classical Stepped Treasury & Pillar outlines */}
       <g stroke="currentColor" strokeWidth={strokeWidth} strokeLinejoin="round">
         <rect x="8"  y="36" width="12" height="18" rx="1" />
         <rect x="26" y="26" width="12" height="28" rx="1" />
@@ -84,23 +84,37 @@ export function NavMark({ size = 18 }) {
 }
 
 // ─── Wordmark + mark ──────────────────────────────────────────────────────────
-export function Logo({ size = 24, wordmark = true, className = '' }) {
+export function Logo({ size = 26, wordmark = true, className = '', showHeritage = true }) {
   return (
     <span
-      className={`ba-logo ${className}`}
-      style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}
+      className={`stater-logo ${className}`}
+      style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}
     >
       <BuildingMark size={size} />
       {wordmark && (
-        <span style={{
-          fontFamily: "'Crimson Pro', Georgia, serif",
-          fontSize: 20,
-          fontWeight: 700,
-          letterSpacing: '0.01em',
-          color: 'var(--text-primary)',
-          lineHeight: 1,
-        }}>
-          Biz<span style={{ color: 'var(--accent)' }}>Assist</span>
+        <span style={{ display: 'inline-flex', flexDirection: 'column', lineHeight: 1.05 }}>
+          <span style={{
+            fontSize: 18,
+            fontWeight: 900,
+            letterSpacing: '0.06em',
+            color: 'var(--text-primary)',
+            fontFamily: "'Inter', -apple-system, system-ui, sans-serif",
+            textTransform: 'uppercase',
+          }}>
+            STATER <span style={{ color: 'var(--accent)', fontWeight: 600, letterSpacing: 'normal', textTransform: 'none' }}>Bill</span>
+          </span>
+          {showHeritage && (
+            <span style={{
+              fontSize: '0.58rem',
+              letterSpacing: '0.12em',
+              textTransform: 'uppercase',
+              color: 'var(--text-muted, #777)',
+              marginTop: 2,
+              fontWeight: 600,
+            }}>
+              στατήρ • by ARES
+            </span>
+          )}
         </span>
       )}
     </span>
