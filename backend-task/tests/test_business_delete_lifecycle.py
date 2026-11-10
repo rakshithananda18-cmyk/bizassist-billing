@@ -9,7 +9,7 @@ from sqlalchemy import func, select
 
 from app.billing_models import BillingUser
 from app.db import Base, SessionLocal
-from app.models import FieldTask
+from app.models import FieldHandoffTicketUse, FieldTask
 from tests.conftest import Biz, check_in, geo
 from tests.test_billing_invoices import _bill, _customer
 from tests.test_runs_tasks import _plan
@@ -59,8 +59,10 @@ def test_cloud_wipe_removes_the_whole_field_tree_only_for_that_business(client, 
     other.shop('Surviving fixture')
     admin = billing_admin(monkeypatch)
     with SessionLocal() as db:
+        db.add(FieldHandoffTicketUse(digest='fixture_digest_' + str(biz.business_id), business_id=biz.business_id, expires_at=2000000000))
+        db.commit()
         owned = counts(db, biz.business_id)
-        assert len(owned) == 14 and all(count > 0 for count in owned.values()), owned
+        assert len(owned) == 15 and all(count > 0 for count in owned.values()), owned
         survivor = counts(db, other.business_id)
         admin.wipe_user_data(biz.business_id, db)
         assert all(count == 0 for count in counts(db, biz.business_id).values())

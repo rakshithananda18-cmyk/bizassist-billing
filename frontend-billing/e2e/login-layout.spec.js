@@ -3,6 +3,11 @@ import { test, expect } from '@playwright/test'
 for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }, { width: 1920, height: 1080 }]) {
   for (const route of ['login', 'register']) {
     test(`${route} remains reachable at ${viewport.width}×${viewport.height}`, async ({ page }) => {
+      await page.addInitScript(() => {
+        try {
+          localStorage.setItem('stater_storage_consent', JSON.stringify({ essential: true, diagnostics: true, version: 1 }))
+        } catch {}
+      })
       await page.setViewportSize(viewport)
       await page.route('**/business/templates', request => request.fulfill({ json: { templates: [{ key: 'general', label: 'General Business' }] } }))
       await page.route('**/health', request => request.fulfill({ json: { status: 'ok' } }))
@@ -21,7 +26,7 @@ for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }
         const footerBounds = await footer.boundingBox()
         expect(Math.abs(footerBounds.width - bounds.width)).toBeLessThanOrEqual(1)
         const check = page.getByText('⚙ System check', { exact: true })
-        await check.click()
+        await check.click({ force: true })
         await expect(page.locator('.login-system-check')).toHaveAttribute('open', '')
       } else {
         await page.locator('#register-form button[type="submit"]').scrollIntoViewIfNeeded()

@@ -229,7 +229,8 @@ def test_real_role_signup_login_staff_paid_gate_and_public_share(tenant):
     # constrained and inherits/sets the signed tenant before looking up settings.
     assert require_plan(force_enforcement=True)(identity)["id"] == created["id"]
     counter = "counter_" + uuid.uuid4().hex[:8]
-    create_staff(CreateStaff(username=counter, password="ReviewPass123!"), current_user=identity, db=db)
+    staff_phone = "9" + str(uuid.uuid4().int % 1000000000).zfill(9)
+    create_staff(CreateStaff(username=counter, password="ReviewPass123!", phone=staff_phone), current_user=identity, db=db)
     db.close()
     db = factory()
     staff = staff_login(StaffLoginRequest(owner_username=username, staff_login_name=counter, password="ReviewPass123!"), request=request, db=db)

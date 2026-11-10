@@ -10,40 +10,40 @@ app_port: 7860
 
 <div align="center">
 
-# BizAssist
+# STATER Bill (BizAssist)
 ### AI-Powered Business Intelligence, POS & Accounting Ecosystem
 
-[![Version](https://img.shields.io/badge/version-1.2.2-blue.svg?style=for-the-badge)](https://github.com/rakshithananda18-cmyk/bizassist-billing)
+[![Version](https://img.shields.io/badge/version-1.2.6-blue.svg?style=for-the-badge)](https://github.com/rakshithananda18-cmyk/bizassist-billing)
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg?style=for-the-badge)](#-running-tests)
 [![Python](https://img.shields.io/badge/Python-3.12-3776AB.svg?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
 [![React](https://img.shields.io/badge/React-18.0-61DAFB.svg?style=for-the-badge&logo=react&logoColor=black)](https://react.dev)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-009688.svg?style=for-the-badge&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
 [![License](https://img.shields.io/badge/License-UNLICENSED-red.svg?style=for-the-badge)](#)
 
-*Offline-first POS, custom document labeling, double-entry ledgers with tamper-evident hash chains, multi-godown stock management, and a 4-tier cost-optimized AI advisor.*
+*Offline-first POS, custom document labeling, double-entry ledgers with tamper-evident hash chains, multi-godown stock management, native Windows & macOS desktop installers, and a 4-tier cost-optimized AI advisor.*
 
 ---
 
-[Quick Start](#-quick-start) â€¢ [Features](#-core-features) â€¢ [Architecture](#-architecture--ai-router) â€¢ [Testing](#-running-tests) â€¢ [Docs](#-key-documentation)
+[Quick Start](#-quick-start) • [Features](#-core-features) • [Architecture](#-architecture--ai-router) • [Testing](#-running-tests) • [Docs](#-key-documentation)
 
 </div>
 
 <br />
 
-## ðŸŒŸ Overview
+## 🌟 Overview
 
-**BizAssist** is an enterprise-grade, offline-first business management platform designed for retail, wholesale, distribution, and service enterprises. It pairs a lightning-fast barcode POS counter with automated double-entry accounting, real-time stock intake, B2B supplier networking, and an LLM-driven business advisor.
+**STATER Bill (BizAssist)** is an enterprise-grade, offline-first business management platform designed for retail, wholesale, distribution, and service enterprises. It pairs a lightning-fast barcode POS counter with automated double-entry accounting, real-time stock intake, B2B supplier networking, native desktop installers, and an LLM-driven business advisor.
 
 ---
 
-## âš¡ Quick Start
+## ⚡ Quick Start
 
-### 1ï¸âƒ£ Install Dependencies
+### 1️⃣ Install Dependencies
 ```bash
 .\dependencies.bat
 ```
 
-### 2ï¸âƒ£ Environment Setup
+### 2️⃣ Environment Setup
 Copy the example environment file:
 ```bash
 copy .env.example backend\.env
@@ -55,14 +55,14 @@ JWT_SECRET=dev-test-secret-please-change-0123456789abcdef
 DATABASE_URL=sqlite:///./bizassist.db
 ```
 
-### 3ï¸âƒ£ Launch Development Environment
+### 3️⃣ Launch Development Environment
 ```bash
 .\start_dev.bat
 ```
 > **Services Started:**  
-> ðŸ”¹ **Backend API:** `http://localhost:8001`  
-> ðŸ”¹ **POS Billing App:** `http://localhost:5174`  
-> ðŸ”¹ **AI Dashboard:** `http://localhost:5173`
+> 🔹 **Backend API:** `http://localhost:8001`  
+> 🔹 **POS Billing App:** `http://localhost:5174`  
+> 🔹 **AI Dashboard:** `http://localhost:5173`
 
 ---
 
@@ -71,17 +71,21 @@ DATABASE_URL=sqlite:///./bizassist.db
 | Feature Module | Description & Capabilities |
 | :--- | :--- |
 | 🛒 **POS Billing Counter** | Barcode-first scanning, multi-tab carts, keyboard shortcuts, split payments (Cash, UPI QR, Card, Credit). |
+| 💻 **Native Desktop App (v1.2.6)** | Direct in-app downloads for Windows 64-bit (`.exe`) and macOS (`.dmg` for Apple Silicon & Intel) with offline-first billing and ESC/POS thermal printing. |
 | 🛠️ **Recovery Checks** | The recovery console (`backend/services/self_healing.py`) diagnoses journal integrity mismatches without re-sealing altered entries, and supports guarded stock, sync outbox and staff-session recovery. |
 | 🏷️ **Dynamic Labels (`useDocLabels`)** | Customize document names (*Sales Invoice*, *Credit Note*, *Debit Note*, *Voucher*). All UI & PDF headers update instantly. |
-| 🔒 **Privacy & Security** | 1-click KPI blur mode for public counters, passcode lock, and immediate JWT session invalidation on staff role/password update (`token_version`). |
+| 🔒 **Privacy & Protected Demo Mode** | Frosted blur protection for demo workspace routes and button labels, 1-click KPI blur mode for public counters, passcode lock, and immediate JWT session invalidation (`token_version`). |
+| 🔔 **Unified Smart Notifications** | Real-time notification hub with categorized tabs for Billing, Field Team, Offers (1-click WhatsApp dispatch), and What's New changelogs. |
+| ✉️ **Branded Transactional Emails** | Beautiful, theme-aligned responsive templates for welcome onboarding, secure phone/OTP verifications, and password change alerts via Brevo. |
 | 📜 **Audit Hash Chains** | Append-only double-entry ledger (`JournalEntry`) linked by SHA-256 cryptographic hash chains to detect database tampering. |
 | 📦 **Stock Intake & Godowns** | Multi-item purchase intake grid with landed cost, batch expiry tracking, and multi-location warehouse transfers. |
 | 🤝 **B2B Network & Price Tiers** | Connect buyers & suppliers via BizID codes; auto-apply *Wholesale*, *Distributor*, or *Standard* customer pricing tiers. |
+| 🚚 **Field Team Operations** | Dedicated Cloud Run service for field routes, attendance check-ins, store requirements, and delivery tracking. |
 | 🔄 **Dual Hosting & Solid Sync** | Seamless switching between offline local SQLite and cloud PostgreSQL with aggregate document sync, parent UID re-linking, and paginated outbox queues. |
 
 ---
 
-## ðŸ¤– Architecture & AI Router
+## 🤖 Architecture & AI Router
 
 All user queries pass through a 4-tier cost-optimized intent router:
 
@@ -147,9 +151,9 @@ cd backend
 
 ---
 
-## ðŸ§ª Running Tests
+## 🧪 Running Tests
 
-BizAssist includes a comprehensive dual test suite (970+ backend tests and 300+ frontend tests).
+BizAssist includes a comprehensive dual test suite (970+ backend tests and 1,000+ frontend unit & component tests across 144 test files).
 
 ```bash
 # Run both Backend & Frontend test suites in parallel
@@ -162,45 +166,45 @@ BizAssist includes a comprehensive dual test suite (970+ backend tests and 300+ 
 
 ---
 
-## ðŸ“ Repository Structure
+## 📁 Repository Structure
 
 ```text
 bizassist-billing/
-â”œâ”€â”€ backend/                  # FastAPI Python Service (API, Billing, Accounting, Sync, AI)
-â”‚   â”œâ”€â”€ core/                 # Business logic, command handlers, and algorithms
-â”‚   â”œâ”€â”€ database/             # SQLAlchemy schemas, models & migrations
-â”‚   â”œâ”€â”€ routes/               # API endpoints
-â”‚   â””â”€â”€ tests/                # 970+ Pytest unit & integration tests
-â”œâ”€â”€ frontend-billing/         # Primary React POS & Billing Web App
-â”‚   â”œâ”€â”€ src/components/       # POS, Invoice, Stock & Modal components
-â”‚   â”œâ”€â”€ src/contexts/         # Auth, Confirm, & Theme providers
-â”‚   â”œâ”€â”€ src/hooks/            # useDocLabels, useConfirm, usePageLifecycle...
-â”‚   â””â”€â”€ src/__tests__/        # 300+ Vitest component & unit tests
-â”œâ”€â”€ frontend-ai/              # AI Assistant & Analytics Dashboard
-â”œâ”€â”€ backend-task/             # Field Team API (Cloud Run, shared DB) - see backend-task/README.md
-â”œâ”€â”€ frontend-task/            # Field Team PWA for owners & field staff (own Vercel project)
-â”œâ”€â”€ desktop/                  # Electron desktop wrapper & build scripts
-â”œâ”€â”€ docs/                     # Architecture, user guides & technical decision logs
-â”œâ”€â”€ run_tests.bat             # Fast test runner script
-â””â”€â”€ start_dev.bat             # Development server launcher
+├── backend/                  # FastAPI Python Service (API, Billing, Accounting, Sync, AI)
+│   ├── core/                 # Business logic, command handlers, and algorithms
+│   ├── database/             # SQLAlchemy schemas, models & migrations
+│   ├── routes/               # API endpoints
+│   └── tests/                # 970+ Pytest unit & integration tests
+├── frontend-billing/         # Primary React POS & Billing Web App (STATER Bill)
+│   ├── src/components/       # POS, Invoice, Stock, Modal & Desktop Download components
+│   ├── src/contexts/         # Auth, Confirm, & Theme providers
+│   ├── src/hooks/            # useDocLabels, useConfirm, usePageLifecycle...
+│   └── src/__tests__/        # 1,000+ Vitest component & unit tests (144 test files)
+├── frontend-ai/              # AI Assistant & Analytics Dashboard
+├── backend-task/             # Field Team API (Cloud Run, shared DB) - see backend-task/README.md
+├── frontend-task/            # Field Team PWA for owners & field staff (own Vercel project)
+├── desktop/                  # Electron desktop wrapper & build scripts (Windows & macOS installers)
+├── docs/                     # Architecture, user guides & technical decision logs
+├── run_tests.bat             # Fast test runner script
+└── start_dev.bat             # Development server launcher
 ```
 
 ---
 
-## ðŸ“– Key Documentation
+## 📖 Key Documentation
 
 | Document | Content Summary |
 | :--- | :--- |
-| ðŸ“Œ **[MASTER_PLAN.md](docs/MASTER_PLAN.md)** | Core vision, architectural decisions (D1â€“D10), roadmap. |
-| ðŸ—ï¸ **[ARCHITECTURE.md](docs/ARCHITECTURE.md)** | Layer-by-layer system architecture & data flows. |
-| ðŸš€ **[SETUP_AND_DEPLOYMENT.md](docs/SETUP_AND_DEPLOYMENT.md)** | Local environment setup, Docker & cloud deployment guide. |
-| ðŸ§ª **[TESTING.md](docs/TESTING.md)** | Testing strategy, RLS tenant isolation & benchmark instructions. |
-| ðŸ“˜ **[USER_GUIDE.md](docs/USER_GUIDE.md)** | User manual for POS operations, custom labels, and AI queries. |
-| ðŸ›ï¸ **[FOUNDATION.md](backend/FOUNDATION.md)** | Backend conventions, tenant isolation, and transaction safety. |
+| 📌 **[MASTER_PLAN.md](docs/MASTER_PLAN.md)** | Core vision, architectural decisions (D1–D10), roadmap. |
+| 🏗️ **[ARCHITECTURE.md](docs/ARCHITECTURE.md)** | Layer-by-layer system architecture & data flows. |
+| 🚀 **[SETUP_AND_DEPLOYMENT.md](docs/SETUP_AND_DEPLOYMENT.md)** | Local environment setup, Docker & cloud deployment guide. |
+| 🧪 **[TESTING.md](docs/TESTING.md)** | Testing strategy, RLS tenant isolation & benchmark instructions. |
+| 📘 **[USER_GUIDE.md](docs/USER_GUIDE.md)** | User manual for POS operations, custom labels, and AI queries. |
+| 🏛️ **[FOUNDATION.md](backend/FOUNDATION.md)** | Backend conventions, tenant isolation, and transaction safety. |
 | 🚚 **[Field Team plan](docs/FIELD_TEAM_MASTER_PLAN.md)** | Field staff app (attendance, routes, deliveries): why a separate service on the shared database, security, go-live order. |
 
 ---
 
 <div align="center">
-  <sub>Built with â¤ï¸ for modern businesses â€¢ BizAssist Engine</sub>
+  <sub>Built with ❤️ for modern businesses • STATER Bill / BizAssist Engine</sub>
 </div>
