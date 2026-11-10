@@ -405,7 +405,7 @@ async def _set_rls_business_id(request: Request, call_next):
     err_msg = None
     try:
         response = await call_next(request)
-        status_code = response.status_code
+        status_code = getattr(response, "status_code", 200)
         return response
     except Exception as exc:
         err_msg = str(exc)

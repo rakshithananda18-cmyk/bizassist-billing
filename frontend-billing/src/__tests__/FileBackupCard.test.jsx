@@ -83,7 +83,7 @@ describe('FileBackupCard', () => {
     const { container } = render(<FileBackupCard token="test-token" />)
     selectBackup(container, backupFile(contents))
 
-    expect(await screen.findByText(/not a valid BizAssist backup/)).toBeInTheDocument()
+    expect(await screen.findByText(/not a valid (BizAssist|Stater) backup/)).toBeInTheDocument()
     expect(fetch).not.toHaveBeenCalled()
     expect(screen.getByRole('button', { name: 'Restore from file' })).toBeEnabled()
     expect(screen.queryByRole('button', { name: 'Reload restored data' })).not.toBeInTheDocument()

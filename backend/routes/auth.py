@@ -1334,7 +1334,7 @@ def update_settings(
             raise HTTPException(status_code=403, detail="Permission denied: cashier restricted from modifying global settings")
         if req.general is not None:
             blocked_keys = ("realtime_sync_global", "hosting_mode")
-            if any(k in req.general and req.general[k] != current.get("general", {}).get(k) for k in blocked_keys):
+            if any(k in req.general for k in blocked_keys):
                 logger.warning(f"[SETTINGS] Cashier '{current_user.get('username')}' blocked from modifying global general configurations")
                 raise HTTPException(status_code=403, detail="Permission denied: cashier restricted from modifying global configurations")
 

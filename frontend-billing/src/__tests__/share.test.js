@@ -13,7 +13,7 @@ describe('buildUpiUri', () => {
     expect(buildUpiUri({ vpa: 'shop@upi', amount: 100 })).toContain('pa=shop@upi')
   })
   it('omits the note when not given and defaults amount to 0.00', () => {
-    expect(buildUpiUri({ vpa: 'x@upi' })).toBe('upi://pay?pa=x@upi&pn=BizAssist%20Merchant&am=0.00&cu=INR')
+    expect(buildUpiUri({ vpa: 'x@upi' })).toBe('upi://pay?pa=x@upi&pn=Stater%20Merchant&am=0.00&cu=INR')
   })
 })
 

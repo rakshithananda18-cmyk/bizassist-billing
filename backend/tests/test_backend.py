@@ -457,7 +457,8 @@ def test_admin_endpoints():
     # 2.3 Test Update User as Admin
     update_resp = client.put(f"/admin/update-user/{new_user_id}", json={
         "username": "updated_biz",
-        "password": "updated_password",
+        "email": "admin-updated@example.com",
+        "password": "UpdatedPassword1",
         "business_name": "Updated Business"
     }, headers=admin_headers)
     assert update_resp.status_code == 200
@@ -472,7 +473,7 @@ def test_admin_endpoints():
     # Test login of updated merchant with new credentials (should succeed)
     updated_login = client.post("/login", json={
         "username": "updated_biz",
-        "password": "updated_password"
+        "password": "UpdatedPassword1"
     })
     assert updated_login.status_code == 200
     assert updated_login.json()["business_name"] == "Updated Business"

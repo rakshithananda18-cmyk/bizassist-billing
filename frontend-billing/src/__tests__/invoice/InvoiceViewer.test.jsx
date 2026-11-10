@@ -97,7 +97,7 @@ describe('InvoiceViewer', () => {
     mount()
     await waitFor(() => screen.getAllByTestId('invoice-classic'))
 
-    await userEvent.click(screen.getByRole('tab', { name: 'BizAssist' }))
+    await userEvent.click(screen.getByRole('tab', { name: /^(BizAssist|Stater)$/i }))
     await waitFor(() => expect(screen.getAllByTestId('invoice-modern').length).toBeGreaterThan(0))
     expect(screen.queryAllByTestId('invoice-classic')).toHaveLength(0)
 
@@ -213,7 +213,7 @@ describe('InvoiceViewer', () => {
   it('remembers the per-user last-used template in localStorage', async () => {
     mount()
     await waitFor(() => screen.getAllByTestId('invoice-classic'))
-    await userEvent.click(screen.getByRole('tab', { name: 'BizAssist' }))
+    await userEvent.click(screen.getByRole('tab', { name: /^(BizAssist|Stater)$/i }))
     expect(localStorage.getItem('invoice.template.BA-XY12AB')).toBe('modern')
   })
 
