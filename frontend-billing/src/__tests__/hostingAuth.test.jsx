@@ -240,7 +240,7 @@ describe('Login staff resolution (T2)', () => {
     )
 
     // Type owner username and click continue
-    fireEvent.change(screen.getByPlaceholderText(/store/), { target: { value: 'owner1' } })
+    fireEvent.change(screen.getByLabelText('Business Owner Username'), { target: { value: 'owner1' } })
     fireEvent.click(screen.getByRole('button', { name: /Continue/i }))
 
     // Verify fallback to cloud, detected staff, and shows choice options
@@ -544,7 +544,7 @@ describe('Register two options (T4)', () => {
     )
 
     // Fill registration form
-    fireEvent.change(screen.getByPlaceholderText('e.g. store'), { target: { value: 'testshop' } })
+    fireEvent.change(screen.getByLabelText('Store Username'), { target: { value: 'testshop' } })
     fireEvent.change(screen.getByPlaceholderText('••••••••'), { target: { value: 'Password123!' } })
     
     // Select Confirm Password by id since it has no placeholder
@@ -558,7 +558,7 @@ describe('Register two options (T4)', () => {
     fireEvent.click(screen.getByText('Local + Cloud'))
 
     // Submit form
-    fireEvent.submit(screen.getByRole('button', { name: /Register/i }))
+    fireEvent.submit(container.querySelector('#register-form'))
 
     await waitFor(() => {
       // Local mirror signup is called
@@ -720,12 +720,12 @@ describe('Pro trial and Local + Cloud (T6)', () => {
     renderRegister()
     await waitFor(() => expect(hybridBtn()).toHaveAttribute('aria-pressed', 'true'))
     expect(screen.getByText('14 DAYS FREE')).toBeInTheDocument()
-    expect(screen.getByText(/Included in your 14-day Pro trial/)).toBeInTheDocument()
-    expect(screen.getByText(/When the trial ends, cloud sync stops unless you upgrade to Pro/)).toBeInTheDocument()
+    expect(screen.getByText(/Sync is included during your eligible 14-day Pro trial/)).toBeInTheDocument()
+    expect(screen.getByText(/Upgrade to Pro to keep syncing afterward/)).toBeInTheDocument()
 
     fireEvent.click(localBtn())  // Local stays one click away
     expect(localBtn()).toHaveAttribute('aria-pressed', 'true')
-    expect(screen.queryByText(/Included in your 14-day Pro trial/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Sync is included during your eligible 14-day Pro trial/)).not.toBeInTheDocument()
   })
 
   it('Register keeps the mandatory Local + Cloud trial selected without a legacy offer response', async () => {
@@ -739,7 +739,7 @@ describe('Pro trial and Local + Cloud (T6)', () => {
     mockCloudTrial = null
     const { container } = renderRegister()
     await waitFor(() => expect(hybridBtn()).toHaveAttribute('aria-pressed', 'true'))
-    fireEvent.change(screen.getByPlaceholderText('e.g. store'), { target: { value: 'repeatphone' } })
+    fireEvent.change(screen.getByLabelText('Store Username'), { target: { value: 'repeatphone' } })
     fireEvent.change(screen.getByLabelText('Phone'), { target: { value: '9876543210' } })
     fireEvent.change(screen.getByPlaceholderText('••••••••'), { target: { value: 'Password123!' } })
     fireEvent.change(container.querySelector('#confirmPassword'), { target: { value: 'Password123!' } })

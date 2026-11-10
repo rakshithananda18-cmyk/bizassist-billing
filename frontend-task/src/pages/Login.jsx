@@ -1,10 +1,12 @@
 import React, { useState } from 'react'
 import { useAuth, lastBizId } from '../lib/auth'
 import { BuildingMark } from '../components/Logo'
-import { getBillingUrl } from '../lib/theme'
+import { cycleTheme, getBillingUrl, getTheme } from '../lib/theme'
+import TaskLoginScene from '../components/TaskLoginScene'
 
 export default function Login() {
   const { ownerLogin, staffLogin, notice } = useAuth()
+  const [theme, setThemeChoice] = useState(getTheme)
   const [mode, setModeState] = useState(() => {
     try { return localStorage.getItem('task_login_mode') || 'staff' } catch { return 'staff' }
   })
@@ -34,43 +36,11 @@ export default function Login() {
 
   return (
     <>
-      {/* Signature BizAssist blurred app backdrop behind modal */}
-      <div className="login-backdrop" aria-hidden="true">
-        <aside className="lb-sidebar">
-          <div className="lb-logo" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <BuildingMark size={18} /> BizAssist
-          </div>
-          <div className="lb-nav-section">Today</div>
-          <div className="lb-navitem active">Dashboard</div>
-          <div className="lb-navitem">Live Map</div>
-          <div className="lb-navitem">Day Plan</div>
-          <div className="lb-navitem">Tasks</div>
-          <div className="lb-navitem">Shop Requests</div>
-          <div className="lb-nav-section">Setup</div>
-          <div className="lb-navitem">Shops</div>
-          <div className="lb-navitem">Routes</div>
-          <div className="lb-navitem">Staff</div>
-          <div className="lb-nav-section">Records</div>
-          <div className="lb-navitem">Attendance</div>
-          <div className="lb-navitem">Scorecard</div>
-        </aside>
-        <main className="lb-main">
-          <div className="lb-h1">Dashboard</div>
-          <div className="lb-grid-4">
-            <div className="lb-card" />
-            <div className="lb-card" />
-            <div className="lb-card" />
-            <div className="lb-card" />
-          </div>
-          <div className="lb-bottom-split">
-            <div className="lb-card" style={{ height: 260 }} />
-            <div className="lb-card" style={{ height: 260 }} />
-          </div>
-        </main>
-      </div>
-
-      {/* Floating Centered Glass Modal */}
-      <div className="login-container" id="login-container">
+      <div className="login-container task-auth" id="login-container">
+        <button type="button" className="task-auth-theme" onClick={() => setThemeChoice(cycleTheme())} aria-label={`Appearance: ${theme}. Change appearance`}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><circle cx="12" cy="12" r="4" /><path d="M12 2v3m0 14v3M2 12h3m14 0h3M5 5l2 2m10 10 2 2M5 19l2-2M17 7l2-2" /></svg>
+          {theme === 'system' ? 'System' : theme === 'dark' ? 'Dark' : 'Light'}
+        </button>
         <div className="login-card">
           <div className="login-glow" />
           <div className="login-symbol"><BuildingMark size={44} /></div>
@@ -97,13 +67,6 @@ export default function Login() {
             >
               Owner Login
             </button>
-            <a
-              href={getBillingUrl('/register')}
-              className="login-tab-btn"
-              style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-            >
-              Register
-            </a>
           </div>
 
           {notice && (
@@ -127,12 +90,11 @@ export default function Login() {
                     className="form-input"
                     value={f.business}
                     onChange={set('business')}
-                    placeholder="e.g. BA-XXXXXX"
                     autoCapitalize="characters"
                     required
                     autoFocus
                   />
-                  <span className="form-hint">Ask your owner for the BizID (shown in their app).</span>
+                  <span className="form-hint">Provided by your business owner.</span>
                 </div>
                 <div className="form-group" style={{ textAlign: 'left', marginTop: 10 }}>
                   <label htmlFor="staff-login-name" className="form-label">Your login name</label>
@@ -141,7 +103,6 @@ export default function Login() {
                     className="form-input"
                     value={f.login_name}
                     onChange={set('login_name')}
-                    placeholder="e.g. ravi"
                     autoCapitalize="none"
                     autoComplete="username"
                     required
@@ -157,7 +118,6 @@ export default function Login() {
                     className="form-input"
                     value={f.username}
                     onChange={set('username')}
-                    placeholder="e.g. store_owner"
                     autoCapitalize="none"
                     autoComplete="username"
                     required
@@ -177,7 +137,6 @@ export default function Login() {
                   type={showPw ? 'text' : 'password'}
                   value={f.password}
                   onChange={set('password')}
-                  placeholder="••••••••"
                   autoComplete="current-password"
                   required
                 />
@@ -217,7 +176,7 @@ export default function Login() {
               >
                 Register in Billing
               </a>
-              <div className="form-hint" style={{ marginTop: 6 }}>Create your business and activate its 14-day Pro trial in Billing, then return here with the same account.</div>
+              <div className="form-hint" style={{ marginTop: 6 }}>Start your 14-day Pro trial in Billing. Use the same account here.</div>
             </div>
 
             <p className="login-reassurance">
@@ -225,10 +184,12 @@ export default function Login() {
                 <rect x="3" y="11" width="18" height="10" rx="2" />
                 <path d="M7 11V7a5 5 0 0 1 10 0v4" />
               </svg>
-              <span>Your business data stays private and encrypted.</span>
+              <span>Your team’s workspace, securely signed in.</span>
             </p>
           </form>
         </div>
+        <footer className="task-auth-footer">Need a hand? <a href="mailto:support@staterbill.com">support@staterbill.com</a></footer>
+        <TaskLoginScene />
       </div>
     </>
   )

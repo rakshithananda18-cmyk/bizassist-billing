@@ -9,10 +9,6 @@ import { useNavigate, useLocation, Link } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { logger } from '../utils/logger'
 import {
-  SummaryIcon,
-  CounterIcon,
-  InventoryIcon,
-  ReportsIcon,
   EyeIcon,
   EyeOffIcon
 } from '../components/Icons'
@@ -22,6 +18,9 @@ import { DESKTOP_DOWNLOAD_URL } from '../config/downloadApp'
 import './registration.css'
 import { normalizeRegistrationPhone } from '../utils/registrationPhone'
 import GoogleOnboardingModal from '../components/auth/GoogleOnboardingModal'
+import AuthRoadmap from '../components/auth/AuthRoadmap'
+import AuthThemeToggle from '../components/auth/AuthThemeToggle'
+import RegistrationStory from '../components/auth/RegistrationStory'
 import { renderGoogleButton } from '../utils/googleAuth'
 
 export default function Register() {
@@ -95,13 +94,6 @@ export default function Register() {
         text: 'signup_with',
       })
     }
-  }, [])
-
-  // Ensure Register page is always rendered in crisp Light mode
-  useEffect(() => {
-    document.documentElement.classList.remove('dark-mode')
-    document.documentElement.dataset.appearance = 'light'
-    document.documentElement.style.colorScheme = 'light'
   }, [])
 
   // Live username availability check
@@ -285,83 +277,19 @@ export default function Register() {
 
   return (
     <>
-    {/* Blurred Backdrop */}
-    <div className="login-backdrop" aria-hidden="true">
-      <aside className="lb-sidebar">
-        <div className="lb-logo" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><BuildingMark size={18} /> <strong>STATER</strong> Bill</div>
-        <div className="lb-nav-section">Supply & Inflow</div>
-        <div className="lb-navitem">Supplier Orders</div>
-        <div className="lb-navitem">Purchase Bills</div>
-        <div className="lb-navitem">Store Sync</div>
-        <div className="lb-navitem">Data Migration</div>
-        <div className="lb-nav-section">Hub</div>
-        <div className="lb-navitem active">Home</div>
-        <div className="lb-navitem">Dashboard</div>
-        <div className="lb-nav-section">Sales & Operations</div>
-        <div className="lb-navitem">Billing Counter</div>
-        <div className="lb-navitem">Cash Book</div>
-        <div className="lb-navitem">Contacts & Dues</div>
-        <div className="lb-navitem">GST & Tax Reports</div>
-      </aside>
-      <main className="lb-main" style={{ flex: 1, padding: '24px 32px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
-        <div className="lb-h1" style={{ fontSize: '1.5rem', fontWeight: 700 }}>Home</div>
-        
-        {/* KPI Grid (4 cards) */}
-        <div className="login-backdrop-grid">
-          <div className="lb-card" style={{ height: '80px', borderRadius: '8px', background: 'var(--bg-2)', border: '1px solid var(--border)' }} />
-          <div className="lb-card" style={{ height: '80px', borderRadius: '8px', background: 'var(--bg-2)', border: '1px solid var(--border)' }} />
-          <div className="lb-card" style={{ height: '80px', borderRadius: '8px', background: 'var(--bg-2)', border: '1px solid var(--border)' }} />
-          <div className="lb-card" style={{ height: '80px', borderRadius: '8px', background: 'var(--bg-2)', border: '1px solid var(--border)' }} />
-        </div>
-
-        {/* Second Row Grid (4 cards) */}
-        <div className="login-backdrop-grid">
-          <div className="lb-card" style={{ height: '80px', borderRadius: '8px', background: 'var(--bg-2)', border: '1px solid var(--border)' }} />
-          <div className="lb-card" style={{ height: '80px', borderRadius: '8px', background: 'var(--bg-2)', border: '1px solid var(--border)' }} />
-          <div className="lb-card" style={{ height: '80px', borderRadius: '8px', background: 'var(--bg-2)', border: '1px solid var(--border)' }} />
-          <div className="lb-card" style={{ height: '80px', borderRadius: '8px', background: 'var(--bg-2)', border: '1px solid var(--border)' }} />
-        </div>
-
-        {/* Bottom Two Columns Grid */}
-        <div className="lb-bottom-split" style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: '20px', flex: 1 }}>
-          {/* Feed */}
-          <div className="lb-card" style={{ borderRadius: '8px', background: 'var(--bg-2)', border: '1px solid var(--border)' }} />
-          {/* Warnings & Invoices */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <div className="lb-card" style={{ flex: 1, borderRadius: '8px', background: 'var(--bg-2)', border: '1px solid var(--border)' }} />
-            <div className="lb-card" style={{ flex: 1, borderRadius: '8px', background: 'var(--bg-2)', border: '1px solid var(--border)' }} />
-          </div>
-        </div>
-      </main>
-    </div>
-
-    {/* Split Page Container (placed on top of backdrop) */}
-    <div className="split-page registration-page" style={{ position: 'relative', zIndex: 2 }}>
+    <div className="split-page registration-page roadmap-auth">
+      <AuthRoadmap interactive={false} />
+      <AuthThemeToggle />
       {/* Left Panel: Registration Card */}
-      <div className="split-left" style={{ position: 'relative', background: 'transparent', padding: '16px 20px' }}>
+      <div className="split-left">
         <div className="login-card login-card--wide">
           {waking && <p role="status">Waking up the server… this can take up to a minute.</p>}
           <div className="login-glow"></div>
           <div className="login-symbol" style={{ marginBottom: 4 }}><BuildingMark size={32} /></div>
           <h1 className="login-title" style={{ fontSize: 24 }}>Create your account</h1>
-          <p className="login-subtitle" style={{ marginBottom: 12, letterSpacing: '0.1em', fontSize: '0.72rem' }}>στατήρ • THE GOLD STANDARD IN POS</p>
+          <p className="registration-form-intro">A few details. A fresh start for your business.</p>
 
-          <div className="login-tabs" style={{ marginBottom: 16 }}>
-            <button
-              type="button"
-              className="login-tab-btn"
-              onClick={() => navigate('/login')}
-            >
-              Sign In
-            </button>
-            <button
-              type="button"
-              className="login-tab-btn active"
-              onClick={() => {}}
-            >
-              Register
-            </button>
-          </div>
+          <p className="registration-signin">Already have an account? <Link to="/login">Sign in</Link></p>
 
           {fallbackNote ? (
             <div className="login-form" style={{ gap: 12 }} data-testid="hosting-fallback">
@@ -376,7 +304,7 @@ export default function Register() {
           <form className="login-form" id="register-form" onSubmit={handleSubmit} style={{ gap: 10 }}>
             {/* Google Quick Sign-Up */}
             <div style={{ marginBottom: 12 }}>
-              <div ref={googleBtnRef} style={{ display: 'flex', justifyContent: 'center', minHeight: 44 }} />
+              <div className="registration-google" ref={googleBtnRef} style={{ display: 'flex', justifyContent: 'center', minHeight: 44 }} />
               <div style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -392,11 +320,10 @@ export default function Register() {
             </div>
 
             <div className="form-group">
-              <label htmlFor="businessName">Store / Business Name</label>
+              <label htmlFor="businessName">Business name</label>
               <input
                 id="businessName"
                 type="text"
-                placeholder="e.g. Acme Corporation"
                 value={form.businessName}
                 onChange={e => setForm(f => ({ ...f, businessName: e.target.value }))}
                 required
@@ -430,7 +357,7 @@ export default function Register() {
 
             <div className="form-group" style={{ marginTop: '4px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <label htmlFor="username">Choose Store Username</label>
+                <label htmlFor="username">Store username</label>
                 {checkingUname && <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Checking…</span>}
                 {!checkingUname && unameAvailable === true && (
                   <span style={{ fontSize: '0.72rem', color: 'var(--success, #10b981)', fontWeight: 600 }}>✓ Available</span>
@@ -443,19 +370,15 @@ export default function Register() {
                 id="username"
                 aria-label="Store Username"
                 type="text"
-                placeholder="e.g. store"
                 value={form.username}
                 onChange={e => setForm(f => ({ ...f, username: e.target.value.toLowerCase().replace(/\s+/g, '_') }))}
                 required
                 autoComplete="username"
               />
-              <small style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: 2 }}>
-                Used by cashiers to sign in at physical billing counters.
-              </small>
             </div>
 
             {/* Row with Country & Mandatory Phone */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: '4px' }}>
+            <div className="registration-extra-grid">
               <div className="form-group">
                 <label htmlFor="country">Country</label>
                 <CustomSelect
@@ -482,7 +405,7 @@ export default function Register() {
               </div>
 
               <div className="form-group">
-                <label htmlFor="phone">Mobile Phone (Mandatory)</label>
+                <label htmlFor="phone">Phone</label>
                 <input
                   id="phone"
                   aria-label="Phone"
@@ -490,35 +413,31 @@ export default function Register() {
                   required
                   autoComplete="tel"
                   maxLength={30}
-                  aria-describedby="registration-phone-help"
-                  placeholder="+91 9999999999"
-                  value={form.phone}
+                  aria-describedby="registration-account-help"
+                    value={form.phone}
                   onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
                 />
-                <small id="registration-phone-help" style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>Required for recovery &amp; 14-day trial.</small>
               </div>
             </div>
 
             {/* Email Address */}
             <div className="form-group" style={{ marginTop: '4px' }}>
-              <label htmlFor="email">Email Address</label>
+              <label htmlFor="email">Email (optional)</label>
               <input
                 id="email"
                 type="email"
-                placeholder="e.g. owner@acmestore.com"
                 value={form.email}
                 onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
                 autoComplete="email"
               />
-              <small style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>Used for account recovery OTPs, welcome emails, and invoices.</small>
             </div>
 
               <fieldset className="registration-storage">
-                <legend>Where should your data live?</legend>
+                <legend>Billing setup</legend>
                 <div data-testid="hosting-choice" className="registration-storage-grid">
                   {[
-                    { key: 'local',  title: 'Local only',     desc: 'Fast & offline on this PC.' },
-                    { key: 'hybrid', title: 'Local + Cloud',  desc: 'Local speed + automatic cloud sync, backup & multi-device.' },
+                    { key: 'local',  title: 'Local only',     desc: 'Offline on this computer.' },
+                    { key: 'hybrid', title: 'Local + Cloud',  desc: 'Desktop + browser, connected.' },
                   ].map(opt => (
                     <div key={opt.key} className="registration-storage-choice">
                     <button
@@ -544,16 +463,9 @@ export default function Register() {
                     </div>
                   ))}
                 </div>
-                {!IS_LOCAL_APP && (
-                  <div className="registration-storage-help" id="cloud-storage-help">
-                    <p>Local + Cloud includes browser access. This browser uses the cloud database; offline Local billing runs in the downloaded app.</p>
-                    <p>Sign in with the same account in the desktop app to add Local billing. Automatic Local + Cloud sync requires Pro or an eligible trial.</p>
-                    <p>Your first registration with a phone number includes 14 days of Pro access, including Local + Cloud and Field Team.</p>
-                  </div>
-                )}
                 {IS_LOCAL_APP && hostingChoice === 'hybrid' && (
                   <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 6 }}>
-                    Included in your {trialDays}-day Pro trial and set up automatically: billing stays fast and offline while your data syncs to the cloud. When the trial ends, cloud sync stops unless you upgrade to Pro. Everything stays on this computer and keeps working offline.
+                    Sync is included during your eligible {trialDays}-day Pro trial. Upgrade to Pro to keep syncing afterward.
                   </div>
                 )}
               </fieldset>
@@ -669,124 +581,16 @@ export default function Register() {
               disabled={loading}
               style={{ marginTop: '4px', padding: '10px' }}
             >
-              {loading ? 'Creating Account…' : 'Create Account & Start 14-Day Free Pro Trial'}
+              {loading ? 'Creating Account…' : 'Create account'}
             </button>
           </form>
           )}
         </div>
       </div>
 
-      {/* Right Panel: Value Showcase & Storage Guide */}
-      <div className="split-right" style={{ background: 'var(--bg-2)', borderLeft: '1px solid var(--border)' }}>
-        <div style={{ maxWidth: '480px', margin: '0 auto', width: '100%' }}>
-
-          {/* In Cloud URL: Highlight Desktop App Download */}
-          {!IS_LOCAL_APP && (
-            <div style={{
-              background: 'linear-gradient(135deg, var(--bg-1, #f4f4f1) 0%, var(--accent-dim) 100%)',
-              border: '1.5px solid var(--accent)',
-              borderRadius: 14,
-              padding: '16px 18px',
-              marginBottom: 24,
-              boxShadow: 'var(--shadow-sm)'
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-                <span style={{
-                  fontSize: '0.65rem',
-                  fontWeight: 800,
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.05em',
-                  background: 'var(--accent)',
-                  color: '#ffffff',
-                  padding: '2px 8px',
-                  borderRadius: 5
-                }}>
-                  Recommended for POS &amp; Counters
-                </span>
-              </div>
-              <h3 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)', margin: '0 0 6px' }}>
-                Want 100% Offline Billing? Download the Desktop App
-              </h3>
-              <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: '0 0 12px', lineHeight: 1.45 }}>
-                Create your account here in the browser, then install the desktop app to get zero-latency local billing that syncs automatically with your cloud store.
-              </p>
-              <a
-                href={DESKTOP_DOWNLOAD_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="btn btn-primary"
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 8,
-                  padding: '7px 14px',
-                  fontSize: '0.8rem',
-                  fontWeight: 600,
-                  textDecoration: 'none'
-                }}
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                  <polyline points="7 10 12 15 17 10"></polyline>
-                  <line x1="12" y1="15" x2="12" y2="3"></line>
-                </svg>
-                Download Desktop App
-              </a>
-            </div>
-          )}
-
-
-
-          <h2 style={{ fontSize: '1.45rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: 12, lineHeight: 1.25 }}>
-            Manage all your businesses from one unified platform.
-          </h2>
-          <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: 24, lineHeight: 1.5 }}>
-            Supercharge your administration with multi-business GST invoices, automated expense ingestion, and dynamic reporting.
-          </p>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-            <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
-              <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--accent-dim)', color: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, paddingLeft: 8, paddingTop: 8 }}>
-                <SummaryIcon size={18} />
-              </div>
-              <div>
-                <div style={{ fontWeight: 600, fontSize: '0.95rem', color: 'var(--text-primary)' }}>Multi-Business Support</div>
-                <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginTop: 2 }}>Switch organizations seamlessly and keep ledgers entirely separate.</div>
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
-              <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--accent-dim)', color: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, paddingLeft: 8, paddingTop: 8 }}>
-                <CounterIcon size={18} />
-              </div>
-              <div>
-                <div style={{ fontWeight: 600, fontSize: '0.95rem', color: 'var(--text-primary)' }}>Professional Invoicing</div>
-                <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginTop: 2 }}>Generate premium, GST-compliant invoices and track unpaid accounts.</div>
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
-              <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--accent-dim)', color: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, paddingLeft: 8, paddingTop: 8 }}>
-                <InventoryIcon size={18} />
-              </div>
-              <div>
-                <div style={{ fontWeight: 600, fontSize: '0.95rem', color: 'var(--text-primary)' }}>Inventory &amp; Stock Ledger</div>
-                <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginTop: 2 }}>Adjust stock quantities, set low-inventory thresholds, and track suppliers.</div>
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
-              <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--accent-dim)', color: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, paddingLeft: 8, paddingTop: 8 }}>
-                <ReportsIcon size={18} />
-              </div>
-              <div>
-                <div style={{ fontWeight: 600, fontSize: '0.95rem', color: 'var(--text-primary)' }}>Real-time Accounting Reports</div>
-                <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginTop: 2 }}>Instantly download P&amp;L reports, tax summaries, and customer statements.</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+      <aside className="split-right" aria-label="What you can do with STATER Bill">
+        <RegistrationStory />
+      </aside>
     </div>
 
     {/* Google Onboarding Modal (for first-time Google sign-ups) */}

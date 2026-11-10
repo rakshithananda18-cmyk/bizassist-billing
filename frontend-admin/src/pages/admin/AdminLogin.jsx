@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { BuildingMark } from '../../components/Logo'
+import AdminConstellation from '../../components/AdminConstellation'
+import { useAdminTheme } from '../../utils/adminPreferences'
 import '../../styles/adminLogin.css'
 
 function billingSignInUrl() {
@@ -15,6 +17,7 @@ function billingSignInUrl() {
 export default function AdminLogin() {
   const { adminLogin } = useAuth()
   const navigate = useNavigate()
+  const [isDark, setTheme] = useAdminTheme()
 
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -51,35 +54,14 @@ export default function AdminLogin() {
 
   return (
     <main className="admin-entry" id="admin-login-container">
+      <div className="admin-entry-appearance" role="group" aria-label="Appearance">
+        <button type="button" aria-label="Use light appearance" aria-pressed={!isDark} onClick={() => setTheme(false)}><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><circle cx="12" cy="12" r="4" /><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5" /></svg></button>
+        <button type="button" aria-label="Use dark appearance" aria-pressed={isDark} onClick={() => setTheme(true)}><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d="M20 15A9 9 0 0 1 9 4a9 9 0 1 0 11 11Z" /></svg></button>
+      </div>
       <div className="admin-entry-frame">
-        <aside className="admin-entry-story" aria-labelledby="admin-entry-purpose">
-          <div className="admin-entry-brand">
-            <span className="admin-entry-brand-mark"><BuildingMark size={30} accent="#dc9373" /></span>
-            <div><strong>BizAssist</strong><span>PLATFORM OPERATIONS</span></div>
-          </div>
-
-          <div className="admin-entry-story-copy">
-            <p className="admin-entry-eyebrow"><span /> THE WORK BEHIND EVERY WORKING DAY</p>
-            <h2 id="admin-entry-purpose">A clearer view<br />of every <em>business.</em></h2>
-            <p>Keep the businesses, people and systems behind STATER Bill moving in the same direction.</p>
-          </div>
-
-          <div className="admin-entry-map" aria-label="Businesses, growth and infrastructure meet in the operations workspace">
-            <div className="admin-entry-map-label">ONE CONNECTED WORKSPACE</div>
-            <div className="admin-entry-map-grid">
-              <div className="admin-entry-map-node"><span className="admin-entry-map-icon" aria-hidden="true">01</span><strong>Businesses</strong><span>Accounts &amp; access</span></div>
-              <div className="admin-entry-map-node"><span className="admin-entry-map-icon" aria-hidden="true">02</span><strong>Growth</strong><span>Activity &amp; adoption</span></div>
-              <div className="admin-entry-map-node"><span className="admin-entry-map-icon" aria-hidden="true">03</span><strong>Systems</strong><span>Health &amp; operations</span></div>
-            </div>
-            <div className="admin-entry-map-connector" aria-hidden="true"><span /><span /><span /></div>
-            <div className="admin-entry-map-hub"><BuildingMark size={23} accent="#dc9373" /><span>BizAssist operations</span><span aria-hidden="true">↗</span></div>
-          </div>
-
-          <div className="admin-entry-story-footer"><span>STATER Bill <i>by ARES</i></span><span>Administration, with perspective.</span></div>
-        </aside>
-
         <section className="admin-entry-form-panel" aria-labelledby="admin-signin-title">
           <div className="admin-entry-form-card">
+            <div className="admin-entry-card-brand"><BuildingMark size={40} accent="#c15f3c" /><strong>BizAssist <span>Admin</span></strong></div>
             <div className="admin-entry-form-kicker"><span /> ADMINISTRATOR ACCESS</div>
             <h1 id="admin-signin-title">{needsOtp ? 'One more step.' : 'Welcome back.'}</h1>
             <p className="admin-entry-form-intro">{needsOtp ? 'Enter the six-digit code from your authenticator to continue.' : 'Sign in to your operations workspace.'}</p>
@@ -87,13 +69,13 @@ export default function AdminLogin() {
             <form id="admin-login-form" onSubmit={handleSubmit} aria-busy={loading} aria-describedby={error ? 'login-error' : undefined}>
               <div className="admin-entry-field">
                 <label htmlFor="admin-username">Admin Username</label>
-                <input type="text" id="admin-username" placeholder="Your admin username" value={username} onChange={e => setUsername(e.target.value)} required autoComplete="username" />
+                <input type="text" id="admin-username" value={username} onChange={e => setUsername(e.target.value)} required autoComplete="username" />
               </div>
 
               <div className="admin-entry-field">
                 <label htmlFor="admin-password">Password</label>
                 <div className="admin-entry-password">
-                  <input type={showPw ? 'text' : 'password'} id="admin-password" placeholder="Enter your password" value={password} onChange={e => setPassword(e.target.value)} required autoComplete="current-password" />
+                  <input type={showPw ? 'text' : 'password'} id="admin-password" value={password} onChange={e => setPassword(e.target.value)} required autoComplete="current-password" />
                   <button type="button" className="admin-entry-password-toggle" onClick={() => setShowPw(v => !v)} aria-label="Toggle password visibility" aria-pressed={showPw}>
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                       {showPw ? <><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19M1 1l22 22" /></> : <><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z" /><circle cx="12" cy="12" r="3" /></>}
@@ -120,6 +102,7 @@ export default function AdminLogin() {
           </div>
         </section>
       </div>
+      <AdminConstellation />
     </main>
   )
 }

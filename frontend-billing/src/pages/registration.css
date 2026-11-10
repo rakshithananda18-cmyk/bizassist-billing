@@ -4,6 +4,75 @@
   overflow: hidden;
 }
 
+.registration-page.roadmap-auth {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: grid;
+  grid-template-columns: minmax(0,510px) minmax(0,590px);
+  justify-content: center;
+  gap: clamp(20px,3vw,48px);
+  padding: 0 28px;
+}
+.registration-page .roadmap-scene-caption { display: none; }
+.registration-page.roadmap-auth > .split-left {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 28px 16px;
+  background: transparent;
+  overscroll-behavior: contain;
+}
+.registration-page.roadmap-auth .login-card--wide {
+  margin-block: auto;
+  padding: 28px;
+  animation: registration-slide .52s cubic-bezier(.16,1,.3,1) both;
+}
+.registration-form-intro { margin: 4px 0 0; color: var(--text-muted); font-size: 12px; line-height: 1.5; }
+.registration-page #register-form { width: 100%; min-width: 0; }
+.registration-google { width: 100%; min-width: 0; max-width: 100%; }
+.registration-google > div, .registration-google iframe { max-width: 100%; }
+.registration-signin { margin: 10px 0 18px; font-size: 12px; color: var(--text-muted); }
+.registration-signin a { color: var(--accent); font-weight: 600; }
+.registration-extra-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 4px; }
+.registration-page.roadmap-auth > .split-right {
+  position: relative;
+  z-index: 1;
+  display: block;
+  padding: 54px 30px 32px;
+  border-left: 1px solid var(--auth-rule);
+  background: color-mix(in srgb,var(--auth-canvas) 91%,transparent);
+  backdrop-filter: blur(5px);
+  overscroll-behavior: contain;
+}
+.registration-page .split-left, .registration-page .split-right { scrollbar-width: thin; scrollbar-color: var(--auth-rule) transparent; }
+.registration-story { width: 100%; max-width: 480px; margin: 0 auto; animation: registration-story-in .6s ease-out both; }
+.registration-eyebrow { color: var(--auth-accent); font-size: 10px; letter-spacing: .13em; font-weight: 600; }
+.registration-story h2 { margin: 15px 0 16px; padding: 0; border: 0; color: var(--auth-ink); font-family: 'Crimson Pro',Georgia,serif; font-size: clamp(34px,3.3vw,48px); font-weight: 400; line-height: 1.06; letter-spacing: -.025em; }
+.registration-story h2 em { color: var(--auth-accent); font-weight: 400; }
+.registration-story-intro { max-width: 380px; margin: 0; color: var(--auth-muted); font-size: 14px; line-height: 1.7; }
+.registration-benefits { position: relative; display: grid; gap: 23px; margin: 30px 0; padding: 0; list-style: none; }
+.registration-benefits::before { position: absolute; top: 18px; bottom: 30px; left: 17px; width: 1px; background: var(--auth-rule); content: ''; }
+.registration-benefits li { position: relative; display: flex; align-items: flex-start; gap: 17px; }
+.registration-benefit-icon { display: grid; place-items: center; flex: 0 0 35px; width: 35px; height: 35px; border: 1px solid var(--auth-rule); border-radius: 50%; background: var(--auth-canvas); color: var(--auth-accent); }
+.registration-benefits h3 { margin: 1px 0 6px; color: var(--auth-ink); font-size: 15px; font-weight: 600; line-height: 1.4; }
+.registration-benefits p { margin: 0; color: var(--auth-muted); font-size: 13px; line-height: 1.7; }
+.registration-workstyle { border-top: 1px solid var(--auth-rule); padding-top: 22px; }
+.registration-trial { display: block; margin-bottom: 19px; color: var(--auth-accent); font-size: 14px; font-weight: 600; }
+.registration-trial span { display: block; margin-top: 3px; color: var(--auth-soft); font-size: 11px; font-weight: 400; }
+.registration-workstyle h3 { color: var(--auth-ink); font-size: 15px; font-weight: 600; margin: 0 0 9px; }
+.registration-workstyle p { margin: 0 0 10px; color: var(--auth-muted); font-size: 12px; line-height: 1.7; }
+.registration-desktop-note { display: block; margin-top: 16px; color: var(--auth-soft); font-size: 10px; letter-spacing: .04em; }
+.registration-download { display: inline-flex; align-items: center; gap: 14px; padding: 8px 0; color: var(--auth-accent); font-size: 13px; font-weight: 600; }
+.registration-account-note { margin-top: 22px; color: var(--auth-soft); font-size: 11px; line-height: 1.65; }
+.registration-support { margin-top: 17px; color: var(--auth-muted); font-size: 12px; line-height: 1.8; }
+.registration-support a { color: var(--auth-accent); white-space: nowrap; }
+@keyframes registration-slide { from { transform: translateX(min(16vw,190px)); opacity: .4; } to { transform: translateX(0); opacity: 1; } }
+@keyframes registration-story-in { from { transform: translateY(12px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
 .registration-page .split-left {
   height: 100dvh;
   min-height: 0;
@@ -101,4 +170,15 @@
 @media (max-width: 420px) {
   #register-form .registration-extra-grid,
   .registration-storage-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 900px) {
+  .registration-page.roadmap-auth { display: flex; flex-direction: column; height: 100dvh; overflow-y: auto; padding: 0 14px; gap: 0; }
+  .registration-page.roadmap-auth > .split-left { flex: 0 0 auto; width: 100%; height: auto; overflow: visible; padding: 14px 0 24px; overscroll-behavior: auto; }
+  .registration-page.roadmap-auth > .split-right { flex: 0 0 auto; width: 100%; height: auto; overflow: visible; padding: 30px 18px; border-left: 0; border-top: 1px solid var(--auth-rule); overscroll-behavior: auto; }
+  .registration-page.roadmap-auth .login-card--wide { padding: 28px 22px; animation-name: registration-story-in; }
+  .registration-story h2 { font-size: 38px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .registration-page .login-card--wide, .registration-story { animation: none !important; }
 }

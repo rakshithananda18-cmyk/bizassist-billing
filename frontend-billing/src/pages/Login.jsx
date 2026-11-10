@@ -8,6 +8,8 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { logger } from '../utils/logger'
 import { BuildingMark } from '../components/Logo'
+import AuthRoadmap from '../components/auth/AuthRoadmap'
+import AuthThemeToggle from '../components/auth/AuthThemeToggle'
 import { API_BASE, IS_LOCAL_APP } from '../config'
 import CustomSelect from '../components/common/CustomSelect'
 import BootHealthCheck from '../components/BootHealthCheck'
@@ -84,13 +86,6 @@ export default function Login() {
   }, [loading])
   useEffect(() => {
     if (!IS_LOCAL_APP) void fetch(`${API_BASE}/health`, { mode: 'no-cors' }).catch(() => {})
-  }, [])
-
-  // Ensure Login page is always rendered in crisp Light mode
-  useEffect(() => {
-    document.documentElement.classList.remove('dark-mode')
-    document.documentElement.dataset.appearance = 'light'
-    document.documentElement.style.colorScheme = 'light'
   }, [])
 
   // Reset root document zoom to prevent browser positioning alignment bugs on logout
@@ -459,56 +454,8 @@ export default function Login() {
 
   return (
     <>
-    <div className="login-backdrop" aria-hidden="true">
-      <aside className="lb-sidebar">
-        <div className="lb-logo" style={{ display: 'flex', alignItems: 'center', gap: 6 }}><BuildingMark size={18} /> <strong>STATER</strong> Bill</div>
-        <div className="lb-nav-section">Supply & Inflow</div>
-        <div className="lb-navitem">Supplier Orders</div>
-        <div className="lb-navitem">Purchase Bills</div>
-        <div className="lb-navitem">Store Sync</div>
-        <div className="lb-navitem">Data Migration</div>
-        <div className="lb-nav-section">Hub</div>
-        <div className="lb-navitem active">Home</div>
-        <div className="lb-navitem">Dashboard</div>
-        <div className="lb-nav-section">Sales & Operations</div>
-        <div className="lb-navitem">Billing Counter</div>
-        <div className="lb-navitem">Cash Book</div>
-        <div className="lb-navitem">Contacts & Dues</div>
-        <div className="lb-navitem">GST & Tax Reports</div>
-      </aside>
-      <main className="lb-main" style={{ flex: 1, padding: '24px 32px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
-        <div className="lb-h1" style={{ fontSize: '1.5rem', fontWeight: 700 }}>Home</div>
-        
-        {/* KPI Grid (4 cards) */}
-        <div className="login-backdrop-grid">
-          <div className="lb-card" style={{ height: '80px', borderRadius: '8px', background: 'var(--bg-2)', border: '1px solid var(--border)' }} />
-          <div className="lb-card" style={{ height: '80px', borderRadius: '8px', background: 'var(--bg-2)', border: '1px solid var(--border)' }} />
-          <div className="lb-card" style={{ height: '80px', borderRadius: '8px', background: 'var(--bg-2)', border: '1px solid var(--border)' }} />
-          <div className="lb-card" style={{ height: '80px', borderRadius: '8px', background: 'var(--bg-2)', border: '1px solid var(--border)' }} />
-        </div>
-
-        {/* Second Row Grid (4 cards) */}
-        <div className="login-backdrop-grid">
-          <div className="lb-card" style={{ height: '80px', borderRadius: '8px', background: 'var(--bg-2)', border: '1px solid var(--border)' }} />
-          <div className="lb-card" style={{ height: '80px', borderRadius: '8px', background: 'var(--bg-2)', border: '1px solid var(--border)' }} />
-          <div className="lb-card" style={{ height: '80px', borderRadius: '8px', background: 'var(--bg-2)', border: '1px solid var(--border)' }} />
-          <div className="lb-card" style={{ height: '80px', borderRadius: '8px', background: 'var(--bg-2)', border: '1px solid var(--border)' }} />
-        </div>
-
-        {/* Bottom Two Columns Grid */}
-        <div className="lb-bottom-split" style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: '20px', flex: 1 }}>
-          {/* Feed */}
-          <div className="lb-card" style={{ borderRadius: '8px', background: 'var(--bg-2)', border: '1px solid var(--border)' }} />
-          {/* Warnings & Invoices */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <div className="lb-card" style={{ flex: 1, borderRadius: '8px', background: 'var(--bg-2)', border: '1px solid var(--border)' }} />
-            <div className="lb-card" style={{ flex: 1, borderRadius: '8px', background: 'var(--bg-2)', border: '1px solid var(--border)' }} />
-          </div>
-        </div>
-      </main>
-    </div>
-
-    <div className="login-container" id="login-container">
+    <div className="login-container roadmap-auth" id="login-container">
+      <AuthThemeToggle />
       <div className="login-card">
         {waking && <p role="status" className="login-waking">Waking up the server… this can take up to a minute.</p>}
         <div className="login-glow"></div>
@@ -1012,7 +959,6 @@ export default function Login() {
                 <input
                   type="text"
                   id="staff-user-select"
-                  placeholder="e.g. cashier1"
                   value={selectedStaffUser}
                   onChange={e => setSelectedStaffUser(e.target.value)}
                   required
@@ -1163,7 +1109,6 @@ export default function Login() {
                     type="text"
                     id="owner-username"
                     aria-label="Business Owner Username"
-                    placeholder="e.g. store_owner, store@email.com, 9876543210"
                     value={username}
                     onChange={e => setUsername(e.target.value)}
                     required
@@ -1274,7 +1219,7 @@ export default function Login() {
               <form onSubmit={handleStandardStaffLogin} style={{ width: '100%' }}>
                 <div className="form-group" style={{ width: '100%', boxSizing: 'border-box' }}>
                   <label htmlFor="std-staff-login">Staff Login Name</label>
-                  <input id="std-staff-login" type="text" placeholder="e.g. counter-1" value={selectedStaffUser} onChange={e => setSelectedStaffUser(e.target.value)} required autoFocus autoComplete="username" />
+                  <input id="std-staff-login" type="text" value={selectedStaffUser} onChange={e => setSelectedStaffUser(e.target.value)} required autoFocus autoComplete="username" />
                 </div>
                 <div className="form-group" style={{ marginTop: 14, width: '100%', boxSizing: 'border-box' }}>
                   <label htmlFor="std-staff-password">Password</label>
@@ -1345,6 +1290,7 @@ export default function Login() {
       onClose={() => setShowGoogleModal(false)}
       onSuccess={handleGoogleRegisterSuccess}
     />
+    <AuthRoadmap />
     </div>
     </>
   )

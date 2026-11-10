@@ -423,11 +423,12 @@ export function isPublicOrAuthPath(pathname) {
 export function applyAppearance(preference, systemDark = false, root = globalThis.document?.documentElement, user, storage = browserStorage()) {
   if (!root) return
   const currentPath = typeof window !== 'undefined' ? (window.location.pathname || '') : ''
-  const isAuthPage = isPublicOrAuthPath(currentPath)
+  // Sign-in and registration share the chosen appearance; legal/public pages retain their light canvas.
+  const forceLight = isPublicOrAuthPath(currentPath) && !/^\/(login|register)(\/|$)/i.test(currentPath)
 
   const rawAppearance = normalizeAppearance(preference, user, storage)
-  const appearance = isAuthPage ? { ...rawAppearance, theme: 'light' } : rawAppearance
-  const effectiveSystemDark = isAuthPage ? false : systemDark
+  const appearance = forceLight ? { ...rawAppearance, theme: 'light' } : rawAppearance
+  const effectiveSystemDark = forceLight ? false : systemDark
 
   const { mode, tokens } = appearanceTokens(appearance, effectiveSystemDark, user, storage)
   root.classList.toggle('dark-mode', mode === 'dark')

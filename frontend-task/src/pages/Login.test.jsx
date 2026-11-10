@@ -4,7 +4,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 const auth = vi.hoisted(() => ({ ownerLogin: vi.fn(), staffLogin: vi.fn(), notice: null }))
 vi.mock('../lib/auth', () => ({ useAuth: () => auth, lastBizId: () => '' }))
-vi.mock('../lib/theme', () => ({ getBillingUrl: path => 'https://billing.example' + path }))
+vi.mock('../lib/theme', () => ({ getBillingUrl: path => 'https://billing.example' + path, getTheme: () => 'light', cycleTheme: () => 'dark' }))
 import Login from './Login'
 afterEach(cleanup)
 
@@ -17,5 +17,14 @@ describe('Field owner onboarding', () => {
     expect(screen.queryByLabelText('Phone (optional)')).toBeNull()
     expect(screen.queryByRole('button', { name: 'Create Account' })).toBeNull()
     expect(screen.getByRole('button', { name: 'Sign In as Owner' })).toBeTruthy()
+  })
+
+  it('reveals field benefits on keyboard focus and dismisses them with Escape', () => {
+    render(<Login />)
+    const point = screen.getByRole('button', { name: 'Plan the day' })
+    fireEvent.focus(point)
+    expect(screen.getByRole('tooltip').textContent).toContain('routes, shops and daily assignments')
+    fireEvent.keyDown(point, { key: 'Escape' })
+    expect(screen.queryByRole('tooltip')).toBeNull()
   })
 })

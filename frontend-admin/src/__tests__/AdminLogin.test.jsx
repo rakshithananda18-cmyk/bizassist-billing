@@ -1,5 +1,5 @@
 import React from 'react'
-import { act, cleanup, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
@@ -20,6 +20,28 @@ beforeEach(() => { auth.adminLogin.mockReset(); sessionStorage.clear() })
 afterEach(() => { cleanup(); sessionStorage.clear(); vi.unstubAllEnvs() })
 
 describe('admin sign-in workspace', () => {
+  it('keeps workspace stories readable across pointer travel and dismisses them without submitting', async () => {
+    mount()
+    const user = userEvent.setup()
+    const businesses = screen.getByRole('button', { name: 'Explore businesses' })
+    fireEvent.pointerOver(businesses)
+    fireEvent.pointerOut(businesses)
+    expect(screen.getByRole('tooltip')).toHaveTextContent('review plans and access')
+    fireEvent.keyDown(businesses, { key: 'Escape' })
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
+
+    const health = screen.getByRole('button', { name: 'Explore service health' })
+    await user.click(health)
+    expect(health).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByRole('tooltip')).toHaveTextContent('service health, infrastructure and audit results')
+    await user.click(health)
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
+    await user.click(health)
+    await user.click(screen.getByLabelText('Admin Username'))
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
+    expect(auth.adminLogin).not.toHaveBeenCalled()
+  })
+
   it('keeps credentials through the authenticator challenge and returns to the requested admin page', async () => {
     auth.adminLogin.mockRejectedValueOnce(new Error('2FA code required')).mockResolvedValueOnce({})
     sessionStorage.setItem('admin_return_path', '/admin/businesses?plan=pro')
