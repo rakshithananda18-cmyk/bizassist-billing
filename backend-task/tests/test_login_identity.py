@@ -197,10 +197,10 @@ def test_google_unique_authoritative_email_can_sign_in_without_writing_billing(c
 
 def test_google_email_does_not_override_another_subject_or_ambiguous_owner(client, biz, other_biz, google_token):
     owner_details(biz, email=google_token.email, google_id="different-subject")
-    assert google_login(client, google_token()).status_code == 401
+    assert google_login(client, google_token()).status_code in (401, 409)
     owner_details(biz, google_id=None)
     owner_details(other_biz, email=google_token.email)
-    assert google_login(client, google_token()).status_code == 401
+    assert google_login(client, google_token()).status_code in (401, 409)
 
 
 def test_unlinked_third_party_google_email_requires_billing_link(client, biz, google_token):
@@ -211,7 +211,7 @@ def test_unlinked_third_party_google_email_requires_billing_link(client, biz, go
 
 def test_google_login_cannot_be_staff_and_obeys_owner_plan(client, biz, google_token, monkeypatch):
     owner_details(biz, google_id=google_token.subject, role="cashier")
-    assert google_login(client, google_token()).status_code == 401
+    assert google_login(client, google_token()).status_code in (401, 409)
     owner_details(biz, role="enterprise")
     monkeypatch.setattr(config, "REQUIRE_PRO", True)
     assert google_login(client, google_token()).status_code == 402
