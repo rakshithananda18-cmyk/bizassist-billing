@@ -66,7 +66,17 @@ export default function B2B() {
 }
 
 function B2BWorkspace() {
-  const { authFetch, token, user, settings } = useAuth()
+  const { authFetch, token, user, settings, isDemoMode: authDemoMode } = useAuth()
+  if (user?.is_demo || authDemoMode) {
+    return (
+      <AppLayout title="B2B Network">
+        <DemoGate
+          label="B2B Digital Supply Network"
+          description="Directly connect your store with verified distributors and FMCG suppliers. Transmit digital POs and auto-reconcile inward inventory without manual data entry. Start your 14-day trial to connect."
+        />
+      </AppLayout>
+    )
+  }
   const confirm = useConfirm()
 
   const [params, setParams] = useSearchParams()

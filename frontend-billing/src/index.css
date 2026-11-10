@@ -906,11 +906,57 @@ body,
   color: inherit;
   transition: color var(--dur) var(--ease);
 }
-.nav-link.is-demo-protected { position: relative; }
-.nav-link.is-demo-protected .nav-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.nav-demo-protected-badge { display: inline-flex; align-items: center; gap: 3px; flex: 0 0 auto; margin-left: auto; padding: 3px 5px; border-radius: 5px; color: var(--sidebar-text,var(--text-primary)); background: var(--sidebar-hover,var(--bg-3)); font-size: 9px; font-weight: 600; line-height: 1.2; }
-.sidebar.collapsed .nav-demo-protected-badge { position: absolute; right: 2px; bottom: 2px; width: 15px; height: 15px; justify-content: center; padding: 0; border-radius: 50%; }
-.sidebar.collapsed .nav-demo-protected-badge > span { display: none; }
+.nav-link.is-demo-protected {
+  position: relative;
+  transition: all var(--dur, 0.2s) var(--ease, ease);
+}
+.nav-link.is-demo-protected .nav-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.nav-demo-protected-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3.5px;
+  flex: 0 0 auto;
+  margin-left: auto;
+  padding: 2.5px 6.5px;
+  border-radius: 6px;
+  color: var(--sidebar-text, var(--text-primary));
+  background: color-mix(in srgb, var(--sidebar-hover, var(--bg-3)) 65%, transparent);
+  backdrop-filter: blur(8px) saturate(140%);
+  -webkit-backdrop-filter: blur(8px) saturate(140%);
+  border: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+  font-size: 9px;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: 0.02em;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  transition: all var(--dur) var(--ease);
+}
+.nav-link.is-demo-protected:hover .nav-demo-protected-badge {
+  background: color-mix(in srgb, var(--accent) 18%, var(--bg-2));
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+  color: var(--accent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+.sidebar.collapsed .nav-demo-protected-badge {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  width: 15px;
+  height: 15px;
+  justify-content: center;
+  padding: 0;
+  border-radius: 50%;
+}
+.sidebar.collapsed .nav-demo-protected-badge > span {
+  display: none;
+}
 .nav-link:hover,
 .nav-link:focus-visible {
   background: var(--sidebar-hover, var(--bg-3));

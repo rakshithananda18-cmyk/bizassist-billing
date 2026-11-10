@@ -303,7 +303,17 @@ export default function Reports() {
       </AppLayout>
     )
   }
-  const { authFetch } = useAuth()
+  const { authFetch, user, isDemoMode: authDemoMode } = useAuth()
+  if (user?.is_demo || authDemoMode) {
+    return (
+      <AppLayout title="Reports & Financials">
+        <DemoGate
+          label="Automated GST Filings & Day-Book Reports"
+          description="Access tamper-evident day books, GSTR-1, GSTR-3B tax offset calculations, and profit margin analytics. Start your free 14-day trial to generate real-time tax reports."
+        />
+      </AppLayout>
+    )
+  }
   const [searchParams, setSearchParams] = useSearchParams()
   const reportRequestRef = useRef(0)
   const reportAbortRef = useRef(null)

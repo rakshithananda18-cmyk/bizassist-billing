@@ -104,7 +104,7 @@ const NAV = [
           { to: '/parties/field', label: 'Field Collections', ownerOnly: true },
         ],
       },
-      { to: '/reports',  icon: <ReportsIcon size={16} className="nav-anim-report" />,   label: 'GST & Tax Reports' },
+      { to: '/reports',  icon: <ReportsIcon size={16} className="nav-anim-report" />,   label: 'GST & Tax Reports', demoProtected: true },
     ]
   }
 ]

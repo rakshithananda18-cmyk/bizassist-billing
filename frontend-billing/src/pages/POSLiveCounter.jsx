@@ -292,7 +292,17 @@ export default function POSLiveCounter() {
 // Demo visitors see the same locked feature card as B2B without starting any
 // counter polling, readiness probes, or live-session subscriptions.
 function LiveCounterWorkspace() {
-  const { user, authFetch, settings, networkMode } = useAuth()
+  const { user, authFetch, settings, networkMode, isDemoMode: authDemoMode } = useAuth()
+  if (user?.is_demo || authDemoMode) {
+    return (
+      <AppLayout title="POS Live Counter">
+        <DemoGate
+          label="POS Live Counter Terminal"
+          description="Real-time multi-counter monitoring, customer till display, and synchronized lane checkout. Start your free 14-day trial to monitor active counters."
+        />
+      </AppLayout>
+    )
+  }
   const { sseProbe } = useReadinessProbe()
   const isOwner = (user?.role || '').toLowerCase() !== 'cashier'
   const [params] = useSearchParams()
