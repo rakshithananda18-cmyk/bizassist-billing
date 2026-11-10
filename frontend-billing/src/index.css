@@ -920,17 +920,20 @@ body,
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  filter: blur(5px);
+  -webkit-filter: blur(6px);
+  filter: blur(6px);
   user-select: none;
-  opacity: 0.6;
+  pointer-events: none;
+  opacity: 0.55;
   transition: filter var(--dur) var(--ease), opacity var(--dur) var(--ease);
 }
 .nav-link.is-demo-protected:hover .nav-icon {
   opacity: 0.9;
 }
 .nav-link.is-demo-protected:hover .nav-label {
-  filter: blur(4px);
-  opacity: 0.8;
+  -webkit-filter: blur(6px);
+  filter: blur(6px);
+  opacity: 0.65;
 }
 .nav-demo-protected-badge {
   display: inline-flex;

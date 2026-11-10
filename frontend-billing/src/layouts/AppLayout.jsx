@@ -12,6 +12,7 @@ import { resolveHostingMode } from '../utils/resolveHostingMode'
 import { getAiDashboardUrl, openAiDashboard } from '../config/aiDashboard'
 import { fieldTeamNeedsCloudData, fieldTeamLaunchUrl, getFieldTeamUrl, openFieldTeam } from '../config/fieldTeam'
 import { applyNavOrder, navOrderKeys } from './navOrder'
+import DesktopDownloadModal from '../components/DesktopDownloadModal'
 import { IS_DESKTOP_APP, openDownloadPage } from '../config/downloadApp'
 import { BuildingMark } from '../components/Logo'
 import PageLoader from '../components/PageLoader'
@@ -1163,6 +1164,7 @@ export default function AppLayout({ children, title }) {
   // ── Global Toast Notifications ─────────────────────────────────────────────
   const [toasts, setToasts] = React.useState([])
   const [showHelpCenter, setShowHelpCenter] = React.useState(false)
+  const [showDownloadModal, setShowDownloadModal] = React.useState(false)
   const [isFirstTimeOnboarding, setIsFirstTimeOnboarding] = React.useState(false)
 
   React.useEffect(() => {
@@ -1175,8 +1177,13 @@ export default function AppLayout({ children, title }) {
     } catch {}
 
     const handleOpenHelp = () => setShowHelpCenter(true)
+    const handleOpenDownload = () => setShowDownloadModal(true)
     window.addEventListener('open_smart_help', handleOpenHelp)
-    return () => window.removeEventListener('open_smart_help', handleOpenHelp)
+    window.addEventListener('open_desktop_download', handleOpenDownload)
+    return () => {
+      window.removeEventListener('open_smart_help', handleOpenHelp)
+      window.removeEventListener('open_desktop_download', handleOpenDownload)
+    }
   }, [])
 
   React.useEffect(() => {
@@ -2061,7 +2068,7 @@ export default function AppLayout({ children, title }) {
                         // action at all — offering the wrong one is what made
                         // the 401 loop unreadable.
                         if (haltReason === 'plan_required') handleCheckPlan(e)
-                        else if (haltReason === 'protocol_upgrade_required') openDownloadPage()
+                        else if (haltReason === 'protocol_upgrade_required') setShowDownloadModal(true)
                         else if (haltReason === 'auth_expired' || haltReason === 'secret_mismatch') logout()
                         else handleSyncNow()
                       }}
@@ -2597,7 +2604,7 @@ export default function AppLayout({ children, title }) {
                   <button
                     className="btn-premium"
                     style={{ width: 'calc(100% - 20px)', margin: '6px 10px', padding: '9px 12px', fontSize: '0.8rem' }}
-                    onClick={() => { setShowProfileMenu(false); openDownloadPage(); }}
+                    onClick={() => { setShowProfileMenu(false); setShowDownloadModal(true); }}
                   >
                     <DownloadIcon size={14} /> Download Desktop App
                   </button>
@@ -2787,7 +2794,7 @@ export default function AppLayout({ children, title }) {
                   <button
                     className="btn-premium"
                     style={{ width: 'calc(100% - 20px)', margin: '6px 10px', padding: '9px 12px', fontSize: '0.8rem' }}
-                    onClick={() => { setShowProfileMenu(false); openDownloadPage(); }}
+                    onClick={() => { setShowProfileMenu(false); setShowDownloadModal(true); }}
                   >
                     <DownloadIcon size={14} /> Download Desktop App
                   </button>
@@ -2876,6 +2883,11 @@ export default function AppLayout({ children, title }) {
         isOpen={showHelpCenter}
         onClose={() => setShowHelpCenter(false)}
         isFirstTime={isFirstTimeOnboarding}
+      />
+
+      <DesktopDownloadModal
+        open={showDownloadModal}
+        onClose={() => setShowDownloadModal(false)}
       />
     </div>
   )

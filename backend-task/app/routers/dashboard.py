@@ -276,8 +276,8 @@ def field_notifications(p: Principal = Depends(require_owner), db: Session = Dep
         "kind": "release_update",
         "category": "updates",
         "severity": "info",
-        "title": "Field Team v1.2.5 Update",
-        "detail": "Unified smart notifications, store request syncing, and GPS live tracker hardening.",
+        "title": "Field Team v1.2.6 Update",
+        "detail": "Native desktop installers, demo route frosted protection, and theme-aligned email alerts.",
         "route": "/settings",
         "action": "view_release_notes",
     })
