@@ -23,7 +23,7 @@ _lock = threading.Lock()
 def _probe(url):
     start = time.monotonic()
     try:
-        with httpx.Client(timeout=2.0, follow_redirects=True) as client:
+        with httpx.Client(timeout=5.0, follow_redirects=True) as client:
             response = client.get(url)
         protected = response.status_code in (401, 403) or any(path in str(response.url) for path in ("vercel.com/login", "vercel.com/sso-api"))
         return {"url": url, "status": "ONLINE" if response.status_code < 400 and not protected else "ERROR", "code": response.status_code, "latency_ms": round((time.monotonic()-start)*1000), "edge_pop": response.headers.get("x-vercel-id", "").split("::")[0] or None, "error": "Deployment is protected" if protected else (None if response.status_code < 400 else f"HTTP {response.status_code}")}
