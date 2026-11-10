@@ -1,4 +1,4 @@
-<#
+﻿<#
   deploy_cloudrun.ps1 — Deploy STATER Bill Core Backend to Google Cloud Run (Mumbai / asia-south1).
 
   Prerequisites:
@@ -140,7 +140,7 @@ try {
     $secretsFlag = "DATABASE_URL=DATABASE_URL:latest,JWT_SECRET=JWT_SECRET:latest,BILLING_CRON_SECRET=BILLING_CRON_SECRET:latest"
     foreach ($optSec in @("GROQ_API_KEY", "ADMIN_SERVICE_URL", "BREVO_API_KEY", "BREVO_SENDER_EMAIL", "GOOGLE_CLIENT_ID")) {
         if (Test-Secret $optSec) {
-            $secretsFlag += ",$optSec=${optSec}:latest"
+            $secretsFlag += (",$optSec=" + $optSec + ":latest")
         }
     }
     $existing = Get-GcloudOptional run services describe $Service --project $Project --region $Region --format 'value(status.url)'
