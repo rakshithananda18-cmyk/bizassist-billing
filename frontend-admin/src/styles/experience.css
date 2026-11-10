@@ -288,7 +288,7 @@ a:focus-visible, button:focus-visible, summary:focus-visible, input:focus-visibl
 .admin-experience .widget:hover, .admin-experience .card:hover { transform: none; box-shadow: var(--shadow-sm); border-color: var(--border); }
 .admin-experience .widget-title, .admin-experience .admin-table-title { font-family: var(--font-sans); font-size: 13px; font-weight: 600; letter-spacing: -.015em; text-transform: none; color: var(--text-primary); }
 .admin-experience .admin-table-title::before { display: none; }
-.admin-experience .card p { font-family: var(--font-sans); font-variant-numeric: tabular-nums; font-size: 31px; font-weight: 500; letter-spacing: -.04em; }
+.admin-experience .card:not(.infra-card) > p { font-family: var(--font-sans); font-variant-numeric: tabular-nums; font-size: 31px; font-weight: 500; letter-spacing: -.04em; }
 .admin-experience .card h3 { color: var(--text-muted); font-size: 10px; font-weight: 500; letter-spacing: .02em; text-transform: none; }
 .admin-experience .btn-flush, .admin-experience .btn-primary, .admin-experience .btn-wipe-row, .admin-experience .btn-wipe, .admin-experience .custom-modal-btn { font-family: var(--font-sans); font-size: 11px; font-weight: 500; border-radius: 7px; min-height: 34px; transition: background .18s, border-color .18s, color .18s; }
 .admin-experience .btn-primary, .admin-experience .confirm-btn, .custom-modal-overlay .btn-primary, .custom-modal-overlay .confirm-btn { background: var(--accent-solid); border-color: var(--accent-solid); color: var(--accent-foreground); }

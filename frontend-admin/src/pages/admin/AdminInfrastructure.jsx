@@ -28,8 +28,13 @@ function metric(value, suffix = '') {
     ? 'Unavailable' : `${value}${suffix}`
 }
 
-function MetricRow({ label, value }) {
-  return <div className="infra-stat"><span>{label}</span><strong>{value}</strong></div>
+function MetricRow({ label, value, title }) {
+  return (
+    <div className="infra-stat">
+      <span>{label}</span>
+      <strong title={title || (typeof value === 'string' ? value : undefined)}>{value}</strong>
+    </div>
+  )
 }
 
 function StatusBadge({ status }) {
@@ -404,7 +409,12 @@ export default function AdminInfrastructure() {
             <MetricRow label="Health Endpoint" value={metric(infraData.field_team?.url)} />
             <MetricRow label="Probe HTTP Status" value={metric(infraData.field_team?.code)} />
             <MetricRow label="Probe Roundtrip" value={metric(infraData.field_team?.latency_ms, ' ms')} />
-            {infraData.field_team?.error && <p className="infra-note">{infraData.field_team.error}</p>}
+            {infraData.field_team?.error && (
+              <p className="infra-note infra-error-note">
+                <Icon name="alert" size={13} />
+                <span>{infraData.field_team.error}</span>
+              </p>
+            )}
           </article>
 
           <article className="card infra-card" style={{ padding: 20 }}>
@@ -412,7 +422,7 @@ export default function AdminInfrastructure() {
             <MetricRow label="Database Engine" value={metric(db?.dialect)} />
             <MetricRow label="Storage Footprint" value={db?.size_str ?? formatBytes(db?.size_bytes)} />
             <MetricRow label="Cache Hit Ratio" value={metric(db?.cache_hit_ratio_pct, '%')} />
-            <MetricRow label="Pool Connections" value={`${metric(db?.connection_pool?.active)} active · ${metric(db?.connection_pool?.idle)} idle`} />
+            <MetricRow label="Pool Connections" value={db?.connection_pool?.active != null ? `${db.connection_pool.active} active · ${db.connection_pool.idle ?? 0} idle` : 'Unavailable'} />
             <MetricRow label="Connection Capacity" value={metric(db?.connection_pool?.max)} />
             <MetricRow label="Invoices (estimate)" value={metric(db?.table_counts?.invoices)} />
             <MetricRow label="Products (estimate)" value={metric(db?.table_counts?.products)} />
@@ -426,7 +436,12 @@ export default function AdminInfrastructure() {
             <MetricRow label="HTTP Status" value={metric(edge?.code)} />
             <MetricRow label="Edge Roundtrip" value={metric(edge?.latency_ms, ' ms')} />
             <MetricRow label="Edge POP Location" value={metric(edge?.edge_pop)} />
-            {edge?.error && <p className="infra-note">{edge.error}</p>}
+            {edge?.error && (
+              <p className="infra-note infra-error-note">
+                <Icon name="alert" size={13} />
+                <span>{edge.error}</span>
+              </p>
+            )}
           </article>
         </div>
       )}
