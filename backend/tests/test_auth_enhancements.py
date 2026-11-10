@@ -7,6 +7,7 @@ Tests for:
 4. Google OAuth verification and onboarding
 """
 import os
+import uuid
 import pytest
 from unittest.mock import patch
 from fastapi.testclient import TestClient
@@ -24,72 +25,67 @@ client = TestClient(app)
 
 
 @pytest.fixture(autouse=True)
-def clean_db_and_rate_limits(monkeypatch):
-    monkeypatch.setattr("services.brevo_service.is_brevo_configured", lambda: False)
-    db = SessionLocal()
-    try:
-        # Clean up test users created in these tests
-        db.query(PasswordResetOTP).delete()
-        db.query(User).filter(User.username.in_(["test_merchant_1", "test_google_merchant", "new_chosen_store"])).delete()
-        db.commit()
-    finally:
-        db.close()
-
+def bypass_rate_limits():
     with patch("services.rate_limiter.check_ip_rate_limit", return_value={"allowed": True}), \
          patch("routes.auth.check_ip_rate_limit", return_value={"allowed": True}):
         yield
 
 
-def create_sample_user():
+def create_sample_user(username=None, phone=None, email=None):
     db = SessionLocal()
     try:
+        uid = uuid.uuid4().hex[:8]
+        u_name = username or f"merchant_{uid}"
+        u_phone = phone or ("9" + str(uuid.uuid4().int % 1000000000).zfill(9))
+        u_email = email or f"merchant_{uid}@example.com"
         u = User(
-            username="test_merchant_1",
+            username=u_name,
             password=hash_password("ValidPassword123"),
-            business_name="Test Store One",
+            business_name=f"Test Store {uid}",
             role="enterprise",
-            public_id="BA-TEST01",
-            phone=normalize_phone("9876543210"),
-            email="merchant1@example.com",
+            public_id=f"BA-{uid.upper()[:6]}",
+            phone=normalize_phone(u_phone),
+            email=u_email,
             token_version=0
         )
         db.add(u)
         db.commit()
         db.refresh(u)
-        return u.id
+        return {"id": u.id, "username": u_name, "phone": u_phone, "email": u_email}
     finally:
         db.close()
 
 
 def test_login_by_username_email_and_phone():
-    create_sample_user()
+    user = create_sample_user()
 
     # 1. Login by Username
-    r1 = client.post("/login", json={"username": "test_merchant_1", "password": "ValidPassword123"})
+    r1 = client.post("/login", json={"username": user["username"], "password": "ValidPassword123"})
     assert r1.status_code == 200
-    assert r1.json()["username"] == "test_merchant_1"
+    assert r1.json()["username"] == user["username"]
 
     # 2. Login by Email
-    r2 = client.post("/login", json={"username": "merchant1@example.com", "password": "ValidPassword123"})
+    r2 = client.post("/login", json={"username": user["email"], "password": "ValidPassword123"})
     assert r2.status_code == 200
-    assert r2.json()["username"] == "test_merchant_1"
+    assert r2.json()["username"] == user["username"]
 
     # 3. Login by Phone number
-    r3 = client.post("/login", json={"username": "9876543210", "password": "ValidPassword123"})
+    r3 = client.post("/login", json={"username": user["phone"], "password": "ValidPassword123"})
     assert r3.status_code == 200
-    assert r3.json()["username"] == "test_merchant_1"
+    assert r3.json()["username"] == user["username"]
 
 
 def test_check_username_availability():
-    create_sample_user()
+    user = create_sample_user()
 
     # Existing username -> taken
-    r1 = client.get("/api/auth/check-username?username=test_merchant_1")
+    r1 = client.get(f"/api/auth/check-username?username={user['username']}")
     assert r1.status_code == 200
     assert r1.json()["available"] is False
 
     # New username -> available
-    r2 = client.get("/api/auth/check-username?username=brand_new_unique_store_name")
+    new_name = f"brand_new_{uuid.uuid4().hex[:8]}"
+    r2 = client.get(f"/api/auth/check-username?username={new_name}")
     assert r2.status_code == 200
     assert r2.json()["available"] is True
 
@@ -100,7 +96,7 @@ def test_check_username_availability():
 
 
 def test_forgot_password_otp_flow():
-    create_sample_user()
+    user = create_sample_user()
 
     sent_emails = []
     def fake_send_otp(to_email, name, otp, username):
@@ -109,7 +105,7 @@ def test_forgot_password_otp_flow():
 
     with patch("services.brevo_service.send_otp_email", side_effect=fake_send_otp):
         # 1. Request OTP using Phone Number
-        req_res = client.post("/api/auth/forgot-password/request-otp", json={"identifier": "9876543210"})
+        req_res = client.post("/api/auth/forgot-password/request-otp", json={"identifier": user["phone"]})
         assert req_res.status_code == 200
         assert req_res.json()["status"] == "ok"
         assert len(sent_emails) == 1
@@ -118,7 +114,7 @@ def test_forgot_password_otp_flow():
 
         # 2. Verify with wrong OTP
         bad_res = client.post("/api/auth/forgot-password/verify-and-reset", json={
-            "identifier": "9876543210",
+            "identifier": user["phone"],
             "otp": "000000",
             "new_password": "NewSecretPassword1"
         })
@@ -127,7 +123,7 @@ def test_forgot_password_otp_flow():
 
         # 3. Verify with correct OTP and update password
         good_res = client.post("/api/auth/forgot-password/verify-and-reset", json={
-            "identifier": "9876543210",
+            "identifier": user["phone"],
             "otp": otp,
             "new_password": "NewSecretPassword1"
         })
@@ -136,10 +132,10 @@ def test_forgot_password_otp_flow():
         assert "token" in good_res.json()
 
         # 4. Old password fails, new password works
-        old_login = client.post("/login", json={"username": "test_merchant_1", "password": "ValidPassword123"})
+        old_login = client.post("/login", json={"username": user["username"], "password": "ValidPassword123"})
         assert old_login.status_code == 401
 
-        new_login = client.post("/login", json={"username": "test_merchant_1", "password": "NewSecretPassword1"})
+        new_login = client.post("/login", json={"username": user["username"], "password": "NewSecretPassword1"})
         assert new_login.status_code == 200
 
 
@@ -148,9 +144,14 @@ def test_google_verify_and_onboarding_flow(monkeypatch):
     monkeypatch.setattr(auth_routes, "_trial_days", lambda: 14)
     monkeypatch.setattr(auth_routes, "_DB_MODE", "cloud")
 
+    uid = uuid.uuid4().hex[:8]
+    g_email = f"google_{uid}@gmail.com"
+    g_username = f"store_{uid}"
+    g_phone = "9" + str(uuid.uuid4().int % 1000000000).zfill(9)
+
     fake_google_user = {
-        "sub": "google-uid-123456789",
-        "email": "test_google_user@gmail.com",
+        "sub": f"google-uid-{uid}",
+        "email": g_email,
         "name": "Arun Kumar",
         "picture": "https://example.com/avatar.jpg"
     }
@@ -160,19 +161,19 @@ def test_google_verify_and_onboarding_flow(monkeypatch):
         v1 = client.post("/api/auth/google/verify", json={"credential": "fake_token"})
         assert v1.status_code == 200
         assert v1.json()["status"] == "needs_onboarding"
-        assert v1.json()["email"] == "test_google_user@gmail.com"
+        assert v1.json()["email"] == g_email
 
         # 2. Register with chosen username & mandatory phone
         reg_res = client.post("/api/auth/google/register", json={
             "credential": "fake_token",
-            "username": "new_chosen_store",
+            "username": g_username,
             "business_name": "Arun Electronics",
             "category": "electronics",
-            "phone": "9123456780"
+            "phone": g_phone
         })
         assert reg_res.status_code == 200
         assert reg_res.json()["action"] == "registered"
-        assert reg_res.json()["username"] == "new_chosen_store"
+        assert reg_res.json()["username"] == g_username
         assert "token" in reg_res.json()
         assert reg_res.json()["trial"] is not None
         assert reg_res.json()["trial"]["days"] == 14
@@ -196,5 +197,5 @@ def test_google_verify_and_onboarding_flow(monkeypatch):
         v2 = client.post("/api/auth/google/verify", json={"credential": "fake_token"})
         assert v2.status_code == 200
         assert v2.json()["action"] == "login"
-        assert v2.json()["username"] == "new_chosen_store"
+        assert v2.json()["username"] == g_username
         assert "token" in v2.json()
