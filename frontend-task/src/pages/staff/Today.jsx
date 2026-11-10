@@ -165,7 +165,7 @@ function DutyCard() {
 function CompleteSheet({ task, onClose }) {
   const { act } = useDay()
   const { me } = useAuth()
-  const businessName = me?.billing_business?.business_name || me?.business_name || 'BizAssist'
+  const businessName = me?.billing_business?.business_name || me?.business_name || 'Stater'
   const checkBilling = task.task_type === 'payment_collect' && collectionAmounts(task).linked
   const { data: refreshedTask, error, loading, reload } = useLoad(
     () => (checkBilling ? api.get(`/api/tasks/${task.id}`) : Promise.resolve(task)),
@@ -770,7 +770,7 @@ function SkipSheet({ stop, onClose }) {
 function StopCard({ stop, current, onDuty, fix, geofenceM, onSelect }) {
   const { act } = useDay()
   const { me } = useAuth()
-  const businessName = me?.billing_business?.business_name || me?.business_name || 'BizAssist'
+  const businessName = me?.billing_business?.business_name || me?.business_name || 'Stater'
   const [completing, setCompleting] = useState(null)
   const [skipping, setSkipping] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -947,7 +947,7 @@ function StopCard({ stop, current, onDuty, fix, geofenceM, onSelect }) {
 function DelhiveryCockpitCard({ stop, onDuty, fix, geofenceM, onNext, onPrev }) {
   const { act } = useDay()
   const { me } = useAuth()
-  const businessName = me?.billing_business?.business_name || me?.business_name || 'BizAssist'
+  const businessName = me?.billing_business?.business_name || me?.business_name || 'Stater'
   const [completing, setCompleting] = useState(null)
   const [skipping, setSkipping] = useState(false)
   const [busy, setBusy] = useState(false)

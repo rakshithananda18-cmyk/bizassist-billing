@@ -1,11 +1,13 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { useAuth, lastBizId } from '../lib/auth'
+import { api } from '../lib/api'
 import { BuildingMark } from '../components/Logo'
 import { cycleTheme, getBillingUrl, getTheme } from '../lib/theme'
+import { renderGoogleButton } from '../lib/googleAuth'
 import TaskLoginScene from '../components/TaskLoginScene'
 
 export default function Login() {
-  const { ownerLogin, staffLogin, notice } = useAuth()
+  const { ownerLogin, staffLogin, googleLogin, notice } = useAuth()
   const [theme, setThemeChoice] = useState(getTheme)
   const [mode, setModeState] = useState(() => {
     try { return localStorage.getItem('task_login_mode') || 'staff' } catch { return 'staff' }
@@ -18,15 +20,95 @@ export default function Login() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
   const [showPw, setShowPw] = useState(false)
-  const set = (k) => (e) => setF({ ...f, [k]: e.target.value })
+  const [verifiedBusiness, setVerifiedBusiness] = useState(null)
+  const [staffRoster, setStaffRoster] = useState([])
+  const [verifying, setVerifying] = useState(false)
+  const [googleUnavailable, setGoogleUnavailable] = useState(false)
+  const googleBtnRef = useRef(null)
+  const lookupVersion = useRef(0)
+
+  const set = (k) => (e) => setF(prev => ({ ...prev, [k]: e.target.value }))
+  const changeBusiness = (e) => {
+    lookupVersion.current += 1
+    setF(prev => ({ ...prev, business: e.target.value, login_name: '', password: '' }))
+    setVerifiedBusiness(null)
+    setStaffRoster([])
+    setVerifying(false)
+    setError(null)
+  }
+
+  // Render Google button for Owner login
+  useEffect(() => {
+    let active = true
+    if (mode === 'owner' && googleBtnRef.current) {
+      setGoogleUnavailable(false)
+      renderGoogleButton(googleBtnRef.current, {
+        onCredential: async (credential) => {
+          if (!active) return
+          setBusy(true)
+          setError(null)
+          try {
+            await googleLogin(credential)
+          } catch (err) {
+            if (active) setError(err.message || 'Google authentication failed.')
+          } finally {
+            if (active) setBusy(false)
+          }
+        },
+        text: 'signin_with',
+      }).then(rendered => { if (active) setGoogleUnavailable(!rendered) })
+    }
+    return () => { active = false }
+  }, [mode, googleLogin])
+
+  // Look up business details and staff accounts
+  const checkBusiness = async (overrideBiz) => {
+    const ident = (overrideBiz ?? f.business).trim()
+    if (!ident) return
+    const version = ++lookupVersion.current
+    setVerifying(true)
+    setVerifiedBusiness(null)
+    setStaffRoster([])
+    setF(prev => ({ ...prev, login_name: '', password: '' }))
+    setError(null)
+    try {
+      const data = await api.post('/api/auth/lookup-business', { identifier: ident })
+      if (version !== lookupVersion.current) return
+      if (data?.found) {
+        setVerifiedBusiness(data)
+        const staff = data.staff || []
+        setStaffRoster(staff)
+        setF(prev => ({ ...prev, login_name: staff[0]?.username || '' }))
+      } else {
+        setError(data?.message || 'No business found. Check your owner’s details and try again.')
+      }
+    } catch (err) {
+      if (version === lookupVersion.current) setError(err.message || 'Could not find this business. Please try again.')
+    } finally {
+      if (version === lookupVersion.current) setVerifying(false)
+    }
+  }
+
+  // Pre-check if business is saved
+  useEffect(() => {
+    if (f.business) checkBusiness(f.business)
+    return () => { lookupVersion.current += 1 }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const submit = async (e) => {
     e.preventDefault()
     setBusy(true)
     setError(null)
     try {
-      if (mode === 'staff') await staffLogin(f.business.trim(), f.login_name.trim(), f.password)
-      else await ownerLogin(f.username.trim(), f.password)
+      if (mode === 'staff') {
+        if (!verifiedBusiness || verifying || !staffRoster.some(s => s.username === f.login_name)) {
+          throw new Error('Find your business and select your staff account first.')
+        }
+        await staffLogin(verifiedBusiness.public_id, f.login_name, f.password)
+      } else {
+        await ownerLogin(f.username.trim(), f.password)
+      }
     } catch (err) {
       setError(err.message)
     } finally {
@@ -44,7 +126,7 @@ export default function Login() {
         <div className="login-card">
           <div className="login-glow" />
           <div className="login-symbol"><BuildingMark size={44} /></div>
-          <h1 className="login-title">BIZASSIST</h1>
+          <h1 className="login-title">STATER</h1>
           <p className="login-subtitle">FIELD TEAM &amp; LOGISTICS</p>
 
           {/* Staff vs Owner Tabs matching Billing */}
@@ -55,6 +137,7 @@ export default function Login() {
               aria-selected={mode === 'staff'}
               className={`login-tab-btn ${mode === 'staff' ? 'active' : ''}`}
               onClick={() => { setMode('staff'); setError(null) }}
+              disabled={busy}
             >
               Staff Login
             </button>
@@ -64,6 +147,7 @@ export default function Login() {
               aria-selected={mode === 'owner'}
               className={`login-tab-btn ${mode === 'owner' ? 'active' : ''}`}
               onClick={() => { setMode('owner'); setError(null) }}
+              disabled={busy}
             >
               Owner Login
             </button>
@@ -84,35 +168,107 @@ export default function Login() {
             {mode === 'staff' ? (
               <>
                 <div className="form-group" style={{ textAlign: 'left' }}>
-                  <label htmlFor="staff-bizid" className="form-label">Business ID</label>
-                  <input
-                    id="staff-bizid"
-                    className="form-input"
-                    value={f.business}
-                    onChange={set('business')}
-                    autoCapitalize="characters"
-                    required
-                    autoFocus
-                  />
-                  <span className="form-hint">Provided by your business owner.</span>
+                  <label htmlFor="staff-bizid" className="form-label">Business Identifier</label>
+                  <div style={{ position: 'relative' }}>
+                    <input
+                      id="staff-bizid"
+                      className="form-input"
+                      placeholder="Owner's Phone, Username, Email, or BizID"
+                      value={f.business}
+                      onChange={changeBusiness}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') { e.preventDefault(); checkBusiness() }
+                      }}
+                      autoCapitalize="none"
+                      autoComplete="off"
+                      disabled={busy}
+                      required
+                      autoFocus
+                    />
+                    {verifying && (
+                      <span style={{ position: 'absolute', right: 12, top: 10, fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                        Checking…
+                      </span>
+                    )}
+                  </div>
+                  <span className="form-hint">Enter your owner’s phone, username, email, or BizID.</span>
+                  <button type="button" className="btn btn-secondary" style={{ marginTop: 8, width: '100%' }} disabled={busy || verifying || !f.business.trim()} onClick={() => checkBusiness()}>
+                    {verifying ? 'Finding business…' : 'Find business'}
+                  </button>
                 </div>
+
+                {verifiedBusiness && (
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    margin: '6px 0 10px',
+                    padding: '8px 12px',
+                    borderRadius: 8,
+                    background: 'rgba(16, 185, 129, 0.08)',
+                    border: '1px solid rgba(16, 185, 129, 0.25)',
+                    fontSize: '0.8rem',
+                    textAlign: 'left'
+                  }}>
+                    <span style={{ color: '#10b981', fontWeight: 700 }}>✓</span>
+                    <span style={{ fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {verifiedBusiness.business_name}
+                    </span>
+                    <span style={{ color: 'var(--text-muted)', fontSize: '0.74rem', marginLeft: 'auto' }}>
+                      {verifiedBusiness.public_id}
+                    </span>
+                  </div>
+                )}
+
                 <div className="form-group" style={{ textAlign: 'left', marginTop: 10 }}>
-                  <label htmlFor="staff-login-name" className="form-label">Your login name</label>
-                  <input
-                    id="staff-login-name"
-                    className="form-input"
-                    value={f.login_name}
-                    onChange={set('login_name')}
-                    autoCapitalize="none"
-                    autoComplete="username"
-                    required
-                  />
+                  <label htmlFor="staff-login-select" className="form-label" style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span>Your Staff Account</span>
+                    {staffRoster.length > 0 && (
+                      <span style={{ fontSize: '0.72rem', color: 'var(--accent)', fontWeight: 600 }}>
+                        {staffRoster.length} staff found
+                      </span>
+                    )}
+                  </label>
+                    <select
+                      id="staff-login-select"
+                      className="form-input"
+                      value={f.login_name}
+                      onChange={set('login_name')}
+                      disabled={busy || !verifiedBusiness || !staffRoster.length}
+                      required
+                    >
+                      {!staffRoster.length && <option value="">{verifiedBusiness ? 'No active staff accounts' : 'Find your business first'}</option>}
+                      {staffRoster.map(s => (
+                          <option key={s.id} value={s.username}>
+                            {s.name ? `${s.name} (${s.username})` : s.username}
+                          </option>
+                      ))}
+                    </select>
+                  {verifiedBusiness && !staffRoster.length && <span className="form-hint">Ask your owner to add or enable your staff account.</span>}
                 </div>
               </>
             ) : (
               <>
+                {/* Google Sign-in for Owner */}
+                <div style={{ marginBottom: 14 }}>
+                  <div ref={googleBtnRef} style={{ display: 'flex', justifyContent: 'center', minHeight: 40 }} />
+                  {googleUnavailable && <span className="form-hint" role="status">Google sign-in is unavailable. Use your account credentials below.</span>}
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    margin: '12px 0 8px',
+                    gap: 12
+                  }}>
+                    <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+                    <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                      or with credentials
+                    </span>
+                    <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+                  </div>
+                </div>
+
                 <div className="form-group" style={{ textAlign: 'left' }}>
-                  <label htmlFor="owner-username" className="form-label">Username</label>
+                  <label htmlFor="owner-username" className="form-label">Username, Email, or Phone</label>
                   <input
                     id="owner-username"
                     className="form-input"
@@ -120,10 +276,11 @@ export default function Login() {
                     onChange={set('username')}
                     autoCapitalize="none"
                     autoComplete="username"
+                    disabled={busy}
                     required
                     autoFocus
                   />
-                  <span className="form-hint">Same account as BizAssist Billing.</span>
+                  <span className="form-hint">Same account as STATER Bill.</span>
                 </div>
               </>
             )}
@@ -138,6 +295,7 @@ export default function Login() {
                   value={f.password}
                   onChange={set('password')}
                   autoComplete="current-password"
+                  disabled={busy || (mode === 'staff' && (!verifiedBusiness || !staffRoster.length))}
                   required
                 />
                 <button
@@ -162,7 +320,7 @@ export default function Login() {
               </div>
             </div>
 
-            <button type="submit" className="login-submit-btn" disabled={busy} style={{ marginTop: 16 }}>
+            <button type="submit" className="login-submit-btn" disabled={busy || (mode === 'staff' && (verifying || !verifiedBusiness || !f.login_name))} style={{ marginTop: 16 }}>
               {busy ? 'Signing in…' : mode === 'staff' ? 'Start Shift' : 'Sign In as Owner'}
             </button>
 

@@ -44,6 +44,7 @@ const Terms = lazy(() => import('./pages/Terms'))
 const Privacy = lazy(() => import('./pages/Privacy'))
 const Contact = lazy(() => import('./pages/Contact'))
 const RefundPolicy = lazy(() => import('./pages/RefundPolicy'))
+const DemoProtectedWorkspace = lazy(() => import('./pages/DemoProtectedWorkspace'))
 
 
 function AppearanceSync() {
@@ -85,6 +86,7 @@ export function AppRoutes() {
       <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
       <Route path="/sales"     element={<ProtectedRoute><Sales key="sales" /></ProtectedRoute>} />
       <Route path="/live-view" element={<ProtectedRoute><LiveView /></ProtectedRoute>} />
+      <Route path="/demo-preview/:feature" element={<ProtectedRoute><DemoProtectedWorkspace /></ProtectedRoute>} />
       {/* Merged workspaces: Parties = Contacts+Payments · Stock = Inventory+Purchases.
           Each view is a real ROUTE (/parties/payments, /stock/inventory). */}
       <Route path="/parties"      element={<ProtectedRoute><ContactsPayments /></ProtectedRoute>} />

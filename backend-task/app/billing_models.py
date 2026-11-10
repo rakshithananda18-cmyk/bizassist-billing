@@ -36,6 +36,10 @@ class BillingUser(BillingBase):
     parent_business_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
     public_id = Column(String, unique=True, index=True, nullable=True)  # BizID BA-XXXXXX
     phone = Column(String, nullable=True)
+    # Billing owns linking and profile updates. Read these only to resolve the
+    # same owner across password and Google sign-in.
+    email = Column(String, nullable=True)
+    google_id = Column(String, nullable=True)
     # Billing owns this configured merchant payee. Field collections must never
     # substitute a staff member's account or a guessed application-wide VPA.
     upi_vpa = Column(String, nullable=True)

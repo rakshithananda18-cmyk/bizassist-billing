@@ -1,22 +1,23 @@
-.infra-header,.infra-controls,.infra-card-header,.infra-error{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}
+.infra-header,.infra-controls,.infra-card-header,.infra-error{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .infra-controls{font-size:12px;color:var(--text-muted)}
 .infra-controls label,.infra-controls button,.infra-card h2{display:flex;align-items:center;gap:7px}
-.infra-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:16px}
-.infra-card{display:flex;flex-direction:column;justify-content:flex-start}
-.infra-card h2{font-size:14px;font-weight:600;margin:0;color:var(--text-primary)}
-.infra-card-header{margin-bottom:14px;display:flex;align-items:center;justify-content:space-between}
+.infra-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:14px;align-items:stretch}
+.infra-card{display:flex!important;flex-direction:column!important;min-height:270px;height:100%;box-sizing:border-box}
+.infra-card h2{font-size:13.5px;font-weight:600;margin:0;color:var(--text-primary)}
+.infra-card-header{margin-bottom:12px;display:flex;align-items:center;justify-content:space-between}
 .infra-status{font-size:11px;text-transform:uppercase;color:var(--text-muted)}
-.infra-stat{display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin:8px 0;font-size:12px}
+.infra-stats-body{flex:1 1 auto;display:flex;flex-direction:column;justify-content:flex-start}
+.infra-stat{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin:5px 0;font-size:11.5px}
 .infra-stat>span{color:var(--text-muted);font-size:11.5px;white-space:nowrap;flex-shrink:0}
 .infra-stat>strong{text-align:right;font-family:var(--font-mono,monospace);font-size:11.5px;font-weight:500;color:var(--text-primary);max-width:65%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .infra-card .infra-note,
 .admin-experience .infra-card .infra-note,
-.infra-note{font-family:var(--font-sans)!important;font-size:11px!important;font-weight:400!important;line-height:1.5!important;letter-spacing:normal!important;color:var(--text-muted)!important;margin-top:auto!important;padding-top:14px;margin-bottom:0!important}
+.infra-note{font-family:var(--font-sans,-apple-system,sans-serif)!important;font-size:11px!important;font-weight:400!important;line-height:1.4!important;letter-spacing:normal!important;color:var(--text-muted)!important;margin-top:auto!important;padding-top:10px!important;margin-bottom:0!important;border-top:1px solid var(--border-subtle,rgba(0,0,0,0.06))}
 .infra-card .infra-note.infra-error-note,
-.admin-experience .infra-card .infra-note.infra-error-note{display:flex;align-items:center;gap:6px;background:var(--danger-dim);border:1px solid color-mix(in srgb,var(--danger) 22%,transparent);color:var(--danger)!important;border-radius:6px;padding:7px 10px;font-size:11px!important;font-weight:500!important;margin-top:12px!important;line-height:1.4!important}
-.infra-error{padding:16px;border:1px solid #c5303055;border-radius:10px;background:#c530300a;color:var(--text-primary)}
-.infra-error p{font-size:13px;overflow-wrap:anywhere;margin-top:6px}
-.infra-controls button,.infra-error button{padding:7px 12px;border:1px solid var(--border);border-radius:7px;background:var(--bg-2);color:var(--text-primary);cursor:pointer}
+.admin-experience .infra-card .infra-note.infra-error-note{display:flex;align-items:center;gap:6px;background:var(--danger-dim);border:1px solid color-mix(in srgb,var(--danger) 22%,transparent);color:var(--danger)!important;border-radius:6px;padding:6px 9px;font-size:11px!important;font-weight:500!important;margin-top:auto!important;line-height:1.35!important;border-top:none!important}
+.infra-error{padding:14px 16px;border:1px solid #c5303055;border-radius:10px;background:#c530300a;color:var(--text-primary);margin-bottom:14px}
+.infra-error p{font-size:12px;overflow-wrap:anywhere;margin-top:4px}
+.infra-controls button,.infra-error button{padding:6px 12px;border:1px solid var(--border);border-radius:7px;background:var(--bg-2);color:var(--text-primary);cursor:pointer;font-size:12px}
 .spinning{animation:infra-spin 1s linear infinite}
 @keyframes infra-spin{to{transform:rotate(360deg)}}
 @media(prefers-reduced-motion:reduce){.spinning{animation:none}}

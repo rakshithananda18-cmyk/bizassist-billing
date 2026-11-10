@@ -1,6 +1,6 @@
 {
-  "name": "BizAssist Field Team",
-  "short_name": "BizAssist Field",
+  "name": "Stater Field Team",
+  "short_name": "Stater Field",
   "description": "Attendance, delivery routes, tasks and points for your staff",
   "start_url": "/",
   "scope": "/",

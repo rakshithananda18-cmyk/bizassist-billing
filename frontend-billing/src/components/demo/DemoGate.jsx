@@ -16,6 +16,11 @@ export default function DemoGate({
       className={`demo-gate-container relative overflow-hidden rounded-2xl ${className}`}
       style={{
         position: 'relative',
+        width: '100%',
+        boxSizing: 'border-box',
+        overflow: 'hidden',
+        border: '1px solid var(--border)',
+        borderRadius: 20,
         minHeight: '440px',
         margin: '16px auto',
         maxWidth: '1200px',
@@ -62,7 +67,7 @@ export default function DemoGate({
           alignItems: 'center',
           justifyContent: 'center',
           gap: 16,
-          background: 'rgba(255, 255, 255, 0.82)',
+          background: 'color-mix(in srgb, var(--bg-2) 92%, transparent)',
           backdropFilter: 'blur(6px)',
           WebkitBackdropFilter: 'blur(6px)',
           borderRadius: 'inherit',
@@ -113,14 +118,14 @@ export default function DemoGate({
               marginBottom: 8,
             }}
           >
-            PRO &amp; ENTERPRISE USP
+            Protected demo view
           </div>
           <h3
             style={{
               margin: '0 0 8px 0',
               fontWeight: 800,
               fontSize: '1.25rem',
-              color: '#0f172a',
+              color: 'var(--text-primary)',
               letterSpacing: '-0.02em',
               lineHeight: 1.3,
             }}
@@ -131,7 +136,7 @@ export default function DemoGate({
             style={{
               margin: 0,
               fontSize: '0.875rem',
-              color: '#475569',
+              color: 'var(--text-secondary)',
               lineHeight: 1.5,
             }}
           >
@@ -162,7 +167,7 @@ export default function DemoGate({
             <span>Start Free 14-Day Trial</span>
             <span style={{ fontSize: '1.1rem' }}>→</span>
           </a>
-          <span style={{ fontSize: '0.75rem', color: '#64748b' }}>
+          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
             Instant setup · Cancel anytime · Full cloud &amp; offline access
           </span>
         </div>

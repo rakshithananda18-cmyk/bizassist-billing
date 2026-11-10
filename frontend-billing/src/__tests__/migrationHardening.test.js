@@ -6,8 +6,8 @@ import { fieldTeamLaunchUrl, getFieldTeamUrl, openFieldTeam } from '../config/fi
 import { openAiDashboard } from '../config/aiDashboard'
 
 describe('production companion launches', () => {
-  beforeEach(() => { post.mockReset(); vi.stubEnv('VITE_FIELD_TEAM_URL', ''); localStorage.clear() })
-  afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks() })
+  beforeEach(() => { post.mockReset(); vi.stubEnv('VITE_FIELD_TEAM_URL', ''); localStorage.clear(); sessionStorage.clear() })
+  afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); sessionStorage.clear(); window.history.replaceState({}, '', '/') })
   it('has a working business-aware Field Team link without build variables', () => {
     expect(getFieldTeamUrl()).toBe('https://task.staterbill.com')
     const target = new URL(fieldTeamLaunchUrl({ public_id: 'BA-ONE' }))
@@ -33,5 +33,16 @@ describe('production companion launches', () => {
     resolve({ ticket: 'one-use' }); await done
     expect(tab.location.href).toContain('sso=one-use')
     expect(tab.location.href).toContain('billing_business=BA-ONE')
+  })
+
+  it.each(['user', 'session', 'url'])('keeps Stater AI closed for a demo identified by %s, including direct search launches', async source => {
+    const user = source === 'user' ? { is_demo: true } : undefined
+    if (source === 'session') sessionStorage.setItem('stater_demo_active', '1')
+    if (source === 'url') window.history.replaceState({}, '', '/?demo=true')
+    const open = vi.spyOn(window, 'open').mockReturnValue({ location: { href: '' }, focus: vi.fn() })
+
+    expect(await openAiDashboard({ user })).toBe(false)
+    expect(open).not.toHaveBeenCalled()
+    expect(post).not.toHaveBeenCalled()
   })
 })

@@ -10,7 +10,7 @@ export default function WorkspaceSwitcher({ activeWorkspace = 'field' }) {
   return (
     <nav
       className="workspace-switch-pill"
-      aria-label="BizAssist workspaces"
+      aria-label="Stater workspaces"
       style={{
         display: 'inline-flex',
         alignItems: 'center',

@@ -392,7 +392,7 @@ export function AuthProvider({ children }) {
     } catch (err) {
       if (err?.code === 'AUTH_REQUEST_TIMEOUT') {
         if (!IS_LOCAL_APP) throw new Error('The server did not respond. Check your connection and try again.')
-        throw new Error('The local billing service is not responding. Wait a moment, then restart BizAssist if it persists.')
+        throw new Error('The local billing service is not responding. Wait a moment, then restart Stater if it persists.')
       }
       throw err
     }
@@ -526,7 +526,7 @@ export function AuthProvider({ children }) {
     } catch (err) {
       if (err?.code === 'AUTH_REQUEST_TIMEOUT') {
         if (!IS_LOCAL_APP) throw new Error('The server did not respond. Check your connection and try again.')
-        throw new Error('The local billing service is not responding. Wait a moment, then restart BizAssist if it persists.')
+        throw new Error('The local billing service is not responding. Wait a moment, then restart Stater if it persists.')
       }
       throw err
     }

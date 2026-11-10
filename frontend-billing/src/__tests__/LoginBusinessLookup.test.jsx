@@ -1,0 +1,72 @@
+import React from 'react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { MemoryRouter } from 'react-router-dom'
+const auth = vi.hoisted(() => ({ login: vi.fn(), staffLogin: vi.fn(), setSession: vi.fn(), user: null }))
+const google = vi.hoisted(() => ({ render: vi.fn() }))
+vi.mock('../contexts/AuthContext', () => ({ useAuth: () => auth }))
+vi.mock('../config', () => ({ API_BASE: 'http://local', CLOUD_URL: 'http://cloud', IS_LOCAL_APP: true }))
+vi.mock('../utils/googleAuth', () => ({ renderGoogleButton: google.render }))
+vi.mock('../components/auth/AuthRoadmap', () => ({ default: () => null }))
+vi.mock('../components/auth/AuthThemeToggle', () => ({ default: () => null }))
+vi.mock('../components/BootHealthCheck', () => ({ default: () => null }))
+vi.mock('../components/auth/ForgotPasswordModal', () => ({ default: () => null }))
+vi.mock('../components/auth/GoogleOnboardingModal', () => ({ default: () => null }))
+import Login from '../pages/Login'
+const response = body => ({ ok: true, status: 200, json: async () => body })
+const business = (staff = []) => ({ found: true, public_id: 'BA-SHOP', business_name: 'The correct business', has_staff: !!staff.length, staff })
+beforeEach(() => { localStorage.clear(); vi.clearAllMocks(); auth.login.mockResolvedValue({}); auth.staffLogin.mockResolvedValue({}); vi.stubGlobal('fetch', vi.fn()) })
+afterEach(() => { cleanup(); vi.unstubAllGlobals() })
+const show = () => render(<MemoryRouter><Login /></MemoryRouter>)
+
+describe('business-first sign-in', () => {
+  it('shows the business reference and skips role choice when there are no staff', async () => {
+    fetch.mockResolvedValue(response(business()))
+    show()
+    fireEvent.change(screen.getByLabelText('Business Owner Username'), { target: { value: 'owner@example.com' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+    await screen.findByLabelText('Owner Password')
+    expect(screen.getByText('The correct business')).toBeInTheDocument()
+    expect(screen.getByText('(BA-SHOP)')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Staff Login' })).not.toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Owner Password'), { target: { value: 'ExamplePass123!' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Sign In as Owner' }))
+    expect(auth.login).toHaveBeenCalledWith('owner@example.com', 'ExamplePass123!')
+  })
+  it('offers the returned staff account without requiring manual login-name entry', async () => {
+    fetch.mockResolvedValue(response(business([{ id: 1, username: 'counter_one', role: 'cashier' }])))
+    show()
+    fireEvent.change(screen.getByLabelText('Business Owner Username'), { target: { value: 'BA-SHOP' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Staff Login' }))
+    expect(screen.getByLabelText(/Staff Account/)).toHaveTextContent('counter_one')
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'CashierPass123!' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Sign In as Staff' }))
+    expect(auth.staffLogin).toHaveBeenCalledWith('BA-SHOP', 'counter_one', 'CashierPass123!')
+  })
+  it('ignores an old lookup response when the business identifier has changed', async () => {
+    let finish
+    fetch.mockReturnValue(new Promise(resolve => { finish = resolve }))
+    show()
+    const field = screen.getByLabelText('Business Owner Username')
+    fireEvent.change(field, { target: { value: 'previous-owner' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+    fireEvent.change(field, { target: { value: 'different-owner' } })
+    await act(async () => finish(response(business())))
+    expect(field).toHaveValue('different-owner')
+    expect(screen.queryByText('The correct business')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Owner Password')).not.toBeInTheDocument()
+  })
+  it('confirms an existing password before linking a non-authoritative Google email', async () => {
+    fetch.mockResolvedValueOnce(response({ status: 'needs_link', email: 'owner@example.com', business_name: 'The correct business', public_id: 'BA-SHOP' }))
+      .mockResolvedValueOnce(response({ action: 'login', token: 'verified-session' }))
+    show()
+    const callback = google.render.mock.calls.at(-1)[1].onCredential
+    await act(async () => callback('test-google-credential'))
+    fireEvent.change(screen.getByLabelText('Owner Password'), { target: { value: 'ExistingPass123!' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Sign In as Owner' }))
+    await act(async () => {})
+    expect(JSON.parse(fetch.mock.calls[1][1].body)).toEqual({ credential: 'test-google-credential', password: 'ExistingPass123!' })
+    expect(auth.setSession).toHaveBeenCalledWith({ action: 'login', token: 'verified-session' })
+  })
+})

@@ -1,4 +1,4 @@
-// components/InvoicePicker.jsx — choose a shop's BizAssist Billing invoices for
+// components/InvoicePicker.jsx — choose a shop's Stater Billing invoices for
 // a delivery or a collection. Bills already on a live task of the same kind
 // can't be picked again (the server refuses them too).
 import React, { useState } from 'react'
@@ -73,7 +73,7 @@ export default function InvoicePicker({ shop, taskType = 'delivery', initial = [
               })}
             </div>
           )}
-          <div className="form-hint">Boxes come from box, carton and case lines; type them yourself if the bill counts strips or pieces. Older bills stay listed while money is still due on them. Bills made in the BizAssist desktop app appear here after it syncs.</div>
+          <div className="form-hint">Boxes come from box, carton and case lines; type them yourself if the bill counts strips or pieces. Older bills stay listed while money is still due on them. Bills made in the Stater desktop app appear here after it syncs.</div>
         </>
       )}
     </Modal>

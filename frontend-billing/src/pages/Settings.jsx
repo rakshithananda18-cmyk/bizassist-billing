@@ -159,7 +159,7 @@ function SettingsWorkspace() {
   // ── Staff state (used in Lock & Staff tab) ──────────────────────────────────
   const [staffList,      setStaffList]      = useState([])
   const [staffLoading,   setStaffLoading]   = useState(false)
-  const [staffForm,      setStaffForm]      = useState({ username: '', password: '', role: 'cashier', counter_prefix: '' })
+  const [staffForm,      setStaffForm]      = useState({ username: '', password: '', phone: '', role: 'cashier', counter_prefix: '' })
   const [staffSubmit,    setStaffSubmit]    = useState(false)
   const [staffError,     setStaffError]     = useState('')
   const [staffSuccess,   setStaffSuccess]   = useState('')
@@ -252,8 +252,8 @@ function SettingsWorkspace() {
   const handleAddStaff = async (e) => {
     e.preventDefault()
     setStaffError(''); setStaffSuccess('')
-    if (!staffForm.username.trim() || !staffForm.password) {
-      setStaffError('Username and password are required.')
+    if (!staffForm.username.trim() || !staffForm.password || !staffForm.phone.trim()) {
+      setStaffError('Username, password, and mobile phone number are required.')
       return
     }
     setStaffSubmit(true)
@@ -263,6 +263,7 @@ function SettingsWorkspace() {
         body: JSON.stringify({
           username: staffForm.username.trim(),
           password: staffForm.password,
+          phone: staffForm.phone.trim(),
           role: staffForm.role || 'cashier',
           counter_prefix: staffForm.counter_prefix.trim() || null
         }),
@@ -274,7 +275,7 @@ function SettingsWorkspace() {
         const updatedList = [...staffList, created]
         const opts = getAvailableCounterOptions(updatedList)
         const nextCtr = staffForm.role === 'cashier' ? getFirstUnassignedCounter(updatedList, opts) : ''
-        setStaffForm({ username: '', password: '', role: 'cashier', counter_prefix: nextCtr })
+        setStaffForm({ username: '', password: '', phone: '', role: 'cashier', counter_prefix: nextCtr })
         loadStaff()
       } else {
         const err = await res.json().catch(() => ({}))
@@ -286,7 +287,7 @@ function SettingsWorkspace() {
 
   const handleSaveCounterPrefix = async (staffId, newPrefix) => {
     setStaffError(''); setStaffSuccess('')
-    
+
     // Find the staff we are editing (A)
     const staffA = staffList.find(s => s.id === staffId)
     const oldPrefix = staffA ? staffA.counter_prefix : null
@@ -501,13 +502,13 @@ function SettingsWorkspace() {
       const originalFlexDir = pageContent.style.flexDirection
       const originalHeight = pageContent.style.height
       const originalMinHeight = pageContent.style.minHeight
-      
+
       pageContent.style.overflow = 'hidden'
       pageContent.style.display = 'flex'
       pageContent.style.flexDirection = 'column'
       pageContent.style.height = '100%'
       pageContent.style.minHeight = '0'
-      
+
       return () => {
         pageContent.style.overflow = originalOverflow
         pageContent.style.display = originalDisplay
@@ -830,7 +831,7 @@ function SettingsWorkspace() {
                             document.documentElement.style.zoom = `${v}%`
                             document.documentElement.style.setProperty('--zoom', v / 100)
                             document.documentElement.style.minHeight = ''
-                            
+
                             // Auto-saved via debounced hybrid model
                           }}
                           className={`btn ${active ? 'btn-primary' : 'btn-secondary'}`}
@@ -925,8 +926,8 @@ function SettingsWorkspace() {
                         <span style={{ fontSize: '0.82rem', fontWeight: 600, color: hasLock ? 'var(--success)' : 'var(--text-muted)' }}>
                           {hasLock ? 'Enabled (PIN set)' : 'Disabled'}
                         </span>
-                        <button 
-                          type="button" 
+                        <button
+                          type="button"
                           className={`btn ${hasLock ? 'btn-secondary' : 'btn-primary'}`}
                           onClick={() => setShowPasscodeModal(true)}
                           style={{ padding: '6px 14px', fontSize: '0.82rem' }}
@@ -2026,7 +2027,7 @@ function SettingsWorkspace() {
           {/* ═══════════════════════════ STAFF MANAGEMENT ═════════════════════════ */}
           {activeTab === 'staff' && !isCashier && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 32 }}>
-              
+
               <div>
                 <SectionHeader title="Staff & Role Management" />
                 <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: 20, marginTop: 4, lineHeight: 1.5 }}>
@@ -2068,38 +2069,53 @@ function SettingsWorkspace() {
                 )}
 
                 {/* Add Staff Form */}
-                <form onSubmit={handleAddStaff} className="card" style={{ 
-                  background: 'var(--bg-3)', 
+                <form onSubmit={handleAddStaff} className="card" style={{
+                  background: 'var(--bg-3)',
                   border: '1px solid var(--border)',
                   padding: 20,
-                  display: 'grid', 
-                  gridTemplateColumns: '1fr 1fr 1fr 1fr auto', 
-                  gap: 16, 
-                  alignItems: 'end', 
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 1fr 1.1fr 0.9fr 0.9fr auto',
+                  gap: 14,
+                  alignItems: 'end',
                   marginBottom: 24,
                   borderRadius: 'var(--radius-md)'
                 }}>
                   <div className="form-group" style={{ margin: 0 }}>
                     <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 600 }}>Username</label>
-                    <input 
+                    <input
                       className="form-input"
-                      value={staffForm.username} 
+                      value={staffForm.username}
                       onChange={e => setStaffForm(f => ({ ...f, username: e.target.value }))}
-                      placeholder="e.g. staff_john" 
-                      autoComplete="off" 
+                      placeholder="e.g. staff_john"
+                      autoComplete="off"
                       style={{ height: 38 }}
+                      required
                     />
                   </div>
                   <div className="form-group" style={{ margin: 0 }}>
                     <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 600 }}>Password</label>
-                    <input 
-                      type="password" 
+                    <input
+                      type="password"
                       className="form-input"
-                      value={staffForm.password} 
+                      value={staffForm.password}
                       onChange={e => setStaffForm(f => ({ ...f, password: e.target.value }))}
-                      placeholder="Min 8 characters" 
+                      placeholder="Min 8 characters"
                       autoComplete="new-password"
                       style={{ height: 38 }}
+                      required
+                    />
+                  </div>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label" style={{ fontSize: '0.78rem', fontWeight: 600 }}>Mobile Phone</label>
+                    <input
+                      type="tel"
+                      className="form-input"
+                      value={staffForm.phone}
+                      onChange={e => setStaffForm(f => ({ ...f, phone: e.target.value }))}
+                      placeholder="10-digit number"
+                      autoComplete="tel"
+                      style={{ height: 38 }}
+                      required
                     />
                   </div>
                   <div className="form-group" style={{ margin: 0 }}>
@@ -2156,6 +2172,7 @@ function SettingsWorkspace() {
                         <tr>
                           <th>Username</th>
                           <th>Role</th>
+                          <th>Phone</th>
                           {/* Created / Last used exist so an abandoned account is
                               VISIBLE. Without them the table showed a name, a
                               role and a prefix, which made 22 logins created
@@ -2186,6 +2203,9 @@ function SettingsWorkspace() {
                             <td className="td-primary" style={{ fontWeight: 600 }}>{s.username}</td>
                             <td>
                               <span className="badge badge-muted" style={{ textTransform: 'capitalize' }}>{s.role}</span>
+                            </td>
+                            <td style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                              {s.phone || '—'}
                             </td>
                             <td style={{ fontSize: '0.78rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
                               {s.created_at ? new Date(s.created_at).toLocaleDateString() : '—'}
@@ -2224,18 +2244,18 @@ function SettingsWorkspace() {
                               </CustomSelect>
                             </td>
                             <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                              <button 
-                                type="button" 
-                                className="btn btn-ghost btn-sm" 
-                                onClick={() => { setResetTarget(s); setResetPw(''); setResetError('') }} 
+                              <button
+                                type="button"
+                                className="btn btn-ghost btn-sm"
+                                onClick={() => { setResetTarget(s); setResetPw(''); setResetError('') }}
                                 style={{ marginRight: 8, fontSize: '0.78rem' }}
                               >
                                 Reset password
                               </button>
-                              <button 
-                                type="button" 
-                                className="btn btn-ghost btn-sm" 
-                                onClick={() => setRemoveTarget(s)} 
+                              <button
+                                type="button"
+                                className="btn btn-ghost btn-sm"
+                                onClick={() => setRemoveTarget(s)}
                                 style={{ color: 'var(--danger)', fontSize: '0.78rem' }}
                               >
                                 Remove
@@ -2532,8 +2552,8 @@ function SettingsWorkspace() {
               <div style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 6 }}>
                 <LockIcon size={18} /> Reset Password
               </div>
-              <button 
-                type="button" 
+              <button
+                type="button"
                 onClick={() => setResetTarget(null)}
                 style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', padding: 4 }}
               >
@@ -2555,7 +2575,7 @@ function SettingsWorkspace() {
                 style={inputStyle}
                 autoFocus
               />
-              
+
               {resetError && (
                 <div style={{ fontSize: '0.78rem', color: 'var(--danger)', textAlign: 'center' }}>
                   {resetError}
@@ -2564,16 +2584,16 @@ function SettingsWorkspace() {
             </div>
 
             <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
-              <button 
-                className="btn btn-ghost" 
-                onClick={() => setResetTarget(null)} 
+              <button
+                className="btn btn-ghost"
+                onClick={() => setResetTarget(null)}
                 style={{ flex: 1 }}
               >
                 Cancel
               </button>
-              <button 
-                className="btn btn-primary" 
-                onClick={handleResetPassword} 
+              <button
+                className="btn btn-primary"
+                onClick={handleResetPassword}
                 style={{ flex: 2 }}
               >
                 Update Password
@@ -2591,8 +2611,8 @@ function SettingsWorkspace() {
               <div style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--danger)', display: 'flex', alignItems: 'center', gap: 6 }}>
                 <AlertIcon size={16} /> Delete Account
               </div>
-              <button 
-                type="button" 
+              <button
+                type="button"
                 onClick={() => setRemoveTarget(null)}
                 style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', padding: 4 }}
               >
@@ -2605,20 +2625,20 @@ function SettingsWorkspace() {
             </div>
 
             <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-              <button 
-                className="btn btn-ghost" 
-                onClick={() => setRemoveTarget(null)} 
+              <button
+                className="btn btn-ghost"
+                onClick={() => setRemoveTarget(null)}
                 style={{ flex: 1 }}
               >
                 Cancel
               </button>
-              <button 
-                className="btn" 
+              <button
+                className="btn"
                 onClick={handleRemoveStaff}
-                style={{ 
-                  flex: 2, 
-                  background: 'var(--danger)', 
-                  color: '#fff', 
+                style={{
+                  flex: 2,
+                  background: 'var(--danger)',
+                  color: '#fff',
                   border: 'none',
                   fontWeight: 600
                 }}

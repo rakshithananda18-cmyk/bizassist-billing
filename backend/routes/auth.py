@@ -5,7 +5,7 @@ from uuid import uuid4
 import os
 from fastapi import APIRouter, HTTPException, Request, Depends, Query, Body
 from pydantic import BaseModel
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from database.db import get_db, DATABASE_URL
@@ -96,15 +96,15 @@ def _confirm_with_cloud(username: str, password: str) -> dict:
         r = httpx.post(f"{CLOUD_URL}/login", json={"username": username, "password": password}, timeout=15.0)
     except Exception as e:
         logger.warning("[AUTH] cloud confirmation unreachable for local recovery: %s", e)
-        raise HTTPException(status_code=503, detail="Could not reach BizAssist Cloud to confirm this password. "
+        raise HTTPException(status_code=503, detail="Could not reach Stater Cloud to confirm this password. "
                                                     "Check the internet connection and try again. Nothing was changed.")
     if r.status_code != 200:
         logger.warning("[AUTH] cloud refused the credentials offered for local recovery (HTTP %s)", r.status_code)
-        raise HTTPException(status_code=401, detail="BizAssist Cloud did not accept this password. Nothing was changed.")
+        raise HTTPException(status_code=401, detail="Stater Cloud did not accept this password. Nothing was changed.")
     try:
         return r.json() or {}
     except ValueError:
-        raise HTTPException(status_code=502, detail="BizAssist Cloud gave an unreadable answer. Nothing was changed.")
+        raise HTTPException(status_code=502, detail="Stater Cloud gave an unreadable answer. Nothing was changed.")
 
 
 @router.post("/api/auth/reconcile_password")
@@ -395,6 +395,39 @@ def staff_login(req: StaffLoginRequest, request: Request, db: Session = Depends(
         raise HTTPException(status_code=500, detail="Internal server login error")
 
 
+class BusinessLookupRequest(BaseModel):
+    identifier: str
+
+
+@router.post("/api/auth/lookup-business")
+@router.post("/auth/lookup-business")
+def lookup_business(req: BusinessLookupRequest, request: Request, db: Session = Depends(get_db)):
+    """
+    Lookup business details and available staff accounts by owner identifier
+    (mobile number, username, email, or BizID) or staff identifier.
+    Returns store details so users can verify they are logging into the right store,
+    and a staff roster dropdown so manual cashier typing is skipped.
+    """
+    ip = request.client.host if request.client else "unknown"
+    rl = check_ip_rate_limit(ip)
+    if not rl["allowed"]:
+        raise HTTPException(status_code=429, detail=rl["reason"])
+
+    raw = (req.identifier or "").strip()
+    if not raw or len(raw) > 254:
+        raise HTTPException(status_code=400, detail="Enter the business owner's username, email, phone number, or BizID.")
+    from database.security import find_owner_by_identifier
+    owner = find_owner_by_identifier(db, raw)
+    if not owner:
+        return {"found": False, "message": "No unique business found. Check the owner's details or use its BizID."}
+    staff_rows = db.query(User).filter(User.parent_business_id == owner.id,
+        func.lower(User.role).in_(["cashier", "supply adder"])).order_by(User.staff_login_name, User.username).all()
+    # This is a public sign-in preview, not an owner/staff contact directory.
+    staff = [{"id": row.id, "username": row.staff_login_name or row.username, "role": row.role} for row in staff_rows]
+    return {"found": True, "business_name": owner.business_name or "Business", "public_id": owner.public_id,
+            "has_staff": bool(staff), "staff": staff}
+
+
 # ---------------------------------------------------------------------------
 # PRO TRIAL FOR NEW BUSINESSES
 # ---------------------------------------------------------------------------
@@ -523,8 +556,13 @@ def signup(req: SignupRequest, db: Session = Depends(get_db)):
 
         email = None
         if req.email and req.email.strip():
-            clean_email = req.email.strip().lower()
-            existing_email = db.query(User).filter(func.lower(User.email) == clean_email).first()
+            from services.account_identity import normalize_email
+            try:
+                clean_email = normalize_email(req.email, required=True)
+            except ValueError as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from None
+            from database.security import owner_email_exists
+            existing_email = owner_email_exists(db, clean_email)
             if existing_email:
                 raise HTTPException(status_code=400, detail="An account with this email already exists.")
             email = clean_email
@@ -560,6 +598,8 @@ def signup(req: SignupRequest, db: Session = Depends(get_db)):
 
         from database.security import allocate_owner_id
         owner_pk = allocate_owner_id(db)
+        import json
+        default_settings = json.dumps({"general": {"hosting_mode": _DB_MODE, "realtime_sync_global": _DB_MODE == "cloud"}})
         user = User(
             id=owner_pk,
             username=req.username,
@@ -569,6 +609,7 @@ def signup(req: SignupRequest, db: Session = Depends(get_db)):
             role="enterprise",
             public_id=bizid,
             phone=phone,
+            settings=default_settings,
         )
         db.add(user)
         try:
@@ -802,6 +843,7 @@ class ProfileUpdateRequest(BaseModel):
     gstin: Optional[str] = None
     phone: Optional[str] = None
     email: Optional[str] = None
+    password: Optional[str] = None
     address: Optional[str] = None
     state_code: Optional[str] = None
     pan: Optional[str] = None
@@ -842,29 +884,47 @@ def update_profile(req: ProfileUpdateRequest, current_user: dict = Depends(requi
     if not user:
         raise HTTPException(status_code=404, detail="User not found", headers=SESSION_REJECTION_HEADERS)
     
-    if req.business_name is not None:
-        user.business_name = req.business_name
-    if req.gstin is not None:
-        user.gstin = req.gstin
-    if req.phone is not None:
-        user.phone = req.phone
-    if req.email is not None:
-        user.email = req.email
-    if req.address is not None:
-        user.address = req.address
-    if req.state_code is not None:
-        user.state_code = req.state_code
-    if req.pan is not None:
-        user.pan = req.pan
-    if req.logo is not None:
-        user.logo = req.logo
-    if req.counter_prefix is not None:
-        import re
-        token = re.sub(r"[^A-Za-z0-9_]", "", req.counter_prefix.strip()).rstrip("-")[:8]
-        user.counter_prefix = token or None
-    if req.upi_vpa is not None:
-        user.upi_vpa = (req.upi_vpa.strip() or None)
-
+    from services.account_identity import normalize_email, validate_password
+    old_email = user.email
+    values = {}
+    fields = {"business_name": "Business name", "gstin": "GSTIN", "phone": "Phone number", "email": "Email address",
+              "address": "Business address", "state_code": "State code", "pan": "PAN", "logo": "Business logo",
+              "counter_prefix": "Counter prefix", "upi_vpa": "UPI address"}
+    try:
+        for field in fields:
+            incoming = getattr(req, field)
+            if incoming is None:
+                continue
+            if field == "email":
+                incoming = normalize_email(incoming)
+            elif field == "phone":
+                incoming = normalize_phone(incoming) if incoming.strip() else None
+            elif field == "counter_prefix":
+                import re
+                incoming = re.sub(r"[^A-Za-z0-9_]", "", incoming.strip()).rstrip("-")[:8] or None
+            elif field == "upi_vpa":
+                incoming = incoming.strip() or None
+            values[field] = incoming
+        effective_email = values.get("email", user.email)
+        if req.password is not None:
+            normalize_email(effective_email, required=True)
+            validate_password(req.password)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    if values.get("email"):
+        from database.security import owner_email_exists
+        if owner_email_exists(db, values["email"], exclude_id=user.id):
+            raise HTTPException(status_code=409, detail="Another business already uses this email address.")
+    changes = []
+    for field, incoming in values.items():
+        if incoming != getattr(user, field):
+            setattr(user, field, incoming)
+            changes.append(f"{fields[field]} updated")
+    password_changed = req.password is not None
+    if password_changed:
+        from services.auth import bump_token_version
+        user.password = hash_password(req.password)
+        bump_token_version(db, user)
     db.flush()
 
     # Immediately push profile changes to the cloud
@@ -882,6 +942,17 @@ def update_profile(req: ProfileUpdateRequest, current_user: dict = Depends(requi
     }, db=db)
     db.commit()
     db.refresh(user)
+    if changes or password_changed:
+        from services.brevo_service import send_account_update_email, send_password_changed_email
+        recipients = {address.strip().lower() for address in (old_email, user.email) if address and "@" in address}
+        for address in recipients:
+            try:
+                if changes:
+                    send_account_update_email(address, user.business_name or user.username, changes, business_id=user.id)
+                if password_changed:
+                    send_password_changed_email(address, user.business_name or user.username, user.username, business_id=user.id)
+            except Exception:
+                logger.warning("[AUTH] Account notification could not be dispatched after commit")
     from services.control_outbox import trigger_control_flush
     trigger_control_flush(user.id)
     
@@ -1411,6 +1482,15 @@ def forgot_password_request_otp(req: ForgotPasswordRequest, request: Request, db
             "destination": "registered email/phone",
         }
 
+    from services.account_identity import normalize_email
+    try:
+        normalize_email(user.email, required=True)
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail="A registered email address is mandatory for account password updates. Please contact support or add an email in your store settings."
+        )
+
     otp_code = f"{secrets.randbelow(900000) + 100000:06d}"
     otp_hash = hash_password(otp_code)
     now = datetime.now(timezone.utc)
@@ -1479,6 +1559,12 @@ def forgot_password_verify_and_reset(req: VerifyAndResetPasswordRequest, request
     if not user or (user.role or "").lower() in {"deleted", "retired"}:
         raise HTTPException(status_code=400, detail="Invalid verification request.")
 
+    from services.account_identity import normalize_email
+    try:
+        normalize_email(user.email, required=True)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+
     now = datetime.now(timezone.utc)
     otp_record = (
         db.query(PasswordResetOTP)
@@ -1518,6 +1604,13 @@ def forgot_password_verify_and_reset(req: VerifyAndResetPasswordRequest, request
     db.commit()
     db.refresh(user)
 
+    if user.email:
+        try:
+            from services.brevo_service import send_password_changed_email
+            send_password_changed_email(user.email, user.business_name or user.username, user.username, business_id=user.parent_business_id or user.id)
+        except Exception as pe:
+            logger.warning("[AUTH] Failed dispatching password changed email: %s", pe)
+
     logger.info("[AUTH] Password reset succeeded for '%s' (User ID %s)", user.username, user.id)
 
     business_id = user.parent_business_id or user.id
@@ -1540,35 +1633,39 @@ def forgot_password_verify_and_reset(req: VerifyAndResetPasswordRequest, request
 # ── Google Sign-In & Onboarding ──────────────────────────────────────────────
 
 def _verify_google_credential(credential: str) -> dict:
-    """Verifies a Google OAuth ID token with Google's public tokeninfo endpoint."""
-    if not credential:
-        raise HTTPException(status_code=400, detail="Missing Google credential token.")
-    import httpx
-    try:
-        r = httpx.get("https://oauth2.googleapis.com/tokeninfo", params={"id_token": credential}, timeout=10.0)
-    except Exception as exc:
-        logger.error("[GOOGLE_AUTH] Token verification network error: %s", exc)
-        raise HTTPException(status_code=503, detail="Unable to verify Google credentials. Please try again.")
+    from services.google_identity import verify_google_identity
+    return verify_google_identity(credential)
 
-    if r.status_code != 200:
-        logger.warning("[GOOGLE_AUTH] Invalid Google token (HTTP %s): %s", r.status_code, r.text)
-        raise HTTPException(status_code=401, detail="Invalid Google authentication token.")
 
-    data = r.json()
-    email_verified = data.get("email_verified")
-    if email_verified not in (True, "true", "True", 1, "1"):
-        raise HTTPException(status_code=400, detail="Your Google email is not verified.")
-
-    return {
-        "sub": data.get("sub"),
-        "email": data.get("email", "").lower().strip(),
-        "name": data.get("name", "").strip(),
-        "picture": data.get("picture", ""),
-    }
+def _google_owner(db, data, *, allow_email):
+    from database.security import bind_tenant
+    from sqlalchemy import text
+    if db.bind.dialect.name == "postgresql":
+        uid = db.execute(text("SELECT bizassist_google_owner(:s,:e)"),
+            {"s": data["sub"], "e": data["email"] if allow_email else None}).scalar()
+        if uid is None:
+            return None
+        if uid < 0:
+            raise HTTPException(status_code=409, detail="This Google identity conflicts with an existing account. Use your account password or contact support.")
+        bind_tenant(db, uid)
+        return db.get(User, uid)
+    linked = db.query(User).filter(User.google_id == data["sub"]).limit(2).all()
+    if linked:
+        if len(linked) != 1 or linked[0].parent_business_id is not None or (linked[0].role or "").lower() not in {"enterprise", "owner"}:
+            raise HTTPException(status_code=409, detail="This Google identity cannot sign in to a business owner account.")
+        return linked[0]
+    if not allow_email:
+        return None
+    matches = db.query(User).filter(func.lower(User.email) == data["email"], User.parent_business_id.is_(None),
+        func.lower(User.role).in_(["enterprise", "owner"])).limit(2).all()
+    if len(matches) > 1 or (matches and matches[0].google_id):
+        raise HTTPException(status_code=409, detail="Use your existing account password to confirm this Google connection.")
+    return matches[0] if matches else None
 
 
 class GoogleVerifyRequest(BaseModel):
     credential: str
+    password: Optional[str] = None
 
 
 class GoogleRegisterRequest(BaseModel):
@@ -1595,20 +1692,21 @@ def google_verify(req: GoogleVerifyRequest, request: Request, db: Session = Depe
     sub = google_data["sub"]
     email = google_data["email"]
 
-    # Check if this Google user or verified email is already registered as an owner
-    user = (
-        db.query(User)
-        .filter(
-            or_(User.google_id == sub, func.lower(User.email) == email),
-            User.parent_business_id.is_(None),
-        )
-        .first()
-    )
-
-    if user and (user.role or "").lower() not in {"deleted", "retired"}:
+    authoritative = bool(google_data.get("email_authoritative", email.endswith("@gmail.com") or google_data.get("hd")))
+    user = _google_owner(db, google_data, allow_email=authoritative or req.password is not None)
+    if user is None and not authoritative and req.password is None:
+        from database.security import find_owner_by_identifier
+        candidate = find_owner_by_identifier(db, email)
+        if candidate and (candidate.email or "").strip().lower() == email and not candidate.google_id:
+            return {"status": "needs_link", "email": email, "business_name": candidate.business_name,
+                    "public_id": candidate.public_id, "message": "Confirm your existing account password to connect Google."}
+    if user and (user.role or "").lower() in {"enterprise", "owner"}:
         if not user.google_id:
+            if not authoritative and not verify_password(req.password or "", user.password):
+                raise HTTPException(status_code=401, detail="The account password could not be verified.")
             user.google_id = sub
             db.commit()
+        # A linked Google subject identifies the account; do not overwrite its edited contact email.
 
         # Auto-heal: Ensure existing Google owner has 14-day Pro trial if never granted
         from services.admin_service import _settings_dict
@@ -1670,6 +1768,10 @@ def google_register(req: GoogleRegisterRequest, request: Request, db: Session = 
     sub = google_data["sub"]
     email = google_data["email"]
 
+    from database.security import find_owner_by_identifier, owner_email_exists
+    if _google_owner(db, google_data, allow_email=True) is not None or owner_email_exists(db, email):
+        raise HTTPException(status_code=409, detail="An account already uses this email or Google identity. Sign in to the existing account.")
+
     # Validate user's chosen username
     uname = (req.username or "").strip()
     if len(uname) < 3:
@@ -1692,6 +1794,8 @@ def google_register(req: GoogleRegisterRequest, request: Request, db: Session = 
     bizid = generate_bizid(db)
     business_name = (req.business_name or "").strip() or f"{uname}'s Store"
 
+    import json
+    default_settings = json.dumps({"general": {"hosting_mode": _DB_MODE, "realtime_sync_global": _DB_MODE == "cloud"}})
     user = User(
         id=owner_pk,
         username=uname,
@@ -1702,6 +1806,7 @@ def google_register(req: GoogleRegisterRequest, request: Request, db: Session = 
         phone=phone,
         email=email,
         google_id=sub,
+        settings=default_settings,
     )
     db.add(user)
     db.flush()

@@ -41,7 +41,7 @@ export const HALT_COPY = {
   },
   protocol_upgrade_required: {
     title: 'Sync update required',
-    detail: 'Update BizAssist on your devices, or contact support to update the sync service. Saved changes remain queued; no reset is needed.',
+    detail: 'Update Stater on your devices, or contact support to update the sync service. Saved changes remain queued; no reset is needed.',
     severity: 'warning',
     holdsOutbox: true,
   },

@@ -292,7 +292,7 @@ export default function ConnectionsTab({ myBizId, connections, onCopyBizId, copi
                   className="btn btn-secondary btn-sm"
                   style={{ height: 32, display: 'inline-flex', alignItems: 'center', gap: 5, color: '#16a34a' }}
                   onClick={() => {
-                    const shareText = encodeURIComponent(`Connect with our business on the BizAssist B2B network! Our BizID is: ${myBizId}`)
+                    const shareText = encodeURIComponent(`Connect with our business on the Stater B2B network! Our BizID is: ${myBizId}`)
                     window.open(`https://wa.me/?text=${shareText}`, '_blank')
                   }}
                   title="Share your BizID on WhatsApp"

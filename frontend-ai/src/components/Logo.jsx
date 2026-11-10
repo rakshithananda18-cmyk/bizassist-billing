@@ -67,7 +67,7 @@ export function Logo({ size = 24, wordmark = true, className = '' }) {
           style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
       <BuildingMark size={size} />
       {wordmark && (
-        <span className="ba-wordmark">Biz<span style={{ color: 'var(--accent-color)' }}>Assist</span></span>
+        <span className="ba-wordmark">Stater</span>
       )}
     </span>
   )

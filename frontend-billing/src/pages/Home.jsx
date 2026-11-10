@@ -204,7 +204,7 @@ export default function Home() {
         </div>
 
         <footer className="home-footer">
-          <BuildingMark size={15} strokeWidth={2.2} /> Advanced Billing System · BizAssist
+          <BuildingMark size={15} strokeWidth={2.2} /> Advanced Billing System · Stater
         </footer>
       </div>
     </AppLayout>

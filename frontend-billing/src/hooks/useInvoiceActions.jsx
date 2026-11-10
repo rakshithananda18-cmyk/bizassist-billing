@@ -88,7 +88,7 @@ export default function useInvoiceActions(authFetch, { onChanged } = {}) {
       phone = input
     }
     const upiVpa = resolvePaymentVpa({ profile, user })
-    const businessName = (user?.business_name || 'BizAssist Merchant').toUpperCase()
+    const businessName = (user?.business_name || 'Stater Merchant').toUpperCase()
     let message = `Hi ${customer?.name || 'Customer'},\n\nHere is your Invoice ${invoiceNo} from ${businessName}:\nDate: ${invoice.date || invoice.invoice_date}\nTotal Amount: ₹${total.toLocaleString('en-IN')}\n`
     if (balance > 0) {
       if (upiVpa) {

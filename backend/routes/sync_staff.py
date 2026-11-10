@@ -46,6 +46,7 @@ class StaffRecord(BaseModel):
     # owner-level role from a client-controlled payload.
     role: Literal["cashier", "supply adder"] = "cashier"
     counter_prefix: Optional[str] = None
+    phone: Optional[str] = None
     deleted: bool = False            # True → remove this staff from cloud
 
 
@@ -111,6 +112,14 @@ def sync_staff_push(
                 logger.info("[STAFF-SYNC] Deleted staff '%s' for business %s", bare, owner_id)
             continue
 
+        canonical_phone = None
+        if rec.phone is not None:
+            from services.registration_policy import normalize_phone
+            try:
+                canonical_phone = normalize_phone(rec.phone)
+            except ValueError as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from None
+
         if existing:
             # Update — overwrite password hash, role, counter_prefix
             # TS-04 fix: If password or role materially changed, invalidate existing cloud sessions
@@ -118,6 +127,8 @@ def sync_staff_push(
             existing.password        = rec.hashed_password
             existing.role            = rec.role
             existing.counter_prefix  = rec.counter_prefix
+            if canonical_phone is not None:
+                existing.phone = canonical_phone
             if material_change:
                 bump_token_version(db, existing)
             # Ensure internal username stays consistent
@@ -137,6 +148,7 @@ def sync_staff_push(
                 role=rec.role,
                 parent_business_id=owner_id,
                 counter_prefix=rec.counter_prefix,
+                phone=canonical_phone,
             )
             db.add(staff)
             upserted += 1

@@ -1,4 +1,4 @@
-// lib/plan.js — the owner's warning while BizAssist Pro (or its free trial) is
+// lib/plan.js — the owner's warning while Stater Pro (or its free trial) is
 // ending, or a paid plan has ended and Field Team is running on its grace
 // period. A trial has no grace (backend-task/app/plan.py).
 
@@ -12,13 +12,13 @@ function lastDay(iso) {
 export function planBanner(plan) {
   if (!plan?.warn) return null
   if (plan.in_grace && plan.grace_until) {
-    return `Your BizAssist Pro plan has ended. Field Team keeps working through ${lastDay(plan.grace_until)} — renew in BizAssist Billing to keep your team running.`
+    return `Your Stater Pro plan has ended. Field Team keeps working through ${lastDay(plan.grace_until)} — renew in Stater Billing to keep your team running.`
   }
   if (plan.ends_at && plan.trial) {
-    return `Your BizAssist Pro trial ends after ${lastDay(plan.ends_at)}. Upgrade in BizAssist Billing to keep Field Team running.`
+    return `Your Stater Pro trial ends after ${lastDay(plan.ends_at)}. Upgrade in Stater Billing to keep Field Team running.`
   }
   if (plan.ends_at) {
-    return `Your BizAssist Pro plan ends after ${lastDay(plan.ends_at)}. Renew in BizAssist Billing to keep Field Team running.`
+    return `Your Stater Pro plan ends after ${lastDay(plan.ends_at)}. Renew in Stater Billing to keep Field Team running.`
   }
   return null
 }

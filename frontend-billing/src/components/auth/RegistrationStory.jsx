@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useEffect, useState } from 'react'
 import { CounterIcon, InventoryIcon, ReportsIcon } from '../Icons'
 import { DESKTOP_DOWNLOAD_URL } from '../../config/downloadApp'
 import { IS_LOCAL_APP } from '../../config'
@@ -10,7 +10,20 @@ const BENEFITS = [
 ]
 
 export default function RegistrationStory() {
-  return <div className="registration-story">
+  const [open, setOpen] = useState(() => !window.matchMedia?.('(max-width: 600px)').matches)
+
+  useEffect(() => {
+    const viewport = window.matchMedia?.('(max-width: 600px)')
+    if (!viewport) return
+    const update = () => setOpen(!viewport.matches)
+    update()
+    viewport.addEventListener('change', update)
+    return () => viewport.removeEventListener('change', update)
+  }, [])
+
+  return <details className="registration-story-disclosure" open={open} onToggle={event => setOpen(event.currentTarget.open)}>
+    <summary>Why STATER Bill?</summary>
+    <div className="registration-story">
     <span className="registration-eyebrow">MAKE ROOM FOR WHAT COMES NEXT</span>
     <h2>Start with a sale.<br /><em>Build a bigger story.</em></h2>
     <p className="registration-story-intro">Your billing, stock, purchases and payments. Finally, on the same road.</p>
@@ -23,13 +36,10 @@ export default function RegistrationStory() {
     <section className="registration-workstyle" aria-labelledby="registration-workstyle-title">
       <span className="registration-trial">14 days of Pro <span>for eligible first-time phone registrations</span></span>
       <h3 id="registration-workstyle-title">One account. Your way to work.</h3>
-      <div id="cloud-storage-help">
-        <p>{IS_LOCAL_APP ? 'Bill locally on this computer, even without the internet. Choose Local + Cloud to connect your desktop and browser.' : 'This browser uses the cloud database. Add the desktop app for local, offline billing.'}</p>
-        <p>Local + Cloud sync requires Pro or an eligible trial. After your trial, Local billing keeps working; cloud sync needs Pro. Field Team is included during the trial.</p>
-      </div>
+      <p>{IS_LOCAL_APP ? 'Your counter can keep moving offline. Connect your browser when you choose Local + Cloud.' : 'Start in your browser. Bring the same business to your desktop when you need an offline counter.'}</p>
       {!IS_LOCAL_APP && <><span className="registration-desktop-note">Recommended for POS &amp; Counters</span><a className="registration-download" href={DESKTOP_DOWNLOAD_URL} target="_blank" rel="noopener noreferrer">Download Desktop App <span aria-hidden="true">↗</span></a></>}
     </section>
-    <p className="registration-account-note" id="registration-account-help">Your phone is used for recovery and trial eligibility. Email is optional.</p>
     <p className="registration-support">A little help getting started? <a href="mailto:support@staterbill.com">support@staterbill.com</a></p>
   </div>
+  </details>
 }

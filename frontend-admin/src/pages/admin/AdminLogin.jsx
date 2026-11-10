@@ -61,7 +61,7 @@ export default function AdminLogin() {
       <div className="admin-entry-frame">
         <section className="admin-entry-form-panel" aria-labelledby="admin-signin-title">
           <div className="admin-entry-form-card">
-            <div className="admin-entry-card-brand"><BuildingMark size={40} accent="#c15f3c" /><strong>BizAssist <span>Admin</span></strong></div>
+            <div className="admin-entry-card-brand"><BuildingMark size={40} accent="#c15f3c" /><strong>Stater <span>Admin</span></strong></div>
             <div className="admin-entry-form-kicker"><span /> ADMINISTRATOR ACCESS</div>
             <h1 id="admin-signin-title">{needsOtp ? 'One more step.' : 'Welcome back.'}</h1>
             <p className="admin-entry-form-intro">{needsOtp ? 'Enter the six-digit code from your authenticator to continue.' : 'Sign in to your operations workspace.'}</p>

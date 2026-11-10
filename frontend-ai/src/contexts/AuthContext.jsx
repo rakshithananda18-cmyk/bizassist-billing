@@ -5,7 +5,7 @@ import { trustedHandoff } from '../utils/handoff'
 import { boundedFetch, isSessionRejection, responseError } from '../utils/httpErrors'
 import { useSessionRefresh } from '../hooks/useSessionRefresh'
 const AuthContext = createContext(null)
-const HANDOFF_ERROR = 'Billing could not sign you in. Open Dashboard BIZASSIST from Billing again, or sign in here.'
+const HANDOFF_ERROR = 'Billing could not sign you in. Open Stater AI from Billing again, or sign in here.'
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)

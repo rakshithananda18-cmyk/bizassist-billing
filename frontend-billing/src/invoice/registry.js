@@ -20,8 +20,8 @@ export const TEMPLATES = {
   },
   modern: {
     key: 'modern',
-    label: 'BizAssist',
-    description: 'Modern BizAssist invoice — clean, premium, share-ready',
+    label: 'Stater',
+    description: 'Modern Stater invoice — clean, premium, share-ready',
     paper: 'a4',
     component: ModernA4,
   },

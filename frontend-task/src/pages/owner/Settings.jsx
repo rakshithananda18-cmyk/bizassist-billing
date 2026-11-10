@@ -46,7 +46,7 @@ export default function Settings() {
           <div className="settings-section-label">Billing business</div>
           <h3 title={businessName}>{businessName}</h3>
           <div className="row wrap small muted"><span className="mono">{me.public_id}</span><span className="badge badge-accent">Pro · Online</span>{source && <span className="badge badge-muted">{developmentMirror || source === 'local' ? 'Development mirror' : 'Shared cloud data'}</span>}</div>
-          <p className="small muted">Field Team requires BizAssist Pro and an internet connection. It uses your business's Billing customers and invoices in the shared cloud database. Local Billing changes appear here after they sync to the cloud.</p>
+          <p className="small muted">Field Team requires Stater Pro and an internet connection. It uses your business's Billing customers and invoices in the shared cloud database. Local Billing changes appear here after they sync to the cloud.</p>
           {developmentMirror && <div className="alert alert-warning" style={{ marginTop: 12 }}>This is an isolated development mirror. Open the online Field Team workspace from Billing to use live cloud customers and invoices.</div>}
         </div>
         <div className="stack">

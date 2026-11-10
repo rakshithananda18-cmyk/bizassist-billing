@@ -4,13 +4,13 @@
 //              as well as cashier staff login credentials, storing tokens in localStorage.
 // ============================================================================
 import React, { useState, useEffect, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { logger } from '../utils/logger'
 import { BuildingMark } from '../components/Logo'
 import AuthRoadmap from '../components/auth/AuthRoadmap'
 import AuthThemeToggle from '../components/auth/AuthThemeToggle'
-import { API_BASE, IS_LOCAL_APP } from '../config'
+import { API_BASE, CLOUD_URL, IS_LOCAL_APP } from '../config'
 import CustomSelect from '../components/common/CustomSelect'
 import BootHealthCheck from '../components/BootHealthCheck'
 import ForgotPasswordModal from '../components/auth/ForgotPasswordModal'
@@ -22,6 +22,8 @@ const RECENT_STAFF_TIMEOUT_MS = 1500
 export default function Login() {
   const { login, staffLogin, setSession } = useAuth()
   const navigate  = useNavigate()
+  const location = useLocation()
+  const lookupRequest = useRef(0)
 
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -35,6 +37,7 @@ export default function Login() {
   const [showForgotModal, setShowForgotModal] = useState(false)
   const [showGoogleModal, setShowGoogleModal] = useState(false)
   const [googleCredential, setGoogleCredential] = useState('')
+  const [googleLinkCredential, setGoogleLinkCredential] = useState('')
   const [googleOnboardingData, setGoogleOnboardingData] = useState(null)
   const googleBtnRef = useRef(null)
 
@@ -53,6 +56,14 @@ export default function Login() {
       if (data.action === 'login' && data.token) {
         setSession(data)
         navigate('/', { replace: true })
+      } else if (data.status === 'needs_link') {
+        setGoogleLinkCredential(credential)
+        setUsername(data.email)
+        setBusinessInfo({ ...data, has_staff: false })
+        setAvailableStaff([])
+        setPassword('')
+        setView('standard')
+        setStandardStep('owner')
       } else if (data.status === 'needs_onboarding') {
         setGoogleCredential(credential)
         setGoogleOnboardingData(data)
@@ -92,10 +103,10 @@ export default function Login() {
   useEffect(() => {
     const originalZoom = document.documentElement.style.zoom
     const originalZoomVar = document.documentElement.style.getPropertyValue('--zoom')
-    
+
     document.documentElement.style.zoom = ''
     document.documentElement.style.removeProperty('--zoom')
-    
+
     return () => {
       if (originalZoom) document.documentElement.style.zoom = originalZoom
       if (originalZoomVar) document.documentElement.style.setProperty('--zoom', originalZoomVar)
@@ -130,7 +141,7 @@ export default function Login() {
       return []
     }
   })
-  
+
   // View states: 'recent' | 'password' | 'staff' | 'standard'
   const [view, setView] = useState(() => {
     try {
@@ -144,11 +155,39 @@ export default function Login() {
   // Selected owner/business for quick login
   const [selectedOwner, setSelectedOwner] = useState(null)
   const [selectedStaffUser, setSelectedStaffUser] = useState('')
+  const [businessInfo, setBusinessInfo] = useState(null)
+  const [availableStaff, setAvailableStaff] = useState([])
 
   // Other-Business flow: type the business owner username, then choose owner or
   // staff sign-in. Staff enter their assigned login name; the server verifies
   // it with the owner and password without exposing a public staff directory.
   const [standardStep, setStandardStep] = useState('username')  // username | choose | owner | staff
+
+  useEffect(() => {
+    const pending = location.state?.googleLink
+    if (!pending?.credential) return
+    setGoogleLinkCredential(pending.credential)
+    setUsername(pending.email || '')
+    setBusinessInfo({ ...pending, has_staff: false })
+    setAvailableStaff([])
+    setPassword('')
+    setView('standard')
+    setStandardStep('owner')
+    navigate(location.pathname, { replace: true, state: null })
+  }, [location.state, location.pathname, navigate])
+
+  function changeBusinessIdentifier(value) {
+    lookupRequest.current += 1
+    setUsername(value)
+    setBusinessInfo(null)
+    setAvailableStaff([])
+    setSelectedStaffUser('')
+    setPassword('')
+    setGoogleLinkCredential('')
+    setError('')
+    setLoading(false)
+  }
+
 
   useEffect(() => {
     if (view === 'standard' && standardStep === 'username' && googleBtnRef.current) {
@@ -282,10 +321,21 @@ export default function Login() {
     e.preventDefault()
     setError('')
     setLoading(true)
-    logger.debug('Login submit triggered for username:', username)
+    const loginTarget = businessInfo?.owner_username || username.trim()
+    logger.debug('Login submit triggered for username:', loginTarget)
     try {
-      await login(username, password)
-      
+      if (googleLinkCredential) {
+        const response = await fetch(`${API_BASE}/api/auth/google/verify`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ credential: googleLinkCredential, password }),
+        })
+        const linked = await response.json()
+        if (!response.ok || !linked.token) throw new Error(linked.detail || 'Could not connect your Google sign-in.')
+        setSession(linked)
+      } else {
+        await login(loginTarget, password)
+      }
+
       // Save recent login info if successful
       const savedUserStr = localStorage.getItem('billing_user')
       const token = localStorage.getItem('billing_token')
@@ -315,7 +365,7 @@ export default function Login() {
         } else {
           // Remove from recent logins if not checked
           const recent = JSON.parse(localStorage.getItem('bizassist_recent_logins') || '[]')
-          const updatedRecent = recent.filter(item => item.username !== username)
+          const updatedRecent = recent.filter(item => item.username !== loginTarget)
           localStorage.setItem('bizassist_recent_logins', JSON.stringify(updatedRecent))
         }
       }
@@ -356,26 +406,62 @@ export default function Login() {
     }
   }
 
-  function handleOwnerContinue(e) {
+  async function handleOwnerContinue(e) {
     e.preventDefault()
+    const ident = username.trim()
+    if (!ident) { setError('Enter your business username, email, phone number, or BizID.'); return }
+    const requestId = ++lookupRequest.current
     setError('')
-    const owner = username.trim()
-    if (!owner) { setError('Enter your business username, email, or phone number.'); return }
-
-    setPassword('')
+    setBusinessInfo(null)
+    setAvailableStaff([])
     setSelectedStaffUser('')
-    setStandardStep('choose')
-  }
-
-  // Other-Business: staff sign-in (owner username + selected counter + password).
-  async function handleStandardStaffLogin(e) {
-    e.preventDefault()
-    if (!selectedStaffUser.trim()) { setError('Enter your staff login name.'); return }
-    setError('')
+    setPassword('')
+    setGoogleLinkCredential('')
     setLoading(true)
     try {
-      await staffLogin(username.trim(), selectedStaffUser, password)
-      rememberStaffLogin(username.trim(), selectedStaffUser.trim())
+      let data = null
+      let lookupError = null
+      const bases = [...new Set([API_BASE, ...(IS_LOCAL_APP && CLOUD_URL ? [CLOUD_URL] : [])])]
+      for (const base of bases) {
+        try {
+          const res = await fetch(`${base}/api/auth/lookup-business`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ identifier: ident }), signal: AbortSignal.timeout(12000),
+          })
+          const result = await res.json()
+          if (requestId !== lookupRequest.current) return
+          if (res.ok && result.found) { data = result; break }
+          lookupError = new Error(result?.detail || result?.message || 'No business found. Check the owner details or use its BizID.')
+          if ([400, 422, 429].includes(res.status)) { lookupError.stopLookup = true; throw lookupError }
+        } catch (err) {
+          lookupError = err
+          if (requestId !== lookupRequest.current) return
+          if (err.stopLookup) throw err
+        }
+      }
+      if (!data) throw lookupError || new Error('Could not find this business. Check the owner details or use its BizID.')
+      const roster = Array.isArray(data.staff) ? data.staff : []
+      setBusinessInfo(data)
+      setAvailableStaff(roster)
+      setSelectedStaffUser(roster[0]?.username || '')
+      setStandardStep(roster.length ? 'choose' : 'owner')
+    } catch (err) {
+      if (requestId === lookupRequest.current) setError(err?.name === 'TimeoutError' ? 'Business lookup took too long. Please try again.' : err?.message || 'Could not verify business details.')
+    } finally {
+      if (requestId === lookupRequest.current) setLoading(false)
+    }
+  }
+
+  // Other-Business: staff sign-in (owner identifier + selected cashier + password).
+  async function handleStandardStaffLogin(e) {
+    e.preventDefault()
+    if (!selectedStaffUser.trim()) { setError('Please select or enter your staff login name.'); return }
+    setError('')
+    setLoading(true)
+    const ownerToUse = businessInfo?.owner_username || username.trim()
+    try {
+      await staffLogin(ownerToUse, selectedStaffUser.trim(), password)
+      rememberStaffLogin(ownerToUse, selectedStaffUser.trim())
       navigate('/', { replace: true })
     } catch (err) {
       setError(err.message || 'Invalid password. Please try again.')
@@ -395,7 +481,7 @@ export default function Login() {
     setLoading(true)
     try {
       await staffLogin(selectedOwner.username, selectedStaffUser, password)
-      
+
       // Self-register/persist this staff user in the owner's list in localStorage
       const savedUserStr = localStorage.getItem('billing_user')
       if (savedUserStr && selectedOwner) {
@@ -613,7 +699,7 @@ export default function Login() {
                 </div>
               ))}
             </div>
-            
+
             <button
               type="button"
               className="btn btn-ghost"
@@ -1067,9 +1153,9 @@ export default function Login() {
                   {standardStep === 'username' ? 'Sign in to your business' : 'Business sign-in'}
                 </div>
                 <div className="auth-flow-description">
-                  {standardStep === 'username' && 'Start with the business owner username'}
+                  {standardStep === 'username' && 'Find your business, then sign in'}
                   {standardStep === 'choose' && 'Choose how to sign in'}
-                  {standardStep === 'owner' && 'Owner Login'}
+                  {standardStep === 'owner' && (googleLinkCredential ? 'Confirm your password to connect Google' : 'Owner Login')}
                   {standardStep === 'staff' && 'Staff Login'}
                 </div>
               </div>
@@ -1104,13 +1190,13 @@ export default function Login() {
                 </div>
 
                 <div className="form-group" style={{ width: '100%', boxSizing: 'border-box' }}>
-                  <label htmlFor="owner-username">Business Owner Username, Email, or Phone</label>
+                  <label htmlFor="owner-username">Owner username, email, phone or BizID</label>
                   <input
                     type="text"
                     id="owner-username"
                     aria-label="Business Owner Username"
                     value={username}
-                    onChange={e => setUsername(e.target.value)}
+                    onChange={e => changeBusinessIdentifier(e.target.value)}
                     required
                     autoFocus
                     autoComplete="username"
@@ -1145,34 +1231,51 @@ export default function Login() {
                   <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
                   Your business data stays private until you sign in.
                 </p>
-                
+
               </form>
             )}
 
-            {/* STEP 2 — choose owner vs staff */}
+            {/* STEP 2 — choose owner vs staff with verified business details */}
             {standardStep === 'choose' && (
               <div style={{ width: '100%' }}>
                 <div style={{
                   display: 'flex',
                   alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 8,
+                  gap: 12,
                   marginBottom: 16,
-                  padding: '8px 12px',
+                  padding: '12px 14px',
                   background: 'var(--bg-2)',
-                  borderRadius: 8,
-                  border: '1px solid var(--border)'
+                  borderRadius: 12,
+                  border: '1.5px solid var(--border)',
+                  textAlign: 'left'
                 }}>
-                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#10b981' }} />
-                  <span style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                    {username}
-                  </span>
-                  <span style={{ fontSize: '0.76rem', color: 'var(--text-muted)' }}>
-                    ({username})
-                  </span>
+                  <div style={{
+                    width: 38,
+                    height: 38,
+                    borderRadius: 8,
+                    background: 'var(--accent-dim, rgba(182, 85, 54, 0.1))',
+                    color: 'var(--accent)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0
+                  }}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                  </div>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ fontSize: '0.92rem', fontWeight: 700, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {businessInfo?.business_name || username}
+                    </div>
+                    <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)', display: 'flex', gap: 8, marginTop: 2 }}>
+                      <span>BizID: <strong>{businessInfo?.public_id || 'Verified'}</strong></span>
+                      <span>•</span>
+                      <span>Owner: {businessInfo?.owner_username || username}</span>
+                    </div>
+                  </div>
                 </div>
+
                 <button type="button" className="login-submit-btn" onClick={() => { setError(''); setPassword(''); setStandardStep('owner') }} style={{ width: '100%' }}>Owner Login</button>
-                <button type="button" className="login-submit-btn" onClick={() => { setError(''); setPassword(''); setSelectedStaffUser(''); setStandardStep('staff') }} style={{ width: '100%', marginTop: 10, background: 'var(--bg-2)', color: 'var(--text-primary)', border: '1px solid var(--border)' }}>Staff Login</button>
+                <button type="button" aria-label="Staff Login" className="login-submit-btn" onClick={() => { setError(''); setPassword(''); setStandardStep('staff') }} style={{ width: '100%', marginTop: 10, background: 'var(--bg-2)', color: 'var(--text-primary)', border: '1px solid var(--border)' }}><span>Staff Login</span> <span aria-hidden="true">({availableStaff.length} available)</span></button>
                 <button type="button" onClick={() => { setError(''); setStandardStep('username') }} style={{ width: '100%', marginTop: 14, fontSize: '0.82rem', fontWeight: 600, color: 'var(--accent)', border: 'none', background: 'none', cursor: 'pointer' }}>← Back</button>
               </div>
             )}
@@ -1180,6 +1283,28 @@ export default function Login() {
             {/* STEP 3 — owner password */}
             {standardStep === 'owner' && (
               <form onSubmit={handleSubmitStandard} style={{ width: '100%' }}>
+                {businessInfo && (
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 10,
+                    marginBottom: 14,
+                    padding: '8px 12px',
+                    borderRadius: 8,
+                    background: 'var(--bg-2)',
+                    border: '1px solid var(--border)',
+                    fontSize: '0.82rem',
+                    textAlign: 'left'
+                  }}>
+                    <span style={{ color: '#10b981', fontWeight: 700 }}>✓</span>
+                    <span style={{ fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {businessInfo.business_name}
+                    </span>
+                    <span style={{ color: 'var(--text-muted)', fontSize: '0.74rem', marginLeft: 'auto' }}>
+                      ({businessInfo.public_id})
+                    </span>
+                  </div>
+                )}
                 <div className="form-group" style={{ width: '100%', boxSizing: 'border-box' }}>
                   <label htmlFor="owner-password">Owner Password</label>
                   <div className="password-wrapper">
@@ -1210,16 +1335,71 @@ export default function Login() {
                 </div>
                 {error && <div className="login-error" style={{ marginTop: 14 }}>{error}</div>}
                 <button type="submit" className="login-submit-btn" disabled={loading} style={{ marginTop: 14 }}>{loading ? 'Signing in…' : 'Sign In as Owner'}</button>
-                <button type="button" onClick={() => { setError(''); setStandardStep('choose') }} style={{ width: '100%', marginTop: 12, fontSize: '0.82rem', fontWeight: 600, color: 'var(--accent)', border: 'none', background: 'none', cursor: 'pointer' }}>← Back</button>
+                <button type="button" onClick={() => { setError(''); setStandardStep(businessInfo?.has_staff ? 'choose' : 'username') }} style={{ width: '100%', marginTop: 12, fontSize: '0.82rem', fontWeight: 600, color: 'var(--accent)', border: 'none', background: 'none', cursor: 'pointer' }}>← Back</button>
               </form>
             )}
 
-            {/* STEP 4 — staff (manual login name; no public staff directory) */}
+            {/* STEP 4 — staff login (with dropdown when available so manual typing is skipped) */}
             {standardStep === 'staff' && (
               <form onSubmit={handleStandardStaffLogin} style={{ width: '100%' }}>
+                {businessInfo && (
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 10,
+                    marginBottom: 14,
+                    padding: '8px 12px',
+                    borderRadius: 8,
+                    background: 'var(--bg-2)',
+                    border: '1px solid var(--border)',
+                    fontSize: '0.82rem',
+                    textAlign: 'left'
+                  }}>
+                    <span style={{ color: '#10b981', fontWeight: 700 }}>✓</span>
+                    <span style={{ fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {businessInfo.business_name}
+                    </span>
+                    <span style={{ color: 'var(--text-muted)', fontSize: '0.74rem', marginLeft: 'auto' }}>
+                      ({businessInfo.public_id})
+                    </span>
+                  </div>
+                )}
                 <div className="form-group" style={{ width: '100%', boxSizing: 'border-box' }}>
-                  <label htmlFor="std-staff-login">Staff Login Name</label>
-                  <input id="std-staff-login" type="text" value={selectedStaffUser} onChange={e => setSelectedStaffUser(e.target.value)} required autoFocus autoComplete="username" />
+                  <label htmlFor={availableStaff.length ? "std-staff-select" : "std-staff-login"} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span>Staff Account</span>
+                    {availableStaff.length > 0 && (
+                      <span style={{ fontSize: '0.72rem', color: 'var(--accent)', fontWeight: 600 }}>
+                        {availableStaff.length} registered
+                      </span>
+                    )}
+                  </label>
+                  {availableStaff.length > 0 ? (
+                    <CustomSelect
+                      id="std-staff-select"
+                      value={selectedStaffUser}
+                      onChange={e => setSelectedStaffUser(e.target.value)}
+                      style={{ height: 42 }}
+                    >
+                      {availableStaff.map((s, idx) => {
+                        return (
+                          <option key={idx} value={s.username}>
+                            {s.username} ({s.role || 'cashier'})
+                          </option>
+                        )
+                      })}
+                    </CustomSelect>
+                  ) : (
+                    <input
+                      id="std-staff-login"
+                      type="text"
+
+                      value={selectedStaffUser}
+                      onChange={e => setSelectedStaffUser(e.target.value)}
+                      required
+                      autoFocus
+                      autoComplete="username"
+                    />
+                  )}
                 </div>
                 <div className="form-group" style={{ marginTop: 14, width: '100%', boxSizing: 'border-box' }}>
                   <label htmlFor="std-staff-password">Password</label>
@@ -1229,7 +1409,7 @@ export default function Login() {
                   </div>
                 </div>
                 {error && <div className="login-error" style={{ marginTop: 14 }}>{error}</div>}
-                <button type="submit" className="login-submit-btn" disabled={loading} style={{ marginTop: 14 }}>{loading ? 'Signing in…' : 'Sign In'}</button>
+                <button type="submit" className="login-submit-btn" disabled={loading} style={{ marginTop: 14 }}>{loading ? 'Signing in…' : 'Sign In as Staff'}</button>
                 <button type="button" onClick={() => { setError(''); setStandardStep('choose') }} style={{ width: '100%', marginTop: 12, fontSize: '0.82rem', fontWeight: 600, color: 'var(--accent)', border: 'none', background: 'none', cursor: 'pointer' }}>← Back</button>
               </form>
             )}

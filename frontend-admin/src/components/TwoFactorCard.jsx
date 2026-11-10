@@ -106,7 +106,7 @@ export default function TwoFactorCard() {
       ) : setup ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div style={{ fontSize: 13 }}>
-            Add this key to Google Authenticator / Authy / 1Password (choose "enter a setup key", account name <b>BizAssist Admin</b>, time-based):
+            Add this key to Google Authenticator / Authy / 1Password (choose "enter a setup key", account name <b>Stater Admin</b>, time-based):
           </div>
           <div style={{
             display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',

@@ -19,7 +19,7 @@ const CATEGORIES = [
   { id: 'billing', label: 'GST & Invoicing', icon: <BillsIcon size={17} />, desc: 'Tax calculations, invoice formats, GSTR' },
   { id: 'sync', label: 'Cloud Sync & Backup', icon: <SyncIcon size={17} />, desc: 'Multi-device sync, database backup, offline' },
   { id: 'feature', label: 'Feature Request', icon: <SparkleIcon size={17} />, desc: 'Suggest a new tool or workflow improvement' },
-  { id: 'guidance', label: 'General Guidance', icon: <InfoIcon size={17} />, desc: 'Questions on how to use BizAssist features' },
+  { id: 'guidance', label: 'General Guidance', icon: <InfoIcon size={17} />, desc: 'Questions on how to use Stater features' },
 ]
 
 const FAQS = [
@@ -134,7 +134,7 @@ export default function SupportSection() {
   const openWhatsAppSupport = () => {
     if (!showDirectContacts || !SUPPORT_CONTACTS.phone) return
     const text = encodeURIComponent(
-      `Hello BizAssist Support Team,\nI need assistance with my billing software.\n• BizID: ${bizId}\n• Version: ${appVersion}\n• Issue Type: ${category}\n• Details: ${subject || message || 'Need technical assistance'}`
+      `Hello Stater Support Team,\nI need assistance with my billing software.\n• BizID: ${bizId}\n• Version: ${appVersion}\n• Issue Type: ${category}\n• Details: ${subject || message || 'Need technical assistance'}`
     )
     window.open(`https://wa.me/${SUPPORT_CONTACTS.phone.replace(/\D/g, '')}?text=${text}`, '_blank', 'noopener,noreferrer')
   }

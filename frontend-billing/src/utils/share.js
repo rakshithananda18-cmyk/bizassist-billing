@@ -37,7 +37,7 @@ export function resolvePaymentVpa({ profile, user } = {}) {
  * @param {{vpa:string, payeeName?:string, amount?:number, note?:string}} args
  * @returns {string}
  */
-export function buildUpiUri({ vpa, payeeName = 'BizAssist Merchant', amount = 0, note } = {}) {
+export function buildUpiUri({ vpa, payeeName = 'Stater Merchant', amount = 0, note } = {}) {
   const amt = (parseFloat(amount) || 0).toFixed(2)
   let uri = `upi://pay?pa=${vpa || ''}&pn=${encodeURIComponent(payeeName)}&am=${amt}&cu=INR`
   if (note) uri += `&tn=${encodeURIComponent(note)}`

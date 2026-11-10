@@ -18,13 +18,14 @@ from main_groq import app
 from database.db import get_db, SessionLocal
 from database.models import User, PasswordResetOTP
 from services.auth import hash_password, verify_password
-from services.registration_policy import phone_key
+from services.registration_policy import normalize_phone
 
 client = TestClient(app)
 
 
 @pytest.fixture(autouse=True)
-def clean_db_and_rate_limits():
+def clean_db_and_rate_limits(monkeypatch):
+    monkeypatch.setattr("services.brevo_service.is_brevo_configured", lambda: False)
     db = SessionLocal()
     try:
         # Clean up test users created in these tests
@@ -48,7 +49,7 @@ def create_sample_user():
             business_name="Test Store One",
             role="enterprise",
             public_id="BA-TEST01",
-            phone=phone_key("9876543210"),
+            phone=normalize_phone("9876543210"),
             email="merchant1@example.com",
             token_version=0
         )

@@ -1,7 +1,7 @@
 /**
- * fieldTeam.js — "Field Team" (BizAssist Task: attendance, routes, deliveries).
+ * fieldTeam.js — "Field Team" (Stater Task: attendance, routes, deliveries).
  *
- * A separate app, like Dashboard BIZASSIST (aiDashboard.js), but with its own
+ * A separate app, like Stater AI (aiDashboard.js), but with its own
  * backend (Cloud Run) as well as its own Vercel project. It shares the cloud
  * database and owner accounts with this app.
  *
@@ -20,6 +20,7 @@
 import api from '../api/client'
 import { CLOUD_URL, IS_LOCAL_APP, getApiBase, isLocalHost } from '../config'
 import { APPEARANCE_EVENT, CUSTOM_PALETTES_EVENT, appearanceTokens, readAppearance } from '../utils/appearance'
+import { isDemoMode } from '../demo/demoEngine'
 
 const WINDOW_NAME = 'field_team'
 export const FIELD_TEAM_CLOUD_URL = 'https://task.staterbill.com'
@@ -95,6 +96,7 @@ const toast = msg => window.dispatchEvent(new CustomEvent('show_toast', { detail
 
 /** Open Field Team signed in as the current owner. */
 export async function openFieldTeam({ user } = {}) {
+  if (user?.is_demo || isDemoMode()) return false
   const url = getFieldTeamUrl()
   if (!url) return
   const version = ++launchVersion

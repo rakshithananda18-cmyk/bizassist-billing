@@ -91,7 +91,8 @@ def db():
                staff_login_name="counter_1",
                password=hash_password("CashPass1!"),
                business_name="Transfer Test Co", role="cashier",
-               counter_prefix="C1", parent_business_id=OWNER_ID))
+               counter_prefix="C1", parent_business_id=OWNER_ID,
+               phone="+919876543288"))
     s.commit()
     try:
         yield s
@@ -119,6 +120,7 @@ def _incoming_from_the_other_database():
         "business_name": "Transfer Test Co",
         "role": "cashier",
         "counter_prefix": "C1",
+        "phone": "+919876543299",
         "parent_business_id": 4242,          # the SOURCE's owner id, remapped below
     }]
 
@@ -179,6 +181,52 @@ class TestATransferDoesNotDuplicateStaff:
 
         names = {u.staff_login_name for u in _staff(db)}
         assert names == {"counter_1", "counter_9"}
+
+    @pytest.mark.parametrize("login_name", ["counter_1", "counter_9"])
+    def test_transferred_phone_authenticates_inserted_or_updated_staff(self, db, login_name):
+        from database.security import authenticate_identity
+        from routes.data_transfer import _upsert_users
+        existing_tables = set(sa_inspect(db.bind).get_table_names())
+        rows = _incoming_from_the_other_database()
+        rows[0].update(username=f"{login_name}_c7", staff_login_name=login_name)
+
+        _upsert_users(db, rows, OWNER_ID, existing_tables)
+        db.commit()
+        db.expire_all()
+
+        cashier = authenticate_identity(db, "9876543299", "CashPass1!", "transfer_owner")
+        assert cashier is not None
+        assert cashier.staff_login_name == login_name
+        assert cashier.parent_business_id == OWNER_ID
+        assert cashier.phone == "+919876543299"
+        # A replaced phone must no longer authenticate the existing cashier.
+        if login_name == "counter_1":
+            assert authenticate_identity(db, "9876543288", "CashPass1!", "transfer_owner") is None
+
+    @pytest.mark.parametrize("include_phone", [False, True])
+    def test_legacy_transfer_without_phone_preserves_destination_phone_login(self, db, include_phone):
+        from database.security import authenticate_identity
+        from routes.data_transfer import _upsert_users
+        rows = _incoming_from_the_other_database()
+        if include_phone:
+            rows[0]["phone"] = None
+        else:
+            rows[0].pop("phone")
+        _upsert_users(db, rows, OWNER_ID, set(sa_inspect(db.bind).get_table_names()))
+        db.commit()
+        db.expire_all()
+
+        cashier = authenticate_identity(db, "9876543288", "CashPass1!", "transfer_owner")
+        assert cashier is not None
+        assert cashier.staff_login_name == "counter_1"
+
+    def test_owner_scoped_export_includes_staff_phone(self, db):
+        from routes.data_transfer import _fetch_table
+        rows = _fetch_table(db, "users", OWNER_ID)
+        staff = [row for row in rows if row["parent_business_id"] == OWNER_ID]
+        assert len(staff) == 1
+        assert staff[0]["staff_login_name"] == "counter_1"
+        assert staff[0]["phone"] == "+919876543288"
 
     def test_it_matches_on_the_login_name_not_the_internal_one(self):
         import inspect

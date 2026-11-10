@@ -86,7 +86,7 @@ export function whatsappHref(phone, message = '') {
   return `https://wa.me/${intl}${message ? `?text=${encodeURIComponent(message)}` : ''}`
 }
 
-export function buildUpiUri({ vpa, payeeName = 'BizAssist Merchant', amount = 0, note = '' } = {}) {
+export function buildUpiUri({ vpa, payeeName = 'Stater Merchant', amount = 0, note = '' } = {}) {
   const payee = String(vpa || '').trim()
   const value = Number(amount)
   if (!/^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+$/.test(payee) || !Number.isFinite(value) || value <= 0) return null

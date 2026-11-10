@@ -81,10 +81,11 @@ class Biz:
         self.public_id = body["public_id"]
         self.h = auth(self.token)
 
-    def staff(self, name="Ravi", login=None, role="delivery"):
+    def staff(self, name="Ravi", login=None, role="delivery", phone=None):
         login = login or uniq("agent")
+        phone = phone or str(6000000000 + uuid.uuid4().int % 4000000000)
         r = self.c.post("/api/staff", headers=self.h, json={
-            "name": name, "login_name": login, "password": PASSWORD, "role": role,
+            "name": name, "login_name": login, "password": PASSWORD, "role": role, "phone": phone,
         })
         assert r.status_code == 201, r.text
         return r.json()

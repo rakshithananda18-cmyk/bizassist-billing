@@ -25,8 +25,24 @@ const URL_ = 'https://field.example.app'
 const fakeTab = () => ({ location: { href: '' }, focus: vi.fn(), postMessage: vi.fn() })
 
 describe('Field Team link', () => {
-  beforeEach(() => { post.mockReset(); cfg.IS_LOCAL_APP = false; cfg.base = 'http://localhost:8001'; localStorage.clear() })
-  afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
+  beforeEach(() => { post.mockReset(); cfg.IS_LOCAL_APP = false; cfg.base = 'http://localhost:8001'; localStorage.clear(); sessionStorage.clear() })
+  afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); vi.unstubAllGlobals(); sessionStorage.clear(); window.history.replaceState({}, '', '/') })
+
+  it.each(['user', 'session', 'url'])('does not open a window or request a ticket for a demo identified by %s', async source => {
+    cfg.IS_LOCAL_APP = true
+    localStorage.setItem('bizassist_cloud_token', 'real-account-sync-token')
+    const user = { public_id: 'DEMO-STATER-01', ...(source === 'user' ? { is_demo: true } : {}) }
+    if (source === 'session') sessionStorage.setItem('stater_demo_active', '1')
+    if (source === 'url') window.history.replaceState({}, '', '/?demo=1')
+    const open = vi.spyOn(window, 'open').mockReturnValue(fakeTab())
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+
+    expect(await openFieldTeam({ user })).toBe(false)
+    expect(open).not.toHaveBeenCalled()
+    expect(post).not.toHaveBeenCalled()
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
 
   it('defaults to production and ignores a configured trailing slash', () => {
     vi.stubEnv('VITE_FIELD_TEAM_URL', '')

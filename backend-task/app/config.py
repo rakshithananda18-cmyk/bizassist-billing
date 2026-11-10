@@ -64,6 +64,10 @@ JWT_SECRET = _raw_secret
 # shift without forcing a mid-route re-login. Owners use the same TTL.
 ACCESS_TOKEN_TTL_MINUTES = _int("TASK_TOKEN_TTL_MINUTES", 14 * 60)
 
+# Same web client as Billing by default; deployments using another OAuth client
+# must set this and the frontend's VITE_GOOGLE_CLIENT_ID to the same value.
+GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "1076771386585-lt9gotlje2s5nrq509rokjngpufukuf0.apps.googleusercontent.com").strip()
+
 # Business wall clock. Attendance dates, "today's route" and lateness are all
 # computed in this zone from SERVER time — never from the phone's clock.
 BIZ_TIMEZONE = os.environ.get("BIZ_TIMEZONE", "Asia/Kolkata")

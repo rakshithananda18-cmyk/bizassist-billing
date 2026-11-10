@@ -208,9 +208,24 @@ to a revision that still schedules in-process jobs.
 
 Before deploying, back up PostgreSQL and run Billing's `python -m alembic
 upgrade head` with schema-owner credentials from Secret Manager. Current head:
-`h4_auth_admin_runtime_state`. Field Team has its own `ft_*` migration chain.
+`h5_account_identity_bootstrap`. Apply this Billing migration before deploying
+the updated Billing and Field Team sign-in endpoints. Field Team has its own
+`ft_*` migration chain; it does not install Billing's shared identity helpers.
 Constrained runtime credentials never perform DDL. Mount `ADMIN_SERVICE_URL`
 when the runtime role cannot perform privileged admin operations.
+
+The Field Team database connection needs EXECUTE on Billing's private identity
+helpers. Use the private role configured through `BIZASSIST_RUNTIME_DB_ROLE`,
+or have the schema operator grant equivalent access to a separate private
+Field Team role. Never use Supabase's `anon` or `authenticated` roles as API
+runtime credentials. Missing helper access returns 503 and does not fall back
+to an unscoped account query.
+
+Install the updated Python requirements in both APIs for Google token
+verification. Keep backend `GOOGLE_CLIENT_ID` and frontend
+`VITE_GOOGLE_CLIENT_ID` aligned, and register the deployed sign-in origins in
+that Google OAuth client. After deployment, verify a real owner Google sign-in
+and a test account-change email; local regression tests mock these providers.
 
 Both APIs must use the same JWT_SECRET and database. The runbook explains how
 to compare SHA-256 digests without printing a secret. The optional authenticated

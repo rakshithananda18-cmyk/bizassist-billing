@@ -67,7 +67,7 @@ export default function TrialEndedModal({
           Your Pro trial has ended
         </h2>
         <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary, #ccc)', lineHeight: 1.6, margin: '0 0 20px' }}>
-          Your data is safe. Using BizAssist on the web needs Pro, but billing in the
+          Your data is safe. Using Stater on the web needs Pro, but billing in the
           desktop app stays free — it works offline and keeps your data on your computer.
         </p>
 

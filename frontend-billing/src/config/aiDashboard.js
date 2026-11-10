@@ -1,5 +1,5 @@
 /**
- * aiDashboard.js — "Dashboard BIZASSIST" (the frontend-ai analytics app).
+ * aiDashboard.js — "Stater AI" (the frontend-ai analytics app).
  *
  * In the desktop app both frontends are bundled: billing is served on
  * 127.0.0.1:8450 and the AI dashboard on 127.0.0.1:8451 (see desktop/src/main.js).
@@ -11,6 +11,7 @@
  */
 import { isLocalHost } from '../config'
 import api from '../api/client'
+import { isDemoMode } from '../demo/demoEngine'
 
 /**
  * DEPRECATED (Phase B.5): gating is now driven by the user's real plan.
@@ -42,6 +43,8 @@ export function notifyAiLogout() {
 
 /** Open the dashboard (desktop shell turns this into a native window). */
 export async function openAiDashboard({ user } = {}) {
+  // Search and other entry points can call this outside the sidebar guard.
+  if (user?.is_demo || isDemoMode()) return false
   const url = getAiDashboardUrl()
   if (!url) return
   const toast = msg => window.dispatchEvent(new CustomEvent('show_toast', { detail: { type: 'warning', msg } }))
@@ -50,7 +53,7 @@ export async function openAiDashboard({ user } = {}) {
   const win = _aiWindow
   if (!win) { toast('Your browser blocked the dashboard window. Allow pop-ups for this site, or open the link in a new tab.'); return }
   win.focus()
-  try { if (!win.location.href || win.location.href === 'about:blank') win.document?.write('<p>Opening Dashboard BIZASSIST…</p>') } catch { /* existing dashboard */ }
+  try { if (!win.location.href || win.location.href === 'about:blank') win.document?.write('<p>Opening Stater AI…</p>') } catch { /* existing dashboard */ }
   const target = new URL(`${url.replace(/\/+$/, '')}/`)
   target.searchParams.set('from_billing', '1')
   target.searchParams.set('billing_origin', window.location.origin)
@@ -60,7 +63,7 @@ export async function openAiDashboard({ user } = {}) {
     if (res?.ticket) target.searchParams.set('sso', res.ticket)
     else throw new Error('No handoff ticket')
   } catch {
-    toast("Couldn't hand over your sign-in. Sign in on Dashboard BIZASSIST with the same account.")
+    toast("Couldn't hand over your sign-in. Sign in on Stater AI with the same account.")
   }
-  try { win.location.href = target.href } catch { toast('Open Dashboard BIZASSIST again to continue signing in.') }
+  try { win.location.href = target.href } catch { toast('Open Stater AI again to continue signing in.') }
 }

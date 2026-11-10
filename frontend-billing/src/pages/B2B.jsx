@@ -62,6 +62,10 @@ export default function B2B() {
       </AppLayout>
     )
   }
+  return <B2BWorkspace />
+}
+
+function B2BWorkspace() {
   const { authFetch, token, user, settings } = useAuth()
   const confirm = useConfirm()
 

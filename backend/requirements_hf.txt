@@ -20,6 +20,7 @@ psycopg2-binary>=2.9.0         # PostgreSQL driver for Supabase
 # ── Auth ───────────────────────────────────────────────────────
 bcrypt>=4.0.0
 pyjwt>=2.6.0
+google-auth[requests]>=2.37,<3
 
 # ── Data / file parsing ────────────────────────────────────────
 pandas>=2.0.0

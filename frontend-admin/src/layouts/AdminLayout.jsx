@@ -211,10 +211,10 @@ export default function AdminLayout() {
         </button>}
 
         {/* Brand Block */}
-        <NavLink to="/admin/dashboard" className="sidebar-brand" aria-label="BizAssist operations home" onClick={() => setMobileMenuOpen(false)}>
+        <NavLink to="/admin/dashboard" className="sidebar-brand" aria-label="Stater operations home" onClick={() => setMobileMenuOpen(false)}>
           <span className="sidebar-brand-mark"><BuildingMark size={28} accent="#df9878" /></span>
           <div className="sidebar-brand-copy">
-            <div className="brand-name">BizAssist<span> / admin</span></div>
+            <div className="brand-name">Stater<span> / admin</span></div>
             <div className="brand-tag">STATER BILL OPERATIONS</div>
           </div>
         </NavLink>

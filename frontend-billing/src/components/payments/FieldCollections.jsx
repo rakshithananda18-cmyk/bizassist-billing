@@ -145,7 +145,7 @@ export default function FieldCollections() {
   if (error) return <div className="alert alert-danger">{error}</div>
   if (!data) return <div className="empty-state">Loading…</div>
   if (!data.available) {
-    return <div className="empty-state card">Field Team collections appear in the BizAssist web app, where Field Team runs.</div>
+    return <div className="empty-state card">Field Team collections appear in the Stater web app, where Field Team runs.</div>
   }
   return (
     <div>

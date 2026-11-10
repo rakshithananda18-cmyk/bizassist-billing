@@ -136,6 +136,9 @@ const globalMockFetch = vi.fn(async (url) => {
   if (u.includes('/staff-counters')) {
     return jsonResponse(mockStaffCounters)
   }
+  if (u.includes('/api/auth/lookup-business')) {
+    return jsonResponse({ ...mockStaffCounters, found: true, public_id: 'BA-OWNER', has_staff: mockStaffCounters.staff.length > 0 })
+  }
   if (u.includes('/health')) {
     return jsonResponse({ status: 'ok', db: 'connected' })
   }
@@ -208,20 +211,20 @@ afterEach(() => {
 })
 
 describe('Login staff resolution (T2)', () => {
-  it('shows the Staff button when local /staff-counters is empty but cloud has staff', async () => {
+  it('finds the cloud business and its staff when it is absent from the local database', async () => {
     mockStaffCounters = { business_name: 'Cloud Store', staff: [{ username: 'cashier1', role: 'cashier', counter_prefix: 'CS' }] }
     
     // Stub fetch to return empty local, but populated cloud staff counters
     vi.stubGlobal('fetch', vi.fn(async (url) => {
       const u = String(url)
       const jsonResponse = (body) => ({ ok: true, status: 200, json: async () => body, clone() { return this } })
-      if (u.includes('/staff-counters')) {
+      if (u.includes('/api/auth/lookup-business')) {
         if (u.startsWith('http://local-backend')) {
-          return jsonResponse({ business_name: 'Local Store', staff: [] })
+          return jsonResponse({ found: false, staff: [] })
         }
         if (u.startsWith('http://cloud-backend')) {
           return jsonResponse({
-            business_name: 'Cloud Store',
+            found: true, public_id: 'BA-OWNER', has_staff: true, business_name: 'Cloud Store',
             staff: [{ username: 'cashier1', role: 'cashier', counter_prefix: 'CS' }]
           })
         }
@@ -395,7 +398,6 @@ describe('Login staff resolution (T2)', () => {
 
     fireEvent.change(screen.getByLabelText('Business Owner Username'), { target: { value: 'owner1' } })
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Owner Login' }))
     await screen.findByLabelText('Owner Password')
     fireEvent.change(screen.getByLabelText('Owner Password'), { target: { value: 'password123' } })
     fireEvent.click(screen.getByRole('button', { name: 'Sign In as Owner' }))

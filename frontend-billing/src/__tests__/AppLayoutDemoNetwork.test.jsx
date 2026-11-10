@@ -1,6 +1,6 @@
 import React from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { act, cleanup, render } from '@testing-library/react'
+import { act, cleanup, render, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 
 const auth = vi.hoisted(() => ({ value: null }))
@@ -39,6 +39,18 @@ afterEach(() => {
 const showLayout = () => render(<MemoryRouter><AppLayout title="Home">Demo workspace</AppLayout></MemoryRouter>)
 
 describe('demo layout network isolation', () => {
+  it.each(['user', 'context'])('shows demo-safe protected sidebar destinations for %s detection', source => {
+    if (source === 'user') auth.value.user.is_demo = true
+    else auth.value.isDemoMode = true
+    showLayout()
+    const sidebar = within(document.querySelector('.sidebar-nav'))
+    for (const [label, path] of [['B2B', '/b2b'], ['Stater AI', '/demo-preview/ai'], ['Field Team', '/demo-preview/field-team'], ['POS Live Counter', '/pos-live-counter']]) {
+      const link = sidebar.getByRole('link', { name: `${label} — Protected demo view` })
+      expect(link).toHaveAttribute('href', path)
+      expect(within(link).getByText('Protected')).toBeInTheDocument()
+    }
+  })
+
   it.each(['user', 'context'])('skips background sync polling when demo is identified by %s', async source => {
     if (source === 'user') auth.value.user.is_demo = true
     else auth.value.isDemoMode = true

@@ -8,6 +8,19 @@ import { Section } from '../../components/ui'
 import { Icon } from '../../components/icons'
 import '../../styles/directory.css'
 
+const OWNER_EDIT_FIELDS = [
+  ['business_name', 'Business Name', 'text'],
+  ['username', 'Store Username', 'text'],
+  ['email', 'Owner Email', 'email'],
+  ['phone', 'Mobile Phone', 'tel'],
+  ['gstin', 'GSTIN', 'text'],
+  ['pan', 'PAN Number', 'text'],
+  ['state_code', 'State Code', 'text'],
+  ['upi_vpa', 'UPI VPA', 'text'],
+  ['counter_prefix', 'Counter Prefix', 'text'],
+]
+const OWNER_EDIT_KEYS = [...OWNER_EDIT_FIELDS.map(([key]) => key), 'address', 'logo', 'hosting_mode']
+
 export default function AdminBusinesses() {
   const { authFetch } = useAuth()
   const { showAlert, showConfirm, showError } = useDialog()
@@ -30,6 +43,8 @@ export default function AdminBusinesses() {
   // Edit form states
   const [editForm, setEditForm] = useState({ id: null, business_name: '', username: '', password: '' })
   const [editError, setEditError] = useState('')
+  const [editSaving, setEditSaving] = useState(false)
+  const editOriginal = useRef({})
 
   // Rate limits form states
   const [limitsForm, setLimitsForm] = useState({ id: null, businessName: '', rpm: 10, rpd: 500, tokens: 50000, complex: 20, active: true })
@@ -233,17 +248,23 @@ export default function AdminBusinesses() {
 
   // --- EDIT MERCHANT ---
   function openEditModal(b) {
-    setEditForm({ id: b.id, business_name: b.business_name, username: b.username, password: '' })
+    const values = Object.fromEntries(OWNER_EDIT_KEYS.map(key => [key, b[key] || '']))
+    editOriginal.current = values
+    setEditForm({ ...values, id: b.id, password: '' })
     setEditError('')
     setShowEditModal(true)
   }
 
   async function handleEditSubmit(e) {
     e.preventDefault()
+    if (editSaving) return
     setEditError('')
-    const body = { username: editForm.username, business_name: editForm.business_name }
+    const body = Object.fromEntries(OWNER_EDIT_KEYS
+      .filter(key => editForm[key] !== editOriginal.current[key])
+      .map(key => [key, editForm[key]]))
     if (editForm.password) body.password = editForm.password
 
+    setEditSaving(true)
     try {
       const res = await authFetch(`${API_BASE}/admin/update-user/${editForm.id}`, {
         method: 'PUT',
@@ -258,6 +279,8 @@ export default function AdminBusinesses() {
       loadBusinesses()
     } catch (err) {
       setEditError(err.message)
+    } finally {
+      setEditSaving(false)
     }
   }
 
@@ -622,43 +645,80 @@ export default function AdminBusinesses() {
       {/* EDIT MERCHANT MODAL */}
       {showEditModal && (
         <div className="custom-modal-overlay">
-          <div className="custom-modal-card admin-modal-card" style={{ maxWidth: 450 }}>
-            <div className="custom-modal-title">Edit Merchant Credentials</div>
-            <form onSubmit={handleEditSubmit} className="auth-form" style={{ marginTop: 16 }}>
-              <div className="form-group">
-                <label>Business Name</label>
+          <div className="custom-modal-card admin-modal-card" role="dialog" aria-modal="true" aria-labelledby="owner-edit-title" style={{ maxWidth: 560, width: '92%', maxHeight: '90dvh', overflowY: 'auto' }}>
+            <div id="owner-edit-title" className="custom-modal-title">Edit Business &amp; Owner Profile</div>
+            <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '4px 0 16px 0' }}>
+              Update business details, account contacts, storage configuration, or assign a new login password.
+            </p>
+            <form onSubmit={handleEditSubmit} className="auth-form" style={{ marginTop: 8 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px 14px' }}>
+                {OWNER_EDIT_FIELDS.map(([key, label, type]) => (
+                  <div className="form-group" key={key}>
+                    <label htmlFor={`owner-edit-${key}`}>{label}</label>
+                    <input
+                      id={`owner-edit-${key}`}
+                      type={type}
+                      required={key === 'business_name' || key === 'username' || (key === 'email' && Boolean(editForm.password))}
+                      maxLength={key === 'counter_prefix' ? 8 : undefined}
+                      value={editForm[key]}
+                      onChange={e => setEditForm(f => ({ ...f, [key]: ['gstin', 'pan'].includes(key) ? e.target.value.toUpperCase() : e.target.value }))}
+                    />
+                  </div>
+                ))}
+                <div className="form-group">
+                  <label htmlFor="owner-edit-hosting_mode">Store Storage Setup</label>
+                  <select
+                    id="owner-edit-hosting_mode"
+                    value={editForm.hosting_mode}
+                    onChange={e => setEditForm(f => ({ ...f, hosting_mode: e.target.value }))}
+                    style={{ height: 38, borderRadius: 6 }}
+                  >
+                    <option value="" disabled>Setup not reported</option>
+                    <option value="cloud">Cloud (Web)</option>
+                    <option value="local">Local (Offline Desktop)</option>
+                    <option value="hybrid">Hybrid (Local + Cloud Mirror)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="form-group" style={{ marginTop: 8 }}>
+                <label htmlFor="owner-edit-address">Trade / Physical Address</label>
                 <input
+                  id="owner-edit-address"
                   type="text"
-                  required
-                  value={editForm.business_name}
-                  onChange={e => setEditForm(f => ({ ...f, business_name: e.target.value }))}
+                  placeholder="Street, City, Pin Code"
+                  value={editForm.address}
+                  onChange={e => setEditForm(f => ({ ...f, address: e.target.value }))}
                 />
               </div>
-              <div className="form-group">
-                <label>Username</label>
-                <input
-                  type="text"
-                  required
-                  value={editForm.username}
-                  onChange={e => setEditForm(f => ({ ...f, username: e.target.value }))}
-                />
+              <div className="form-group" style={{ marginTop: 8 }}>
+                <label htmlFor="owner-edit-logo">Business Logo (URL or image data)</label>
+                <textarea id="owner-edit-logo" rows={2} value={editForm.logo} onChange={e => setEditForm(f => ({ ...f, logo: e.target.value }))} />
               </div>
-              <div className="form-group">
-                <label>New Password (leave blank to keep current)</label>
+
+              <div className="form-group" style={{ marginTop: 8 }}>
+                <label htmlFor="owner-edit-password">New Password (leave blank to keep current)</label>
                 <input
+                  id="owner-edit-password"
                   type="password"
+                  autoComplete="new-password"
+                  minLength={8}
                   placeholder="••••••••"
                   value={editForm.password}
                   onChange={e => setEditForm(f => ({ ...f, password: e.target.value }))}
                 />
+                <span style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 3, display: 'block' }}>
+                  A confirmation email will be sent to the owner's email address upon password update.
+                </span>
               </div>
-              {editError && <div className="auth-error">{editError}</div>}
-              <div className="custom-modal-actions" style={{ marginTop: 24 }}>
-                <button type="button" className="custom-modal-btn cancel-btn" onClick={() => setShowEditModal(false)}>
+
+              {editError && <div className="auth-error" style={{ marginTop: 12 }}>{editError}</div>}
+              <div className="custom-modal-actions" style={{ marginTop: 20 }}>
+                <button type="button" disabled={editSaving} className="custom-modal-btn cancel-btn" onClick={() => setShowEditModal(false)}>
                   Cancel
                 </button>
-                <button type="submit" className="custom-modal-btn confirm-btn" style={{ background: 'var(--accent-color)' }}>
-                  Save Credentials
+                <button type="submit" disabled={editSaving} className="custom-modal-btn confirm-btn" style={{ background: 'var(--accent-color)' }}>
+                  {editSaving ? 'Saving...' : 'Save Business Details'}
                 </button>
               </div>
             </form>

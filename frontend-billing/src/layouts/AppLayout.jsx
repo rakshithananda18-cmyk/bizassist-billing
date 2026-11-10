@@ -65,6 +65,7 @@ const NAV = [
         to: '/b2b',
         icon: <OrderIcon size={16} className="nav-anim-b2border" />,
         label: 'B2B',
+        demoProtected: true,
         children: [
           { to: '/b2b?tab=order', label: 'Order' },
           { to: '/b2b?tab=outgoing', label: 'Outgoing Orders' },
@@ -81,17 +82,17 @@ const NAV = [
       { to: '/dashboard', icon: <DashboardIcon size={16} className="nav-anim-dash" />, label: 'Dashboard' },
       // External: the bundled frontend-ai app (opens in its own window in the
       // desktop app). Pro plan only — see EXTERNAL_APPS.
-      { external: 'ai', ownerOnly: true, icon: <ZapIcon size={16} />, label: 'Dashboard BIZASSIST' },
-      // External: BizAssist Task (field staff, routes, deliveries) on its own
+      { external: 'ai', ownerOnly: true, icon: <ZapIcon size={16} />, label: 'Stater AI', demoProtected: true },
+      // External: Stater Task (field staff, routes, deliveries) on its own
       // Vercel project — see fieldTeam.js. Hidden until VITE_FIELD_TEAM_URL is set.
-      { external: 'fieldTeam', ownerOnly: true, icon: <TruckIcon size={16} />, label: 'Field Team' },
+      { external: 'fieldTeam', ownerOnly: true, icon: <TruckIcon size={16} />, label: 'Field Team', demoProtected: true },
     ]
   },
   {
     section: 'Sales & Operations',
     items: [
       { to: '/sales',    icon: <CounterIcon size={16} className="nav-anim-bill" />,   label: 'Billing Counter' },
-      { to: '/pos-live-counter', icon: <MonitorIcon size={16} />,   label: 'POS Live Counter' },
+      { to: '/pos-live-counter', icon: <MonitorIcon size={16} />,   label: 'POS Live Counter', demoProtected: true },
       {
         to: '/parties',
         icon: <ContactsIcon size={16} className="nav-anim-contact" />,
@@ -231,11 +232,7 @@ export default function AppLayout({ children, title }) {
   const handleOpenExternal = async (external, navLabel) => {
     if (['cashier', 'supply_adder'].includes(user?.role)) return
     if (user?.is_demo || isDemoMode) {
-      confirm({
-        mode: 'alert',
-        title: `${navLabel} — Pro Feature`,
-        message: `${navLabel} is a proprietary Pro feature. Start your free 14-day Pro trial to connect external field teams and AI dashboards!`,
-      })
+      navigate(`/demo-preview/${external === 'fieldTeam' ? 'field-team' : 'ai'}`)
       return
     }
     const app = EXTERNAL_APPS[external]
@@ -1272,7 +1269,7 @@ export default function AppLayout({ children, title }) {
               <BuildingMark size={30} />
             )}
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div className="brand-name"><BusinessName>{profile?.business_name || user?.business_name || 'BizAssist'}</BusinessName></div>
+              <div className="brand-name"><BusinessName>{profile?.business_name || user?.business_name || 'Stater'}</BusinessName></div>
               {isSyncOn && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <div
@@ -2332,12 +2329,17 @@ export default function AppLayout({ children, title }) {
                       </span>
                     </div>
 
-                    {!isCollapsed && items.map(({ item: { to, icon, label: navLabel, external, children }, flatIndex }) => {
+                    {!isCollapsed && items.map(({ item: { to, icon, label: navLabel, external, children, demoProtected }, flatIndex }) => {
+                      const protectedDemo = isDemoSession && demoProtected
+                      const protectedBadge = protectedDemo && <span className="nav-demo-protected-badge" aria-hidden="true"><LockIcon size={11} /><span>Protected</span></span>
                       const handleCtxMenu = (e) => {
                         e.preventDefault()
                         setSidebarCtxMenu({ x: e.clientX, y: e.clientY, to, label: navLabel, flatIndex })
                       }
                       if (external) {
+                        if (protectedDemo) return <NavLink key={external} to={`/demo-preview/${external === 'fieldTeam' ? 'field-team' : 'ai'}`} className={({ isActive }) => `nav-link is-demo-protected${isActive ? ' active' : ''}`} data-label={`${navLabel} — Protected`} aria-label={`${navLabel} — Protected demo view`} onClick={() => setMobileMenuOpen(false)}>
+                          <span className="nav-icon">{icon}</span><span className="nav-label">{navLabel}</span>{protectedBadge}
+                        </NavLink>
                         const app = EXTERNAL_APPS[external]
                         const href = external === 'fieldTeam' ? fieldTeamLaunchUrl(user) : app?.getUrl()
                         if (!href) return null
@@ -2380,15 +2382,17 @@ export default function AppLayout({ children, title }) {
                             onClick={() => setMobileMenuOpen(false)}
                             onContextMenu={handleCtxMenu}
                             className={({ isActive }) =>
-                              'nav-link' + (isActive || active ? ' active' : '')
+                              'nav-link' + (isActive || active ? ' active' : '') + (protectedDemo ? ' is-demo-protected' : '')
                             }
-                            data-label={navLabel}
+                            data-label={protectedDemo ? `${navLabel} — Protected` : navLabel}
+                            aria-label={protectedDemo ? `${navLabel} — Protected demo view` : undefined}
                           >
                             <span className="nav-icon">{icon}</span>
                             <span className="nav-label">{navLabel}</span>
+                            {protectedBadge}
                           </NavLink>
 
-                          {hasChildren && active && !sidebarInRailMode && (
+                          {hasChildren && active && !sidebarInRailMode && !protectedDemo && (
                             <div className="nav-sub-tree" role="group" aria-label={`${navLabel} sub-pages`}>
                               {children.map(child => {
                                 const childActive = isChildActive(child.to)
@@ -2552,11 +2556,11 @@ export default function AppLayout({ children, title }) {
             {showProfileMenu && (
               <div className="profile-menu" ref={profileMenuRef} onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}>
                 <div className="profile-menu-header">
-                  <div className="profile-menu-biz">{profile?.business_name || user?.username || 'BizAssist User'}</div>
+                  <div className="profile-menu-biz">{profile?.business_name || user?.username || 'Stater User'}</div>
                   <div className="profile-menu-sub">Enterprise Account</div>
                 </div>
                 <div className="profile-menu-sep" />
-                <div style={{ padding: "8px 12px", display: "flex", justifyContent: "center" }}><WorkspaceSwitcher activeWorkspace="billing" user={user} onFieldTeam={() => handleOpenExternal('fieldTeam', 'Field Team')} /></div>
+                <div style={{ padding: "8px 12px", display: "flex", justifyContent: "center" }}><WorkspaceSwitcher activeWorkspace="billing" user={user} isDemoSession={isDemoSession} onFieldTeam={() => handleOpenExternal('fieldTeam', 'Field Team')} /></div>
                 <div className="profile-menu-sep" />
                 <Link className="profile-menu-item" to="/settings?tab=profile" onClick={() => setShowProfileMenu(false)}>
                   <UserIcon size={14} /> Business Profile
@@ -2719,7 +2723,7 @@ export default function AppLayout({ children, title }) {
               <BuildingMark size={22} />
             )}
             <span className="mobile-brand-name">
-              <BusinessName>{profile?.business_name || user?.business_name || 'BizAssist'}</BusinessName>
+              <BusinessName>{profile?.business_name || user?.business_name || 'Stater'}</BusinessName>
             </span>
           </div>
 
@@ -2743,11 +2747,11 @@ export default function AppLayout({ children, title }) {
             {showProfileMenu && (
               <div className="profile-menu mobile-dropdown" ref={profileMenuRef} onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}>
                 <div className="profile-menu-header">
-                  <div className="profile-menu-biz">{profile?.business_name || user?.username || 'BizAssist User'}</div>
+                  <div className="profile-menu-biz">{profile?.business_name || user?.username || 'Stater User'}</div>
                   <div className="profile-menu-sub">Enterprise Account</div>
                 </div>
                 <div className="profile-menu-sep" />
-                <div style={{ padding: "8px 12px", display: "flex", justifyContent: "center" }}><WorkspaceSwitcher activeWorkspace="billing" user={user} onFieldTeam={() => handleOpenExternal('fieldTeam', 'Field Team')} /></div>
+                <div style={{ padding: "8px 12px", display: "flex", justifyContent: "center" }}><WorkspaceSwitcher activeWorkspace="billing" user={user} isDemoSession={isDemoSession} onFieldTeam={() => handleOpenExternal('fieldTeam', 'Field Team')} /></div>
                 <div className="profile-menu-sep" />
                 <Link className="profile-menu-item" to="/settings?tab=profile" onClick={() => setShowProfileMenu(false)}>
                   <UserIcon size={14} /> Business Profile

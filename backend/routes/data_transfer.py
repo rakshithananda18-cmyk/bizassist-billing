@@ -285,7 +285,7 @@ def _upsert_users(db: Session, rows: list[dict], dest_owner_id: int, existing_ta
     allowed_staff_roles = {"cashier", "supply adder"}
     allowed_staff_fields = {
         "username", "staff_login_name", "password", "business_name", "role",
-        "parent_business_id", "counter_prefix", "created_at", "updated_at",
+        "parent_business_id", "counter_prefix", "phone", "created_at", "updated_at",
     }
     user_columns = {c["name"] for c in col_info}
 
@@ -332,6 +332,10 @@ def _upsert_users(db: Session, rows: list[dict], dest_owner_id: int, existing_ta
         else:
             # Staff: remap parent → cloud owner
             r = {k: v for k, v in r.items() if k in user_columns and k in allowed_staff_fields}
+            # Legacy exports have no staff phone. Preserve a destination phone
+            # rather than removing its working login when restoring an old file.
+            if r.get("phone") is None:
+                r.pop("phone", None)
             r["parent_business_id"] = dest_owner_id
             r["role"] = (r.get("role") or "cashier").lower()
             if not r.get("username") or r["role"] not in allowed_staff_roles:
@@ -394,7 +398,7 @@ def _upsert_users(db: Session, rows: list[dict], dest_owner_id: int, existing_ta
                         # rename the row to a foreign scheme and re-open the
                         # mismatch on the next transfer.
                         update_fields = [
-                            field for field in ("staff_login_name", "password", "business_name", "role", "counter_prefix")
+                            field for field in ("staff_login_name", "password", "business_name", "role", "counter_prefix", "phone")
                             if field in r
                         ]
                         if update_fields:

@@ -41,11 +41,11 @@
   --focus-ring: 0 0 0 3px rgba(182, 85, 54, 0.16);
   --sidebar-w: 244px;
   --sidebar-rail-w: 64px;
-  --sidebar-bg: #0c0e13;
-  --sidebar-border: #1e222d;
+  --sidebar-bg: #090a0d;
+  --sidebar-border: #1a1d24;
   --sidebar-text: #f3f4f6;
   --sidebar-muted: #9ca3af;
-  --sidebar-hover: rgba(255, 255, 255, 0.06);
+  --sidebar-hover: rgba(255, 255, 255, 0.05);
   --sidebar-active-bg: rgba(223, 139, 105, 0.15);
   --sidebar-active-text: #df8b69;
   --scrollbar-thumb: rgba(0, 0, 0, 0.2);
@@ -83,9 +83,9 @@
   --danger-dim: rgba(239, 68, 68, 0.12);
   --info: #94a3b8;
   --info-dim: rgba(148, 163, 184, 0.12);
-  --sidebar-bg: #0b0d11;
-  --sidebar-border: #1a1d26;
-  --sidebar-hover: rgba(255, 255, 255, 0.06);
+  --sidebar-bg: #090a0d;
+  --sidebar-border: #1a1d24;
+  --sidebar-hover: rgba(255, 255, 255, 0.05);
   --sidebar-active-bg: rgba(223, 139, 105, 0.15);
   --sidebar-active-text: #df8b69;
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.5);
@@ -176,6 +176,7 @@ a:focus-visible, button:focus-visible, summary:focus-visible, input:focus-visibl
 .sidebar-workspace-note span { display: block; margin-top: 4px; font-size: 9px; line-height: 1.5; color: var(--sidebar-muted); }
 
 /* Dedicated Sidebar Theme Switcher */
+.admin-experience .sidebar-theme-switch,
 .sidebar-theme-switch {
   display: flex;
   align-items: center;
@@ -183,16 +184,19 @@ a:focus-visible, button:focus-visible, summary:focus-visible, input:focus-visibl
   border: 1px solid var(--sidebar-border);
   border-radius: 8px;
   padding: 3px;
-  margin-bottom: 10px;
-  gap: 2px;
+  width: 100%;
+  box-sizing: border-box;
+  margin-bottom: 8px;
+  gap: 3px;
 }
+.admin-experience .sidebar-theme-btn,
 .sidebar-theme-btn {
   flex: 1;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
-  padding: 5px 8px;
+  padding: 6px 10px;
   border: 0;
   border-radius: 6px;
   background: transparent;
@@ -202,18 +206,18 @@ a:focus-visible, button:focus-visible, summary:focus-visible, input:focus-visibl
   cursor: pointer;
   transition: all 0.16s ease;
 }
+.admin-experience .sidebar-theme-btn:hover,
 .sidebar-theme-btn:hover {
   color: var(--sidebar-text);
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.06);
 }
-.sidebar-theme-btn.is-active {
-  background: var(--bg-2);
-  color: var(--text-primary);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
-}
+.admin-experience .sidebar-theme-btn.is-active,
+.sidebar-theme-btn.is-active,
 .dark-mode .sidebar-theme-btn.is-active {
-  background: rgba(255, 255, 255, 0.12);
-  color: #fff;
+  background: rgba(255, 255, 255, 0.14) !important;
+  color: #ffffff !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+  font-weight: 600;
 }
 .sidebar-theme-collapsed-btn {
   display: grid;
@@ -233,7 +237,7 @@ a:focus-visible, button:focus-visible, summary:focus-visible, input:focus-visibl
   color: var(--sidebar-text);
 }
 
-.admin-experience .sidebar-footer { padding: 12px; border-top: 1px solid var(--sidebar-border); background: transparent; }
+.admin-experience .sidebar-footer { padding: 10px 13px; border-top: 1px solid var(--sidebar-border); background: transparent; }
 .admin-experience .user-chip { padding: 8px 10px; border: 1px solid transparent; gap: 10px; width: 100%; border-radius: 8px; color: var(--sidebar-text); background: transparent; }
 .admin-experience .user-chip:hover { background: var(--sidebar-hover); border-color: var(--sidebar-border); }
 .admin-experience .user-avatar { background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.12); color: var(--accent); font: 600 11px var(--font-sans); width: 30px; height: 30px; border-radius: 8px; }
@@ -271,13 +275,13 @@ a:focus-visible, button:focus-visible, summary:focus-visible, input:focus-visibl
 .admin-experience .topbar .btn-flush:hover { background: var(--bg-2); border-color: var(--border); }
 .admin-topbar-exit { color: var(--text-muted); }
 .admin-topbar-exit:hover { color: var(--danger); }
-.admin-experience .app-main { padding: 18px 24px 32px; gap: 0; }
+.admin-experience .app-main { padding: 12px 20px 24px; gap: 0; }
 .admin-experience .app-main:focus { outline: none; }
 .admin-skip-link { position: fixed; left: 16px; top: -70px; z-index: 5000; background: var(--bg-2); border: 1px solid var(--accent); color: var(--text-primary); padding: 10px 18px; border-radius: 7px; }
 .admin-skip-link:focus { top: 12px; }
 
 /* Consistent typography, tables and controls across the existing workspaces. */
-.admin-experience .admin-main { gap: 16px; max-width: 1400px; }
+.admin-experience .admin-main { gap: 12px; max-width: 1400px; }
 .admin-experience .admin-header-row { align-items: flex-end; gap: 24px; padding-bottom: 24px; }
 .admin-experience .admin-title-group h1, .admin-experience .vheader-title { font-family: var(--font-sans); font-size: clamp(23px,2.5vw,32px); font-weight: 550; letter-spacing: -.045em; line-height: 1.2; }
 .admin-experience .admin-title-group p, .admin-experience .vheader-sub { color: var(--text-muted); font-size: 12px; line-height: 1.75; max-width: 640px; margin-top: 8px; }

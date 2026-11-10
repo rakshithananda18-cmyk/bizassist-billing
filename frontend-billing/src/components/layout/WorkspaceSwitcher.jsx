@@ -1,15 +1,27 @@
 // src/components/layout/WorkspaceSwitcher.jsx
 // Symmetric workspace switcher between Billing POS/ERP and companion Field Team app.
 import React from 'react'
+import { Link } from 'react-router-dom'
 import { MonitorIcon, TruckIcon } from '../Icons'
 import { fieldTeamLaunchUrl } from '../../config/fieldTeam'
+import { isDemoMode } from '../../demo/demoEngine'
 
-export default function WorkspaceSwitcher({ activeWorkspace = 'billing', user, onFieldTeam }) {
-  const fieldUrl = fieldTeamLaunchUrl(user)
+export default function WorkspaceSwitcher({ activeWorkspace = 'billing', user, onFieldTeam, isDemoSession = false }) {
+  const demoProtected = Boolean(isDemoSession || user?.is_demo || isDemoMode())
+  const fieldUrl = demoProtected ? '/demo-preview/field-team' : fieldTeamLaunchUrl(user)
   if (!fieldUrl || !onFieldTeam || ['cashier', 'supply_adder'].includes(user?.role)) return null
+  const FieldLink = demoProtected ? Link : 'a'
+  const fieldLinkProps = demoProtected ? { to: fieldUrl } : {
+    href: fieldUrl,
+    onClick: event => {
+      if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey || event.button !== 0) return
+      event.preventDefault()
+      onFieldTeam()
+    },
+  }
 
   return (
-    <nav className="workspace-switch" aria-label="BizAssist workspaces" style={{
+    <nav className="workspace-switch" aria-label="Stater workspaces" style={{
       display: 'inline-flex',
       alignItems: 'center',
       background: 'var(--bg-1)',
@@ -36,13 +48,8 @@ export default function WorkspaceSwitcher({ activeWorkspace = 'billing', user, o
         <MonitorIcon size={13} /> Billing
       </span>
 
-      <a
-        href={fieldUrl}
-        onClick={event => {
-          if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey || event.button !== 0) return
-          event.preventDefault()
-          onFieldTeam()
-        }}
+      <FieldLink
+        {...fieldLinkProps}
         className="workspace-tab"
         style={{
           display: 'inline-flex',
@@ -58,10 +65,11 @@ export default function WorkspaceSwitcher({ activeWorkspace = 'billing', user, o
           cursor: 'pointer',
           transition: 'all 0.15s ease',
         }}
-        title="Open companion Field Team workspace"
+        title={demoProtected ? 'Field Team — protected demo preview' : 'Open companion Field Team workspace'}
       >
         <TruckIcon size={13} /> Field Team
-      </a>
+        {demoProtected && <span style={{ fontSize: '0.62rem', fontWeight: 700, color: 'var(--accent)' }}>Protected</span>}
+      </FieldLink>
     </nav>
   )
 }

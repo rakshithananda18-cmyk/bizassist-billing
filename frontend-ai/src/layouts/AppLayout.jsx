@@ -453,7 +453,7 @@ export default function AppLayout() {
       <div className={`sidebar ${sidebarCollapsed ? 'collapsed' : ''} ${mobileSidebarOpen ? 'mobile-open' : ''} ${isMounting ? 'no-transition' : ''}`} id="sidebar-nav">
         <div className="sidebar-header">
           <div className="sidebar-brand-text">
-            Biz<span style={{ color: 'var(--accent-color)' }}>Assist</span>
+            Stater <span style={{ color: 'var(--accent-color)' }}>AI</span>
           </div>
           <button className="sidebar-toggle-btn matte-glass" onClick={() => {
             if (window.matchMedia('(max-width: 1024px)').matches) {
@@ -749,8 +749,8 @@ export default function AppLayout() {
           onPointerMove={onFabPointerMove}
           onPointerUp={onFabPointerUp}
           style={{ '--fab-x': fabX != null ? `${fabX}px` : '50%', touchAction: 'none' }}
-          title="Ask BizAssist"
-          aria-label="Ask BizAssist (drag to move)"
+          title="Ask Stater"
+          aria-label="Ask Stater (drag to move)"
         >
           <svg className="fab-waves" width="64" height="64" viewBox="0 0 64 64" aria-hidden="true">
             <path className="fab-wave fw1" d="M0 33 q 8 -5 16 0 t 16 0 t 16 0 t 16 0 t 16 0 t 16 0 t 16 0 t 16 0 V64 H0 Z" />

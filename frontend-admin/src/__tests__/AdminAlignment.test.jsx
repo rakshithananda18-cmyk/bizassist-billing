@@ -180,7 +180,7 @@ describe('Admin shell and shared appearance', () => {
     await user.tab()
     expect(close).toHaveFocus()
     await user.tab()
-    expect(screen.getByRole('link', { name: 'BizAssist operations home' })).toHaveFocus()
+    expect(screen.getByRole('link', { name: 'Stater operations home' })).toHaveFocus()
     await user.tab()
     expect(screen.getByRole('link', { name: 'Overview', exact: true })).toHaveFocus()
     await user.keyboard('{Escape}')

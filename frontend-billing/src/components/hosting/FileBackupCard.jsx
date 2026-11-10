@@ -63,13 +63,13 @@ export default function FileBackupCard({
     try {
       const text = await file.text()
       let payload
-      try { payload = JSON.parse(text) } catch { throw new Error('That file is not a valid BizAssist backup (.json).') }
+      try { payload = JSON.parse(text) } catch { throw new Error('That file is not a valid Stater backup (.json).') }
       // Match ImportBody: older exports may contain only `tables`, without
       // export metadata. Reject unrelated JSON before sending any import.
       const isRecord = value => value !== null && typeof value === 'object' && !Array.isArray(value)
       if (!isRecord(payload) || !isRecord(payload.tables)
         || !Object.values(payload.tables).every(rows => Array.isArray(rows) && rows.every(isRecord))) {
-        throw new Error('That file is not a valid BizAssist backup (.json).')
+        throw new Error('That file is not a valid Stater backup (.json).')
       }
       const res = await fetch(`${API_BASE}/api/data-transfer/import?remap_ids=true`, {
         method: 'POST',

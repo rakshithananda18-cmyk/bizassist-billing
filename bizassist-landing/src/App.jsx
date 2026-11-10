@@ -234,7 +234,7 @@ function BrandLogo({ size = 28, showTagline = true }) {
       </div>
       <div className="flex flex-col leading-none">
         <div className="text-xl font-black tracking-tight text-slate-900 dark:text-white uppercase font-sans">
-          STATER <span className="text-terracotta-500 font-semibold lowercase tracking-normal">Bill</span>
+          STATER <span className="text-terracotta-500 font-semibold normal-case tracking-normal">Bill</span>
         </div>
         {showTagline && (
           <div className="text-[10px] uppercase tracking-wider text-slate-500 dark:text-slate-400 font-medium mt-1">

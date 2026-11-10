@@ -209,7 +209,7 @@ export default function AdminSettings() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
         <div>
           <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-            BizAssist Admin / Preferences
+            Stater Admin / Preferences
           </div>
           <h1 style={{ fontFamily: "var(--font-serif, 'Crimson Pro', Georgia, serif)", fontSize: 24, fontWeight: 700, margin: '2px 0 0', color: 'var(--text-primary)' }}>
             System & Admin Settings

@@ -83,7 +83,7 @@ export function ShopForm({ shop, onClose, onSaved }) {
           <span className="form-hint">Leave empty and the first delivery visit pins it automatically.</span></div>
         <div className="form-group span-2"><label className="form-label">Notes for the agent</label><textarea className="form-textarea" value={f.notes} onChange={set('notes')} /></div>
         {shop && (
-          <div className="form-group span-2"><label className="form-label">BizAssist Billing customer</label>
+          <div className="form-group span-2"><label className="form-label">Stater Billing customer</label>
             <select className="form-select" value={customerId} onChange={e => {
               const nextId = e.target.value
               const selected = nextId ? (customers || []).find(customer => String(customer.id) === nextId) : linkedCustomer

@@ -330,6 +330,11 @@ def signed_in_principal(
             uid = int(claims.get("uid", -1))
         except (TypeError, ValueError):
             raise HTTPException(status_code=401, detail="Invalid session — please sign in again", headers=SESSION_REJECTED_HEADERS)
+        if uid != bid:
+            raise HTTPException(status_code=401, detail="Account not found — please sign in again", headers=SESSION_REJECTED_HEADERS)
+        # The verified token authenticates the tenant; users itself has FORCE
+        # RLS, so bind before reading the account as well as field-team rows.
+        set_rls_business(db, bid)
         user = db.query(BillingUser).filter(BillingUser.id == uid).first()
         if (user is None or user.parent_business_id is not None or int(user.id) != bid
                 or (user.role or "").lower() in NON_OWNER_ROLES):
@@ -339,11 +344,11 @@ def signed_in_principal(
         # Billing's "force logout" bumps users.token_version — honour it here too.
         if int(claims.get("tv", 0)) != int(user.token_version or 0):
             raise HTTPException(status_code=401, detail="Session revoked — please sign in again", headers=SESSION_REJECTED_HEADERS)
-        set_rls_business(db, bid)
         return Principal(kind="owner", business_id=bid, owner_user_id=int(user.id), public_id=user.public_id,
                          owner=user)
 
     if kind == "staff":
+        set_rls_business(db, bid)
         owner = db.query(BillingUser).filter(BillingUser.id == bid).first()
         if (owner is None or owner.parent_business_id is not None
                 or (owner.role or "").lower() in NON_OWNER_ROLES):
@@ -353,7 +358,6 @@ def signed_in_principal(
         # The signature authenticates the tenant claim. Bind it BEFORE reading
         # ft_staff: FORCE RLS otherwise hides the very row used to authenticate.
         # Session, device and token-version checks below remain authoritative.
-        set_rls_business(db, bid)
         staff = db.query(FieldStaff).filter(
             FieldStaff.id == int(claims.get("sid", -1)), FieldStaff.business_id == bid,
         ).first()

@@ -47,7 +47,7 @@
     margin-bottom: 12px;
 }
 
-.card p {
+.cards .card p {
     font-family: 'Crimson Pro', Georgia, serif;
     font-size: 32px;
     font-weight: 600;
@@ -543,7 +543,7 @@ body {
     margin-bottom: 14px;
 }
 
-.card p {
+.cards .card p {
     font-family: 'Crimson Pro', Georgia, serif;
     font-size: 28px;
     font-weight: 600;

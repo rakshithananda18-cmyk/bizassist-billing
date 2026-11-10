@@ -1308,8 +1308,8 @@ export default function CheckoutModal({
                     value={buildUpiUri({
                       vpa: upiVpa,
                       payeeName: localStorage.getItem('billing_user')
-                        ? JSON.parse(localStorage.getItem('billing_user')).business_name || 'BizAssist Merchant'
-                        : 'BizAssist Merchant',
+                        ? JSON.parse(localStorage.getItem('billing_user')).business_name || 'Stater Merchant'
+                        : 'Stater Merchant',
                       amount: pay,
                       note: 'POS-Invoicing',
                     })}

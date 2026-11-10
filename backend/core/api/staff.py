@@ -38,6 +38,7 @@ ALLOWED_STAFF_ROLES = {"cashier", "supply adder"}
 class CreateStaff(BaseModel):
     username: str
     password: str
+    phone: Optional[str] = None            # Mandatory for human registration; normalized mobile
     role: str = "cashier"
     counter_prefix: Optional[str] = None   # POS counter series for this login (§9.3a)
 
@@ -45,6 +46,7 @@ class CreateStaff(BaseModel):
 class UpdateStaff(BaseModel):
     role: Optional[str] = None
     password: Optional[str] = None
+    phone: Optional[str] = None
     counter_prefix: Optional[str] = None   # set/change this login's POS counter series
 
 
@@ -89,6 +91,7 @@ def _staff_out(u: User) -> dict:
         # Display the per-business bare name ("counter_1"), not the internal
         # global-unique username. Falls back to username for legacy/owner rows.
         "username": getattr(u, "staff_login_name", None) or u.username,
+        "phone": getattr(u, "phone", None),
         "role": u.role,
         "business_id": u.parent_business_id,
         "counter_prefix": getattr(u, "counter_prefix", None),
@@ -204,10 +207,26 @@ def create_staff(req: CreateStaff, current_user: dict = Depends(restrict_cashier
         raise HTTPException(status_code=400, detail="A staff member with this name already exists in your business")
     _validate_password(req.password)
 
+    phone_val = None
+    if req.phone:
+        from services.registration_policy import normalize_phone
+        try:
+            phone_val = normalize_phone(req.phone)
+        except ValueError as ve:
+            raise HTTPException(status_code=422, detail=str(ve))
+    else:
+        raise HTTPException(status_code=422, detail="Phone number is required for staff registration")
+
+    duplicate_phone = db.query(User.id).filter(User.parent_business_id == bid, User.phone == phone_val,
+        func.lower(User.role).notin_(["deleted", "retired"])).first()
+    if duplicate_phone:
+        raise HTTPException(status_code=409, detail="Another staff account in this business already uses this phone number.")
+
     staff = User(
         username=_internal_staff_username(db, bid, bare_name),
         staff_login_name=bare_name,
         password=hash_password(req.password),
+        phone=phone_val,
         business_name=owner.business_name or current_user.get("business_name"),
         role=role,
         parent_business_id=bid,
@@ -224,6 +243,7 @@ def create_staff(req: CreateStaff, current_user: dict = Depends(restrict_cashier
         "hashed_password": staff.password,
         "role": staff.role,
         "counter_prefix": staff.counter_prefix,
+        "phone": staff.phone,
         "deleted": False,
     }], db=db)
     db.commit()
@@ -246,8 +266,24 @@ def update_staff(staff_id: int, req: UpdateStaff,
     if req.role is not None:
         staff.role = _validate_role(req.role)
     if req.password is not None:
+        from services.account_identity import normalize_email
+        try:
+            normalize_email(owner.email, required=True)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from None
         _validate_password(req.password)
         staff.password = hash_password(req.password)
+    if req.phone is not None:
+        from services.registration_policy import normalize_phone
+        try:
+            new_phone = normalize_phone(req.phone)
+            duplicate = db.query(User.id).filter(User.parent_business_id == bid, User.id != staff.id, User.phone == new_phone,
+                func.lower(User.role).notin_(["deleted", "retired"])).first()
+            if duplicate:
+                raise HTTPException(status_code=409, detail="Another staff account in this business already uses this phone number.")
+            staff.phone = new_phone
+        except ValueError as ve:
+            raise HTTPException(status_code=422, detail=str(ve))
     if req.counter_prefix is not None:
         staff.counter_prefix = _norm_prefix(req.counter_prefix)
     db.flush()
@@ -259,9 +295,16 @@ def update_staff(staff_id: int, req: UpdateStaff,
         "hashed_password": staff.password,
         "role": staff.role,
         "counter_prefix": staff.counter_prefix,
+        "phone": staff.phone,
         "deleted": False,
     }], db=db)
     db.commit()
+    if req.password is not None:
+        try:
+            from services.brevo_service import send_password_changed_email
+            send_password_changed_email(owner.email, owner.business_name or owner.username, staff.staff_login_name or staff.username, business_id=bid)
+        except Exception:
+            logger.warning("[STAFF] Password change notification could not be dispatched after commit")
     from services.control_outbox import trigger_control_flush
     trigger_control_flush(bid)
     return _staff_out(staff)

@@ -20,13 +20,14 @@ from sqlalchemy.orm import Session
 from fastapi import HTTPException
 import os
 import json
+import re
 from database.models import (
     User, Invoice, InvoiceLineItem, Inventory, LegacyPayment, UploadedFile,
     DocumentEmbedding, ChatMessage, TokenUsage, RateLimitConfig,
     Customer, Vendor, Product, PurchaseOrder, PurchaseOrderLineItem,
     PurchaseInvoice, PurchaseInvoiceLineItem, AIFeedback, AIQueryOverride,
     BusinessFact, AlertConfig, SyncQueue, SyncLog, RegisterShift, ShiftCashMovement,
-    DeletedBusiness, ClientLogArchive, EmailLog, PasswordResetOTP
+    DeletedBusiness, ClientLogArchive, EmailLog
 )
 from core.models import (
     StockLedger, ProductBarcode, BusinessSettings, InvoicePayment,
@@ -122,14 +123,26 @@ def _settings_dict(u: User) -> dict:
         return {}
 
 
+def business_hosting_mode(user: User, db: Session) -> str:
+    """Use the reported setup; a Pro grant does not establish a local mirror."""
+    mode = (_settings_dict(user).get("general") or {}).get("hosting_mode")
+    if mode in {"local", "hybrid", "cloud"}:
+        return mode
+    return "cloud" if db.get_bind().dialect.name == "postgresql" else "local"
+
+
 def get_business_email_history(db: Session, target: User) -> list:
-    """Consolidated email history for a business: welcome email, verification OTPs, digests and transactional emails."""
+    """Provider dispatch records, including failed and suppressed attempts."""
     emails = []
-    # 1. Stored emails from EmailLog table
     try:
+        # Legacy dispatches may have no tenant reference. Never attach another
+        # business's records just because its email used to match this owner.
+        scope = EmailLog.business_id == target.id
+        if target.email:
+            scope = or_(scope, (EmailLog.business_id.is_(None)) & (func.lower(EmailLog.recipient_email) == target.email.strip().lower()))
         logs = (
             db.query(EmailLog)
-            .filter(or_(EmailLog.business_id == target.id, EmailLog.recipient_email == target.email))
+            .filter(scope)
             .order_by(EmailLog.sent_at.desc(), EmailLog.id.desc())
             .limit(50)
             .all()
@@ -147,45 +160,6 @@ def get_business_email_history(db: Session, target: User) -> list:
             })
     except Exception as e:
         logger.debug("Could not query email_logs: %s", e)
-
-    # 2. Check PasswordResetOTPs (OTP verification emails)
-    try:
-        otps = (
-            db.query(PasswordResetOTP)
-            .filter(PasswordResetOTP.user_id == target.id)
-            .order_by(PasswordResetOTP.created_at.desc())
-            .limit(10)
-            .all()
-        )
-        seen_subj = {e["subject"] for e in emails}
-        for otp in otps:
-            subj = f"Verification / Password reset code ({otp.identifier})"
-            if subj not in seen_subj:
-                emails.append({
-                    "id": f"otp-{otp.id}",
-                    "recipient": target.email or otp.identifier,
-                    "subject": subj,
-                    "template": "otp",
-                    "status": "sent",
-                    "provider": "brevo",
-                    "sent_at": otp.created_at.isoformat() if otp.created_at else None,
-                    "details": f"OTP verification code generated for {otp.purpose}",
-                })
-    except Exception as e:
-        logger.debug("Could not query password_reset_otps: %s", e)
-
-    # 3. Welcome onboarding email for user if they have an email address
-    if target.email and not any(e.get("template") == "welcome" for e in emails):
-        emails.append({
-            "id": f"welcome-{target.id}",
-            "recipient": target.email,
-            "subject": f"Welcome to STATER Bill, {target.business_name or target.username}!",
-            "template": "welcome",
-            "status": "sent",
-            "provider": "brevo",
-            "sent_at": target.created_at.isoformat() if getattr(target, "created_at", None) else None,
-            "details": "14-day Pro trial onboarding instructions & POS counter credentials",
-        })
 
     emails.sort(key=lambda x: x.get("sent_at") or "", reverse=True)
     return emails
@@ -211,10 +185,12 @@ def list_businesses(db: Session, business_id: int = None) -> list:
     from database.models import ConflictLog
     conflicts = dict(db.query(ConflictLog.business_id, func.count(ConflictLog.id)).filter(ConflictLog.business_id.in_(ids), ConflictLog.resolution == "review_needed", ConflictLog.resolved_at.is_(None)).group_by(ConflictLog.business_id).all())
     staff_counts = dict(db.query(User.parent_business_id, func.count(User.id)).filter(User.parent_business_id.in_(ids)).group_by(User.parent_business_id).all())
-    otp_counts = dict(db.query(PasswordResetOTP.user_id, func.count(PasswordResetOTP.id)).filter(PasswordResetOTP.user_id.in_(ids)).group_by(PasswordResetOTP.user_id).all())
     email_log_counts = {}
     try:
-        email_log_counts = dict(db.query(EmailLog.business_id, func.count(EmailLog.id)).filter(EmailLog.business_id.in_(ids)).group_by(EmailLog.business_id).all())
+        email_log_counts = dict(db.query(User.id, func.count(EmailLog.id)).join(
+            EmailLog, or_(EmailLog.business_id == User.id,
+                          EmailLog.business_id.is_(None) & (func.lower(EmailLog.recipient_email) == func.lower(User.email)))
+        ).filter(User.id.in_(ids), EmailLog.status == "sent").group_by(User.id).all())
     except Exception:
         pass
     result = []
@@ -227,7 +203,7 @@ def list_businesses(db: Session, business_id: int = None) -> list:
         invoice_count, revenue = invoices.get(b.id, (0, 0))
         login_method = "google" if getattr(b, "google_id", None) else "password"
         phone = b.phone or settings.get("general", {}).get("phone")
-        mails_count = (1 if b.email else 0) + otp_counts.get(b.id, 0) + email_log_counts.get(b.id, 0)
+        mails_count = email_log_counts.get(b.id, 0)
         item = {
             "id": b.id,
             "bizid": b.public_id,
@@ -243,12 +219,16 @@ def list_businesses(db: Session, business_id: int = None) -> list:
             "gstin": getattr(b, "gstin", None),
             "address": getattr(b, "address", None),
             "upi_vpa": getattr(b, "upi_vpa", None),
+            "state_code": b.state_code,
+            "pan": b.pan,
+            "logo": b.logo,
+            "counter_prefix": b.counter_prefix,
             "mails_sent_count": mails_count,
             "invoice_count": invoice_count,
             "total_revenue": revenue or 0,
             "inventory_count": inventory.get(b.id, 0),
             "upload_count": uploads.get(b.id, 0),
-            "hosting_mode": settings.get("general", {}).get("hosting_mode", "local"),
+            "hosting_mode": business_hosting_mode(b, db),
             "last_sync_at": last_sync.isoformat() if last_sync else None,
             "sync_queue_depth": queue_depth,
             "sync_errors": sync_errors or 0,
@@ -751,26 +731,44 @@ def set_subscription(business_id: int, body, admin: User, db: Session) -> dict:
     /settings patches and preserves it on every save, so only admins can
     change it."""
     target = require_target_user(business_id, db)
+    if target.role != "enterprise" or target.parent_business_id is not None:
+        raise HTTPException(status_code=404, detail="Business owner not found")
     plan = (body.plan or "free").lower()
     if plan not in VALID_PLANS:
         raise HTTPException(status_code=400, detail=f"Invalid plan. Valid: {', '.join(VALID_PLANS)}")
 
     s = _settings_dict(target)
+    previous = s.get("subscription") or {}
     if plan == "free":
+        if not previous:
+            return get_subscription(business_id, db)
         # Revoke: drop the key entirely — free is the absence of a grant.
         s.pop("subscription", None)
+        changes = ["Subscription changed to Free"]
     else:
-        s["subscription"] = {
+        proposed = {
             "plan":       plan,
             "status":     body.status or "active",
             "expires_at": body.expires_at,
-            "granted_by": admin.username,
-            "granted_at": utc_now().isoformat(),
             "note":       body.note,
         }
+        changed_keys = [key for key, value in proposed.items() if previous.get(key) != value]
+        if not changed_keys:
+            return get_subscription(business_id, db)
+        s["subscription"] = {**proposed, "granted_by": admin.username, "granted_at": utc_now().isoformat()}
+        labels = {"plan": "Subscription plan", "status": "Subscription status", "expires_at": "Plan expiry", "note": "Subscription note"}
+        changes = [f"{labels[key]} updated" for key in changed_keys]
     target.settings = json.dumps(s)
     db.commit()
     invalidate_user_cache(business_id)
+    from services.account_identity import normalize_email
+    try:
+        email = normalize_email(target.email)
+        if email:
+            from services.brevo_service import send_account_update_email
+            send_account_update_email(email, target.business_name or target.username, changes, business_id=business_id)
+    except Exception as exc:
+        logger.warning("[ADMIN] Failed dispatching subscription notification: %s", exc)
     return get_subscription(business_id, db)
 
 
@@ -1310,6 +1308,9 @@ def business_details(user_id: int, db: Session, *, section: str = None, limit: i
         "staff_count": staff_count,
         "gstin": getattr(target, "gstin", None), "address": getattr(target, "address", None),
         "upi_vpa": getattr(target, "upi_vpa", None),
+        "state_code": target.state_code, "pan": target.pan,
+        "logo": target.logo, "counter_prefix": target.counter_prefix,
+        "hosting_mode": business_hosting_mode(target, db),
         "uploads":  [{"id": u.id, "filename": u.filename, "file_type": u.file_type, "rows_count": u.rows_count, "upload_time": u.upload_time} for u in uploads],
         "invoices": [{"id": i.id, "invoice_id": i.invoice_id, "customer": i.customer, "product": i.product, "amount": i.amount, "status": i.status, "invoice_date": i.invoice_date, "due_date": i.due_date} for i in invoices],
         "inventory":[{"id": it.id, "product_name": it.product_name, "stock": it.stock, "expiry_date": it.expiry_date, "supplier": it.supplier} for it in inventory],
@@ -1380,14 +1381,114 @@ def create_merchant(username: str, password: str, business_name: str, db: Sessio
 
 def update_merchant(user_id: int, req, db: Session) -> dict:
     target = require_target_user(user_id, db)
-    if req.username and req.username != target.username:
-        if db.query(User).filter(User.username == req.username).first():
+    if target.role != "enterprise" or target.parent_business_id is not None:
+        raise HTTPException(status_code=404, detail="Business owner not found")
+
+    from services.registration_policy import normalize_phone
+    from services.account_identity import normalize_email, validate_password
+
+    def email_value(value):
+        try:
+            return normalize_email(value)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from None
+
+    # Validate the complete patch before changing the row or dispatching mail.
+    patch = {}
+    if req.username is not None:
+        username = req.username.strip()
+        if len(username) < 3:
+            raise HTTPException(status_code=422, detail="Username must be at least 3 characters long.")
+        if db.query(User.id).filter(User.username == username, User.id != user_id).first():
             raise HTTPException(status_code=400, detail="Username already exists")
-        target.username = req.username
-    if req.business_name:
-        target.business_name = req.business_name
-    if req.password:
-        target.password = hash_password(req.password)
-    db.commit()
-    invalidate_user_cache(user_id)
-    return {"status": "success", "message": "Merchant user " + target.username + " updated successfully."}
+        patch["username"] = username
+    if req.business_name is not None:
+        if not req.business_name.strip():
+            raise HTTPException(status_code=422, detail="Business name is required.")
+        patch["business_name"] = req.business_name.strip()
+    if req.email is not None:
+        patch["email"] = email_value(req.email)
+    if req.phone is not None:
+        try:
+            patch["phone"] = normalize_phone(req.phone) if req.phone.strip() else None
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from None
+    if patch.get("email") or patch.get("phone"):
+        others = db.query(User).filter(
+            User.id != user_id, User.parent_business_id.is_(None),
+            or_(User.role.is_(None), func.lower(User.role).notin_(["deleted", "retired"])),
+        ).all()
+        for other in others:
+            if patch.get("email") and patch["email"] == (other.email or "").strip().lower():
+                raise HTTPException(status_code=400, detail="This email is already registered to another business account.")
+            if patch.get("phone") and other.phone:
+                try:
+                    other_phone = normalize_phone(other.phone)
+                except ValueError:
+                    other_phone = other.phone
+                if patch["phone"] == other_phone:
+                    raise HTTPException(status_code=400, detail="This mobile number is already registered to another business account.")
+
+    for key in ("address", "gstin", "state_code", "pan", "upi_vpa", "logo"):
+        value = getattr(req, key, None)
+        if value is not None:
+            patch[key] = value.strip() or None
+    if req.counter_prefix is not None:
+        patch["counter_prefix"] = re.sub(r"[^A-Za-z0-9_]", "", req.counter_prefix.strip())[:8] or None
+    if req.hosting_mode is not None and req.hosting_mode not in {"local", "hybrid", "cloud"}:
+        raise HTTPException(status_code=422, detail="Storage setup must be local, hybrid, or cloud.")
+
+    password = req.password
+    password_changed = password is not None and password != ""
+    if password_changed:
+        if not email_value(patch.get("email", target.email)):
+            raise HTTPException(status_code=400, detail="A valid registered email address is mandatory to update account password.")
+        try:
+            validate_password(password)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from None
+        from services.auth import verify_password
+        password_changed = not verify_password(password, target.password)
+
+    old_email = target.email
+    username_changed = "username" in patch and patch["username"] != target.username
+    changes = []
+    labels = {"username": "Username", "business_name": "Business Name", "email": "Email", "phone": "Phone", "address": "Business Address", "gstin": "GSTIN", "state_code": "State Code", "pan": "PAN", "upi_vpa": "UPI VPA", "logo": "Business Logo", "counter_prefix": "Counter Prefix"}
+    for key, value in patch.items():
+        if value != getattr(target, key):
+            setattr(target, key, value)
+            changes.append(f"{labels[key]} updated")
+    if req.hosting_mode is not None and req.hosting_mode != business_hosting_mode(target, db):
+        settings = _settings_dict(target)
+        settings.setdefault("general", {})["hosting_mode"] = req.hosting_mode
+        target.settings = json.dumps(settings)
+        changes.append(f"Storage setup changed to {req.hosting_mode}")
+    if password_changed:
+        target.password = hash_password(password)
+    if password_changed or username_changed:
+        from services.auth import bump_token_version
+        bump_token_version(db, target)
+
+    if changes or password_changed:
+        db.commit()
+        invalidate_user_cache(user_id)
+        # Only successful writes generate security mail. Alert both addresses
+        # when a contact changes, so the previous owner can report takeover.
+        recipients = set()
+        for address in (old_email, target.email):
+            try:
+                normalized = normalize_email(address)
+            except ValueError:
+                continue
+            if normalized:
+                recipients.add(normalized)
+        from services.brevo_service import send_account_update_email, send_password_changed_email
+        for recipient in sorted(recipients):
+            try:
+                if changes:
+                    send_account_update_email(recipient, target.business_name or target.username, changes, business_id=user_id)
+                if password_changed:
+                    send_password_changed_email(recipient, target.business_name or target.username, target.username, business_id=user_id)
+            except Exception as exc:
+                logger.warning("[ADMIN] Failed dispatching account notification: %s", exc)
+    return {"status": "success", "message": f"Merchant user {target.username} updated successfully."}

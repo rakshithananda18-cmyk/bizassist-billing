@@ -68,6 +68,10 @@ export default function Register() {
       if (data.action === 'login' && data.token) {
         setSession(data)
         navigate('/', { replace: true })
+      } else if (data.status === 'needs_link') {
+        navigate('/login', {
+          state: { googleLink: { credential, email: data.email, business_name: data.business_name, public_id: data.public_id } },
+        })
       } else if (data.status === 'needs_onboarding') {
         setGoogleCredential(credential)
         setGoogleOnboardingData(data)
@@ -88,12 +92,23 @@ export default function Register() {
   }
 
   useEffect(() => {
-    if (googleBtnRef.current) {
-      renderGoogleButton(googleBtnRef.current, {
+    const container = googleBtnRef.current
+    if (!container) return
+    let renderedWidth = 0
+    const renderButton = () => {
+      const width = Math.floor(container.getBoundingClientRect().width)
+      if (!width || width === renderedWidth) return
+      renderedWidth = width
+      renderGoogleButton(container, {
         onCredential: handleGoogleCredential,
         text: 'signup_with',
+        width: Math.min(width, 340),
       })
     }
+    renderButton()
+    const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(renderButton) : null
+    observer?.observe(container)
+    return () => observer?.disconnect()
   }, [])
 
   // Live username availability check
@@ -280,6 +295,10 @@ export default function Register() {
     <div className="split-page registration-page roadmap-auth">
       <AuthRoadmap interactive={false} />
       <AuthThemeToggle />
+      <header className="registration-mobile-header">
+        <BuildingMark size={28} />
+        <span>STATER <b>Bill</b></span>
+      </header>
       {/* Left Panel: Registration Card */}
       <div className="split-left">
         <div className="login-card login-card--wide">
@@ -303,14 +322,9 @@ export default function Register() {
           ) : (
           <form className="login-form" id="register-form" onSubmit={handleSubmit} style={{ gap: 10 }}>
             {/* Google Quick Sign-Up */}
-            <div style={{ marginBottom: 12 }}>
+            <div className="registration-quick-signup">
               <div className="registration-google" ref={googleBtnRef} style={{ display: 'flex', justifyContent: 'center', minHeight: 44 }} />
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                margin: '14px 0 10px',
-                gap: 12
-              }}>
+              <div className="registration-manual-divider">
                 <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
                 <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                   or register manually
@@ -319,6 +333,8 @@ export default function Register() {
               </div>
             </div>
 
+            <fieldset className="registration-section">
+              <legend>Business</legend>
             <div className="form-group">
               <label htmlFor="businessName">Business name</label>
               <input
@@ -326,6 +342,7 @@ export default function Register() {
                 type="text"
                 value={form.businessName}
                 onChange={e => setForm(f => ({ ...f, businessName: e.target.value }))}
+                autoComplete="organization"
                 required
               />
             </div>
@@ -355,6 +372,9 @@ export default function Register() {
               </CustomSelect>
             </div>
 
+            </fieldset>
+            <fieldset className="registration-section">
+              <legend>Account</legend>
             <div className="form-group" style={{ marginTop: '4px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <label htmlFor="username">Store username</label>
@@ -414,11 +434,12 @@ export default function Register() {
                   autoComplete="tel"
                   maxLength={30}
                   aria-describedby="registration-account-help"
-                    value={form.phone}
+                  value={form.phone}
                   onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
                 />
               </div>
             </div>
+            <p className="registration-field-help" id="registration-account-help">Your phone is used for recovery and trial eligibility. Email is optional.</p>
 
             {/* Email Address */}
             <div className="form-group" style={{ marginTop: '4px' }}>
@@ -431,45 +452,6 @@ export default function Register() {
                 autoComplete="email"
               />
             </div>
-
-              <fieldset className="registration-storage">
-                <legend>Billing setup</legend>
-                <div data-testid="hosting-choice" className="registration-storage-grid">
-                  {[
-                    { key: 'local',  title: 'Local only',     desc: 'Offline on this computer.' },
-                    { key: 'hybrid', title: 'Local + Cloud',  desc: 'Desktop + browser, connected.' },
-                  ].map(opt => (
-                    <div key={opt.key} className="registration-storage-choice">
-                    <button
-                      type="button"
-                      disabled={!IS_LOCAL_APP && opt.key === 'local'}
-                      className={`registration-storage-option ${hostingChoice === opt.key ? 'is-selected' : ''}`}
-                      aria-pressed={hostingChoice === opt.key}
-                      onClick={() => setHostingChoice(opt.key)}
-                    >
-                      <div style={{ fontWeight: 700, fontSize: '0.86rem' }}>
-                        {opt.title}
-                        {opt.key === 'hybrid' && trialDays > 0 && (
-                          <span style={{ marginLeft: 6, fontSize: '0.62rem', fontWeight: 800, letterSpacing: '0.04em', padding: '1px 6px', borderRadius: 6, background: 'var(--accent-solid, var(--accent))', color: 'var(--accent-foreground, #fff)', verticalAlign: 'middle' }}>
-                            14 DAYS FREE
-                          </span>
-                        )}
-                      </div>
-                      <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 3, lineHeight: 1.3 }}>{opt.desc}</div>
-                    </button>
-                    {!IS_LOCAL_APP && opt.key === 'local' && (
-                      <a className="registration-local-download" href={DESKTOP_DOWNLOAD_URL} target="_blank" rel="noopener noreferrer">Download app for Local</a>
-                    )}
-                    </div>
-                  ))}
-                </div>
-                {IS_LOCAL_APP && hostingChoice === 'hybrid' && (
-                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 6 }}>
-                    Sync is included during your eligible {trialDays}-day Pro trial. Upgrade to Pro to keep syncing afterward.
-                  </div>
-                )}
-              </fieldset>
-
             <div className="form-group" style={{ marginTop: '4px' }}>
               <label htmlFor="password">Password</label>
               <div style={{ position: 'relative' }}>
@@ -480,6 +462,7 @@ export default function Register() {
                   value={form.password}
                   onFocus={() => setShowPasswordCriteria(true)}
                   onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
+                  autoComplete="new-password"
                   aria-describedby="password-requirements"
                   aria-invalid={form.password.length > 0 && !isPasswordValid}
                   required
@@ -521,6 +504,7 @@ export default function Register() {
                     id="confirmPassword"
                     type={showConfirmPassword ? "text" : "password"}
                     placeholder="••••••••"
+                    autoComplete="new-password"
                     value={form.confirmPassword}
                     onChange={e => setForm(f => ({ ...f, confirmPassword: e.target.value }))}
                     aria-describedby={form.confirmPassword && form.password !== form.confirmPassword ? 'confirm-password-error' : undefined}
@@ -547,6 +531,46 @@ export default function Register() {
                 )}
               </div>
             )}
+
+            </fieldset>
+
+              <fieldset className="registration-section registration-storage" aria-describedby="cloud-storage-help registration-trial-help">
+                <legend><span className="registration-desktop-setup-label">Billing setup</span><span className="registration-mobile-setup-label">Setup</span></legend>
+                <div data-testid="hosting-choice" className="registration-storage-grid">
+                  {[
+                    { key: 'local',  title: 'Local only',     desc: 'Offline on this computer.' },
+                    { key: 'hybrid', title: 'Local + Cloud',  desc: 'Desktop + browser, connected.' },
+                  ].map(opt => (
+                    <div key={opt.key} className="registration-storage-choice">
+                    <button
+                      type="button"
+                      disabled={!IS_LOCAL_APP && opt.key === 'local'}
+                      className={`registration-storage-option ${hostingChoice === opt.key ? 'is-selected' : ''}`}
+                      aria-pressed={hostingChoice === opt.key}
+                      onClick={() => setHostingChoice(opt.key)}
+                    >
+                      <div className="registration-storage-title">
+                        {opt.title}
+                        {opt.key === 'hybrid' && trialDays > 0 && (
+                          <span className="registration-trial-badge">
+                            14 DAYS FREE
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 3, lineHeight: 1.3 }}>{opt.desc}</div>
+                    </button>
+                    {!IS_LOCAL_APP && opt.key === 'local' && (
+                      <a className="registration-local-download" href={DESKTOP_DOWNLOAD_URL} target="_blank" rel="noopener noreferrer">Download app for Local</a>
+                    )}
+                    </div>
+                  ))}
+                </div>
+                <div className="registration-storage-help">
+                  <p id="cloud-storage-help">{IS_LOCAL_APP ? 'Bill locally on this computer, even without the internet. Choose Local + Cloud to connect your desktop and browser.' : 'This browser uses the cloud database. Add the desktop app for local, offline billing.'}</p>
+                  <p id="registration-trial-help"><strong>{trialDays}-day Pro trial</strong> for eligible first-time phone registrations. Local + Cloud sync requires Pro or an eligible trial. After your trial, Local billing keeps working; cloud sync needs Pro. Field Team is included during the trial.</p>
+                  {IS_LOCAL_APP && hostingChoice === 'hybrid' && <p>Sync is included during your eligible {trialDays}-day Pro trial. Upgrade to Pro to keep syncing afterward.</p>}
+                </div>
+              </fieldset>
 
             <fieldset style={{ border: 0, padding: 0, margin: '8px 0 6px 0', minWidth: 0 }}>
               <legend style={{ position: 'absolute', width: 1, height: 1, padding: 0, margin: -1, overflow: 'hidden', clip: 'rect(0, 0, 0, 0)', whiteSpace: 'nowrap', border: 0 }}>Terms agreement</legend>

@@ -38,6 +38,16 @@ async function mount(strict = false) {
 }
 
 describe('Billing business handoff', () => {
+  it('accepts a Google owner session only after refreshing the verified business', async () => {
+    mocks.post.mockResolvedValue({ token: 'google-owner-token', public_id: 'BA-GOOGLE' })
+    mocks.get.mockResolvedValue({ kind: 'owner', public_id: 'BA-GOOGLE', business_name: 'Google owner store' })
+    await mount()
+    await act(async () => session.googleLogin('google-id-token'))
+    expect(mocks.post).toHaveBeenCalledWith('/api/auth/google/verify', { credential: 'google-id-token' })
+    expect(mocks.token).toBe('google-owner-token')
+    expect(session.me.public_id).toBe('BA-GOOGLE')
+    expect(mocks.get).toHaveBeenCalledWith('/api/auth/me')
+  })
   it('refreshes Billing identity on return without resetting the same-business palette bridge', async () => {
     let now = 1000
     vi.spyOn(Date, 'now').mockImplementation(() => now)

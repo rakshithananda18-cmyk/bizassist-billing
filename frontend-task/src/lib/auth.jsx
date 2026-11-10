@@ -146,16 +146,18 @@ export function AuthProvider({ children }) {
     }
   }, [refresh])
 
-  const signIn = async (path, body) => {
+  const signIn = useCallback(async (path, body) => {
     clearSession()
     setNotice(null)
     return accept(await api.post(path, body))
-  }
+  }, [accept, clearSession])
 
   const ownerLogin = (username, password) =>
     signIn('/api/auth/owner/login', { username, password })
 
   const ownerSignup = (payload) => signIn('/api/auth/owner/signup', payload)
+
+  const googleLogin = useCallback((credential) => signIn('/api/auth/google/verify', { credential }), [signIn])
 
   const staffLogin = (business, login_name, password) =>
     signIn('/api/auth/staff/login', {
@@ -170,7 +172,7 @@ export function AuthProvider({ children }) {
   }
 
   return (
-    <AuthContext.Provider value={{ me, loading, notice, setNotice, refresh, ownerLogin, ownerSignup, staffLogin, logout }}>
+    <AuthContext.Provider value={{ me, loading, notice, setNotice, refresh, ownerLogin, ownerSignup, googleLogin, staffLogin, logout }}>
       {children}
     </AuthContext.Provider>
   )

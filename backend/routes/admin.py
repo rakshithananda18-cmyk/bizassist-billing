@@ -48,6 +48,16 @@ class AdminUpdateUserRequest(BaseModel):
     username:      Optional[str] = None
     password:      Optional[str] = None
     business_name: Optional[str] = None
+    email:         Optional[str] = None
+    phone:         Optional[str] = None
+    address:       Optional[str] = None
+    gstin:         Optional[str] = None
+    state_code:    Optional[str] = None
+    pan:           Optional[str] = None
+    upi_vpa:       Optional[str] = None
+    logo:          Optional[str] = None
+    counter_prefix: Optional[str] = None
+    hosting_mode:  Optional[str] = None
 
 
 class RouterModeRequest(BaseModel):
