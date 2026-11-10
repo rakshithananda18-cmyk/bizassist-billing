@@ -908,7 +908,11 @@ body,
 }
 .nav-link.is-demo-protected {
   position: relative;
-  transition: all var(--dur, 0.2s) var(--ease, ease);
+  transition: all var(--dur) var(--ease);
+}
+.nav-link.is-demo-protected .nav-icon {
+  opacity: 0.75;
+  transition: opacity var(--dur) var(--ease);
 }
 .nav-link.is-demo-protected .nav-label {
   flex: 1;
@@ -916,6 +920,17 @@ body,
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  filter: blur(5px);
+  user-select: none;
+  opacity: 0.6;
+  transition: filter var(--dur) var(--ease), opacity var(--dur) var(--ease);
+}
+.nav-link.is-demo-protected:hover .nav-icon {
+  opacity: 0.9;
+}
+.nav-link.is-demo-protected:hover .nav-label {
+  filter: blur(4px);
+  opacity: 0.8;
 }
 .nav-demo-protected-badge {
   display: inline-flex;
