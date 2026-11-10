@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react'
 import Reveal from './Reveal'
 import DemoShowcaseStudio from './DemoShowcaseStudio'
 import AdoptionSections from './AdoptionSections'
+import ComparisonSection from './ComparisonSection'
 import { useLatestRelease } from './useLatestRelease'
 import './marketing.css'
 
@@ -20,7 +21,7 @@ function Navbar({ Icons, BrandLogo, theme, onToggleTheme }) {
     window.addEventListener('keydown', close)
     return () => window.removeEventListener('keydown', close)
   }, [open])
-  const links = [['#workspaces', 'App tour'], ['#features', 'Why STATER'], ['#offline', 'Desktop + cloud'], ['#downloads', 'Downloads'], ['#faq', 'FAQs']]
+  const links = [['#workspaces', 'App tour'], ['#features', 'Benefits'], ['#compare', 'Compare'], ['#downloads', 'Downloads'], ['#faq', 'FAQs']]
   return <header className="m-header">
     <nav className="m-navbar" aria-label="Main navigation">
       <a href="#" className="m-brand" aria-label="STATER Bill home"><BrandLogo size={22} showTagline={false} /></a>
@@ -32,7 +33,7 @@ function Navbar({ Icons, BrandLogo, theme, onToggleTheme }) {
         <button className="m-menu-toggle" aria-label={open ? 'Close navigation' : 'Open navigation'} aria-expanded={open} aria-controls="mobile-navigation" onClick={() => setOpen(value => !value)}><span /><span className={open ? 'is-open' : ''} /></button>
       </div>
     </nav>
-    {open && <div className="m-mobile-nav" id="mobile-navigation">{links.map(([href, label]) => <a href={href} key={href} onClick={() => setOpen(false)}>{label}<Arrow /></a>)}<a href={LOGIN} onClick={() => setOpen(false)}>Sign in <Arrow /></a></div>}
+    {open && <div className="m-mobile-nav" id="mobile-navigation">{links.map(([href, label]) => <a href={href} key={href} onClick={() => setOpen(false)}>{label}<Arrow /></a>)}<a href={REGISTER} onClick={() => setOpen(false)}>Start your free trial <Arrow /></a><a href={LOGIN} onClick={() => setOpen(false)}>Sign in <Arrow /></a></div>}
   </header>
 }
 
@@ -43,16 +44,16 @@ function Hero({ Icons }) {
       <div className="m-hero-copy">
         <Reveal><div className="m-eyebrow m-hero-eyebrow"><span className="m-status-dot" /> BUILT AROUND YOUR WORKING DAY</div></Reveal>
         <Reveal delay={70}><h1>Keep your counter moving.<br /><span>Your business, in view.</span></h1></Reveal>
-        <Reveal delay={140}><p className="m-hero-description">Billing, stock, purchases and payments. One connected workspace for the shop you run—and the business you’re building.</p></Reveal>
+        <Reveal delay={140}><p className="m-hero-description"><strong>Billing, stock, purchases and payments.</strong> One connected workspace to keep the counter moving and your whole shop in view.</p></Reveal>
         <Reveal delay={210} className="m-hero-ctas">
           <a href={REGISTER} className="m-button">Start your free trial <Arrow /></a>
           <a href="#workspaces" className="m-button m-button-secondary"><Icons.play className="w-3 h-3" /> Watch the real app tour</a>
         </Reveal>
         <Reveal delay={240}><p className="m-trial-note">14-day Pro trial <span>·</span> No credit card required <span>·</span> Watch the sample tour first</p></Reveal>
         <Reveal delay={280} className="m-hero-proof">
-          <span><Icons.qrScan className="w-4 h-4" /> Barcode to bill</span>
-          <span><Icons.box className="w-4 h-4" /> Stock to supplier</span>
-          <span><Icons.pillars className="w-4 h-4" /> Sale to settlement</span>
+          <div><Icons.offline className="w-5 h-5" /><div><strong>Bill without internet</strong><span>Desktop billing with local store data</span></div></div>
+          <div><Icons.box className="w-5 h-5" /><div><strong>One item. Three prices.</strong><span>Retail, wholesale and distributor</span></div></div>
+          <div><Icons.pillars className="w-5 h-5" /><div><strong>Keep dues in view</strong><span>Customer and supplier balances together</span></div></div>
         </Reveal>
       </div>
       <Reveal delay={320} className="m-tour-wrap" id="workspaces"><DemoShowcaseStudio /></Reveal>
@@ -112,11 +113,11 @@ function Downloads({ Icons }) {
 }
 
 function FinalCta() {
-  return <section className="m-final-cta"><Reveal className="m-container"><span className="m-eyebrow">MAKE ROOM FOR A CLEARER WORKING DAY</span><h2>Your next bill.<br />A better beginning.</h2><p>See how STATER Bill fits your counter, your stock and your customers.</p><div className="m-final-buttons"><a href={REGISTER} className="m-button">Start your 14-day Pro trial <Arrow /></a><a href="#workspaces" className="m-text-link">Take another look at the app <Arrow /></a></div><span className="m-trial-note">No credit card required. Explore at your own pace.</span></Reveal></section>
+  return <section className="m-final-cta"><Reveal className="m-container"><span className="m-eyebrow">MAKE ROOM FOR A CLEARER WORKING DAY</span><h2>Your next bill.<br />A better beginning.</h2><p>See how STATER Bill fits your counter, your stock and your customers.</p><div className="m-final-buttons"><a href={REGISTER} className="m-button">Start your 14-day Pro trial <Arrow /></a><a href="#workspaces" className="m-text-link">Take another look at the app <Arrow /></a></div><span className="m-trial-note">No credit card required. Explore at your own pace.</span><p className="m-support-line">Questions before you start? <a href="mailto:support@staterbill.com">support@staterbill.com <Arrow diagonal /></a></p></Reveal></section>
 }
 
 function Footer({ BrandLogo }) {
-  return <footer className="m-footer"><div className="m-container"><div className="m-footer-top"><div><BrandLogo size={24} showTagline={false} /><p>Built around the business<br />you run every day.</p></div><div className="m-footer-links"><div><strong>Explore</strong><a href="#workspaces">App tour</a><a href="#features">Why STATER Bill</a><a href="#b2b">B2B network</a><a href="#downloads">Downloads</a></div><div><strong>Get started</strong><a href={REGISTER}>Start free trial</a><a href={LOGIN}>Sign in</a><a href="#faq">Questions &amp; answers</a><a href="https://app.staterbill.com/contact">Contact</a></div><div><strong>The details</strong><a href="https://app.staterbill.com/terms">Terms</a><a href="https://app.staterbill.com/privacy">Privacy &amp; storage</a><a href="https://app.staterbill.com/refund-policy">Refund policy</a></div></div></div><div className="m-footer-bottom"><span>© {new Date().getFullYear()} STATER Bill · ARES</span><span>στατήρ — inspired by the original standard of trade.</span><a href="#">Back to top ↑</a></div></div></footer>
+  return <footer className="m-footer"><div className="m-container"><div className="m-footer-top"><div><BrandLogo size={24} showTagline={false} /><p>Built around the business<br />you run every day.</p><a className="m-footer-support" href="mailto:support@staterbill.com">support@staterbill.com <Arrow diagonal /></a></div><div className="m-footer-links"><div><strong>Explore</strong><a href="#workspaces">App tour</a><a href="#features">Benefits</a><a href="#compare">Compare software</a><a href="#b2b">B2B network</a><a href="#downloads">Downloads</a></div><div><strong>Get started</strong><a href={REGISTER}>Start free trial</a><a href={LOGIN}>Sign in</a><a href="#faq">Questions &amp; answers</a><a href="mailto:support@staterbill.com">Email support</a></div><div><strong>The details</strong><a href="https://app.staterbill.com/terms">Terms</a><a href="https://app.staterbill.com/privacy">Privacy &amp; storage</a><a href="https://app.staterbill.com/refund-policy">Refund policy</a></div></div></div><div className="m-footer-bottom"><span>© {new Date().getFullYear()} STATER Bill · ARES</span><span>στατήρ — inspired by the original standard of trade.</span><a href="#">Back to top ↑</a></div></div></footer>
 }
 
 export default function MarketingPage({ Icons, BrandLogo, theme, onToggleTheme }) {
@@ -129,7 +130,7 @@ export default function MarketingPage({ Icons, BrandLogo, theme, onToggleTheme }
   return <div className="marketing-page">
     <a className="m-skip-link" href="#main-content">Skip to content</a>
     <Navbar Icons={Icons} BrandLogo={BrandLogo} theme={theme} onToggleTheme={onToggleTheme} />
-    <main id="main-content"><Hero Icons={Icons} /><Features Icons={Icons} /><WorkingModes Icons={Icons} /><B2BSection Icons={Icons} /><AdoptionSections /><Downloads Icons={Icons} /><FinalCta /></main>
+    <main id="main-content"><Hero Icons={Icons} /><Features Icons={Icons} /><WorkingModes Icons={Icons} /><ComparisonSection /><B2BSection Icons={Icons} /><AdoptionSections /><Downloads Icons={Icons} /><FinalCta /></main>
     <Footer BrandLogo={BrandLogo} />
   </div>
 }
