@@ -89,8 +89,9 @@ def test_reclaim_rekey_purges_staff_and_data_and_writes_tombstone(monkeypatch):
     auth = {"Authorization": f"Bearer {owner_tok}"}
 
     # Seed a staff sub-account + a data row under the OLD identity.
+    phone = f"+919{str(uuid.uuid4().int % 1_000_000_000).zfill(9)}"
     rs = client.post("/staff", json={
-        "username": "counter_1", "password": "StaffPass123!", "role": "cashier",
+        "username": "counter_1", "password": "StaffPass123!", "role": "cashier", "phone": phone,
     }, headers=auth)
     assert rs.status_code == 201, rs.text
     rp = client.post("/products", json={

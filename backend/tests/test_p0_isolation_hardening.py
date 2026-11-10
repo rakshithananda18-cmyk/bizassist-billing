@@ -110,8 +110,9 @@ def test_profile_and_staff_sync_use_bizid_not_foreign_numeric_id():
 def test_staff_session_cannot_use_owner_sync_control_plane():
     owner, owner_headers = _signup("Owner Sync Control")
     staff_name = f"cash_{uuid.uuid4().hex[:8]}"
+    phone = f"+919{str(uuid.uuid4().int % 1_000_000_000).zfill(9)}"
     create = client.post("/staff", headers=owner_headers, json={
-        "username": staff_name, "password": "StaffPass123!", "role": "cashier",
+        "username": staff_name, "password": "StaffPass123!", "role": "cashier", "phone": phone,
     })
     assert create.status_code in (200, 201), create.text
 

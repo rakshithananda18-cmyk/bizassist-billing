@@ -55,8 +55,9 @@ def _owner(name):
 
 def _cashier_of(owner):
     uname = f"c_{uuid.uuid4().hex[:8]}"
+    phone = f"+919{str(uuid.uuid4().int % 1_000_000_000).zfill(9)}"
     r = client.post("/staff", headers=owner["headers"],
-                    json={"username": uname, "password": "Password123!", "role": "cashier"})
+                    json={"username": uname, "password": "Password123!", "role": "cashier", "phone": phone})
     assert r.status_code == 201, r.text
     login = client.post("/login", json={"username": uname, "password": "Password123!"})
     return {"Authorization": f"Bearer {login.json()['token']}"}

@@ -24,14 +24,15 @@ def test_staff_role_update_invalidates_old_jwt():
     their existing JWT receives a 401 Session Revoked response."""
     # 1. Sign up owner
     owner_uname = f"owner_{uuid.uuid4().hex[:8]}"
-    r_owner = client.post("/signup", json=signup_payload({"username": owner_uname, "password": "OwnerPass123!", "business_name": "Test Revoke Biz"}))
+    r_owner = client.post("/signup", json=signup_payload({"username": owner_uname, "email": f"{owner_uname}@example.com", "password": "OwnerPass123!", "business_name": "Test Revoke Biz"}))
     assert r_owner.status_code == 200, r_owner.text
     owner_data = r_owner.json()
     owner_headers = {"Authorization": f"Bearer {owner_data['token']}"}
 
     # 2. Create staff sub-account
     staff_name = f"cashier_{uuid.uuid4().hex[:6]}"
-    r_staff = client.post("/staff", headers=owner_headers, json={"username": staff_name, "password": "StaffPass123!", "role": "cashier"})
+    phone1 = f"+919{str(uuid.uuid4().int % 1_000_000_000).zfill(9)}"
+    r_staff = client.post("/staff", headers=owner_headers, json={"username": staff_name, "password": "StaffPass123!", "role": "cashier", "phone": phone1})
     assert r_staff.status_code == 201, r_staff.text
 
     # 3. Log in as staff to get JWT
@@ -67,10 +68,12 @@ def test_deleted_staff_token_fails_closed_even_with_a_warm_version_cache():
     owner_headers = {"Authorization": f"Bearer {owner.json()['token']}"}
 
     staff_name = f"cashier_delete_{uuid.uuid4().hex[:6]}"
+    phone2 = f"+919{str(uuid.uuid4().int % 1_000_000_000).zfill(9)}"
     created = client.post("/staff", headers=owner_headers, json={
         "username": staff_name,
         "password": "StaffPass123!",
         "role": "cashier",
+        "phone": phone2,
     })
     assert created.status_code == 201, created.text
 
@@ -100,10 +103,12 @@ def test_staff_cannot_run_owner_sync_pull_or_discover_accounts_anonymously():
     owner_headers = {"Authorization": f"Bearer {owner.json()['token']}"}
 
     staff_name = f"cashier_sync_{uuid.uuid4().hex[:6]}"
+    phone3 = f"+919{str(uuid.uuid4().int % 1_000_000_000).zfill(9)}"
     created = client.post("/staff", headers=owner_headers, json={
         "username": staff_name,
         "password": "StaffPass123!",
         "role": "cashier",
+        "phone": phone3,
     })
     assert created.status_code == 201, created.text
     login = client.post("/login", json={"username": staff_name, "password": "StaffPass123!"})

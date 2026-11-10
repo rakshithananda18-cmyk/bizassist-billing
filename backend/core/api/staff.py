@@ -218,7 +218,7 @@ def create_staff(req: CreateStaff, current_user: dict = Depends(restrict_cashier
             func.lower(User.role).notin_(["deleted", "retired"])).first()
         if duplicate_phone:
             raise HTTPException(status_code=409, detail="Another staff account in this business already uses this phone number.")
-    elif not os.getenv("ALLOW_TEST_USERS") and not os.getenv("PYTEST_CURRENT_TEST"):
+    else:
         raise HTTPException(status_code=422, detail="Phone number is required for staff registration")
 
     staff = User(

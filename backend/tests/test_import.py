@@ -61,7 +61,8 @@ def api_auth():
 
     # Create Business A cashier via /staff endpoint using owner_a headers
     headers_a = {"Authorization": f"Bearer {token_a}"}
-    resp_cashier = client.post("/staff", headers=headers_a, json={"username": f"cashier_{uuid.uuid4().hex[:6]}", "password": "Password123!", "role": "cashier"})
+    phone_a = f"+919{str(uuid.uuid4().int % 1_000_000_000).zfill(9)}"
+    resp_cashier = client.post("/staff", headers=headers_a, json={"username": f"cashier_{uuid.uuid4().hex[:6]}", "password": "Password123!", "role": "cashier", "phone": phone_a})
     assert resp_cashier.status_code == 201, resp_cashier.text
     cashier_username = resp_cashier.json()["username"]
 

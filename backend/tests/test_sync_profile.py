@@ -111,8 +111,9 @@ def test_sync_profile_push_non_owner_forbidden():
     # A real cashier of a real business is signed in, but is not the owner.
     owner = _signup("Profile Guard Shop")
     cashier = f"own_{uuid.uuid4().hex[:8]}"
+    phone = f"+919{str(uuid.uuid4().int % 1_000_000_000).zfill(9)}"
     r = client.post("/staff", headers=owner["headers"],
-                    json={"username": cashier, "password": "Password123!", "role": "cashier"})
+                    json={"username": cashier, "password": "Password123!", "role": "cashier", "phone": phone})
     assert r.status_code == 201, r.text
     login = client.post("/login", json={"username": cashier, "password": "Password123!"})
     headers = {"Authorization": f"Bearer {login.json()['token']}"}
