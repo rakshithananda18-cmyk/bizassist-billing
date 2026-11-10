@@ -266,6 +266,42 @@ export default function AdminLayout() {
 
         {/* Sidebar Footer with Operator Profile & Settings Menu */}
         <div className="sidebar-footer">
+          {/* Direct Sidebar Theme Switch */}
+          {!sidebarCollapsed ? (
+            <div className="sidebar-theme-switch" role="group" aria-label="Appearance theme">
+              <button
+                type="button"
+                className={`sidebar-theme-btn ${!isDark ? 'is-active' : ''}`}
+                onClick={() => toggleTheme(false)}
+                title="Light Theme"
+                aria-label="Switch to light mode"
+              >
+                <Icon name="sun" size={13} />
+                <span>Light</span>
+              </button>
+              <button
+                type="button"
+                className={`sidebar-theme-btn ${isDark ? 'is-active' : ''}`}
+                onClick={() => toggleTheme(true)}
+                title="Dark Theme"
+                aria-label="Switch to dark mode"
+              >
+                <Icon name="moon" size={13} />
+                <span>Dark</span>
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              className="sidebar-theme-collapsed-btn"
+              onClick={() => toggleTheme()}
+              title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+              aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+            >
+              <Icon name={isDark ? 'sun' : 'moon'} size={15} />
+            </button>
+          )}
+
           {/* Profile Menu Popover */}
           {showProfileMenu && (
             <div className="profile-menu" id="admin-profile-menu" ref={profileMenuRef}>

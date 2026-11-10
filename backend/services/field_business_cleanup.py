@@ -44,7 +44,9 @@ def purge_field_business(db, business_id: int) -> dict:
     if not present:
         return {}
     if present - set(DELETE_ORDER):
-        raise HTTPException(409, "Business deletion stopped: the Field schema has unsupported tables. Update the cleanup service before retrying.")
+        unsupported = sorted(present - set(DELETE_ORDER))
+        logger.error("[FIELD_PURGE] Unsupported Field tables detected: %s", unsupported)
+        raise HTTPException(409, f"Business deletion stopped: the Field schema has unsupported tables ({', '.join(unsupported)}). Update the cleanup service before retrying.")
 
     # Preflights must see ALL referencing tenants. Do not infer safety from an
     # RLS-filtered empty result. This check does not disable or change any policy.

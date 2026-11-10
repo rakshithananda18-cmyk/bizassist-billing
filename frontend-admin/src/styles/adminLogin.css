@@ -20,8 +20,8 @@
   justify-content: space-between;
   min-height: 100dvh;
   padding: 44px clamp(36px, 5vw, 80px) 30px;
-  background: #202b25;
-  color: #f0eee3;
+  background: #090a0d;
+  color: #f3f4f6;
   position: relative;
   isolation: isolate;
 }
@@ -32,36 +32,36 @@
   inset: 0;
   z-index: -1;
   pointer-events: none;
-  background-image: linear-gradient(#d8ddcc06 1px, transparent 1px), linear-gradient(90deg, #d8ddcc06 1px, transparent 1px);
+  background-image: linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
   background-size: 54px 54px;
   mask-image: linear-gradient(transparent 10%, #000 80%);
 }
 
 .admin-entry-brand { display: flex; align-items: center; gap: 13px; }
-.admin-entry-brand-mark { width: 48px; height: 48px; border: 1px solid #9cae9d35; border-radius: 12px; display: grid; place-items: center; color: #e4e7d6; }
+.admin-entry-brand-mark { width: 48px; height: 48px; border: 1px solid rgba(255,255,255,0.12); border-radius: 12px; display: grid; place-items: center; color: #f3f4f6; background: #12151c; }
 .admin-entry-brand strong { font-size: 21px; letter-spacing: -.055em; font-weight: 600; line-height: 1.25; }
-.admin-entry-brand div>span { display: block; font-size: 8px; letter-spacing: .18em; color: #b1bcae; margin-top: 5px; }
+.admin-entry-brand div>span { display: block; font-size: 8px; letter-spacing: .18em; color: #9ca3af; margin-top: 5px; }
 .admin-entry-story-copy { margin: 70px 0 38px; }
-.admin-entry-eyebrow { display: flex; align-items: center; gap: 8px; color: #b9c5b5; font-size: 8px; font-weight: 550; letter-spacing: .13em; line-height: 1.8; margin: 0 0 21px; }
+.admin-entry-eyebrow { display: flex; align-items: center; gap: 8px; color: #9ca3af; font-size: 8px; font-weight: 550; letter-spacing: .13em; line-height: 1.8; margin: 0 0 21px; }
 .admin-entry-eyebrow>span { width: 5px; height: 5px; border-radius: 50%; background: #dc9373; flex-shrink: 0; }
-.admin-entry-story h2 { margin: 0; color: #f0eee3; font-size: clamp(41px, 4.35vw, 64px); line-height: 1.08; letter-spacing: -.055em; font-weight: 500; border: none; padding: 0; }
+.admin-entry-story h2 { margin: 0; color: #f9fafb; font-size: clamp(41px, 4.35vw, 64px); line-height: 1.08; letter-spacing: -.055em; font-weight: 500; border: none; padding: 0; }
 .admin-entry-story h2 em { color: #dc9373; font-family: var(--font-serif, 'Crimson Pro', Georgia, serif); font-weight: 400; font-size: 1.13em; letter-spacing: -.04em; }
-.admin-entry-story-copy>p:last-child { max-width: 340px; margin: 23px 0 0; font-size: 13px; line-height: 1.85; color: #bbc6b7; }
-.admin-entry-map { width: 100%; max-width: 475px; padding: 24px; border: 1px solid #a7b6a528; background: #26352b88; border-radius: 12px; }
-.admin-entry-map-label { font-size: 7px; letter-spacing: .16em; color: #b3c1ad; margin-bottom: 22px; }
+.admin-entry-story-copy>p:last-child { max-width: 340px; margin: 23px 0 0; font-size: 13px; line-height: 1.85; color: #9ca3af; }
+.admin-entry-map { width: 100%; max-width: 475px; padding: 24px; border: 1px solid #232733; background: #12151c; border-radius: 12px; }
+.admin-entry-map-label { font-size: 7px; letter-spacing: .16em; color: #9ca3af; margin-bottom: 22px; }
 .admin-entry-map-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
-.admin-entry-map-node { background: #202c24; border: 1px solid #adbea12b; border-radius: 7px; padding: 14px 10px; display: flex; flex-direction: column; min-width: 0; }
-.admin-entry-map-icon { width: 24px; height: 24px; display: grid; place-items: center; border: 1px solid #a6ba9a35; color: #c8d4bd; font-size: 8px; border-radius: 5px; margin-bottom: 13px; }
-.admin-entry-map-node strong { font-size: 10px; font-weight: 500; letter-spacing: -.01em; }
-.admin-entry-map-node>span:last-child { font-size: 8px; color: #a3b39d; line-height: 1.6; margin-top: 5px; }
+.admin-entry-map-node { background: #181b24; border: 1px solid #282d3b; border-radius: 7px; padding: 14px 10px; display: flex; flex-direction: column; min-width: 0; }
+.admin-entry-map-icon { width: 24px; height: 24px; display: grid; place-items: center; border: 1px solid rgba(255,255,255,0.12); color: #d1d5db; font-size: 8px; border-radius: 5px; margin-bottom: 13px; background: #12151c; }
+.admin-entry-map-node strong { font-size: 10px; font-weight: 500; letter-spacing: -.01em; color: #f3f4f6; }
+.admin-entry-map-node>span:last-child { font-size: 8px; color: #9ca3af; line-height: 1.6; margin-top: 5px; }
 .admin-entry-map-connector { display: flex; justify-content: space-around; height: 24px; padding: 0 7px; }
-.admin-entry-map-connector>span { width: 1px; height: 100%; background: #a5b79c4a; }
-.admin-entry-map-hub { display: flex; align-items: center; justify-content: center; gap: 12px; border: 1px solid #cf9a7644; background: #354333; border-radius: 7px; padding: 13px; color: #e0e5d2; font-size: 10px; }
+.admin-entry-map-connector>span { width: 1px; height: 100%; background: #282d3b; }
+.admin-entry-map-hub { display: flex; align-items: center; justify-content: center; gap: 12px; border: 1px solid rgba(220,147,115,0.3); background: #1c202a; border-radius: 7px; padding: 13px; color: #f3f4f6; font-size: 10px; }
 .admin-entry-map-hub>span:last-child { color: #dc9373; margin-left: auto; font-size: 16px; }
 .admin-entry-map-hub>svg { margin-right: auto; }
-.admin-entry-story-footer { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; border-top: 1px solid #b8c4ac24; padding-top: 21px; margin-top: 40px; color: #a8b6a1; font-size: 8px; line-height: 1.8; }
-.admin-entry-story-footer>span:first-child { font-size: 10px; color: #d3dbca; }
-.admin-entry-story-footer i { font-style: normal; color: #a8b6a1; font-size: 8px; margin-left: 5px; }
+.admin-entry-story-footer { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; border-top: 1px solid #232733; padding-top: 21px; margin-top: 40px; color: #9ca3af; font-size: 8px; line-height: 1.8; }
+.admin-entry-story-footer>span:first-child { font-size: 10px; color: #e5e7eb; }
+.admin-entry-story-footer i { font-style: normal; color: #9ca3af; font-size: 8px; margin-left: 5px; }
 
 .admin-entry-form-panel { min-width: 0; display: flex; align-items: center; justify-content: center; padding: 64px clamp(30px, 5vw, 80px); }
 .admin-entry-form-card { width: 100%; max-width: 360px; }

@@ -116,7 +116,7 @@ export default function AdminBIDashboard() {
     : ''
 
   return (
-    <div className="admin-main" style={{ padding: '24px 32px', maxWidth: 1400, margin: '0 auto' }}>
+    <div className="admin-main">
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 28, flexWrap: 'wrap', gap: 16 }}>
         <div>

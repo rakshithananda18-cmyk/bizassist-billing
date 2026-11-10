@@ -238,7 +238,7 @@ export default function AdminInfrastructure() {
   const cost = consoleData?.cost || {}
 
   return (
-    <div className="admin-main" style={{ padding: '24px 32px', maxWidth: 1400, margin: '0 auto' }}>
+    <div className="admin-main">
       {/* Mini Google Console Top Banner */}
       <div style={{
         background: 'var(--bg-2)',
@@ -347,8 +347,8 @@ export default function AdminInfrastructure() {
       <div style={{
         display: 'flex',
         gap: 8,
-        borderBottom: '1px solid rgba(255,255,255,0.08)',
-        marginBottom: 24
+        borderBottom: '1px solid var(--border)',
+        marginBottom: 20
       }}>
         {[
           { id: 'topology', label: 'Cloud Topology & Services', icon: 'server' },
@@ -368,7 +368,7 @@ export default function AdminInfrastructure() {
               border: 'none',
               borderBottom: activeTab === tab.id ? '2px solid var(--accent, #c2714f)' : '2px solid transparent',
               background: 'transparent',
-              color: activeTab === tab.id ? '#fff' : '#8e8e93',
+              color: activeTab === tab.id ? 'var(--text-primary)' : 'var(--text-muted)',
               fontSize: 13,
               fontWeight: 600,
               cursor: 'pointer',
