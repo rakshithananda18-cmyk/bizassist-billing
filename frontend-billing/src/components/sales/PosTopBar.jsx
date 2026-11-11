@@ -277,10 +277,50 @@ export default function PosTopBar({
     return () => window.removeEventListener('lan_status_changed', update)
   }, [])
 
-  if (phone) return <div className="pos-phone-header">
-    <div className="pos-phone-header-line">
-      <label className="pos-phone-active-bill"><span>Current bill</span><select aria-label="Active bill" value={activeTabId} onChange={event => onSelectTab(tabs.find(tab => String(tab.id) === event.target.value)?.id)}>{tabs.map(tab => <option key={tab.id} value={tab.id}>{tab.name}</option>)}</select></label>
-      <button type="button" className="pos-phone-new-bill" onClick={onNewBill}><PlusIcon size={16} /><span>New bill</span></button>
+  if (phone) return (
+    <div className="pos-phone-header pos-phone-header-single">
+      {/* Active bill dropdown - compact without giant label */}
+      <label className="pos-phone-active-bill">
+        <span className="sr-only" style={{ position: 'absolute', width: 1, height: 1, padding: 0, margin: -1, overflow: 'hidden', clip: 'rect(0, 0, 0, 0)', border: 0 }}>Active bill</span>
+        <select aria-label="Active bill" value={activeTabId} onChange={event => onSelectTab(tabs.find(tab => String(tab.id) === event.target.value)?.id)}>
+          {tabs.map(tab => <option key={tab.id} value={tab.id}>{tab.name}</option>)}
+        </select>
+      </label>
+
+      {/* Counter selector / badge */}
+      {canManageCounters && availableCounters.length ? (
+        <select
+          className="pos-phone-counter-select"
+          aria-label="Billing counter"
+          value={availableCounters.find(counter => counter.label === counterPrefix)?.value ?? ''}
+          onChange={event => {
+            const counter = availableCounters.find(item => String(item.value) === event.target.value)
+            if (counter) onSelectCounter?.(counter.value)
+          }}
+        >
+          {availableCounters.map(counter => (
+            <option key={counter.value} value={counter.value}>{counter.label || counter.name}</option>
+          ))}
+        </select>
+      ) : (
+        <span className="pos-phone-counter-badge">{counterPrefix || 'POS'}</span>
+      )}
+
+      {/* Shift status */}
+      {shift && !shift.offline && (
+        <span className="pos-phone-shift-dot" title="Shift open">
+          <span className="dot-indicator" style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', background: 'currentColor', marginRight: 3 }} />
+          Shift open
+        </span>
+      )}
+
+      <span style={{ flex: 1, minWidth: 2 }} />
+
+      <button type="button" className="pos-phone-new-bill" onClick={onNewBill} title="Start new bill">
+        <PlusIcon size={14} />
+        <span>New</span>
+      </button>
+
       <PhoneActionMenu label="Counter actions" actions={[
         { label: 'Counter settings', icon: <SettingsIcon size={16} />, action: onOpenSettings },
         ...(canManageCounters ? [{ label: 'Manage counters', action: onManageCounters }] : []),
@@ -290,12 +330,7 @@ export default function PosTopBar({
         { label: 'Close POS', icon: <CloseIcon size={16} />, action: onClose },
       ]} />
     </div>
-    <div className="pos-phone-context"><span>{liveModeStatus ? (liveModeStatus.isEditing ? 'Editing live counter' : 'View only') : 'Billing counter'}</span>
-      {canManageCounters && availableCounters.length ? <select aria-label="Billing counter" value={availableCounters.find(counter => counter.label === counterPrefix)?.value ?? ''} onChange={event => { const counter = availableCounters.find(item => String(item.value) === event.target.value); if (counter) onSelectCounter?.(counter.value) }}>{availableCounters.map(counter => <option key={counter.value} value={counter.value}>{counter.label}{counter.name ? ` · ${counter.name}` : ''}</option>)}</select> : <span>{counterPrefix || '—'}</span>}
-      <CounterModeSwitcher />
-      {shift && !shift.offline && <span className="pos-phone-shift-dot">Shift open</span>}
-    </div>
-  </div>
+  )
 
   return (
     <div className="pos-counter-topbar" style={{ ...topBarStyle, position: 'relative' }}>

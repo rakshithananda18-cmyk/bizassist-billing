@@ -1949,12 +1949,9 @@ body,
 .inv-panel-toolbar .search-bar,
 .inv-panel-toolbar .filter-dropdown-btn,
 .inv-panel-toolbar .col-layout-btn {
-  height: 34px;
-  /* `min-height` too, not just `height`. There is a separate, deliberate FORM
-     standard — `.form-input, .form-select { min-height: 38px }` — so a control
-     shared between a modal and a toolbar keeps its 38px floor and ignores the
-     height set here. Forms stay 38; toolbars are 34. */
-  min-height: 34px;
+  height: 36px;
+  /* Uniform 36px height across desktop and mobile toolbars, matching .btn */
+  min-height: 36px;
   box-sizing: border-box;
 }
 

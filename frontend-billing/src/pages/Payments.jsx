@@ -1045,13 +1045,40 @@ export default function Payments({ embedded = false, headerTabs = null, inlinePa
                 : activeTab === 'Credit Notes' ? filteredCreditNotes.map(p => ({ ...p, title: p.customer, displayAmount: p.amount, displayDate: p.date, detail: p.note, kind: 'Credit note' }))
                 : filtered.map(p => ({ ...p, title: p.party_name || p.customer_name || p.supplier_name || (p.type === 'expense' ? p.reference : 'Transaction'), displayAmount: p.amount, displayDate: p.date, detail: p.reference, kind: (p.type || 'Payment').replaceAll('_', ' ') }));
               if (!rows.length) return <div className="phone-list-empty">No matching transactions.</div>;
-              return rows.map(p => <PhoneRecord key={p.id} title={p.title || 'Transaction'} amount={fmt(p.displayAmount)} meta={p.displayDate ? formatISTDate(p.displayDate) : 'No date'} status={<span>{p.kind} · {p.method || p.payment_mode || '—'}</span>}
-                primary={(p.invoice_number || p.invoice_ref || p.invoice_id) && <button className="btn btn-secondary" onClick={() => setViewingInvoiceNo(p.invoice_number || p.invoice_ref || p.invoice_id)}>View bill</button>}>
-                {p.detail && <p>{p.detail}</p>}
-                {(p.due || p.type === 'pending_due') && !isCashier && <button className="btn btn-primary" onClick={() => { setSettlePreset({ customerId: p.customer_id ?? p._customerId ?? null, customerName: p.customer || p.party_name || '', outstanding: Number(p.displayAmount) }); setShowSettleModal(true) }}>Settle dues</button>}
-                {p.expense && <button className="btn btn-secondary" onClick={() => handleExpenseDelete(p.id)}>Delete expense</button>}
-                <button className="btn btn-secondary" onClick={() => navigator.clipboard.writeText(p.detail || p.invoice_number || p.invoice_id || '')}>Copy reference</button>
-              </PhoneRecord>);
+              return rows.map(p => {
+                const isIncoming = p.type === 'received' || p.type === 'settlement'
+                const isPending = p.type === 'pending_due' || p.due
+                const isCreditNote = p.type === 'credit_note' || p.kind === 'Credit note'
+                const tone = isIncoming ? 'green' : isPending ? 'yellow' : isCreditNote ? 'yellow' : 'red'
+                const prefix = isIncoming ? '+' : isPending ? '' : '−'
+                const formattedAmount = `${prefix}${fmt(p.displayAmount)}`
+
+                const billRef = p.invoice_number || p.invoice_ref || p.invoice_id
+                const primaryAction = billRef ? (
+                  <button className="btn btn-secondary" onClick={() => setViewingInvoiceNo(billRef)}>View bill</button>
+                ) : (isPending && !isCashier) ? (
+                  <button className="btn btn-primary" onClick={() => { setSettlePreset({ customerId: p.customer_id ?? p._customerId ?? null, customerName: p.customer || p.party_name || '', outstanding: Number(p.displayAmount) }); setShowSettleModal(true) }}>Settle</button>
+                ) : null
+
+                return (
+                  <PhoneRecord
+                    key={p.id}
+                    title={p.title || 'Transaction'}
+                    amount={formattedAmount}
+                    amountTone={tone}
+                    meta={`${p.displayDate ? formatISTDate(p.displayDate) : 'No date'}${p.method || p.payment_mode ? ` · ${p.method || p.payment_mode}` : ''}`}
+                    status={<span className={`badge ${tone === 'green' ? 'badge-success' : tone === 'yellow' ? 'badge-warning' : 'badge-danger'}`}>{p.kind}</span>}
+                    primary={primaryAction}
+                  >
+                    {p.detail && <p>{p.detail}</p>}
+                    {isPending && !isCashier && billRef && (
+                      <button className="btn btn-primary" onClick={() => { setSettlePreset({ customerId: p.customer_id ?? p._customerId ?? null, customerName: p.customer || p.party_name || '', outstanding: Number(p.displayAmount) }); setShowSettleModal(true) }}>Settle dues</button>
+                    )}
+                    {p.expense && <button className="btn btn-secondary" onClick={() => handleExpenseDelete(p.id)}>Delete expense</button>}
+                    <button className="btn btn-secondary" onClick={() => navigator.clipboard.writeText(p.detail || billRef || '')}>Copy reference</button>
+                  </PhoneRecord>
+                )
+              });
             })()}
           </div>
         ) : activeTab === 'Expenses' ? (

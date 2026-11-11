@@ -228,10 +228,25 @@ export default function InvoicesListView({
       </div>
 
       {phone ? <div className="phone-record-list" aria-label="Invoices">
-        {loadError ? <div className="phone-list-empty" role="alert">Invoices could not load. <button className="btn" onClick={load}>Retry invoices</button></div> : !paginatedRows.length ? <div className="phone-list-empty">No invoices found.</div> : paginatedRows.map(inv => <PhoneRecord key={inv.id} title={inv.customer_name || 'Walk-in customer'} amount={fmt(inv.total_amount)} meta={`${inv.invoice_no} · ${formatISTDateTime(inv.created_at || inv.invoice_date)}`} onOpen={() => actions.view(inv.invoice_no)} status={<StatusTag status={inv.status} />} primary={<span>{fmt(inv.outstanding)} due</span>}>
-          {(inv.paid_at || inv.payment_date) && <p>Paid {formatISTDateTime(inv.paid_at || inv.payment_date)}</p>}
-          {invoiceActionItems(inv, actions, null, label).map(item => <button key={item.label} type="button" className={item.accent ? 'btn btn-primary' : 'btn btn-secondary'} onClick={item.action}>{item.icon}{item.label}</button>)}
-        </PhoneRecord>)}
+        {loadError ? <div className="phone-list-empty" role="alert">Invoices could not load. <button className="btn" onClick={load}>Retry invoices</button></div> : !paginatedRows.length ? <div className="phone-list-empty">No invoices found.</div> : paginatedRows.map(inv => {
+          const isPaid = inv.status === 'paid' || inv.outstanding <= 0
+          const tone = isPaid ? 'green' : 'red'
+          return (
+            <PhoneRecord
+              key={inv.id}
+              title={inv.customer_name || 'Walk-in customer'}
+              amount={fmt(inv.total_amount)}
+              amountTone={tone}
+              meta={`${inv.invoice_no} · ${formatISTDateTime(inv.created_at || inv.invoice_date)}${inv.outstanding > 0 ? ` · ${fmt(inv.outstanding)} due` : ''}`}
+              onOpen={() => actions.view(inv.invoice_no)}
+              status={<StatusTag status={inv.status} />}
+              primary={<button className="btn btn-secondary" onClick={() => actions.view(inv.invoice_no)}>View</button>}
+            >
+              {(inv.paid_at || inv.payment_date) && <p>Paid {formatISTDateTime(inv.paid_at || inv.payment_date)}</p>}
+              {invoiceActionItems(inv, actions, null, label).map(item => <button key={item.label} type="button" className={item.accent ? 'btn btn-primary' : 'btn btn-secondary'} onClick={item.action}>{item.icon}{item.label}</button>)}
+            </PhoneRecord>
+          )
+        })}
       </div> : <div className="data-table-wrap" style={{ overflowX: 'auto' }}>
         <table className="data-table" style={{ width: '100%', fontSize: '0.82rem' }}>
           <thead>

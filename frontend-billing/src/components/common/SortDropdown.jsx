@@ -137,7 +137,7 @@ export default function SortDropdown({
         onClick={handleToggle}
         title="Sort & Group"
         style={{
-          display: 'inline-flex', alignItems: 'center', gap: 5, height: 34,
+          display: 'inline-flex', alignItems: 'center', gap: 5, height: 36, minHeight: 36, boxSizing: 'border-box',
           padding: '0 12px',
           background: isActive ? 'var(--accent-subtle, rgba(249,115,22,0.10))' : 'var(--bg-2)',
           border: isActive ? '1px solid var(--accent, #f97316)' : '1px solid var(--border)',

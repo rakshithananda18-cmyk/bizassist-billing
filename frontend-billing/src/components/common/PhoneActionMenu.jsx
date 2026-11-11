@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import './phoneActionMenu.css'
 
 /** Secondary phone actions share existing callbacks; no duplicate edit state. */
-export default function PhoneActionMenu({ label = 'More actions', actions = [] }) {
+export default function PhoneActionMenu({ label = 'More actions', buttonText = null, actions = [] }) {
   const [open, setOpen] = useState(false)
   const root = useRef(null)
   const trigger = useRef(null)
@@ -23,8 +23,15 @@ export default function PhoneActionMenu({ label = 'More actions', actions = [] }
   }, [open])
   return (
     <div className="phone-action-menu" ref={root}>
-      <button ref={trigger} type="button" className="phone-action-trigger" aria-label={label} aria-expanded={open} onClick={() => setOpen(value => !value)}>
-        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>
+      <button ref={trigger} type="button" className={`phone-action-trigger${buttonText ? ' phone-action-trigger--text' : ''}`} aria-label={label} aria-expanded={open} onClick={() => setOpen(value => !value)}>
+        {buttonText ? (
+          <>
+            <span>{buttonText}</span>
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+          </>
+        ) : (
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>
+        )}
       </button>
       {open && <div className="phone-action-popover" aria-label={label}>
         {actions.map((action, index) => <button key={action.id || index} type="button" disabled={action.disabled} onClick={() => { setOpen(false); action.action?.() }}>

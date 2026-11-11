@@ -495,7 +495,7 @@ export default function Parties({ embedded = false, headerTabs = null, inlinePag
   const filterControls = (
     <>
           {/* Search — always first */}
-          <div className="search-bar" style={{ margin: 0, height: 34, boxSizing: 'border-box', display: 'flex', alignItems: 'center', flex: '1 1 200px', maxWidth: 320 }}>
+          <div className="search-bar" style={{ margin: 0, height: 36, minHeight: 36, boxSizing: 'border-box', display: 'flex', alignItems: 'center', flex: '1 1 200px', maxWidth: 320 }}>
             <span style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}><SearchIcon size={16} /></span>
             <input data-tour="contacts-search" value={search} onChange={e => setSearch(e.target.value)} placeholder={`Search ${activeTab.toLowerCase()}…`} style={{ fontSize: '0.82rem' }} />
           </div>
@@ -855,25 +855,43 @@ export default function Parties({ embedded = false, headerTabs = null, inlinePag
           </div>
           if (phone) return <div className="phone-record-list" aria-label={activeTab}>
             {!filtered.length && <div className="phone-list-empty">No matching contacts or bills.</div>}
-            {filtered.map(p => activeTab === 'Other Invoices' ? <PhoneRecord key={p.id}
-              title={p.customer || p.customer_name || 'Walk-in customer'} amount={fmt(p.total_amount)}
-              meta={`${p.invoice_number || p.invoice_no || `#${p.id}`} · ${p.date ? new Date(p.date).toLocaleDateString('en-IN') : 'No date'}`}
-              status={<span className="badge badge-secondary">{p.status || 'unpaid'}</span>}
-              primary={<button className="btn btn-secondary" onClick={() => handlePrintInvoice(p.invoice_number || p.invoice_no)}>Print</button>}>
-              <button className="btn btn-secondary" onClick={() => handleWhatsAppShareInvoice(p)}>Share invoice</button>
-              {p.invoice_type !== 'credit_note' && <button className="btn btn-secondary" onClick={() => handleOpenReturn(p)}>Record return</button>}
-            </PhoneRecord> : <PhoneRecord key={p.id} title={p.name} amount={fmt(p.outstanding_balance ?? 0)}
-              meta={p.phone || 'No phone number'} status={<span>{p.is_active === false ? 'Inactive · ' : ''}{Number(p.outstanding_balance) > 0 ? 'Outstanding' : 'No dues'}</span>}
-              onOpen={() => setCreditDrawerParty(p)}
-              primary={<button className="btn btn-secondary" onClick={() => activeTab === 'Customers' ? handleViewInvoices(p) : handleViewPurchases(p)}>{activeTab === 'Customers' ? 'Invoices' : 'Purchases'}</button>}>
-              {p.email && <p>{p.email}</p>}{p.gstin && <p>GSTIN {p.gstin}</p>}{p.address && <p>{p.address}</p>}
-              <button className="btn btn-secondary" onClick={() => setCreditDrawerParty(p)}>Credit statement</button>
-              {activeTab === 'Customers' && Number(p.outstanding_balance) > 0 && <>
-                {!isCashier && <button className="btn btn-primary" onClick={() => navigate(`/parties/payments?customer=${encodeURIComponent(p.name)}`)}>Settle dues</button>}
-                <button className="btn btn-secondary" onClick={() => handleWhatsAppReminder(p)}>Payment reminder</button>
-              </>}
-              <button className="btn btn-secondary" onClick={() => togglePartyActive(p)}>{p.is_active === false ? 'Reactivate' : 'Deactivate'}</button>
-            </PhoneRecord>)}
+            {filtered.map(p => {
+              if (activeTab === 'Other Invoices') {
+                const tone = p.status === 'paid' ? 'green' : p.status === 'partial' ? 'yellow' : 'red'
+                return (
+                  <PhoneRecord key={p.id}
+                    title={p.customer || p.customer_name || 'Walk-in customer'}
+                    amount={fmt(p.total_amount)}
+                    amountTone={tone}
+                    meta={`${p.invoice_number || p.invoice_no || `#${p.id}`} · ${p.date ? new Date(p.date).toLocaleDateString('en-IN') : 'No date'}`}
+                    status={<span className={`badge ${tone === 'green' ? 'badge-success' : tone === 'yellow' ? 'badge-warning' : 'badge-danger'}`}>{p.status || 'unpaid'}</span>}
+                    primary={<button className="btn btn-secondary" onClick={() => handlePrintInvoice(p.invoice_number || p.invoice_no)}>Print</button>}>
+                    <button className="btn btn-secondary" onClick={() => handleWhatsAppShareInvoice(p)}>Share invoice</button>
+                    {p.invoice_type !== 'credit_note' && <button className="btn btn-secondary" onClick={() => handleOpenReturn(p)}>Record return</button>}
+                  </PhoneRecord>
+                )
+              }
+              const due = parseFloat(p.outstanding_balance ?? 0)
+              const tone = due > 0 ? 'red' : 'green'
+              return (
+                <PhoneRecord key={p.id}
+                  title={p.name}
+                  amount={due > 0 ? fmt(due) : 'Nil'}
+                  amountTone={tone}
+                  meta={`${p.phone || 'No phone'}${p.gstin ? ` · GSTIN: ${p.gstin}` : ''}`}
+                  status={<span className={`badge ${tone === 'red' ? 'badge-danger' : 'badge-success'}`}>{p.is_active === false ? 'Inactive' : due > 0 ? 'Due' : 'Cleared'}</span>}
+                  onOpen={() => setCreditDrawerParty(p)}
+                  primary={<button className="btn btn-secondary" onClick={() => activeTab === 'Customers' ? handleViewInvoices(p) : handleViewPurchases(p)}>{activeTab === 'Customers' ? 'Invoices' : 'Purchases'}</button>}>
+                  {p.email && <p>{p.email}</p>}{p.address && <p>{p.address}</p>}
+                  <button className="btn btn-secondary" onClick={() => setCreditDrawerParty(p)}>Credit statement</button>
+                  {activeTab === 'Customers' && due > 0 && <>
+                    {!isCashier && <button className="btn btn-primary" onClick={() => navigate(`/parties/payments?customer=${encodeURIComponent(p.name)}`)}>Settle dues</button>}
+                    <button className="btn btn-secondary" onClick={() => handleWhatsAppReminder(p)}>Payment reminder</button>
+                  </>}
+                  <button className="btn btn-secondary" onClick={() => togglePartyActive(p)}>{p.is_active === false ? 'Reactivate' : 'Deactivate'}</button>
+                </PhoneRecord>
+              )
+            })}
           </div>
           if (isFullScreen) return (
             <div className="table-fullscreen-overlay" onClick={e => { if (e.target === e.currentTarget) setIsFullScreen(false) }}>

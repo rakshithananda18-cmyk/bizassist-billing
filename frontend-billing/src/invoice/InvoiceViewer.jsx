@@ -13,6 +13,7 @@ import PrintPortal, { triggerPrint } from './PrintPortal'
 import { shareInvoice, buildWhatsAppLink, buildPublicInvoiceLink } from './share'
 import PageLoader from '../components/PageLoader'
 import HeaderSearchSlot from '../components/common/HeaderSearchSlot'
+import PhoneActionMenu from '../components/common/PhoneActionMenu'
 import InvoiceAccountPanel from '../components/invoice/InvoiceAccountPanel'
 import {
   PhoneIcon, DownloadIcon, ChevronLeftIcon, CopyIcon, ReturnArrowIcon,
@@ -107,6 +108,10 @@ export default function InvoiceViewer({ invoiceNo: invoiceNoProp = null, embedde
   const [printing, setPrinting] = useState(false)
   const pdfAbortRef = useRef(null)
   const pdfUrlRef = useRef(null)
+  const previewContainerRef = useRef(null)
+  const previewInnerRef = useRef(null)
+  const [docScale, setDocScale] = useState(1)
+  const [scaledHeight, setScaledHeight] = useState(null)
   const fetchInvoiceAccount = useCallback(path => api.raw(path), [])
 
   useEffect(() => {
@@ -158,6 +163,39 @@ export default function InvoiceViewer({ invoiceNo: invoiceNoProp = null, embedde
       })
     }
   }, [fellBack, payload, invoiceNo, template])
+
+  useEffect(() => {
+    if (!phoneLayout || !entry || entry.key.includes('thermal')) {
+      setDocScale(1)
+      setScaledHeight(null)
+      return
+    }
+    const updateScale = () => {
+      if (!previewContainerRef.current) return
+      const containerW = previewContainerRef.current.clientWidth
+      const targetW = 800
+      if (containerW > 0 && containerW < targetW) {
+        const s = Math.min(1, Math.max(0.32, (containerW - 8) / targetW))
+        setDocScale(s)
+        if (previewInnerRef.current) {
+          const naturalH = previewInnerRef.current.scrollHeight || previewInnerRef.current.offsetHeight
+          if (naturalH) setScaledHeight(Math.ceil(naturalH * s) + 24)
+        }
+      } else {
+        setDocScale(1)
+        setScaledHeight(null)
+      }
+    }
+    updateScale()
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(updateScale) : null
+    if (ro && previewContainerRef.current) ro.observe(previewContainerRef.current)
+    if (ro && previewInnerRef.current) ro.observe(previewInnerRef.current)
+    window.addEventListener('resize', updateScale)
+    return () => {
+      ro?.disconnect()
+      window.removeEventListener('resize', updateScale)
+    }
+  }, [entry?.key, phoneLayout, phoneView])
 
   const selectTemplate = useCallback((key) => {
     setTemplate((prev) => {
@@ -334,98 +372,113 @@ export default function InvoiceViewer({ invoiceNo: invoiceNoProp = null, embedde
           </span>
         </div>
 
-        {/* divider */}
-        <span style={{ width: 1, height: 22, background: 'var(--border)', flexShrink: 0, margin: '0 3px' }} />
+        {/* divider & template tabs (on desktop in toolbar, on mobile shifted to Document view) */}
+        {!phoneLayout && (
+          <>
+            <span style={{ width: 1, height: 22, background: 'var(--border)', flexShrink: 0, margin: '0 3px' }} />
+            <div role="tablist" aria-label="Invoice template" style={{
+              display: 'flex', gap: 3, background: 'var(--bg-1)',
+              borderRadius: 'var(--radius-md)', border: '1px solid var(--border)',
+              padding: '3px', flexShrink: 0,
+            }}>
+              {templateOptions().map((opt) => (
+                <button
+                  key={opt.key} role="tab" aria-selected={entry.key === opt.key}
+                  title={opt.description}
+                  onClick={() => selectTemplate(opt.key)}
+                  style={{
+                    fontSize: '0.78rem', fontWeight: entry.key === opt.key ? 700 : 500,
+                    padding: '4px 12px',
+                    borderRadius: 'calc(var(--radius-md) - 2px)',
+                    border: 'none', cursor: 'pointer',
+                    background: entry.key === opt.key ? 'var(--page-selection-bg, var(--accent-dim))' : 'transparent',
+                    color: entry.key === opt.key ? 'var(--page-selection-text, var(--accent))' : 'var(--text-secondary)',
+                    boxShadow: entry.key === opt.key ? '0 1px 3px rgba(0,0,0,0.14)' : 'none',
+                    transition: 'background 0.15s, color 0.15s, box-shadow 0.15s',
+                  }}>
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
 
-        {/* Template tabs */}
-        <HeaderSearchSlot compact />
-        <div role="tablist" aria-label="Invoice template" style={{
-          display: 'flex', gap: 3, background: 'var(--bg-1)',
-          borderRadius: 'var(--radius-md)', border: '1px solid var(--border)',
-          padding: '3px', flexShrink: 0,
-        }}>
-          {templateOptions().map((opt) => (
+        <span style={{ flex: 1, minWidth: 4 }} />
+
+        {/* Secondary actions: on phone in dropdown Actions menu, on desktop inline */}
+        {phoneLayout ? (
+          <PhoneActionMenu
+            label="Invoice actions"
+            buttonText="Actions"
+            actions={[
+              { label: 'Duplicate', icon: <CopyIcon size={14} />, action: onDuplicate },
+              { label: label('sale_return') || 'Credit Note', icon: <ReturnArrowIcon size={14} />, action: onCreditNote },
+              { label: savingDefault ? 'Saving…' : 'Set as default', icon: <CheckIcon size={14} />, action: onSetDefault, disabled: savingDefault },
+              { label: 'Share Link', icon: <Share2Icon size={14} />, action: onShare },
+              { label: 'Send on WhatsApp', icon: <WhatsAppIcon size={14} />, action: onShareWhatsApp },
+            ]}
+          />
+        ) : (
+          <div style={{ display: 'flex', gap: 5, alignItems: 'center', flexWrap: 'wrap' }}>
             <button
-              key={opt.key} role="tab" aria-selected={entry.key === opt.key}
-              title={opt.description}
-              onClick={() => selectTemplate(opt.key)}
+              className="btn btn-ghost btn-sm"
+              onClick={onDuplicate}
               style={{
-                fontSize: '0.78rem', fontWeight: entry.key === opt.key ? 700 : 500,
-                padding: '4px 12px',
-                borderRadius: 'calc(var(--radius-md) - 2px)',
-                border: 'none', cursor: 'pointer',
-                background: entry.key === opt.key ? 'var(--page-selection-bg, var(--accent-dim))' : 'transparent',
-                color: entry.key === opt.key ? 'var(--page-selection-text, var(--accent))' : 'var(--text-secondary)',
-                boxShadow: entry.key === opt.key ? '0 1px 3px rgba(0,0,0,0.14)' : 'none',
-                transition: 'background 0.15s, color 0.15s, box-shadow 0.15s',
-              }}>
-              {opt.label}
+                display: 'inline-flex', alignItems: 'center', gap: 5,
+                padding: '5px 10px', borderRadius: 'var(--radius-sm)',
+                border: '1px solid var(--border)', background: 'var(--bg-1)',
+                fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-primary)',
+                cursor: 'pointer',
+              }}
+            >
+              <CopyIcon size={13} />
+              <span>Duplicate</span>
             </button>
-          ))}
-        </div>
-
-        <span style={{ flex: 1, minWidth: 6 }} />
-
-        {/* Secondary actions */}
-        <div style={{ display: 'flex', gap: 5, alignItems: 'center', flexWrap: 'wrap' }}>
-          <button
-            className="btn btn-ghost btn-sm"
-            onClick={onDuplicate}
-            style={{
-              display: 'inline-flex', alignItems: 'center', gap: 5,
-              padding: '5px 10px', borderRadius: 'var(--radius-sm)',
-              border: '1px solid var(--border)', background: 'var(--bg-1)',
-              fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-primary)',
-              cursor: 'pointer',
-            }}
-          >
-            <CopyIcon size={13} />
-            <span>Duplicate</span>
-          </button>
-          <button
-            className="btn btn-ghost btn-sm"
-            onClick={onCreditNote}
-            style={{
-              display: 'inline-flex', alignItems: 'center', gap: 5,
-              padding: '5px 10px', borderRadius: 'var(--radius-sm)',
-              border: '1px solid var(--border)', background: 'var(--bg-1)',
-              fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-primary)',
-              cursor: 'pointer',
-            }}
-          >
-            <ReturnArrowIcon size={13} />
-            <span>{label('sale_return')}</span>
-          </button>
-          <button
-            className="btn btn-ghost btn-sm"
-            onClick={onSetDefault}
-            disabled={savingDefault}
-            style={{
-              display: 'inline-flex', alignItems: 'center', gap: 5,
-              padding: '5px 10px', borderRadius: 'var(--radius-sm)',
-              border: '1px solid var(--border)', background: 'var(--bg-1)',
-              fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-primary)',
-              cursor: savingDefault ? 'wait' : 'pointer',
-            }}
-          >
-            <CheckIcon size={13} />
-            <span>{savingDefault ? 'Saving…' : 'Set as default'}</span>
-          </button>
-          <button
-            className="btn btn-ghost btn-sm"
-            onClick={onShare}
-            style={{
-              display: 'inline-flex', alignItems: 'center', gap: 5,
-              padding: '5px 10px', borderRadius: 'var(--radius-sm)',
-              border: '1px solid var(--border)', background: 'var(--bg-1)',
-              fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-primary)',
-              cursor: 'pointer',
-            }}
-          >
-            <Share2Icon size={13} />
-            <span>Share Link</span>
-          </button>
-        </div>
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={onCreditNote}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 5,
+                padding: '5px 10px', borderRadius: 'var(--radius-sm)',
+                border: '1px solid var(--border)', background: 'var(--bg-1)',
+                fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-primary)',
+                cursor: 'pointer',
+              }}
+            >
+              <ReturnArrowIcon size={13} />
+              <span>{label('sale_return')}</span>
+            </button>
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={onSetDefault}
+              disabled={savingDefault}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 5,
+                padding: '5px 10px', borderRadius: 'var(--radius-sm)',
+                border: '1px solid var(--border)', background: 'var(--bg-1)',
+                fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-primary)',
+                cursor: savingDefault ? 'wait' : 'pointer',
+              }}
+            >
+              <CheckIcon size={13} />
+              <span>{savingDefault ? 'Saving…' : 'Set as default'}</span>
+            </button>
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={onShare}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 5,
+                padding: '5px 10px', borderRadius: 'var(--radius-sm)',
+                border: '1px solid var(--border)', background: 'var(--bg-1)',
+                fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-primary)',
+                cursor: 'pointer',
+              }}
+            >
+              <Share2Icon size={13} />
+              <span>Share Link</span>
+            </button>
+          </div>
+        )}
 
         {/* Primary: Print */}
         <button
@@ -493,19 +546,64 @@ export default function InvoiceViewer({ invoiceNo: invoiceNoProp = null, embedde
 
         {/* Invoice preview (scrollable) */}
         <div className="invoice-viewer-preview" style={{
-          flex: 1, overflowY: 'auto', overflowX: 'auto',
-          padding: '28px 24px', background: 'var(--bg)',
+          flex: 1, overflowY: 'auto', overflowX: phoneLayout ? 'hidden' : 'auto',
+          padding: phoneLayout ? '12px 6px' : '28px 24px', background: 'var(--bg)',
           WebkitOverflowScrolling: 'touch',
           scrollbarWidth: 'thin',
         }}>
-          <div style={{
-            boxShadow: 'var(--shadow-lg, 0 8px 30px rgba(0,0,0,0.12))', background: '#fff',
-            width: '100%', maxWidth: 840,
-            minWidth: entry.key.includes('thermal') ? 'auto' : '800px',
-            margin: '0 auto', borderRadius: 'var(--radius-md)',
-            border: '1px solid var(--border)',
-          }}>
-            {body}
+          {/* Shifted template options on mobile — directly in Document view */}
+          {phoneLayout && (
+            <div role="tablist" aria-label="Invoice template" style={{
+              display: 'flex', gap: 4, background: 'var(--bg-1)',
+              borderRadius: 'var(--radius-md)', border: '1px solid var(--border)',
+              padding: '3px', width: 'fit-content', margin: '0 auto 14px',
+            }}>
+              {templateOptions().map((opt) => (
+                <button
+                  key={opt.key} role="tab" aria-selected={entry.key === opt.key}
+                  title={opt.description}
+                  onClick={() => selectTemplate(opt.key)}
+                  style={{
+                    fontSize: '0.8rem', fontWeight: entry.key === opt.key ? 700 : 500,
+                    padding: '5px 14px',
+                    borderRadius: 'calc(var(--radius-md) - 2px)',
+                    border: 'none', cursor: 'pointer',
+                    background: entry.key === opt.key ? 'var(--page-selection-bg, var(--accent-dim))' : 'transparent',
+                    color: entry.key === opt.key ? 'var(--page-selection-text, var(--accent))' : 'var(--text-secondary)',
+                    boxShadow: entry.key === opt.key ? '0 1px 3px rgba(0,0,0,0.14)' : 'none',
+                    transition: 'background 0.15s, color 0.15s, box-shadow 0.15s',
+                  }}>
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          )}
+
+          <div
+            ref={previewContainerRef}
+            style={{
+              width: '100%',
+              display: 'flex',
+              justifyContent: 'center',
+              overflow: 'hidden',
+              height: scaledHeight ? `${scaledHeight}px` : 'auto',
+            }}
+          >
+            <div
+              ref={previewInnerRef}
+              style={{
+                boxShadow: 'var(--shadow-lg, 0 8px 30px rgba(0,0,0,0.12))', background: '#fff',
+                width: entry.key.includes('thermal') ? 'auto' : 800,
+                minWidth: entry.key.includes('thermal') ? 'auto' : 800,
+                maxWidth: entry.key.includes('thermal') ? 380 : 800,
+                transform: docScale < 1 ? `scale(${docScale})` : 'none',
+                transformOrigin: 'top center',
+                margin: '0 auto', borderRadius: 'var(--radius-md)',
+                border: '1px solid var(--border)',
+              }}
+            >
+              {body}
+            </div>
           </div>
         </div>
 

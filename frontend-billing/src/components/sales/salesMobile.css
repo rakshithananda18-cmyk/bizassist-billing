@@ -134,4 +134,85 @@
   .pos-phone-total-breakdown > div { display: flex; gap: 7px; align-items: baseline; font-size: 11px; }
   .pos-phone-total-breakdown dt { color: var(--text-muted); }
   .pos-phone-total-breakdown dd { margin: 0; font-weight: 600; }
+
+  /* POS Phone Header Single Inline Row */
+  .pos-phone-header.pos-phone-header-single {
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    min-height: 44px !important;
+    height: 44px !important;
+    padding: 0 10px !important;
+    background: var(--bg-2) !important;
+    border-bottom: 1px solid var(--border) !important;
+    box-sizing: border-box !important;
+    flex-shrink: 0 !important;
+    width: 100% !important;
+  }
+  .pos-phone-header-single .pos-phone-active-bill {
+    display: flex !important;
+    align-items: center !important;
+    margin: 0 !important;
+    min-width: 0 !important;
+    flex: 0 1 auto !important;
+  }
+  .pos-phone-header-single .pos-phone-active-bill select {
+    height: 32px !important;
+    padding: 0 8px !important;
+    font-size: 12.5px !important;
+    font-weight: 700 !important;
+    border-radius: 8px !important;
+    border: 1px solid var(--border) !important;
+    background: var(--bg-1) !important;
+    color: var(--text-primary) !important;
+    max-width: 125px !important;
+    cursor: pointer;
+  }
+  .pos-phone-header-single .pos-phone-counter-select {
+    height: 32px !important;
+    padding: 0 6px !important;
+    font-size: 11px !important;
+    font-weight: 600 !important;
+    border-radius: 8px !important;
+    border: 1px solid var(--border) !important;
+    background: var(--bg-1) !important;
+    color: var(--text-secondary) !important;
+    max-width: 85px !important;
+    cursor: pointer;
+  }
+  .pos-phone-header-single .pos-phone-counter-badge {
+    font-size: 10.5px !important;
+    font-weight: 600 !important;
+    padding: 3px 6px !important;
+    border-radius: 6px !important;
+    background: var(--bg-3) !important;
+    color: var(--text-secondary) !important;
+    white-space: nowrap !important;
+  }
+  .pos-phone-header-single .pos-phone-shift-dot {
+    font-size: 10px !important;
+    color: var(--success, #22c55e) !important;
+    font-weight: 600 !important;
+    white-space: nowrap !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 3px !important;
+  }
+  .pos-phone-header-single .pos-phone-new-bill {
+    height: 32px !important;
+    min-height: 32px !important;
+    padding: 0 9px !important;
+    font-size: 11.5px !important;
+    font-weight: 600 !important;
+    border-radius: 8px !important;
+    border: 1px solid var(--accent) !important;
+    background: var(--accent-dim) !important;
+    color: var(--accent) !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 4px !important;
+    white-space: nowrap !important;
+    cursor: pointer !important;
+    flex-shrink: 0 !important;
+  }
 }

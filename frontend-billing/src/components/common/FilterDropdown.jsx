@@ -92,7 +92,7 @@ export default function FilterDropdown({ filters = [], className = '', style = {
   }
 
   const btnStyle = {
-    display: 'inline-flex', alignItems: 'center', gap: 6, height: 34,
+    display: 'inline-flex', alignItems: 'center', gap: 6, height: 36, minHeight: 36, boxSizing: 'border-box',
     padding: '0 12px',
     background: isOpen || activeCount > 0 ? 'var(--accent-subtle, rgba(var(--accent-rgb,249,115,22),0.10))' : 'var(--bg-2)',
     border: isOpen || activeCount > 0 ? '1px solid var(--accent, #f97316)' : '1px solid var(--border)',
