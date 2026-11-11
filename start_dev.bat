@@ -56,7 +56,7 @@ timeout /t 1 /nobreak >nul
 
 REM --- Backend (with --reload so code changes are picked up instantly) ---
 start "BizAssist Backend" powershell -ExecutionPolicy Bypass -NoExit -Command ^
-  "cd '%ROOT%backend'; & '%ROOT%venv\Scripts\Activate.ps1'; . '%ROOT%dev\dev_env.ps1' -App billing%FT%; $env:PYTHONPATH='.'; $env:LOG_FILE='logs/bizassist.log'; Write-Host 'Backend -> http://127.0.0.1:8001' -ForegroundColor Green; uvicorn main_groq:app --reload --port 8001"
+  "cd '%ROOT%backend'; if (Test-Path '%ROOT%venv\Scripts\Activate.ps1') { & '%ROOT%venv\Scripts\Activate.ps1' }; . '%ROOT%dev\dev_env.ps1' -App billing%FT%; $env:PYTHONPATH='.'; $env:LOG_FILE='logs/bizassist.log'; Write-Host 'Backend -> http://127.0.0.1:8001' -ForegroundColor Green; uvicorn main_groq:app --reload --port 8001"
 
 REM Give the backend a moment to bind the port before frontends start
 timeout /t 3 /nobreak >nul
@@ -84,7 +84,7 @@ if not exist "%ROOT%backend-task\.env" (
     copy "%ROOT%backend-task\.env.example" "%ROOT%backend-task\.env" >nul
 )
 start "BizAssist Field Team API" powershell -ExecutionPolicy Bypass -NoExit -Command ^
-  "cd '%ROOT%backend-task'; & '%ROOT%venv\Scripts\Activate.ps1'; . '%ROOT%dev\dev_env.ps1' -App task%FT%; $env:LOG_FILE='logs/bizassist_task.log'; Write-Host 'Field Team API -> http://127.0.0.1:8002' -ForegroundColor Green; uvicorn app.main:app --reload --port 8002"
+  "cd '%ROOT%backend-task'; if (Test-Path '%ROOT%venv\Scripts\Activate.ps1') { & '%ROOT%venv\Scripts\Activate.ps1' }; . '%ROOT%dev\dev_env.ps1' -App task%FT%; $env:LOG_FILE='logs/bizassist_task.log'; Write-Host 'Field Team API -> http://127.0.0.1:8002' -ForegroundColor Green; uvicorn app.main:app --reload --port 8002"
 
 REM --- Field Team PWA (frontend-task) ---
 start "BizAssist Field Team PWA" powershell -ExecutionPolicy Bypass -NoExit -Command ^
@@ -107,7 +107,7 @@ goto :eof
 :fieldtest_setup
 REM --- Test accounts and sample bills, once both APIs are up ---
 start "BizAssist Field Test Setup" powershell -ExecutionPolicy Bypass -NoExit -Command ^
-  "cd '%ROOT%'; & '%ROOT%venv\Scripts\Activate.ps1'; . '%ROOT%dev\dev_env.ps1' -App seed -FieldTest; python dev\field_test_seed.py"
+  "cd '%ROOT%'; if (Test-Path '%ROOT%venv\Scripts\Activate.ps1') { & '%ROOT%venv\Scripts\Activate.ps1' }; . '%ROOT%dev\dev_env.ps1' -App seed -FieldTest; python dev\field_test_seed.py"
 
 echo.
 echo  FIELD TEST MODE started (throwaway database local_field_test.db):
