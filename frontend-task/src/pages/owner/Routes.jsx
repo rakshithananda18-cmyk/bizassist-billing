@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { api } from '../../lib/api'
 import { WEEKDAYS } from '../../lib/format'
 import { Empty, ErrorNote, Loader, Modal, PageHeader, useLoad, useToast } from '../../components/ui'
+import PhoneRecord from '../../components/PhoneRecord'
 
 function RouteForm({ route, onClose, onSaved }) {
   const toast = useToast()
@@ -75,20 +76,43 @@ export default function RoutesPage() {
       </PageHeader>
       <ErrorNote error={error} />
       {loading && !data ? <Loader /> : !data?.length ? <Empty>No routes yet. A route turns into a day’s run with one click on Day plan.</Empty> : (
-        <div className="grid grid-2">
-          {data.map(r => (
-            <div key={r.id} className="card" style={r.is_active ? undefined : { opacity: 0.6 }}>
-              <div className="row-between">
-                <strong style={{ fontSize: 'var(--fs-md)' }}>{r.name}</strong>
-                <button className="btn btn-ghost btn-sm" onClick={() => setEditing(r)}>Edit</button>
-              </div>
-              <div className="xs muted" style={{ margin: '4px 0 10px' }}>
-                {r.weekdays.length ? r.weekdays.map(d => WEEKDAYS[d - 1]).join(', ') : 'Any day'} · by {r.due_time} · {names[r.default_staff_id] || 'no default person'}
-              </div>
-              <div className="small">{r.stops.map(s => s.shop.name).join(' → ') || <span className="muted">No shops</span>}</div>
+        <>
+          {/* Desktop Grid */}
+          <div className="desktop-only-table">
+            <div className="grid grid-2">
+              {data.map(r => (
+                <div key={r.id} className="card" style={r.is_active ? undefined : { opacity: 0.6 }}>
+                  <div className="row-between">
+                    <strong style={{ fontSize: 'var(--fs-md)' }}>{r.name}</strong>
+                    <button className="btn btn-ghost btn-sm" onClick={() => setEditing(r)}>Edit</button>
+                  </div>
+                  <div className="xs muted" style={{ margin: '4px 0 10px' }}>
+                    {r.weekdays.length ? r.weekdays.map(d => WEEKDAYS[d - 1]).join(', ') : 'Any day'} · by {r.due_time} · {names[r.default_staff_id] || 'no default person'}
+                  </div>
+                  <div className="small">{r.stops.map(s => s.shop.name).join(' → ') || <span className="muted">No shops</span>}</div>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
+          </div>
+
+          {/* Mobile 3-Column Phone Records */}
+          <div className="mobile-only-records phone-record-list">
+            {data.map(r => (
+              <PhoneRecord
+                key={r.id}
+                title={r.name}
+                meta={`${r.weekdays.length ? r.weekdays.map(d => WEEKDAYS[d - 1]).join(', ') : 'Any day'} · by ${r.due_time}`}
+                status={<span className="badge badge-accent">{r.stops.length} shops</span>}
+                amount={r.is_active ? 'Active' : 'Inactive'}
+                amountTone={r.is_active ? 'green' : 'yellow'}
+                primary={<button className="btn btn-secondary btn-sm" onClick={() => setEditing(r)}>Edit</button>}
+              >
+                <p><strong>Delivery Person:</strong> {names[r.default_staff_id] || 'No default person assigned'}</p>
+                <p><strong>Shop Route:</strong> {r.stops.map(s => s.shop.name).join(' → ') || 'No shops added yet'}</p>
+              </PhoneRecord>
+            ))}
+          </div>
+        </>
       )}
       {editing && <RouteForm route={editing.id ? editing : null} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); reload() }} />}
     </>

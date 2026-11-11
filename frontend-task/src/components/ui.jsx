@@ -14,7 +14,7 @@ export function PageHeader({ title, subtitle, children, badge }) {
         </div>
         {subtitle && <div className="page-subtitle">{subtitle}</div>}
       </div>
-      {children && <div className="row wrap">{children}</div>}
+      {children && <div className="page-header-actions row wrap">{children}</div>}
     </div>
   )
 }
@@ -87,7 +87,7 @@ export function PageTabs({ tabs = [], active, onChange }) {
             type="button"
             role="tab"
             aria-selected={isSelected}
-            className={`page-tab ${isSelected ? 'active' : ''}`}
+            className={`page-tab ${isSelected ? 'active is-active' : ''}`}
             onClick={() => onChange?.(id)}
           >
             <span>{label}</span>

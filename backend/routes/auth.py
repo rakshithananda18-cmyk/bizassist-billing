@@ -1393,6 +1393,18 @@ def update_settings(
             )
             req.general = {k: v for k, v in req.general.items() if k != "hosting_mode"}
 
+    # Device sync readiness and consent revisions are server-owned. Even a
+    # repeated Local-only confirmation changes the revision, so a slow login
+    # activation cannot re-enable sync after that newer choice in another tab.
+    if req.general is not None:
+        req.general = {k: v for k, v in req.general.items()
+                       if k not in {"sync_mode_revision", "sync_bootstrap_pending"}}
+        if "hosting_mode" in req.general and db.get_bind().dialect.name == "sqlite":
+            revision = (current.get("general") or {}).get("sync_mode_revision", 0)
+            if not isinstance(revision, int) or isinstance(revision, bool):
+                revision = 0
+            current.setdefault("general", {})["sync_mode_revision"] = revision + 1
+
     # Merge each provided section
     for section in ("general", "transactions", "inventory", "print", "labels"):
         patch = getattr(req, section)

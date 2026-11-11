@@ -3,6 +3,7 @@ import { api } from '../../lib/api'
 import { useAuth } from '../../lib/auth'
 import { ago, fmtDateTime, telHref } from '../../lib/format'
 import { Empty, ErrorNote, Loader, Modal, PageHeader, useLoad, useToast } from '../../components/ui'
+import PhoneRecord from '../../components/PhoneRecord'
 
 const ROLES = { delivery: 'Delivery agent', field: 'Field staff', supervisor: 'Supervisor' }
 
@@ -75,34 +76,58 @@ export default function Staff() {
       </PageHeader>
       <ErrorNote error={error} />
       {loading && !data ? <Loader /> : !data?.length ? <Empty>No staff yet. Add your delivery agents and set their passwords.</Empty> : (
-        <div className="table-wrap">
-          <table className="table">
-            <thead><tr><th>Name</th><th>Login</th><th>Device</th><th>Last seen</th><th className="num">Points</th><th /></tr></thead>
-            <tbody>
-              {data.map(s => (
-                <tr key={s.id} style={s.is_active ? undefined : { opacity: 0.55 }}>
-                  <td><strong>{s.name}</strong><div className="xs muted">{ROLES[s.role]}{s.phone && <> · <a href={telHref(s.phone)}>{s.phone}</a></>}</div></td>
-                  <td className="mono">{s.login_name}{!s.is_active && <div><span className="badge badge-danger">disabled</span></div>}</td>
-                  <td className="small">
-                    {s.signed_in ? <span className="badge badge-success">signed in</span> : <span className="badge badge-muted">signed out</span>}
-                    <div className="xs muted">{s.active_device_label || '—'}</div>
-                    {s.device_bound && <div className="xs">locked: {s.bound_device_label || 'device'} · {fmtDateTime(s.bound_at)}</div>}
-                  </td>
-                  <td className="small">{ago(s.last_seen_at)}</td>
-                  <td className="num"><span className="points-pill">{s.points}</span></td>
-                  <td>
-                    <div className="row wrap" style={{ justifyContent: 'flex-end' }}>
-                      <button className="btn btn-ghost btn-sm" onClick={() => setEditing(s)}>Edit</button>
-                      {s.device_bound && <button className="btn btn-secondary btn-sm" onClick={() => act(`/api/staff/${s.id}/release-device`, 'Device released — next sign-in binds the new phone')}>Release device</button>}
-                      {s.signed_in && <button className="btn btn-ghost btn-sm" onClick={() => act(`/api/staff/${s.id}/sign-out`, 'Signed out')}>Sign out</button>}
-                      <button className={`btn btn-sm ${s.is_active ? 'btn-danger' : 'btn-secondary'}`} onClick={() => act(`/api/staff/${s.id}`, s.is_active ? 'Disabled' : 'Enabled', { is_active: !s.is_active })}>{s.is_active ? 'Disable' : 'Enable'}</button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <>
+          <div className="table-wrap desktop-only-table">
+            <table className="table">
+              <thead><tr><th>Name</th><th>Login</th><th>Device</th><th>Last seen</th><th className="num">Points</th><th /></tr></thead>
+              <tbody>
+                {data.map(s => (
+                  <tr key={s.id} style={s.is_active ? undefined : { opacity: 0.55 }}>
+                    <td><strong>{s.name}</strong><div className="xs muted">{ROLES[s.role]}{s.phone && <> · <a href={telHref(s.phone)}>{s.phone}</a></>}</div></td>
+                    <td className="mono">{s.login_name}{!s.is_active && <div><span className="badge badge-danger">disabled</span></div>}</td>
+                    <td className="small">
+                      {s.signed_in ? <span className="badge badge-success">signed in</span> : <span className="badge badge-muted">signed out</span>}
+                      <div className="xs muted">{s.active_device_label || '—'}</div>
+                      {s.device_bound && <div className="xs">locked: {s.bound_device_label || 'device'} · {fmtDateTime(s.bound_at)}</div>}
+                    </td>
+                    <td className="small">{ago(s.last_seen_at)}</td>
+                    <td className="num"><span className="points-pill">{s.points}</span></td>
+                    <td>
+                      <div className="row wrap" style={{ justifyContent: 'flex-end' }}>
+                        <button className="btn btn-ghost btn-sm" onClick={() => setEditing(s)}>Edit</button>
+                        {s.device_bound && <button className="btn btn-secondary btn-sm" onClick={() => act(`/api/staff/${s.id}/release-device`, 'Device released — next sign-in binds the new phone')}>Release device</button>}
+                        {s.signed_in && <button className="btn btn-ghost btn-sm" onClick={() => act(`/api/staff/${s.id}/sign-out`, 'Signed out')}>Sign out</button>}
+                        <button className={`btn btn-sm ${s.is_active ? 'btn-danger' : 'btn-secondary'}`} onClick={() => act(`/api/staff/${s.id}`, s.is_active ? 'Disabled' : 'Enabled', { is_active: !s.is_active })}>{s.is_active ? 'Disable' : 'Enable'}</button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="phone-record-list mobile-only-records">
+            {data.map(s => (
+              <PhoneRecord
+                key={s.id}
+                title={s.name}
+                meta={[ROLES[s.role], s.phone, s.login_name].filter(Boolean).join(' · ')}
+                status={<span className={`badge ${s.is_active ? 'badge-success' : 'badge-muted'}`}>{s.is_active ? 'Active' : 'Disabled'}</span>}
+                amount={s.signed_in ? 'Signed in' : 'Signed out'}
+                amountTone={s.signed_in ? 'green' : 'yellow'}
+                primary={<button className="btn btn-secondary btn-sm" onClick={() => setEditing(s)}>Edit</button>}
+              >
+                <p className="xs muted">Points: <strong>{s.points}</strong> · Last seen: {ago(s.last_seen_at)}</p>
+                {s.device_bound && <p className="xs">Locked device: {s.bound_device_label || 'phone'}</p>}
+                <div className="row wrap" style={{ gap: 6, marginTop: 4 }}>
+                  {s.device_bound && <button className="btn btn-secondary btn-sm" onClick={() => act(`/api/staff/${s.id}/release-device`, 'Device released')}>Release device</button>}
+                  {s.signed_in && <button className="btn btn-ghost btn-sm" onClick={() => act(`/api/staff/${s.id}/sign-out`, 'Signed out')}>Sign out</button>}
+                  <button className={`btn btn-sm ${s.is_active ? 'btn-danger' : 'btn-secondary'}`} onClick={() => act(`/api/staff/${s.id}`, s.is_active ? 'Disabled' : 'Enabled', { is_active: !s.is_active })}>{s.is_active ? 'Disable' : 'Enable'}</button>
+                </div>
+              </PhoneRecord>
+            ))}
+          </div>
+        </>
       )}
       {editing && <StaffForm staff={editing.id ? editing : null} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); reload() }} />}
     </>

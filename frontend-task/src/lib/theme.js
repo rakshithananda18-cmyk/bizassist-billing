@@ -4,8 +4,8 @@ const KEY = 'task_theme'
 const BUSINESS_MODE_PREFIX = 'task_theme_v2:'
 const APPEARANCE_PREFIX = 'task_billing_appearance_v1:'
 const LEGACY_OWNER_KEY = 'task_theme_legacy_owner'
-const BILLING_CLOUD_URL = 'https://staterbill.com'
-const DEFAULT_BILLING_ORIGINS = ['https://staterbill.com', 'https://www.staterbill.com', 'https://bizassist-billing.vercel.app']
+const BILLING_CLOUD_URL = 'https://app.staterbill.com'
+const DEFAULT_BILLING_ORIGINS = ['https://app.staterbill.com', 'https://staterbill.com', 'https://www.staterbill.com', 'https://bizassist-billing.vercel.app']
 const MODES = new Set(['system', 'light', 'dark'])
 const TOKEN_NAMES = new Set([
   '--accent', '--accent-light', '--accent-hover', '--accent-solid', '--accent-solid-hover',
@@ -17,6 +17,8 @@ const TOKEN_NAMES = new Set([
   '--sidebar-surface', '--sidebar-text', '--sidebar-muted', '--sidebar-hover', '--sidebar-hover-text',
   '--sidebar-border', '--sidebar-active-bg', '--sidebar-active-text', '--theme-surface',
   '--theme-chrome', '--theme-chrome-text', '--theme-chrome-muted',
+  '--sidebar-active-bg-sub', '--sidebar-active-text-sub', '--page-selection-bg',
+  '--page-selection-text', '--page-selection-border', '--border-hairline',
 ])
 const REQUIRED_TOKENS = ['--bg', '--bg-2', '--accent', '--accent-solid', '--text-primary', '--sidebar-surface']
 let businessId = null
@@ -120,7 +122,9 @@ export function applyTheme(choice) {
   root.dataset.appearance = dark ? 'dark' : 'light'
   root.style.colorScheme = dark ? 'dark' : 'light'
   appliedTokens.forEach(name => root.style.removeProperty(name))
-  const tokens = readAppearance()?.[dark ? 'darkTokens' : 'lightTokens'] || {}
+  const appearance = readAppearance()
+  root.dataset.billingAppearance = appearance ? 'inherited' : 'default'
+  const tokens = appearance?.[dark ? 'darkTokens' : 'lightTokens'] || {}
   Object.entries(tokens).forEach(([name, value]) => root.style.setProperty(name, value))
   appliedTokens = new Set(Object.keys(tokens))
 }

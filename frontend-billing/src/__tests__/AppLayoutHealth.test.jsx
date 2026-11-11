@@ -1,5 +1,5 @@
 import React from 'react'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 
@@ -31,6 +31,56 @@ beforeEach(() => {
     String(url).endsWith('/health') ? { status: 'ok', db: 'connected', db_type: 'sqlite', version: '1.2.6' } : {} })))
 })
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks() })
+
+it('releases Sync now after acceptance even while the following status read is slow', async () => {
+  localStorage.setItem('bizassist_hosting_mode', 'hybrid')
+  setHostingPreference('owner', 'hybrid')
+  auth.value = { ...auth.value, settings: { general: { hosting_mode: 'hybrid' }, subscription: { plan: 'pro' } } }
+  let depthReads = 0
+  vi.stubGlobal('fetch', vi.fn(async url => ({
+    ok: true, status: 202, headers: { get: () => null },
+    json: () => {
+      if (String(url).endsWith('/api/sync/queue-depth')) {
+        depthReads++
+        if (depthReads > 1) return new Promise(() => {})
+        return Promise.resolve({ pending_count: 0, pull: { initialized: true } })
+      }
+      return Promise.resolve({})
+    },
+  })))
+  render(<MemoryRouter><AppLayout title="Home">Workspace</AppLayout></MemoryRouter>)
+  await waitFor(() => expect(depthReads).toBe(1))
+  fireEvent.click(screen.getByRole('button', { name: 'View server and sync health details' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Sync now', exact: true }))
+  await waitFor(() => expect(depthReads).toBeGreaterThan(1))
+  expect(screen.getByRole('button', { name: 'Sync now', exact: true })).toBeEnabled()
+  expect(screen.getByText(/Background sync requested/)).toBeInTheDocument()
+  expect(fetch.mock.calls.filter(([url]) => String(url).includes('/api/sync/flush?pull=true'))).toHaveLength(1)
+})
+
+it('does not apply a late previous-business restore response after its JSON finishes', async () => {
+  let finishPreviousJson
+  localStorage.setItem('bizassist_hosting_mode', 'hybrid')
+  auth.value = { ...auth.value, user: { id: 1, public_id: 'BIZ-FIRST', username: 'owner', role: 'owner' },
+    token: 'first-token', settings: { general: { hosting_mode: 'hybrid' }, subscription: { plan: 'pro' } } }
+  vi.stubGlobal('fetch', vi.fn(async (url, options) => {
+    const depth = String(url).endsWith('/api/sync/queue-depth')
+    return { ok: true, headers: { get: () => null }, json: () => {
+      if (depth && options?.headers?.Authorization === 'Bearer first-token') {
+        return new Promise(resolve => { finishPreviousJson = resolve })
+      }
+      return Promise.resolve(depth ? { pending_count: 0, pull: { initialized: true, initial_restore_pending: false, has_more: false } } : {})
+    } }
+  }))
+  const app = () => <MemoryRouter><AppLayout title="Home">Workspace</AppLayout></MemoryRouter>
+  const view = render(app())
+  await waitFor(() => expect(finishPreviousJson).toBeTypeOf('function'))
+  auth.value = { ...auth.value, user: { id: 2, public_id: 'BIZ-SECOND', username: 'second', role: 'owner' }, token: 'second-token' }
+  view.rerender(app())
+  await waitFor(() => expect(fetch.mock.calls.some(([, options]) => options?.headers?.Authorization === 'Bearer second-token')).toBe(true))
+  await act(async () => { finishPreviousJson({ pending_count: 99, pull: { initial_restore_pending: true, has_more: true } }) })
+  expect(screen.queryAllByText(/Restoring cloud data/)).toHaveLength(0)
+})
 
 it('opens server health in Local mode only when requested and restores keyboard focus on close', async () => {
   render(<MemoryRouter><AppLayout title="Home">Workspace</AppLayout></MemoryRouter>)

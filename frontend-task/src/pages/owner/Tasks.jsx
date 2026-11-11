@@ -5,6 +5,7 @@ import { INVOICE_TASK_TYPES, summarizeInvoices } from '../../lib/invoices'
 import { billingStatus } from '../../lib/collections'
 import InvoicePicker from '../../components/InvoicePicker'
 import CollectionBalance from '../../components/CollectionBalance'
+import PhoneRecord from '../../components/PhoneRecord'
 import { Empty, ErrorNote, Loader, Modal, PageHeader, StatusBadge, useLoad, useToast } from '../../components/ui'
 
 function NewTask({ onClose, onSaved }) {
@@ -101,32 +102,64 @@ export default function Tasks() {
       </PageHeader>
       <ErrorNote error={error} />
       {loading && !data ? <Loader /> : !data?.length ? <Empty>No {status} tasks.</Empty> : (
-        <div className="table-wrap">
-          <table className="table">
-            <thead><tr><th>Task</th><th>Who</th><th>Shop</th><th>Due</th><th>Status</th><th className="num">Points</th><th /></tr></thead>
-            <tbody>
-              {data.map(t => (
-                <tr key={t.id}>
-                  <td><strong>{t.title}</strong><div className="xs muted">{TASK_TYPES[t.task_type]}
+        <>
+          <div className="table-wrap desktop-only-table">
+            <table className="table">
+              <thead><tr><th>Task</th><th>Who</th><th>Shop</th><th>Due</th><th>Status</th><th className="num">Points</th><th /></tr></thead>
+              <tbody>
+                {data.map(t => (
+                  <tr key={t.id}>
+                    <td><strong>{t.title}</strong><div className="xs muted">{TASK_TYPES[t.task_type]}
+                      {t.boxes_planned != null && ` · ${t.boxes_delivered ?? 0}/${t.boxes_planned} boxes`}
+                      {t.status === 'done' && t.amount_collected != null && ` · collected ${rupees(t.amount_collected)}`}
+                      {t.status === 'done' && t.amount_expected != null && ` · planned ${rupees(t.amount_expected)}`}</div>
+                      <CollectionBalance task={t} />
+                      {t.invoices?.length > 0 && <div className="xs muted">Bills: {t.invoices.map(x => x.number).join(', ')}</div>}
+                      {t.payment_mode && <div className="xs muted">{t.payment_mode}{t.payment_ref ? ` · ${t.payment_ref}` : ''}</div>}
+                      {billingStatus(t) && <div><span className={`badge badge-${billingStatus(t).tone}`}>{billingStatus(t).text}</span></div>}
+                      {t.completion_note && <div className="xs">“{t.completion_note}”</div>}</td>
+                    <td>{t.staff_name || '—'}</td>
+                    <td>{t.shop_name || '—'}</td>
+                    <td className="small">{fmtDateTime(t.due_at)}{t.overdue && <div><span className="badge badge-danger">overdue</span></div>}</td>
+                    <td><StatusBadge status={t.status} />{t.completed_at && <div className="xs muted">{fmtDateTime(t.completed_at)}{t.on_time === false && ' · late'}</div>}</td>
+                    <td className="num">{t.status === 'done' ? `+${t.points_awarded}` : t.points}</td>
+                    <td>{t.status === 'pending' && <button className="btn btn-ghost btn-sm" onClick={() => cancel(t)}>Cancel</button>}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="phone-record-list mobile-only-records">
+            {data.map(t => {
+              const amountVal = t.status === 'done'
+                ? (t.amount_collected != null ? rupees(t.amount_collected) : `+${t.points_awarded} pts`)
+                : (t.amount_expected != null ? rupees(t.amount_expected) : `${t.points || 0} pts`)
+              const tone = t.status === 'done' ? 'green' : (t.overdue ? 'red' : 'yellow')
+
+              return (
+                <PhoneRecord
+                  key={t.id}
+                  title={t.title}
+                  meta={[t.staff_name, t.shop_name, fmtDateTime(t.due_at)].filter(Boolean).join(' · ')}
+                  status={<StatusBadge status={t.status} />}
+                  amount={amountVal}
+                  amountTone={tone}
+                  primary={t.status === 'pending' ? <button className="btn btn-ghost btn-sm" onClick={() => cancel(t)}>Cancel</button> : null}
+                >
+                  <p className="xs muted">{TASK_TYPES[t.task_type]}
                     {t.boxes_planned != null && ` · ${t.boxes_delivered ?? 0}/${t.boxes_planned} boxes`}
                     {t.status === 'done' && t.amount_collected != null && ` · collected ${rupees(t.amount_collected)}`}
-                    {t.status === 'done' && t.amount_expected != null && ` · planned ${rupees(t.amount_expected)}`}</div>
-                    <CollectionBalance task={t} />
-                    {t.invoices?.length > 0 && <div className="xs muted">Bills: {t.invoices.map(x => x.number).join(', ')}</div>}
-                    {t.payment_mode && <div className="xs muted">{t.payment_mode}{t.payment_ref ? ` · ${t.payment_ref}` : ''}</div>}
-                    {billingStatus(t) && <div><span className={`badge badge-${billingStatus(t).tone}`}>{billingStatus(t).text}</span></div>}
-                    {t.completion_note && <div className="xs">“{t.completion_note}”</div>}</td>
-                  <td>{t.staff_name || '—'}</td>
-                  <td>{t.shop_name || '—'}</td>
-                  <td className="small">{fmtDateTime(t.due_at)}{t.overdue && <div><span className="badge badge-danger">overdue</span></div>}</td>
-                  <td><StatusBadge status={t.status} />{t.completed_at && <div className="xs muted">{fmtDateTime(t.completed_at)}{t.on_time === false && ' · late'}</div>}</td>
-                  <td className="num">{t.status === 'done' ? `+${t.points_awarded}` : t.points}</td>
-                  <td>{t.status === 'pending' && <button className="btn btn-ghost btn-sm" onClick={() => cancel(t)}>Cancel</button>}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+                    {t.status === 'done' && t.amount_expected != null && ` · planned ${rupees(t.amount_expected)}`}</p>
+                  <CollectionBalance task={t} />
+                  {t.invoices?.length > 0 && <p className="xs muted">Bills: {t.invoices.map(x => x.number).join(', ')}</p>}
+                  {t.payment_mode && <p className="xs muted">{t.payment_mode}{t.payment_ref ? ` · ${t.payment_ref}` : ''}</p>}
+                  {t.completion_note && <p className="xs">“{t.completion_note}”</p>}
+                </PhoneRecord>
+              )
+            })}
+          </div>
+        </>
       )}
       {adding && <NewTask onClose={() => setAdding(false)} onSaved={() => { setAdding(false); reload() }} />}
     </>

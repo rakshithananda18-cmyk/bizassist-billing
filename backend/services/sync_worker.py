@@ -3,11 +3,10 @@ services/sync_worker.py
 =======================
 Phase 2 Background Sync worker — runs on the SQLite local client.
 
-PUSH-ONLY by default: it pushes local mutations up to the cloud (backup /
-local→cloud). It does **not** auto-pull cloud data down, because cloud data is
-subscription-gated — a cloud→local data sync is an explicit user action
-("Back up now") or part of a migration. The pull path still exists in
-`sync_business(..., do_pull=True)` for those deliberate, gated cases.
+Local + Cloud businesses push queued mutations and pull committed cloud pages
+in the background. Verified Pro activation queues the first restore; subsequent
+pages and ordinary updates resume through the scheduler. Local-only businesses
+never enter this worker, even if an older task was already queued.
 """
 
 import logging
@@ -545,6 +544,21 @@ def _release_push(business_id: int) -> None:
     with _PUSH_INFLIGHT_LOCK:
         _PUSH_INFLIGHT.pop(business_id, None)
 
+
+def _hybrid_sync_enabled(business_id: int) -> bool:
+    """Read committed device consent independently of a long-running sync session."""
+    if engine.dialect.name != "sqlite":
+        return False
+    try:
+        with SessionLocal() as mode_db:
+            raw = (mode_db.query(User.settings)
+                   .filter(User.id == business_id, User.parent_business_id.is_(None)).scalar())
+            general = (json.loads(raw or "{}") or {}).get("general") or {}
+            return general.get("hosting_mode") == "hybrid"
+    except Exception as exc:
+        logger.warning("[SYNC_WORKER] Could not verify hosting mode for business %s: %s; nothing sent", business_id, exc)
+        return False
+
 # IMPORTANT: The local backend and HF Space MUST share the same JWT_SECRET env variable.
 # If they differ, the sync worker's locally-signed tokens will be rejected by the cloud
 # with HTTP 401 "Invalid token". Set JWT_SECRET to the same value in both:
@@ -587,6 +601,7 @@ def _resolve_token_file() -> _Path:
 
 
 _TOKEN_FILE = _resolve_token_file()
+_TOKEN_STORE_LOCK = threading.RLock()
 
 # Last reported state of the store, so the line below is logged when the answer
 # CHANGES rather than on every read. `_load_token_map` runs on each sync tick
@@ -626,6 +641,8 @@ def _load_token_map() -> Dict[str, str]:
         return {}
     try:
         m = json.loads(_TOKEN_FILE.read_text(encoding="utf-8"))
+        if not isinstance(m, dict) or any(not isinstance(k, str) or not isinstance(v, str) for k, v in m.items()):
+            raise ValueError("Invalid cloud token store structure")
     except Exception as e:
         _note_store_state(
             "unreadable", logger.error,
@@ -640,17 +657,39 @@ def _load_token_map() -> Dict[str, str]:
     return m
 
 
-def _save_token_map(m: Dict[str, str]) -> None:
+def _save_token_map(m: Dict[str, str]) -> bool:
+    import tempfile
+    temporary = None
     try:
-        _TOKEN_FILE.write_text(json.dumps(m), encoding="utf-8")
+        # Never truncate a working credential file on a failed write/restart.
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=_TOKEN_FILE.parent,
+                                         prefix=".cloud-sync-", suffix=".tmp", delete=False) as stream:
+            temporary = stream.name
+            json.dump(m, stream)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, _TOKEN_FILE)
+        temporary = None
+        return True
     except Exception as e:
         logger.warning("[SYNC_WORKER] Could not persist cloud token map: %s", e)
+        return False
+    finally:
+        if temporary:
+            try:
+                os.unlink(temporary)
+            except OSError:
+                pass
 
 
 def store_cloud_token(business_id: int, token: str) -> None:
-    m = _load_token_map()
-    m[str(business_id)] = token
-    _save_token_map(m)
+    with _TOKEN_STORE_LOCK:
+        m = _load_token_map()
+        if _TOKEN_FILE.exists() and _TOKEN_STORE_LAST_STATE == "unreadable":
+            raise OSError("Existing cloud credential store could not be read")
+        m[str(business_id)] = token
+        if not _save_token_map(m):
+            raise OSError("Cloud sync credential could not be saved")
     # A fresh cloud-issued token clears the self-signed backoff and any Pro-plan
     # pause — a re-login is exactly how an upgraded account resumes sync.
     _SELF_SIGNED_REJECTED.pop(business_id, None)
@@ -665,13 +704,13 @@ def _get_cloud_token(business_id: int) -> Optional[str]:
 
 def _invalidate_cloud_token(business_id: int):
     """Drop a rejected/expired cloud token — the next owner login provisions a fresh one."""
-    m = _load_token_map()
-    if m.pop(str(business_id), None) is not None:
-        _save_token_map(m)
-        logger.info(
-            "[SYNC_WORKER] Cloud token invalidated for business %s — refreshes on next login",
-            business_id,
-        )
+    with _TOKEN_STORE_LOCK:
+        m = _load_token_map()
+        if m.pop(str(business_id), None) is not None and _save_token_map(m):
+            logger.info(
+                "[SYNC_WORKER] Cloud token invalidated for business %s — refreshes on next login",
+                business_id,
+            )
 
 # ── Sliding refresh of the stored cloud token ────────────────────────────────
 # The cloud token is a normal 24 h access token, and until now it was ONLY ever
@@ -790,7 +829,15 @@ def ensure_fresh_cloud_token(business_id: int) -> Optional[str]:
         _defer_refresh(business_id)
         return token
 
-    store_cloud_token(business_id, fresh)
+    try:
+        store_cloud_token(business_id, fresh)
+    except OSError as exc:
+        # The existing credential was not replaced. Keep using that still-valid
+        # token and retry persistence later instead of breaking a B2B request or
+        # claiming the new credential survived a restart.
+        _defer_refresh(business_id)
+        logger.warning("[SYNC_WORKER] Could not save refreshed credential for business %s: %s", business_id, exc)
+        return token
     _REFRESH_BACKOFF.pop(business_id, None)
     _REFRESH_FAILURES.pop(business_id, None)
     logger.info("[SYNC_WORKER] Cloud token refreshed for business %s (slid before expiry)", business_id)
@@ -868,6 +915,8 @@ def run_hybrid_sync():
                 general = s.get("general", {})
                 hosting_mode = general.get("hosting_mode")
                 if hosting_mode != "hybrid":
+                    from services import cloud_listener
+                    cloud_listener.stop(user.id)
                     continue
 
                 # Check dynamic sync interval
@@ -915,7 +964,9 @@ def run_hybrid_sync():
 
                 last_run = _LAST_RUN.get(business_id)
                 now = utc_now()
-                if last_run and (now - last_run).total_seconds() < sync_interval:
+                initial_pull_pending = general.get("sync_bootstrap_pending") is True
+                if (last_run and (now - last_run).total_seconds() < sync_interval
+                        and not initial_pull_pending and business_id not in _PULL_MORE_PENDING):
                     continue
 
                 # Idle-skip: if this business has nothing queued, do NOT probe the
@@ -955,8 +1006,10 @@ def run_hybrid_sync():
                     last_pull = now
 
                 due_for_pull = (
-                    pull_enabled
+                    (pull_enabled or initial_pull_pending)
                     and (
+                        initial_pull_pending
+                        or
                         (now - last_pull).total_seconds() >= pull_interval
                         # A truncated page means the cloud has more waiting RIGHT
                         # NOW. Waiting out the full interval between pages would
@@ -2167,6 +2220,8 @@ def _cloud_parity_check(db: Session, business_id: int) -> dict:
 def sync_business(db: Session, user: User, interval: int = 30, force: bool = False, do_pull: bool = False):
     """Guarded entry point: ensures only one push runs per business at a time."""
     business_id = user.id
+    if not _hybrid_sync_enabled(business_id):
+        return
     if not _try_acquire_push(business_id):
         logger.debug(
             "[SYNC_WORKER] push already in-flight for business_id=%s — skipping this cycle",
@@ -2894,6 +2949,8 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
         total_pushed = 0
         total_pairs  = len(pairs)
         for start in range(0, total_pairs, _PUSH_CHUNK_SIZE):
+            if not _hybrid_sync_enabled(business_id):
+                return
             chunk = pairs[start:start + _PUSH_CHUNK_SIZE]
             chunk_changes = [c for (_it, c) in chunk]
 
@@ -3304,6 +3361,8 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
     # do_pull=True directly.
     if not do_pull:
         return
+    if not _hybrid_sync_enabled(business_id):
+        return
 
     # The cloud has already refused this business's credentials and the token was
     # dropped. Only an owner login can mint another (`store_cloud_token` clears
@@ -3324,7 +3383,9 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
         # caused freshly-updated cloud rows to be silently skipped. On first run
         # after a restart we fall back to the last successful SyncLog timestamp.
         last_sync_str = _get_pull_cursor(db, business_id)
-        if not last_sync_str:
+        initial_restore_pending = ((json.loads(user.settings or "{}").get("general") or {})
+                                   .get("sync_bootstrap_pending") is True)
+        if not last_sync_str and not initial_restore_pending:
             last_success = (
                 db.query(SyncLog)
                 .filter(SyncLog.business_id == business_id, SyncLog.status == "success")
@@ -3340,6 +3401,11 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
             params["cursor"] = last_sync_str
 
         resp = httpx.get(f"{CLOUD_URL}/api/sync/pull", params=params, headers=headers, timeout=_PULL_TIMEOUT)
+        # A local-only choice made while the network request was outstanding
+        # wins. Keep the cursor so this page can safely replay if sync is enabled
+        # again; do not restore records after that choice has been committed.
+        if not _hybrid_sync_enabled(business_id):
+            return
         if resp.status_code == 401:
             # Drop the dead token, THEN stop asking. `_invalidate_cloud_token`
             # removes it entirely, and `ensure_fresh_cloud_token` returns None
@@ -3747,6 +3813,29 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
                 "[SYNC_WORKER] biz=%s: inbox drain failed (non-fatal, retried "
                 "next cycle): %s", business_id, _inbox_err,
             )
+
+        # A clean outbox is not proof that the initial cloud restore finished.
+        # Only clear its durable marker after the final page and every held row
+        # are applied, and the matching pull cursor has persisted successfully.
+        if _cloud_cursor and not _pull_has_more and not _pull_failed_tables:
+            from database.models import SyncCursor
+            remaining = _inbox.stats(db, business_id)
+            stored_cursor = (db.query(SyncCursor)
+                             .filter(SyncCursor.business_id == business_id, SyncCursor.entity == "*").first())
+            if remaining.get("pending_count", 0) == 0 and stored_cursor and stored_cursor.cursor_value == _cloud_cursor:
+                db.refresh(user, attribute_names=["settings"])
+                settings_before_completion = user.settings
+                current_settings = json.loads(user.settings or "{}")
+                current_general = current_settings.get("general") or {}
+                if current_general.get("hosting_mode") == "hybrid" and current_general.get("sync_bootstrap_pending") is True:
+                    current_general["sync_bootstrap_pending"] = False
+                    current_settings["general"] = current_general
+                    # Completing a download must never overwrite a Local-only
+                    # choice committed after the refresh above.
+                    (db.query(User)
+                     .filter(User.id == business_id, User.settings == settings_before_completion)
+                     .update({User.settings: json.dumps(current_settings)}, synchronize_session=False))
+                    db.commit()
 
     except Exception as e:
         logger.error("[SYNC_WORKER] Pull failed for business_id=%s: %s", business_id, e)

@@ -6,6 +6,7 @@ import { AuthProvider } from './lib/auth'
 import { ToastProvider } from './components/ui'
 import { applyTheme, getTheme } from './lib/theme'
 import './styles.css'
+import './billing-alignment.css'
 
 applyTheme(getTheme())
 window.matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', () => applyTheme(getTheme()))

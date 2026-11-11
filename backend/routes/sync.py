@@ -234,11 +234,38 @@ def _resolve_business_id_by_username(user: dict, db: Session, require_public_id:
 
 class CloudTokenBody(BaseModel):
     token: str
+    enable_sync: bool = False
+
+
+def _read_verified_cloud_document(path: str, token: str) -> dict:
+    """Only the configured cloud authority may attest a desktop credential."""
+    import httpx
+    from core.cloud_endpoint import CLOUD_URL
+    try:
+        response = httpx.get(
+            f"{CLOUD_URL}{path}",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=5.0,
+        )
+    except httpx.HTTPError:
+        raise HTTPException(503, "Cloud sync verification is temporarily unavailable. It will be retried.") from None
+    if response.status_code in (401, 403):
+        raise HTTPException(401, "The cloud session could not be verified. Sign in again to reconnect sync.")
+    if response.status_code != 200:
+        raise HTTPException(503, "Cloud sync verification is temporarily unavailable. It will be retried.")
+    try:
+        document = response.json()
+    except (ValueError, TypeError):
+        document = None
+    if not isinstance(document, dict):
+        raise HTTPException(503, "The cloud verification response was incomplete. It will be retried.")
+    return document
 
 
 @router.post("/api/sync/cloud-token")
 def save_cloud_token(
     body: CloudTokenBody,
+    background_tasks: BackgroundTasks,
     current_user: dict = Depends(require_business_owner),
     db: Session = Depends(get_db),
 ):
@@ -250,9 +277,82 @@ def save_cloud_token(
     here. The sync worker uses it for pushes — replacing the shared-JWT_SECRET
     requirement (a leaked token exposes one business for ≤24 h, not every install).
     """
-    from services.sync_worker import store_cloud_token
-    business_id = _resolve_business_id_by_username(current_user, db)
-    store_cloud_token(business_id, body.token)
+    from services.sync_worker import store_cloud_token, trigger_sync_run
+    from database.models import SyncCursor
+    if db.get_bind().dialect.name != "sqlite":
+        raise HTTPException(409, "Cloud sync credentials can only be provisioned on a local device.")
+    business_id = _resolve_business_id_by_username(current_user, db, require_public_id=True)
+    owner = db.query(User).filter(User.id == business_id, User.parent_business_id.is_(None)).first()
+    if owner is None:
+        raise HTTPException(404, "Local business owner not found.")
+    try:
+        initial_general = json.loads(owner.settings or "{}").get("general") or {}
+        initial_mode_revision = initial_general.get("sync_mode_revision", 0)
+    except (ValueError, TypeError, AttributeError):
+        raise HTTPException(409, "Local business settings could not be read. Nothing was changed.") from None
+
+    # Even a store-only request must not replace this business's working token
+    # with a credential belonging to a different tenant or a staff identity.
+    profile = _read_verified_cloud_document("/profile", body.token)
+    cloud_bizid = (profile.get("public_id") or "").strip()
+    if (not cloud_bizid or cloud_bizid != (owner.public_id or "").strip()
+            or (profile.get("role") or "").lower() not in {"enterprise", "owner", "admin"}):
+        raise HTTPException(409, "The cloud session belongs to a different business or is not its owner.")
+
+    subscription = None
+    if body.enable_sync:
+        from types import SimpleNamespace
+        from services.admin_service import effective_plan
+        cloud_settings = _read_verified_cloud_document("/settings", body.token)
+        subscription = cloud_settings.get("subscription")
+        if not isinstance(subscription, dict):
+            raise HTTPException(503, "Cloud subscription verification was incomplete. It will be retried.")
+        if effective_plan(SimpleNamespace(settings=json.dumps({"subscription": subscription}))) != "pro":
+            raise HTTPException(402, "Local + Cloud sync requires an active Pro plan.")
+
+    # Verification performs no local writes. Re-read after the network round
+    # trips so unrelated settings saved in the meantime are preserved.
+    db.refresh(owner, attribute_names=["settings", "public_id"])
+    if cloud_bizid != (owner.public_id or "").strip():
+        raise HTTPException(409, "The local business identity changed. Sign in again to reconnect sync.")
+    try:
+        current_settings_raw = owner.settings
+        settings = json.loads(owner.settings or "{}")
+        general = settings.setdefault("general", {})
+        if not isinstance(settings, dict) or not isinstance(general, dict):
+            raise ValueError("invalid settings")
+    except (ValueError, TypeError, AttributeError):
+        raise HTTPException(409, "Local business settings could not be read. Nothing was changed.") from None
+    if body.enable_sync and general.get("sync_mode_revision", 0) != initial_mode_revision:
+        raise HTTPException(409, "The storage choice changed while sync was starting. Your latest choice was kept.")
+
+    # The verified credential is durable before hybrid mode can wake a worker.
+    # If the settings commit fails, the token still names this same business;
+    # no work is queued and the old hosting mode remains in force.
+    try:
+        store_cloud_token(business_id, body.token)
+    except OSError:
+        raise HTTPException(503, "This device could not save its cloud credential. Check device storage and try again.") from None
+    if body.enable_sync:
+        cursor = db.query(SyncCursor).filter(SyncCursor.business_id == business_id, SyncCursor.entity == "*").first()
+        initial_pending = general.get("sync_bootstrap_pending") is True or not (
+            cursor and (cursor.cursor_value or "").startswith("feed:v2:"))
+        general["hosting_mode"] = "hybrid"
+        general["sync_bootstrap_pending"] = initial_pending
+        settings["subscription"] = subscription
+        # A choice from another process/tab must also win after verification.
+        # Compare-and-set the complete latest settings instead of overwriting a
+        # concurrent Local-only save (including Local -> Local confirmations).
+        changed = (db.query(User)
+                   .filter(User.id == business_id, User.settings == current_settings_raw)
+                   .update({User.settings: json.dumps(settings)}, synchronize_session=False))
+        if changed != 1:
+            db.rollback()
+            raise HTTPException(409, "Business settings changed while sync was starting. Your latest choice was kept.")
+        db.commit()
+        background_tasks.add_task(trigger_sync_run, business_id, pull=True)
+        return {"status": "ok", "hosting_mode": "hybrid", "sync_started": True,
+                "initial_restore_pending": initial_pending}
     return {"status": "ok"}
 
 
@@ -1209,7 +1309,19 @@ def get_queue_depth(
                        "stuck_count": 0, "deferred_count": 0, "rejected_count": 0}
 
     from services.control_outbox import control_status
+    from services import sync_worker
+    from database.models import SyncCursor
+    owner = db.query(User).filter(User.id == business_id).first()
+    try:
+        general = (json.loads(owner.settings or "{}").get("general") or {}) if owner else {}
+        initial_restore_pending = general.get("sync_bootstrap_pending") is True
+    except (ValueError, TypeError, AttributeError):
+        initial_restore_pending = True  # Unreadable is not evidence of a completed restore.
+    cursor = db.query(SyncCursor).filter(SyncCursor.business_id == business_id, SyncCursor.entity == "*").first()
     return {
+        "pull": {"initialized": bool(cursor and (cursor.cursor_value or "").startswith("feed:v2:")) and not initial_restore_pending,
+                 "initial_restore_pending": initial_restore_pending,
+                 "has_more": business_id in sync_worker._PULL_MORE_PENDING},
         "control_outbox": control_status(db, business_id),
         "pending_count":  pending_count,
         "entity_counts":  entity_counts,   # {"invoices": 3, "customers": 1, ...}

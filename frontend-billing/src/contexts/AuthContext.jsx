@@ -384,7 +384,7 @@ export function AuthProvider({ children }) {
       try {
         const mode = (typeof localStorage !== 'undefined' && localStorage.getItem('bizassist_hosting_mode')) || 'local'
         if (mode === 'hybrid') {
-          await fetch(`${CLOUD_URL}/settings`, {
+          void authFetchWithTimeout(`${CLOUD_URL}/settings`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
             body: JSON.stringify({ general: { hosting_mode: 'hybrid' } }),
@@ -397,6 +397,33 @@ export function AuthProvider({ children }) {
       return null
     }
   }, [])
+
+  const _startVerifiedSync = useCallback((localToken, cloudToken, {
+    generation = authGeneration.current,
+    modeEpoch = modeGeneration.current,
+    source = 'login',
+  } = {}) => {
+    const backend = API_BASE
+    const current = () => generation === authGeneration.current
+      && modeEpoch === modeGeneration.current && !modeChangePending.current
+      && tokenStorage.getItem('billing_token') === localToken && API_BASE === backend
+    return reconcileBizIdOnLogin(localToken, cloudToken, {
+      source, isCurrent: current,
+      runModeWrite: operation => {
+        const write = modeWrites.current.catch(() => {}).then(() => current() ? operation() : null)
+        modeWrites.current = write.catch(() => {})
+        return write
+      },
+    })
+  }, [])
+
+  const _prepareLoginSync = useCallback((username, password, localToken, cloudToken = null, source = 'login') => {
+    // Capture before provisioning: a delayed cloud reply from an earlier login
+    // must not activate sync for a later account or override Local-only.
+    const fence = { generation: authGeneration.current, modeEpoch: modeGeneration.current, source }
+    return _provisionCloudSyncToken(username, password, localToken, cloudToken)
+      .then(provisioned => _startVerifiedSync(localToken, provisioned, fence))
+  }, [_provisionCloudSyncToken, _startVerifiedSync])
 
   const login = useCallback(async (username, password) => {
     logger.info('Attempting login for username:', username)
@@ -424,8 +451,7 @@ export function AuthProvider({ children }) {
       // BizID identity check WITH that cloud token. Never send a locally
       // signed JWT to the cloud — its JWT_SECRET differs on packaged installs,
       // so the cloud would (correctly) reject it with 401 "Invalid token".
-      _provisionCloudSyncToken(username, password, data.token || data.access_token)
-        .then(cloudTok => reconcileBizIdOnLogin(data.token || data.access_token, cloudTok))
+      _prepareLoginSync(username, password, data.token || data.access_token)
       return
     }
 
@@ -463,8 +489,7 @@ export function AuthProvider({ children }) {
               const retryData = await retryRes.json()
               logger.info('[LOGIN] Local password reconciled with cloud and login successful.')
               _saveSession(retryData)
-              _provisionCloudSyncToken(username, password, retryData.token || retryData.access_token, cloudData.token)
-                .then(cloudTok => reconcileBizIdOnLogin(retryData.token || retryData.access_token, cloudTok))
+              _prepareLoginSync(username, password, retryData.token || retryData.access_token, cloudData.token)
               return
             }
           } else {
@@ -484,8 +509,7 @@ export function AuthProvider({ children }) {
                 const reclaimData = await reclaimRes.json()
                 logger.info('[LOGIN] Orphan reclaimed onto new cloud BizID — logged in locally.')
                 _saveSession(reclaimData)
-                _provisionCloudSyncToken(username, password, reclaimData.token || reclaimData.access_token, cloudData.token)
-                  .then(cloudTok => reconcileBizIdOnLogin(reclaimData.token || reclaimData.access_token, cloudTok))
+                _prepareLoginSync(username, password, reclaimData.token || reclaimData.access_token, cloudData.token)
                 return
               }
               const reclaimErr = await reclaimRes.json().catch(() => ({}))
@@ -505,13 +529,11 @@ export function AuthProvider({ children }) {
           })
           if (mirror.ok) {
             const localData = await mirror.json()
-            logger.info(`[LOGIN] Fresh device — local mirror created (BizID ${cloudData.public_id}). Data is gated; use "Cloud → Local Sync" to pull it.`)
+            logger.info(`[LOGIN] Fresh device — local mirror created (BizID ${cloudData.public_id}); preparing background cloud restore.`)
             _saveSession(localData)
-            // Sense divergence and pop the "Cloud → Local Sync" nudge — on a fresh
-            // device the cloud always has more, so this surfaces the data popup.
-            reconcileBizIdOnLogin(localData.token || localData.access_token, cloudData.token)
-            // We already hold a fresh cloud token from the fresh-device login — store it.
-            _provisionCloudSyncToken(username, password, localData.token || localData.access_token, cloudData.token)
+            // Provision first, then verify and schedule the durable worker. No
+            // popup races a missing cloud token on a fresh installation.
+            _prepareLoginSync(username, password, localData.token || localData.access_token, cloudData.token, 'device-restore')
             return
           }
           logger.error(`[LOGIN] Cloud login ok but local mirror failed: HTTP ${mirror.status}`)
@@ -527,7 +549,7 @@ export function AuthProvider({ children }) {
     const err = await res.json().catch(() => ({}))
     logger.error('Login request failed with status:', res.status, err.detail)
     throw new Error([400, 401, 403].includes(res.status) ? 'Wrong username or password.' : readableError(res.status, res.headers?.get?.('content-type'), err))
-  }, [_saveSession, _provisionCloudSyncToken])
+  }, [_saveSession, _prepareLoginSync])
 
   // Staff login (§9.5): staff never use a global username — authenticate scoped to
   // the business owner (owner username + per-business counter/staff name + password).
@@ -1234,9 +1256,8 @@ export function AuthProvider({ children }) {
 
   // ── Free → Pro, without a re-login ────────────────────────────────────────
   // The plan arriving is not the same as the app reacting to it. Cloud sync
-  // becomes available at this moment, and the divergence check that offers to
-  // move the backlog runs only at login — so an owner who had just paid saw
-  // nothing happen and had to sign out and back in to collect what they bought.
+  // becomes available at this moment; activate the verified background worker
+  // so an owner who has just paid does not need to sign in again.
   //
   // Only the free → pro EDGE — see utils/planTransition for the three ways
   // "no" is the right answer here.
@@ -1247,15 +1268,14 @@ export function AuthProvider({ children }) {
     prevPlanRef.current = plan
     if (!token || !isUpgradeToPro(prev, plan)) return
 
-    logger.info('[AuthContext] plan upgraded to Pro — re-running the cloud divergence check')
-    // The nudge snoozes itself for 4h; an upgrade is exactly the event that
-    // should clear it. SyncNudgeModal owns that key and listens for this.
+    logger.info('[AuthContext] plan upgraded to Pro — preparing background cloud sync')
+    // Other plan-aware surfaces can refresh without interrupting this session.
     window.dispatchEvent(new CustomEvent('plan-upgraded'))
 
     let cloudTok = null
     try { cloudTok = localStorage.getItem('bizassist_cloud_token') } catch { /* ignore */ }
-    reconcileBizIdOnLogin(token, cloudTok)
-  }, [settings?.subscription?.plan, token])
+    _startVerifiedSync(token, cloudTok)
+  }, [settings?.subscription?.plan, token, _startVerifiedSync])
 
   useEffect(() => {
     const handleUnauthorized = () => {

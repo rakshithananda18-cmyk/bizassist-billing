@@ -809,6 +809,97 @@ describe('Desktop Pro hosting preference', () => {
   })
 })
 
+describe('Cloud-backed owner login background restore', () => {
+  const json = (body, status = 200) => ({ ok: status >= 200 && status < 300, status, json: async () => body, clone() { return this } })
+  async function mountFreshOwner({ onProvision, onActivate, onLocalMode } = {}) {
+    mockSettings = { general: { hosting_mode: 'hybrid' }, subscription: { plan: 'pro' } }
+    mockProfile = { public_id: 'BA-NEW', is_premium: true, plan: 'pro' }
+    const fetch = vi.fn((url, options) => {
+      const path = String(url)
+      if (path === 'http://local-backend/login') return Promise.resolve(json({ detail: 'No local account' }, 401))
+      if (path === 'http://cloud-backend/login') return Promise.resolve(json({ token: 'verified-cloud-token', id: 1, username: 'owner1', public_id: 'BA-NEW', role: 'enterprise' }))
+      if (path === 'http://local-backend/api/auth/reconcile_local') return Promise.resolve(json({ detail: 'Local account not found' }, 404))
+      if (path === 'http://local-backend/signup') return Promise.resolve(json({ token: 'local-owner-token', id: 2, username: 'owner1', public_id: 'BA-NEW', role: 'enterprise' }))
+      if (path === 'http://local-backend/api/sync/cloud-token') {
+        const body = JSON.parse(options.body)
+        if (body.enable_sync) return onActivate?.(body) || Promise.resolve(json({ hosting_mode: 'hybrid', sync_started: true, initial_restore_pending: true }))
+        return onProvision?.(body) || Promise.resolve(json({ status: 'ok' }))
+      }
+      if (path === 'http://local-backend/settings' && options?.method === 'PUT') {
+        const mode = JSON.parse(options.body).general.hosting_mode
+        onLocalMode?.(mode)
+        return Promise.resolve(json({ status: 'ok' }))
+      }
+      return globalMockFetch(url, options)
+    })
+    vi.stubGlobal('fetch', fetch)
+    const actionRef = React.createRef()
+    render(<AuthProvider><AuthTestConsumer actionRef={actionRef} /></AuthProvider>)
+    await waitFor(() => expect(actionRef.current).not.toBeNull())
+    return { auth: actionRef, fetch }
+  }
+
+  it('lets a fresh-device owner sign in while provisioning, then starts restore only after provisioning succeeds', async () => {
+    let finishProvision
+    const activation = vi.fn()
+    const { auth, fetch } = await mountFreshOwner({
+      onProvision: () => new Promise(resolve => { finishProvision = () => resolve(json({ status: 'ok' })) }),
+      onActivate: activation,
+    })
+    await act(async () => { await auth.current.login('owner1', 'Password123!') })
+    expect(auth.current.user.public_id).toBe('BA-NEW')
+    expect(finishProvision).toBeTypeOf('function')
+    expect(activation).not.toHaveBeenCalled()
+    await act(async () => { finishProvision() })
+    await waitFor(() => expect(activation).toHaveBeenCalledOnce())
+    expect(activation).toHaveBeenCalledWith({ token: 'verified-cloud-token', enable_sync: true })
+    expect(localStorage.getItem('bizassist_cloud_token')).toBe('verified-cloud-token')
+    expect(fetch.mock.calls.some(([url]) => /data-transfer\/(count|export|import)/.test(String(url)))).toBe(false)
+  })
+
+  it('does not activate a delayed login after logout', async () => {
+    let finishProvision
+    const activation = vi.fn()
+    const { auth } = await mountFreshOwner({
+      onProvision: () => new Promise(resolve => { finishProvision = () => resolve(json({ status: 'ok' })) }),
+      onActivate: activation,
+    })
+    await act(async () => { await auth.current.login('owner1', 'Password123!') })
+    await act(async () => { await auth.current.logout(false) })
+    await act(async () => { finishProvision() })
+    expect(auth.current.token).toBeNull()
+    expect(localStorage.getItem('bizassist_cloud_token')).toBeNull()
+    expect(activation).not.toHaveBeenCalled()
+  })
+
+  it('writes an explicit Local choice after an in-flight automatic activation and never re-enables it', async () => {
+    let finishActivation
+    const order = []
+    const { auth } = await mountFreshOwner({
+      onActivate: () => {
+        order.push('activation')
+        return new Promise(resolve => { finishActivation = () => resolve(json({ hosting_mode: 'hybrid', sync_started: true })) })
+      },
+      onLocalMode: mode => order.push(mode),
+    })
+    await act(async () => { await auth.current.login('owner1', 'Password123!') })
+    await waitFor(() => expect(finishActivation).toBeTypeOf('function'))
+    let result
+    await act(async () => {
+      const localChoice = auth.current.setHostingMode('local')
+      expect(order).toEqual(['activation'])
+      finishActivation()
+      result = await localChoice
+    })
+    expect(result).toBe(true)
+    expect(order[0]).toBe('activation')
+    expect(order.length).toBeGreaterThanOrEqual(2)
+    expect(order.slice(1).every(mode => mode === 'local')).toBe(true)
+    expect(getHostingPreference('BA-NEW')).toBe('local')
+    expect(auth.current.settings.general.hosting_mode).toBe('local')
+  })
+})
+
 describe('Pro trial and Local + Cloud (T6)', () => {
   const renderAuth = async () => {
     const actionRef = React.createRef()

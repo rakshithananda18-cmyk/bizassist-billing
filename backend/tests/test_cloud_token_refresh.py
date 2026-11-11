@@ -70,6 +70,19 @@ def test_garbage_token_has_no_expiry_and_does_not_raise():
     assert sw._token_expiry("") is None
 
 
+def test_failed_refresh_persistence_keeps_the_previous_token_and_backs_off(monkeypatch):
+    old = _token(timedelta(hours=1))
+    sw.store_cloud_token(BID, old)
+    import httpx
+    monkeypatch.setattr(httpx, "post", lambda *a, **k: httpx.Response(200, json={"token": "new-cloud-token"}))
+    def denied(*args):
+        raise OSError("Synthetic disk write failure")
+    monkeypatch.setattr(sw, "store_cloud_token", denied)
+    assert sw.ensure_fresh_cloud_token(BID) == old
+    assert sw._get_cloud_token(BID) == old
+    assert sw._REFRESH_BACKOFF[BID] > utc_now()
+
+
 # ── When to renew ───────────────────────────────────────────────────────────
 
 def test_a_comfortably_valid_token_is_left_alone(monkeypatch):

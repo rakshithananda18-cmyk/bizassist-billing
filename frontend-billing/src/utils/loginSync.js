@@ -1,129 +1,127 @@
 import { IS_LOCAL_APP, CLOUD_URL, LOCAL_URL } from '../config'
+import { getHostingPreference } from './deviceMode'
 import { logger } from './logger'
 
-/**
- * reconcileBizIdOnLogin — lightweight IDENTITY check after login. NOT a data sync.
- *
- * Design intent: cloud data is subscription-gated, so logging in must NOT silently
- * pull the whole dataset down. The only thing worth doing silently at login is a
- * tiny **BizID consistency check** — confirm the local account's BizID matches the
- * cloud's. A **full data sync (cloud → local) stays gated**: it happens only when
- * the user asks (the "Back up now" button) or during a migration.
- *
- * Scope (safe & read-only):
- *   • Downloaded app only (it can reach localhost:8001).
- *   • Local & Hybrid modes when online — Cloud mode is the identity home, nothing to reconcile.
- *   • Reads `/profile` on both backends and compares `public_id` (BizID). No writes, no bulk data.
- *
- * On mismatch we log a warning (the unify happens during backup/migration, where
- * `_upsert_users` copies the cloud BizID onto the local owner). Best-effort:
- * any failure is swallowed — login is already complete.
- */
-export async function reconcileBizIdOnLogin(token, cloudToken = null) {
+const REQUEST_TIMEOUT_MS = 10000
+const headersFor = token => ({ 'Content-Type': 'application/json', Authorization: `Bearer ${token}` })
+
+async function boundedFetch(url, options, timeoutMs = REQUEST_TIMEOUT_MS) {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
   try {
-    if (!IS_LOCAL_APP) return
-    if (typeof navigator !== 'undefined' && navigator.onLine === false) return
+    return await fetch(url, { ...options, signal: controller.signal })
+  } catch (error) {
+    if (controller.signal.aborted) throw new Error('Cloud sync request timed out. The background service will retry when it can connect.')
+    throw error
+  } finally { clearTimeout(timer) }
+}
 
-    const mode = (typeof localStorage !== 'undefined'
-      && localStorage.getItem('bizassist_hosting_mode')) || 'local'
-    if (mode === 'cloud') return   // cloud is the identity home — nothing to reconcile locally
+function syncRequestEvent(detail, isCurrent) {
+  if (!isCurrent() || typeof window === 'undefined') return
+  window.dispatchEvent(new CustomEvent('sync-event', {
+    detail: { type: 'sync.trigger', sync_request: true, ...detail },
+  }))
+}
 
-    // IMPORTANT: tokens are backend-specific. The local backend signs JWTs
-    // with its OWN secret (random per install on packaged builds), so the
-    // cloud rejects them with 401 "Invalid token" — which both breaks this
-    // check AND floods the cloud auth log. Cloud reads therefore require a
-    // cloud-issued token; without one we skip the cloud half quietly.
-    const headersFor = (t) => ({
-      'Content-Type': 'application/json',
-      ...(t ? { Authorization: `Bearer ${t}` } : {}),
+async function responseBody(response) {
+  try { return await response.json() } catch { return {} }
+}
+
+async function requireAccepted(response) {
+  const body = await responseBody(response)
+  if (!response.ok) {
+    const detail = typeof body?.detail === 'string' ? body.detail : null
+    throw new Error(detail || `Cloud sync could not start (HTTP ${response.status}).`)
+  }
+  return body
+}
+
+/** Queue the durable local worker. Acceptance is not a completed data restore. */
+export async function requestBackgroundSync(token, { base = LOCAL_URL, isCurrent = () => true, source = 'manual' } = {}) {
+  if (!token || !isCurrent()) return { skipped: true }
+  try {
+    const response = await boundedFetch(`${base}/api/sync/flush?pull=true`, {
+      method: 'POST', headers: headersFor(token),
     })
-    const localHeaders = headersFor(token)
-    const cloudHeaders = cloudToken ? headersFor(cloudToken) : null
+    if (!isCurrent()) return { skipped: true }
+    const body = await requireAccepted(response)
+    if (!isCurrent()) return { skipped: true }
+    syncRequestEvent({ source, status: 'pending', accepted: true }, isCurrent)
+    return { ...body, accepted: true, pending: true }
+  } catch (error) {
+    if (!isCurrent()) return { skipped: true }
+    syncRequestEvent({ source, status: 'failed', accepted: false, error: error.message }, isCurrent)
+    error.syncRequestReported = true
+    throw error
+  }
+}
 
-    const readProfile = async (base, headers) => {
-      if (!headers) return null
-      try {
-        const r = await fetch(`${base}/profile`, { headers })
-        if (!r.ok) return null
-        return await r.json()
-      } catch { return null }
+/**
+ * Verify the two identities, then enable/schedule the account-scoped local
+ * worker for Pro. Credentials stay backend-specific; no bulk export/import or
+ * count comparison runs in the browser. An explicit Local-only choice wins.
+ */
+export async function reconcileBizIdOnLogin(token, cloudToken = null, {
+  isCurrent = () => true,
+  runModeWrite = operation => operation(),
+  source = 'login',
+} = {}) {
+  const current = () => {
+    try {
+      return isCurrent() && getHostingPreference() !== 'local'
+        && localStorage.getItem('bizassist_hosting_mode') !== 'cloud'
+    } catch { return false }
+  }
+  try {
+    if (!IS_LOCAL_APP || !token || !cloudToken || !current()) return { skipped: true }
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return { skipped: true }
+
+    const readProfile = async (base, bearer) => {
+      if (!current()) return null
+      const response = await boundedFetch(`${base}/profile`, { headers: headersFor(bearer) })
+      if (!current()) return null
+      if (!response.ok) throw new Error(`Could not verify the sync account (HTTP ${response.status}).`)
+      return responseBody(response)
     }
-
-    if (!cloudHeaders) {
-      logger.info('[LOGIN-IDENTITY] No cloud-issued token available — skipping cloud identity check (offline or no cloud account).')
-    }
-
     const [cloudProfile, localProfile] = await Promise.all([
-      readProfile(CLOUD_URL, cloudHeaders),
-      readProfile(LOCAL_URL, localHeaders),
+      readProfile(CLOUD_URL, cloudToken), readProfile(LOCAL_URL, token),
     ])
-    const cloudBiz = cloudProfile?.public_id || null
-    const localBiz = localProfile?.public_id || null
-
-    // Cloud is the account authority for the premium flag. The cross-device sync
-    // nudges below are a PAID feature, so we only surface them for premium
-    // accounts. Free accounts still work fully offline — they just don't get the
-    // sync prompt.
-    const isPremium = !!(cloudProfile?.is_premium ?? localProfile?.is_premium)
-
-    if (!cloudBiz) {
-      // No cloud identity reachable (offline / no cloud account yet) — nothing to do.
-      return
+    if (!current()) return { skipped: true }
+    const cloudBiz = cloudProfile?.public_id
+    const localBiz = localProfile?.public_id
+    if (!cloudBiz || !localBiz || cloudBiz !== localBiz) {
+      logger.warn('[LOGIN-SYNC] Cloud/local identity is missing or different; background activation was skipped.')
+      return { skipped: true, reason: 'identity_mismatch' }
     }
-    if (!localBiz) {
-      logger.warn(`[LOGIN-IDENTITY] Local account has no BizID; cloud=${cloudBiz}. It will unify on the next backup/migration.`)
-    } else if (localBiz !== cloudBiz) {
-      logger.warn(`[LOGIN-IDENTITY] BizID mismatch — local=${localBiz} cloud=${cloudBiz}. Run a backup/migration to unify identity.`)
-    } else {
-      logger.info(`[LOGIN-IDENTITY] BizID consistent (${localBiz}).`)
-    }
+    const premium = cloudProfile?.is_premium === true
+      || cloudProfile?.plan === 'pro' || cloudProfile?.subscription?.plan === 'pro'
+    if (!premium) return { skipped: true, reason: 'plan_required' }
 
-    // ── Divergence sense (PREMIUM only): is either side missing data the other
-    // side holds? Cheap, read-only COUNT comparison — no data is pulled or
-    // pushed here (that stays gated behind the user pressing "Sync now"). We
-    // surface it on EVERY login (not just the first) so a premium user never
-    // silently works on a stale copy.
-    if (!isPremium) {
-      logger.info('[LOGIN-SENSE] Account is free-tier — skipping cross-device sync nudge (premium feature).')
-      return
+    // Share AuthContext's hosting-write queue. A later explicit Local save must
+    // land AFTER this activation, even if cloud verification is slow.
+    const response = await runModeWrite(() => {
+      if (!current()) return null
+      return boundedFetch(`${LOCAL_URL}/api/sync/cloud-token`, {
+        method: 'POST', headers: headersFor(token),
+        body: JSON.stringify({ token: cloudToken, enable_sync: true }),
+      }, 20000)
+    })
+    if (!response || !current()) return { skipped: true }
+    const activation = await requireAccepted(response)
+    if (!current()) return { skipped: true }
+    if (activation.hosting_mode !== 'hybrid') {
+      throw new Error('The local service could not enable background sync. Update the desktop app and try again.')
     }
-
-    const readTotal = async (base, headers) => {
-      if (!headers) return null
-      try {
-        const r = await fetch(`${base}/api/data-transfer/count`, { headers })
-        if (!r.ok) return null
-        const counts = await r.json()
-        return Object.values(counts || {}).reduce((a, n) => a + (Number(n) > 0 ? Number(n) : 0), 0)
-      } catch { return null }
+    if (activation.sync_started === true) {
+      syncRequestEvent({ source, status: 'pending', accepted: true, initial_restore_pending: activation.initial_restore_pending === true }, current)
+      window.dispatchEvent(new CustomEvent('refresh-settings'))
+      return { accepted: true, pending: true }
     }
-    const [cloudTotal, localTotal] = await Promise.all([
-      readTotal(CLOUD_URL, cloudHeaders),
-      readTotal(LOCAL_URL, localHeaders),
-    ])
-
-    if (cloudTotal == null || localTotal == null) return
-
-    if (cloudTotal > localTotal) {
-      // Cloud is ahead → offer to pull it down onto this device (cloud → local).
-      logger.info(`[LOGIN-SENSE] Cloud has more data than this device (cloud=${cloudTotal}, local=${localTotal}) — nudging to sync.`)
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('cloud-data-available', {
-          detail: { direction: 'cloud-to-local', cloudTotal, localTotal, delta: cloudTotal - localTotal },
-        }))
-      }
-    } else if (localTotal > cloudTotal) {
-      // This device is ahead → the cloud (and other devices) are missing data
-      // that lives here. Offer to push it up so nothing is missed on the other
-      // devices (local → cloud).
-      logger.info(`[LOGIN-SENSE] This device has more data than the cloud (local=${localTotal}, cloud=${cloudTotal}) — nudging to push up.`)
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('cloud-data-available', {
-          detail: { direction: 'local-to-cloud', cloudTotal, localTotal, delta: localTotal - cloudTotal },
-        }))
-      }
-    }
-  } catch (e) {
-    logger.warn('[LOGIN-IDENTITY] check skipped:', e?.message || e)
+    return await requestBackgroundSync(token, { isCurrent: current, source })
+  } catch (error) {
+    if (!current()) return { skipped: true }
+    logger.warn('[LOGIN-SYNC] Background sync could not start:', error?.message || error)
+    if (!error.syncRequestReported) syncRequestEvent({ source, status: 'failed', accepted: false, error: error?.message || 'Cloud sync could not start.' }, current)
+    return { accepted: false, error: error?.message }
   }
 }

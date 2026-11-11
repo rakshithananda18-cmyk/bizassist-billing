@@ -94,51 +94,57 @@ export default function StaffLayout() {
   return (
     <DayContext.Provider value={{ today, error, reload, act, track, awake, toggleAwake, onDuty }}>
       <div className="staff-shell" key={sessionKey}>
-        <header className="staff-top">
-          <BuildingMark size={26} />
-          <div className="grow" style={{ minWidth: 0 }}>
-            <div style={{ fontWeight: 800, lineHeight: 1.2, fontSize: 'var(--fs-sm)' }} className="ellipsis" title={me.name}>{me.name}</div>
-            <div className="xs muted ellipsis" title={businessName}>{businessName} · Field Team</div>
+        <header className="staff-top mobile-header">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flex: 1 }}>
+            <BuildingMark size={24} />
+            <div className="staff-brand-copy" style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+              <span style={{ fontWeight: 800, lineHeight: 1.2, fontSize: '0.92rem', color: 'var(--text-primary)' }} className="ellipsis" title={me.name}>{me.name}</span>
+              <span className="mobile-brand-name" style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+                {businessName} · powered by STATER <b>Task</b>
+              </span>
+            </div>
           </div>
-          {today && (
-            <span className="points-pill" title="Points today / total">
-              ⭐ {today.points_today} · {today.points_total}
-            </span>
-          )}
-          <button className="btn btn-ghost btn-sm" onClick={reload} aria-label="Refresh" title="Refresh day" style={{ padding: 6, borderRadius: 8 }}>
-            <RefreshIcon size={16} />
-          </button>
-          <button className="btn btn-ghost btn-sm" onClick={logout} aria-label="Sign out" title="Sign out" style={{ padding: 6, borderRadius: 8 }}>
-            <LogoutIcon size={18} />
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+            {today && (
+              <span className="points-pill" title="Points today / total">
+                ⭐ {today.points_today} · {today.points_total}
+              </span>
+            )}
+            <button className="btn btn-ghost btn-sm" onClick={reload} aria-label="Refresh" title="Refresh day" style={{ padding: 6, width: 34, height: 34, borderRadius: 8 }}>
+              <RefreshIcon size={16} />
+            </button>
+            <button className="btn btn-ghost btn-sm" onClick={logout} aria-label="Sign out" title="Sign out" style={{ padding: 6, width: 34, height: 34, borderRadius: 8 }}>
+              <LogoutIcon size={18} />
+            </button>
+          </div>
         </header>
         <main className="staff-main"><Outlet /></main>
-        <nav className="bottom-bar" aria-label="Bottom navigation">
-          <NavLink to="/" end className={({ isActive }) => (isActive ? 'active' : '')}>
-            <HomeIcon size={20} />
-            <span>Today</span>
+        <nav className="bottom-bar mobile-bottombar" aria-label="Bottom navigation">
+          <NavLink to="/" end aria-label="Today" title="Today" className={({ isActive }) => (isActive ? 'active bb-item' : 'bb-item')}>
+            <span className="bb-icon"><HomeIcon size={20} /></span>
+            <span className="bb-label">Today</span>
             {pendingStops > 0 && (
               <span className="badge badge-accent" style={{ position: 'absolute', top: 5, right: '28%', padding: '1px 5px', fontSize: 10, borderRadius: 99, fontWeight: 700 }}>
                 {pendingStops}
               </span>
             )}
           </NavLink>
-          <NavLink to="/my-tasks" className={({ isActive }) => (isActive ? 'active' : '')}>
-            <ClipboardIcon size={20} />
-            <span>Tasks</span>
+          <NavLink to="/my-tasks" aria-label="Tasks" title="Tasks" className={({ isActive }) => (isActive ? 'active bb-item' : 'bb-item')}>
+            <span className="bb-icon"><ClipboardIcon size={20} /></span>
+            <span className="bb-label">Tasks</span>
             {pendingTasks > 0 && (
               <span className="badge badge-muted" style={{ position: 'absolute', top: 5, right: '28%', padding: '1px 5px', fontSize: 10, borderRadius: 99, fontWeight: 700 }}>
                 {pendingTasks}
               </span>
             )}
           </NavLink>
-          <NavLink to="/request" className={({ isActive }) => (isActive ? 'active' : '')}>
-            <OrderIcon size={20} />
-            <span>Shop order</span>
+          <NavLink to="/request" aria-label="Shop order" title="Shop order" className={({ isActive }) => (isActive ? 'active bb-item' : 'bb-item')}>
+            <span className="bb-icon"><OrderIcon size={20} /></span>
+            <span className="bb-label">Shop order</span>
           </NavLink>
-          <NavLink to="/score" className={({ isActive }) => (isActive ? 'active' : '')}>
-            <AwardIcon size={20} />
-            <span>Score</span>
+          <NavLink to="/score" aria-label="Score" title="Score" className={({ isActive }) => (isActive ? 'active bb-item' : 'bb-item')}>
+            <span className="bb-icon"><AwardIcon size={20} /></span>
+            <span className="bb-label">Score</span>
           </NavLink>
         </nav>
       </div>

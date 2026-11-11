@@ -4,6 +4,7 @@ import { fmtDay, fmtTime, rupees, TASK_TYPES, telHref, todayIST } from '../../li
 import { summarizeInvoices } from '../../lib/invoices'
 import InvoicePicker from '../../components/InvoicePicker'
 import CollectionBalance from '../../components/CollectionBalance'
+import PhoneRecord from '../../components/PhoneRecord'
 import { ConfirmDialog, Empty, ErrorNote, Loader, Modal, PageHeader, StatusBadge, useLoad, useToast } from '../../components/ui'
 
 const EXTRA_TYPES = Object.entries(TASK_TYPES).filter(([k]) => k !== 'delivery')
@@ -206,7 +207,7 @@ export default function Plan() {
                   {run.status !== 'completed' && run.status !== 'cancelled' && <button type="button" className="btn btn-danger btn-sm" onClick={() => setRunToCancel(run)}>Cancel</button>}
                 </div>
               </div>
-              <div className="table-wrap" style={{ marginTop: 12 }}>
+              <div className="table-wrap desktop-only-table" style={{ marginTop: 12 }}>
                 <table className="table">
                   <thead><tr><th>#</th><th>Shop</th><th className="num">Boxes</th><th className="num">Orders</th><th>Tasks</th><th>Status</th></tr></thead>
                   <tbody>
@@ -231,6 +232,29 @@ export default function Plan() {
                     ))}
                   </tbody>
                 </table>
+              </div>
+
+              <div className="phone-record-list mobile-only-records">
+                {run.stops.map(st => (
+                  <PhoneRecord
+                    key={st.id}
+                    title={`${st.seq}. ${st.shop.name}`}
+                    meta={`${st.boxes_delivered}/${st.boxes_planned} boxes · ${st.orders_count} orders`}
+                    status={<StatusBadge status={st.status} />}
+                    amount={st.arrived_at ? fmtTime(st.arrived_at) : 'Pending'}
+                    amountTone={st.status === 'done' ? 'green' : 'yellow'}
+                  >
+                    {st.shop.phone && <p className="xs muted">Phone: <a href={telHref(st.shop.phone)}>{st.shop.phone}</a></p>}
+                    {st.tasks.map(t => (
+                      <div key={t.id} className="xs" style={{ margin: '2px 0' }}>
+                        <span>{t.status === 'done' ? '✓' : '○'} {TASK_TYPES[t.task_type]}</span>
+                        {t.points_awarded && <span className="muted"> (+{t.points_awarded} pts)</span>}
+                        {t.invoices?.length > 0 && <span className="muted"> · Bills: {t.invoices.map(x => x.number).join(', ')}</span>}
+                      </div>
+                    ))}
+                    {st.skip_reason && <p className="xs" style={{ color: 'var(--warning)' }}>Skipped: {st.skip_reason}</p>}
+                  </PhoneRecord>
+                ))}
               </div>
             </div>
           ))}

@@ -117,6 +117,21 @@ describe('Billing appearance continuity', () => {
     expect(styles.get('--sidebar-bg')).toBe(extra['--sidebar-bg'])
     expect(styles.get('--accent-dim')).toBe(extra['--accent-dim'])
   })
+
+  it('preserves Billing navigation selection colours and clears inherited mode on business switch', () => {
+    const navigation = {
+      '--sidebar-active-bg-sub': '#234567', '--sidebar-active-text-sub': '#ffffff',
+      '--page-selection-bg': '#edf3fa', '--page-selection-text': '#245eac',
+      '--page-selection-border': '#bdcbdc', '--border-hairline': '#bdcbdc',
+    }
+    theme.setThemeBusiness('BA-ONE')
+    theme.acceptBillingAppearance(payload({ lightTokens: { ...tokens(), ...navigation } }))
+    for (const [name, value] of Object.entries(navigation)) expect(styles.get(name)).toBe(value)
+    expect(document.documentElement.dataset.billingAppearance).toBe('inherited')
+    theme.setThemeBusiness('BA-TWO')
+    expect(document.documentElement.dataset.billingAppearance).toBe('default')
+    for (const name of Object.keys(navigation)) expect(styles.has(name)).toBe(false)
+  })
 })
 
 describe('Return to Billing', () => {
@@ -131,6 +146,14 @@ describe('Return to Billing', () => {
     expect(theme.sanitizeBillingUrl('http://10.attacker.example:8450')).toBe(null)
   })
 
+  it('accepts the Billing app appearance and returns to that business on the app domain', () => {
+    theme.setThemeBusiness('BA-ONE')
+    expect(theme.acceptBillingAppearance(payload({ billingUrl: 'https://app.staterbill.com/settings?sso=discarded' }))).toBe(true)
+    expect(theme.getBillingUrl('/settings?tab=profile')).toBe('https://app.staterbill.com/settings?tab=profile&field_business=BA-ONE')
+    expect(styles.get('--accent')).toBe('#c15f3c')
+    expect(theme.sanitizeBillingUrl('https://app.staterbill.com.attacker.example')).toBe(null)
+  })
+
   it('uses local and configured fallbacks and prevents protocol-relative paths', () => {
     expect(theme.getBillingUrl()).toBe('http://localhost:5174/')
     vi.stubEnv('VITE_BILLING_URL', 'https://billing.staging.example')
@@ -140,7 +163,7 @@ describe('Return to Billing', () => {
   })
 })
 
-describe('Billing origins after the move to staterbill.com (1.2)', () => {
+describe('Current and legacy Billing origins', () => {
   // Set the environment first and import a fresh module, so these cases hold whether
   // theme.js reads VITE_BILLING_URL on each call (as today) or once at load.
   async function reload(billingUrl = '') {
@@ -149,7 +172,7 @@ describe('Billing origins after the move to staterbill.com (1.2)', () => {
     theme = await import('./theme')
   }
 
-  it.each(['https://staterbill.com', 'https://www.staterbill.com'])('trusts %s as Billing without VITE_BILLING_URL', async origin => {
+  it.each(['https://app.staterbill.com', 'https://staterbill.com', 'https://www.staterbill.com'])('trusts %s as Billing without VITE_BILLING_URL', async origin => {
     await reload()
     expect(theme.sanitizeBillingUrl(`${origin}/settings?sso=discarded`)).toBe(origin)
   })
@@ -161,13 +184,13 @@ describe('Billing origins after the move to staterbill.com (1.2)', () => {
     expect(theme.sanitizeBillingUrl('https://staterbill.com')).toBe('https://staterbill.com')
   })
 
-  it.each(['task.staterbill.com', 'bizassist-task.vercel.app'])('points Back to Billing and Register at staterbill.com when opened on %s without a Billing origin', async hostname => {
+  it.each(['task.staterbill.com', 'bizassist-task.vercel.app'])('opens the Billing app and registration when opened on %s without a Billing origin', async hostname => {
     vi.stubGlobal('window', {
       location: { hostname, protocol: 'https:' },
       matchMedia: () => media, dispatchEvent: vi.fn(), addEventListener: vi.fn(),
     })
     await reload()
-    expect(theme.getBillingUrl()).toBe('https://staterbill.com/')
-    expect(theme.getBillingUrl('/register')).toBe('https://staterbill.com/register')
+    expect(theme.getBillingUrl()).toBe('https://app.staterbill.com/')
+    expect(theme.getBillingUrl('/register')).toBe('https://app.staterbill.com/register')
   })
 })

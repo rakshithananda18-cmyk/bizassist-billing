@@ -24,7 +24,7 @@ import NotificationBell from '../components/NotificationBell'
 import BusinessName from '../components/BusinessName'
 import { useAppearance } from '../hooks/useAppearance'
 import usePhoneLayout from '../hooks/usePhoneLayout'
-import SyncNudgeModal from '../components/hosting/SyncNudgeModal'
+import { requestBackgroundSync } from '../utils/loginSync'
 import WebLocalOnlyNotice from '../components/hosting/WebLocalOnlyNotice'
 import SidebarContextMenu from '../components/layout/SidebarContextMenu'
 import ToastContainer from '../components/layout/ToastContainer'
@@ -324,26 +324,34 @@ export default function AppLayout({ children, title }) {
     }
   }, [user, subscription, trialEnded])
 
-  const [queueDepth, setQueueDepth] = React.useState({
+  const emptyQueueDepth = () => ({
     pending_count: 0,
     last_sync_time: null,
     last_status: 'idle',
     last_error: null
   })
+  const syncBusinessKey = user?.public_id || user?.business_id || user?.id || null
+  const [queueDepth, setQueueDepth] = React.useState(emptyQueueDepth)
   const [cloudStatus, setCloudStatus] = React.useState(null)
   React.useEffect(() => {
+    setCloudStatus(null)
     if (isDemoSession || !token || !IS_LOCAL_APP || ['cashier', 'supply_adder'].includes(user?.role)) return
     let stopped = false
+    const backend = API_BASE
+    const current = () => !stopped && syncScopeRef.current?.token === token
+      && syncScopeRef.current?.businessKey === syncBusinessKey && API_BASE === backend
     const load = async () => {
       try {
-        const res = await fetch(`${API_BASE}/api/sync/status`, { headers: { Authorization: `Bearer ${token}` } })
-        if (res.ok && !stopped) setCloudStatus(await res.json())
+        const res = await fetch(`${backend}/api/sync/status`, { headers: { Authorization: `Bearer ${token}` } })
+        if (!res.ok || !current()) return
+        const data = await res.json()
+        if (current()) setCloudStatus(data)
       } catch { /* existing sync diagnostics remain available */ }
     }
     load()
     const timer = setInterval(load, 30000)
     return () => { stopped = true; clearInterval(timer) }
-  }, [isDemoSession, token, user?.role])
+  }, [isDemoSession, token, user?.role, syncBusinessKey, effectiveMode])
   const accountUpdates = queueDepth.control_outbox
   const totalPendingSync = Number(queueDepth.pending_count || 0) + Number(accountUpdates?.pending || 0) + Number(accountUpdates?.failed || 0)
 
@@ -382,6 +390,32 @@ export default function AppLayout({ children, title }) {
   )
   const [nextPullIn, setNextPullIn] = React.useState(null)   // seconds until next auto-pull
   const [syncing, setSyncing] = React.useState(false)        // manual "Sync now" in-flight
+  const [syncRequestStatus, setSyncRequestStatus] = React.useState(null)
+  const syncRequestFailed = syncRequestStatus?.status === 'failed'
+  const syncScopeRef = React.useRef(null)
+  syncScopeRef.current = { token, effectiveMode, businessKey: syncBusinessKey }
+  const restoringCloud = isSyncOn && (queueDepth.pull?.initial_restore_pending === true
+    || queueDepth.pull?.has_more === true
+    || (syncRequestStatus?.initial_restore_pending === true && queueDepth.pull?.initialized !== true))
+
+  React.useEffect(() => {
+    setSyncRequestStatus(null)
+    setSyncing(false)
+    const requested = event => {
+      const detail = event.detail || {}
+      if (!detail.sync_request) return
+      setSyncRequestStatus({ ...detail, requestedAt: Date.now() })
+    }
+    window.addEventListener('sync-event', requested)
+    return () => window.removeEventListener('sync-event', requested)
+  }, [token, syncBusinessKey])
+
+  React.useEffect(() => {
+    if (syncRequestStatus?.status !== 'pending' || restoringCloud) return
+    const completedAt = Date.parse(queueDepth.last_sync_time || '')
+    if (queueDepth.last_status === 'success' && Number.isFinite(completedAt)
+        && completedAt >= syncRequestStatus.requestedAt) setSyncRequestStatus(null)
+  }, [syncRequestStatus, restoringCloud, queueDepth.last_status, queueDepth.last_sync_time])
 
   // "Sync now" — the ONLY manual sync control.
   //
@@ -393,44 +427,43 @@ export default function AppLayout({ children, title }) {
   // is the app's job, not theirs.
   const handleSyncNow = React.useCallback(async () => {
     if (isDemoSession || !token || syncing) return
+    const backend = API_BASE
+    const current = () => syncScopeRef.current?.token === token
+      && syncScopeRef.current?.effectiveMode === 'hybrid'
+      && syncScopeRef.current?.businessKey === syncBusinessKey
+      && API_BASE === backend && getHostingPreference() !== 'local'
+    if (!current()) return
     setSyncing(true)
     try {
-      // ?pull=true is REQUIRED — without it the backend only flushes the outbox
-      // (push) and never fetches cloud-authored rows, so this button silently
-      // did nothing for cloud → local convergence.
-      await fetch(`${API_BASE}/api/sync/flush?pull=true`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` }
-      })
-      // Give the server ~2s to complete the pull cycle, then refresh depth
-      setTimeout(async () => {
-        try {
-          const r = await fetch(`${API_BASE}/api/sync/queue-depth`, {
-            headers: { Authorization: `Bearer ${token}` }
-          })
-          if (r.ok) setQueueDepth(await r.json())
-        } catch (e) {}
-        setSyncing(false)
-        setNextPullIn(pullIntervalSec)
-        window.dispatchEvent(new CustomEvent('sync-flushed'))
-      }, 2000)
+      const result = await requestBackgroundSync(token, { base: backend, isCurrent: current })
+      if (!result.accepted || !current()) return
+      // The worker accepted the job. Its status/events, not a two-second timer,
+      // report what has arrived. The request event refreshes queue depth through
+      // its scoped poller; a slow status read must not leave this button stuck.
     } catch (err) {
-      logger.error('Pull from cloud failed:', err)
-      setSyncing(false)
+      logger.warn('Background sync request failed:', err)
+    } finally {
+      if (current()) setSyncing(false)
     }
-  }, [isDemoSession, token, syncing, pullIntervalSec])
+  }, [isDemoSession, token, syncing, syncBusinessKey])
 
   React.useEffect(() => {
+    setQueueDepth(emptyQueueDepth())
     if (isDemoSession || effectiveMode !== 'hybrid' || !token) return
+    let stopped = false
+    const backend = API_BASE
+    const current = () => !stopped && syncScopeRef.current?.token === token
+      && syncScopeRef.current?.businessKey === syncBusinessKey
+      && syncScopeRef.current?.effectiveMode === 'hybrid' && API_BASE === backend
 
     const fetchQueueDepth = async () => {
       try {
-        const res = await fetch(`${API_BASE}/api/sync/queue-depth`, {
+        const res = await fetch(`${backend}/api/sync/queue-depth`, {
           headers: { Authorization: `Bearer ${token}` }
         })
-        if (res.ok) {
+        if (res.ok && current()) {
           const data = await res.json()
-          setQueueDepth(data)
+          if (current()) setQueueDepth(data)
         }
       } catch (err) {
         logger.error('Failed to fetch sync queue depth:', err)
@@ -463,12 +496,13 @@ export default function AppLayout({ children, title }) {
     window.addEventListener('sync-event', handleDataChanged)
 
     return () => {
+      stopped = true
       clearInterval(interval)
       if (debounce) clearTimeout(debounce)
       window.removeEventListener('sync-flushed', handleSyncFlushed)
       window.removeEventListener('sync-event', handleDataChanged)
     }
-  }, [isDemoSession, effectiveMode, token])
+  }, [isDemoSession, effectiveMode, token, syncBusinessKey])
 
   // ── Pull countdown tick ───────────────────────────────────────────────────
   // Counts down to the next periodic pull cycle based on pullIntervalSec (default 120s).
@@ -1237,8 +1271,6 @@ export default function AppLayout({ children, title }) {
   return (
     <div className={`app-shell ${isSalesPage ? 'pos-layout-shell' : ''}`}>
       {!appReady && <PageLoader />}
-      {/* Nudge to sync when a device is missing data the other side holds (sensed at login) */}
-      <SyncNudgeModal />
       {/* Web-only: a Local-only account has no data on the cloud — explain instead of showing an empty app */}
       <WebLocalOnlyNotice />
 
@@ -1307,7 +1339,7 @@ export default function AppLayout({ children, title }) {
                       transition: 'all 0.2s ease',
                       backgroundColor: effectiveMode === 'local' ? 'var(--bg-3)' : haltTint
                         || (effectiveMode === 'hybrid'
-                            ? (queueDepth.last_status === 'failed' && totalPendingSync > 0 ? 'rgba(239, 68, 68, 0.1)' :
+                            ? (restoringCloud || syncRequestFailed ? 'rgba(245, 158, 11, 0.1)' : queueDepth.last_status === 'failed' && totalPendingSync > 0 ? 'rgba(239, 68, 68, 0.1)' :
                                totalPendingSync > 0 ? 'rgba(245, 158, 11, 0.1)' :
                                !syncHealth.isOnline ? 'rgba(255, 255, 255, 0.05)' : 'rgba(34, 197, 94, 0.1)')
                             : (syncHealth.status === 'connected' ? 'rgba(34, 197, 94, 0.1)' :
@@ -1315,7 +1347,7 @@ export default function AppLayout({ children, title }) {
                                'rgba(239, 68, 68, 0.1)')),
                       color: effectiveMode === 'local' ? 'var(--text-secondary)' : haltTone
                         || (effectiveMode === 'hybrid'
-                            ? (queueDepth.last_status === 'failed' && totalPendingSync > 0 ? 'var(--danger, #ef4444)' :
+                            ? (restoringCloud || syncRequestFailed ? 'var(--warning, #f59e0b)' : queueDepth.last_status === 'failed' && totalPendingSync > 0 ? 'var(--danger, #ef4444)' :
                                totalPendingSync > 0 ? 'var(--warning, #f59e0b)' :
                                 !syncHealth.isOnline ? 'var(--sidebar-muted, var(--text-muted))' : 'var(--success, #22c55e)')
                             : (syncHealth.status === 'connected' ? 'var(--success, #22c55e)' :
@@ -1339,6 +1371,10 @@ export default function AppLayout({ children, title }) {
                              : haltReason === 'offline' ? 'Offline'
                              : 'Sign-in expired'}</span>
                       </>
+                    ) : syncRequestFailed ? (
+                      <><AlertIcon size={10} /><span>Sync needs attention</span></>
+                    ) : restoringCloud ? (
+                      <><span className="sync-spinner-small" /><span>Restoring cloud data</span></>
                     ) : effectiveMode === 'hybrid' ? (
                       <>
                         {/* Offline is the highest priority — shown before pending/error */}
@@ -1534,7 +1570,7 @@ export default function AppLayout({ children, title }) {
                       fontWeight: '700',
                       color: effectiveMode === 'local' ? 'var(--text-muted)' : haltTone
                         || (effectiveMode === 'hybrid'
-                            ? (queueDepth.last_status === 'failed' && totalPendingSync > 0 ? 'var(--danger)' :
+                            ? (restoringCloud || syncRequestFailed ? 'var(--warning)' : queueDepth.last_status === 'failed' && totalPendingSync > 0 ? 'var(--danger)' :
                                totalPendingSync > 0 ? 'var(--warning)' : 'var(--success)')
                             : (syncHealth.status === 'connected' ? 'var(--success)' :
                                syncHealth.status === 'connecting' ? 'var(--warning)' : 'var(--danger)'))
@@ -1542,8 +1578,8 @@ export default function AppLayout({ children, title }) {
                       {effectiveMode === 'local' ? 'Local only — cloud sync paused' : haltCopy
                         ? haltCopy.title
                         : (effectiveMode === 'hybrid'
-                            ? (queueDepth.last_status === 'failed' && totalPendingSync > 0 ? 'Sync Error' :
-                               totalPendingSync > 0 ? 'Syncing...' : 'Synced')
+                            ? (syncRequestFailed ? 'Sync needs attention' : restoringCloud ? 'Restoring cloud data' : queueDepth.last_status === 'failed' && totalPendingSync > 0 ? 'Sync Error' :
+                               totalPendingSync > 0 ? 'Syncing...' : 'No local changes waiting')
                             : (syncHealth.status === 'connected' ? 'Connected' :
                                syncHealth.status === 'connecting' ? 'Reconnecting...' : 'Error / Offline'))}
                     </span>
@@ -1807,6 +1843,14 @@ export default function AppLayout({ children, title }) {
                       <span>{({ online: 'Online', waking: 'Starting…', busy: 'Busy — retrying…', offline: 'Unreachable' })[cloudStatus.cloud_state] || 'Unavailable'}</span>
                     </div>
                   )}
+                  {isSyncOn && syncRequestStatus && (
+                    <div role="status" style={{ padding: '7px 9px', border: '1px solid var(--border)', borderRadius: 6, lineHeight: 1.45, color: syncRequestStatus.status === 'failed' ? 'var(--warning)' : 'var(--text-secondary)' }}>
+                      {syncRequestStatus.status === 'failed'
+                        ? syncRequestStatus.error || 'Cloud sync could not start. Check the connection and try again.'
+                        : restoringCloud ? 'Restoring cloud data in the background. Keep this device online; records appear as they arrive.'
+                          : 'Background sync requested. The service is checking for changes; this does not mean a restore has completed.'}
+                    </div>
+                  )}
                   {/* ── Cloud pull row (hybrid only, Pro only) ───────────────── */}
                   {effectiveMode === 'hybrid' && (() => {
                     const isPro = subscription?.plan === 'pro'
@@ -2025,7 +2069,7 @@ export default function AppLayout({ children, title }) {
                           : 'var(--success, #22c55e)'
                       }}>
                         {totalPendingSync || 0}
-                        {(totalPendingSync || 0) === 0 && ' — all synced'}
+                        {(totalPendingSync || 0) === 0 && ' — no local changes waiting'}
                       </span>
                     </div>
 
@@ -2864,6 +2908,13 @@ export default function AppLayout({ children, title }) {
               `!isSalesPage`, so search survives on /sales where the sidebar,
               bottom bar and mobile header are all hidden. */}
           <UniversalSearch hideTrigger={location.pathname === '/'} />
+          {restoringCloud && !isSalesPage && (
+            <div role="status" style={{ marginBottom: 8, padding: '8px 12px', border: '1px solid var(--border)', borderRadius: 8, background: 'var(--bg-2)', color: 'var(--text-secondary)', fontSize: 12, lineHeight: 1.5 }}>
+              {syncRequestFailed ? `Cloud restore is waiting: ${syncRequestStatus.error}`
+                : haltCopy ? `Cloud restore is paused. ${haltCopy.detail}`
+                  : 'Restoring cloud data in the background. Keep this device online; records appear as they arrive.'}
+            </div>
+          )}
           {children}
         </main>
       </div>

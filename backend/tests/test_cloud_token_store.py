@@ -132,3 +132,25 @@ def test_token_store_path_is_what_load_actually_reads(tmp_path, monkeypatch):
     place'. It is worthless if it can disagree with the real read."""
     monkeypatch.setattr(SW, "_TOKEN_FILE", tmp_path / "cloud_sync_tokens.json")
     assert SW.token_store_path() == SW._TOKEN_FILE
+
+
+def test_failed_atomic_replace_preserves_the_previous_credential(tmp_path, monkeypatch):
+    store = tmp_path / "cloud_sync_tokens.json"
+    store.write_text('{"7": "previous-token"}', encoding="utf-8")
+    monkeypatch.setattr(SW, "_TOKEN_FILE", store)
+    def denied(*args):
+        raise PermissionError("Synthetic locked credential file")
+    monkeypatch.setattr(SW.os, "replace", denied)
+    with pytest.raises(OSError):
+        SW.store_cloud_token(7, "new-token")
+    assert store.read_text(encoding="utf-8") == '{"7": "previous-token"}'
+    assert list(tmp_path.glob(".cloud-sync-*.tmp")) == []
+
+
+def test_unreadable_existing_store_is_not_replaced_with_one_business(tmp_path, monkeypatch):
+    store = tmp_path / "cloud_sync_tokens.json"
+    store.write_text("damaged-existing-file", encoding="utf-8")
+    monkeypatch.setattr(SW, "_TOKEN_FILE", store)
+    with pytest.raises(OSError):
+        SW.store_cloud_token(7, "new-token")
+    assert store.read_text(encoding="utf-8") == "damaged-existing-file"

@@ -6,6 +6,7 @@ import { parseCoords } from '../../lib/coords'
 import { getFix } from '../../lib/geo'
 import { telHref } from '../../lib/format'
 import MapView, { escapeHtml } from '../../components/MapView'
+import PhoneRecord from '../../components/PhoneRecord'
 import { Empty, ErrorNote, Loader, Modal, PageHeader, useLoad, useToast } from '../../components/ui'
 
 export function shopFormPayload(form, customerId) {
@@ -157,22 +158,47 @@ export default function Shops() {
         <div className="stack" style={{ gap: 16 }}>
           {markers.length > 0 && <MapView className="map small" markers={markers} />}
           {shops.length === 0 ? <Empty>No shops yet. Link your Billing customers, or add a delivery point.</Empty> : (
-            <div className="table-wrap">
-              <table className="table">
-                <thead><tr><th>Shop</th><th>Contact</th><th>Area</th><th>Location</th><th /></tr></thead>
-                <tbody>
-                  {shops.map(s => (
-                    <tr key={s.id} style={s.is_active ? undefined : { opacity: 0.55 }}>
-                      <td><strong>{s.name}</strong><span className={`badge ${s.customer_id ? 'badge-accent' : 'badge-muted'}`} style={{ marginLeft: 6 }}>{s.customer_id ? 'Billing linked' : 'Field Team only'}</span>{s.billing_customer_available === false && <div className="small" style={{ color: 'var(--warning)' }}>Billing customer unavailable</div>}<div className="xs muted">{s.address}</div></td>
-                      <td>{s.contact_name}<div className="small">{s.phone && <a href={telHref(s.phone)}>{s.phone}</a>}</div></td>
-                      <td>{s.area || '—'}</td>
-                      <td className="small">{s.lat != null ? <a href={`https://www.google.com/maps?q=${s.lat},${s.lng}`} target="_blank" rel="noreferrer">pinned{s.location_source === 'staff' ? ' by staff' : ''}</a> : <span className="muted">not pinned</span>}</td>
-                      <td><button className="btn btn-ghost btn-sm" onClick={() => setEditing(s)}>Edit</button></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <>
+              <div className="table-wrap desktop-only-table">
+                <table className="table">
+                  <thead><tr><th>Shop</th><th>Contact</th><th>Area</th><th>Location</th><th /></tr></thead>
+                  <tbody>
+                    {shops.map(s => (
+                      <tr key={s.id} style={s.is_active ? undefined : { opacity: 0.55 }}>
+                        <td><strong>{s.name}</strong><span className={`badge ${s.customer_id ? 'badge-accent' : 'badge-muted'}`} style={{ marginLeft: 6 }}>{s.customer_id ? 'Billing linked' : 'Field Team only'}</span>{s.billing_customer_available === false && <div className="small" style={{ color: 'var(--warning)' }}>Billing customer unavailable</div>}<div className="xs muted">{s.address}</div></td>
+                        <td>{s.contact_name}<div className="small">{s.phone && <a href={telHref(s.phone)}>{s.phone}</a>}</div></td>
+                        <td>{s.area || '—'}</td>
+                        <td className="small">{s.lat != null ? <a href={`https://www.google.com/maps?q=${s.lat},${s.lng}`} target="_blank" rel="noreferrer">pinned{s.location_source === 'staff' ? ' by staff' : ''}</a> : <span className="muted">not pinned</span>}</td>
+                        <td><button className="btn btn-ghost btn-sm" onClick={() => setEditing(s)}>Edit</button></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="phone-record-list mobile-only-records">
+                {shops.map(s => (
+                  <PhoneRecord
+                    key={s.id}
+                    title={s.name}
+                    meta={[s.contact_name, s.phone, s.area].filter(Boolean).join(' · ')}
+                    status={<span className={`badge ${s.customer_id ? 'badge-accent' : 'badge-muted'}`}>{s.customer_id ? 'Linked' : 'Field only'}</span>}
+                    amount={s.lat != null ? 'Pinned' : 'Not pinned'}
+                    amountTone={s.lat != null ? 'green' : 'yellow'}
+                    primary={<button className="btn btn-secondary btn-sm" onClick={() => setEditing(s)}>Edit</button>}
+                  >
+                    {s.address && <p className="xs muted">{s.address}</p>}
+                    {s.lat != null && (
+                      <p className="xs">
+                        <a href={`https://www.google.com/maps?q=${s.lat},${s.lng}`} target="_blank" rel="noreferrer" style={{ color: 'var(--accent)', fontWeight: 600 }}>
+                          View location on Google Maps ↗
+                        </a>
+                      </p>
+                    )}
+                  </PhoneRecord>
+                ))}
+              </div>
+            </>
           )}
         </div>
       )}

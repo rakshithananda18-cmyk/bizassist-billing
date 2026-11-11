@@ -8,10 +8,12 @@ import { useToast } from '../components/ui'
 import {
   AwardIcon, CheckIcon, ClipboardIcon, ClockIcon, CloseIcon, ContactsIcon, CopyIcon, DashboardIcon,
   ListIcon, LogoutIcon, MapPinIcon, MenuIcon, MonitorIcon, MoonIcon, OrderIcon, RouteIcon,
-  SettingsIcon, SunIcon, TruckIcon, UserIcon,
+  SearchIcon, SettingsIcon, SunIcon, TruckIcon, UserIcon,
 } from '../components/Icons'
 import WorkspaceSwitcher from '../components/WorkspaceSwitcher'
 import NotificationBell from '../components/NotificationBell'
+import UniversalSearchModal from '../components/UniversalSearchModal'
+import usePhoneLayout from '../hooks/usePhoneLayout'
 
 const NAV = [
   { section: 'Today', items: [
@@ -32,6 +34,14 @@ const NAV = [
     { to: '/activity', icon: <ListIcon size={18} />, label: 'Activity' },
     { to: '/settings', icon: <SettingsIcon size={18} />, label: 'Settings' },
   ] },
+]
+
+const BOTTOM_BAR_ROUTES = [
+  { to: '/', icon: <DashboardIcon size={20} />, label: 'Dashboard' },
+  { to: '/live', icon: <MapPinIcon size={20} />, label: 'Live' },
+  { to: '/plan', icon: <TruckIcon size={20} />, label: 'Plan' },
+  { to: '/tasks', icon: <ClipboardIcon size={20} />, label: 'Tasks' },
+  { to: '/requests', icon: <OrderIcon size={20} />, label: 'Requests' },
 ]
 
 function BusinessName({ children }) {
@@ -65,10 +75,9 @@ export default function OwnerLayout() {
   const [theme, setThemeState] = useState(getTheme())
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [showProfileMenu, setShowProfileMenu] = useState(false)
+  const [searchOpen, setSearchOpen] = useState(false)
   const [copiedBizId, setCopiedBizId] = useState(false)
-  const [isMobileViewport, setIsMobileViewport] = useState(() => {
-    try { return window.matchMedia('(max-width: 860px)').matches } catch { return false }
-  })
+  const isMobileViewport = usePhoneLayout()
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     try { return localStorage.getItem('task_sidebar_collapsed') === 'true' } catch { return false }
   })
@@ -79,20 +88,27 @@ export default function OwnerLayout() {
   // Sync theme changes if triggered externally
   useEffect(() => {
     const onThemeChange = (e) => setThemeState(e.detail || getTheme())
+    const onOpenSearch = () => setSearchOpen(true)
+    const onKeyDown = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        setSearchOpen(prev => !prev)
+      }
+    }
     window.addEventListener('task-theme-change', onThemeChange)
-    return () => window.removeEventListener('task-theme-change', onThemeChange)
+    window.addEventListener('open-universal-search', onOpenSearch)
+    window.addEventListener('keydown', onKeyDown)
+    return () => {
+      window.removeEventListener('task-theme-change', onThemeChange)
+      window.removeEventListener('open-universal-search', onOpenSearch)
+      window.removeEventListener('keydown', onKeyDown)
+    }
   }, [])
 
-  // Responsive listener
+  // Return to the full sidebar when leaving the shared Billing phone breakpoint.
   useEffect(() => {
-    const mql = window.matchMedia('(max-width: 860px)')
-    const handler = (e) => {
-      setIsMobileViewport(e.matches)
-      if (!e.matches) setMobileMenuOpen(false)
-    }
-    mql.addEventListener('change', handler)
-    return () => mql.removeEventListener('change', handler)
-  }, [])
+    if (!isMobileViewport) setMobileMenuOpen(false)
+  }, [isMobileViewport])
 
   // Close mobile drawer and profile popover on route change
   useEffect(() => {
@@ -103,9 +119,10 @@ export default function OwnerLayout() {
   // Close profile popover when clicking outside or pressing Escape
   useEffect(() => {
     function handleClickOutside(e) {
+      const menu = isMobileViewport ? mobileProfileMenuRef.current : profileMenuRef.current
       if (
-        profileMenuRef.current &&
-        !profileMenuRef.current.contains(e.target) &&
+        menu &&
+        !menu.contains(e.target) &&
         !e.target.closest('.user-chip') &&
         !e.target.closest('.mobile-user-avatar')
       ) {
@@ -123,7 +140,7 @@ export default function OwnerLayout() {
       document.removeEventListener('mousedown', handleClickOutside)
       document.removeEventListener('keydown', handleKeyDown)
     }
-  }, [])
+  }, [isMobileViewport])
 
   // Mobile drawer focus trap & Escape key
   useEffect(() => {
@@ -197,6 +214,7 @@ export default function OwnerLayout() {
 
   const renderProfileMenu = (isMobileDropdown = false) => (
     <div
+      id={isMobileDropdown ? 'mobile-account-menu' : undefined}
       className={`profile-menu ${isMobileDropdown ? 'mobile-dropdown' : ''}`}
       ref={isMobileDropdown ? mobileProfileMenuRef : profileMenuRef}
       onClick={e => e.stopPropagation()}
@@ -331,17 +349,21 @@ export default function OwnerLayout() {
         tabIndex={isMobileViewport ? -1 : undefined}
       >
         <div className="sidebar-brand">
-          <BuildingMark size={32} />
+          {logo ? (
+            <img src={logo} alt="Logo" style={{ width: 32, height: 32, objectFit: 'contain', borderRadius: 'var(--radius-sm)' }} />
+          ) : (
+            <BuildingMark size={32} />
+          )}
           {(!sidebarCollapsed || isMobileViewport) && (
             <div style={{ flex: 1, minWidth: 0 }}>
               <div className="brand-name"><BusinessName>{businessName}</BusinessName></div>
-              <div className="brand-tag">Field Team</div>
+              <div className="brand-tag">STATER <b>Task</b></div>
             </div>
           )}
           {isMobileViewport ? (
             <button
               type="button"
-              className="btn btn-ghost btn-sm"
+              className="btn btn-ghost btn-sm mobile-drawer-close"
               onClick={() => setMobileMenuOpen(false)}
               aria-label="Close menu"
               style={{ padding: 6, marginLeft: 'auto' }}
@@ -422,42 +444,87 @@ export default function OwnerLayout() {
         </div>
       </aside>
 
-      {/* Mobile Topbar */}
-      <header className="mobile-topbar">
-        <div className="row" style={{ gap: 8 }}>
+      {/* Mobile bottom bar (iOS/Android floating glass dock) */}
+      {isMobileViewport && (
+        <nav className="mobile-bottombar" aria-label="Primary">
+          {BOTTOM_BAR_ROUTES.map(it => {
+            const active = location.pathname === it.to || (it.to !== '/' && location.pathname.startsWith(it.to))
+            return (
+              <NavLink
+                key={it.to}
+                to={it.to}
+                end={it.to === '/'}
+                aria-label={it.label}
+                title={it.label}
+                className={'bb-item' + (active ? ' active' : '')}
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                <span className="bb-icon" aria-hidden="true">{it.icon}</span>
+              </NavLink>
+            )
+          })}
+        </nav>
+      )}
+
+      {/* Mobile Top Header Bar (Native Floating Glass) */}
+      {isMobileViewport && (
+        <header className="mobile-header">
           <button
             type="button"
-            className="mobile-menu-toggle"
-            onClick={() => setMobileMenuOpen(true)}
+            className={`mobile-menu-toggle ${mobileMenuOpen ? 'is-active' : ''}`}
+            onClick={() => setMobileMenuOpen(prev => !prev)}
             aria-label="Open navigation menu"
             aria-expanded={mobileMenuOpen}
             aria-controls="owner-navigation"
           >
-            <MenuIcon size={20} />
+            <span className="m-menu-bar" />
+            <span className={`m-menu-bar ${mobileMenuOpen ? 'is-open' : ''}`} />
           </button>
-          <BuildingMark size={24} />
-          <strong className="ellipsis" title={businessName} style={{ fontSize: '0.95rem' }}>{businessName}</strong>
-        </div>
-        <div className="row" style={{ gap: 6, position: 'relative' }}>
-          <NotificationBell onOpen={() => setShowProfileMenu(false)} />
-          <button
-            type="button"
-            className="user-avatar mobile-user-avatar"
-            onClick={() => setShowProfileMenu(prev => !prev)}
-            style={{ width: 32, height: 32, fontSize: 12, cursor: 'pointer' }}
-            title="Settings & Profile Menu"
-            aria-label="Settings and profile menu"
-            aria-expanded={showProfileMenu}
-          >
+
+          <Link className="mobile-header-brand" to="/" aria-label="STATER Task home">
             {logo ? (
-              <img src={logo} alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: '50%' }} />
+              <img src={logo} alt="Logo" className="mobile-header-logo" style={{ width: 28, height: 28, objectFit: 'contain', borderRadius: '6px' }} />
             ) : (
-              initials
+              <BuildingMark size={24} />
             )}
-          </button>
-          {isMobileViewport && showProfileMenu && renderProfileMenu(true)}
-        </div>
-      </header>
+            <span className="mobile-brand-copy">
+              <span className="mobile-business-name"><BusinessName>{businessName}</BusinessName></span>
+              <span className="mobile-brand-name">powered by STATER <b>Task</b></span>
+            </span>
+          </Link>
+
+          <div className="mobile-profile-actions">
+            <button
+              type="button"
+              className="mobile-search-btn"
+              onClick={() => setSearchOpen(true)}
+              aria-label="Search"
+              title="Search (Ctrl+K)"
+            >
+              <SearchIcon size={17} />
+            </button>
+            <NotificationBell onOpen={() => setShowProfileMenu(false)} />
+            <div className="mobile-user-avatar-wrapper">
+              <button
+                type="button"
+                className="user-avatar mobile-user-avatar"
+                onClick={() => setShowProfileMenu(prev => !prev)}
+                title="Settings & Profile Menu"
+                aria-label="Settings and profile menu"
+                aria-expanded={showProfileMenu}
+                aria-controls="mobile-account-menu"
+              >
+                {logo ? (
+                  <img src={logo} alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: '11px' }} />
+                ) : (
+                  initials
+                )}
+              </button>
+              {showProfileMenu && renderProfileMenu(true)}
+            </div>
+          </div>
+        </header>
+      )}
 
       {/* Main Content Area — No top bar, clean aligned layout */}
       <div className="main-area">
@@ -470,6 +537,9 @@ export default function OwnerLayout() {
           <Outlet />
         </main>
       </div>
+
+      {/* Universal Search Modal */}
+      <UniversalSearchModal key={me?.public_id || 'owner'} open={searchOpen} onClose={() => setSearchOpen(false)} />
     </div>
   )
 }

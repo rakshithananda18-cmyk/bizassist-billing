@@ -5,6 +5,7 @@ import { fmtDateTime, TASK_TYPES } from '../../lib/format'
 import CollectionBalance from '../../components/CollectionBalance'
 import { Empty, ErrorNote, Loader, StatusBadge, useLoad } from '../../components/ui'
 import { RefreshIcon } from '../../components/Icons'
+import PhoneRecord from '../../components/PhoneRecord'
 
 export default function MyTasks() {
   const [status, setStatus] = useState('pending')
@@ -51,36 +52,26 @@ export default function MyTasks() {
       ) : !data?.length ? (
         <Empty>No {status} tasks found.</Empty>
       ) : (
-        <div className="list" style={{ borderRadius: 14, overflow: 'hidden' }}>
+        <div className="phone-record-list" style={{ marginTop: 12 }}>
           {data.map(t => (
-            <div key={t.id} className="list-item" style={{ padding: '14px 16px' }}>
-              <div className="grow" style={{ minWidth: 0 }}>
-                <div style={{ fontWeight: 700, fontSize: 'var(--fs-base)' }}>{t.title}</div>
-                <div className="xs muted" style={{ marginTop: 2 }}>
-                  <span style={{ fontWeight: 600, color: 'var(--accent)' }}>{TASK_TYPES[t.task_type]}</span>
-                  {t.shop_name && ` · ${t.shop_name}`}
-                  {t.status === 'done'
-                    ? ` · ${fmtDateTime(t.completed_at)}`
-                    : t.due_at
-                    ? ` · Due by ${fmtDateTime(t.due_at)}`
-                    : ''}
-                </div>
-                <CollectionBalance task={t} />
-                {t.overdue && <span className="badge badge-danger" style={{ marginTop: 4 }}>overdue</span>}
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6, flexShrink: 0 }}>
-                {t.status === 'done' ? (
-                  <span className="points-pill" style={{ fontWeight: 700 }}>
-                    +{t.points_awarded} pts
-                  </span>
-                ) : (
-                  <>
-                    <StatusBadge status={t.status} />
-                    <span className="xs muted" style={{ fontWeight: 600 }}>⭐ {t.points} pts</span>
-                  </>
-                )}
-              </div>
-            </div>
+            <PhoneRecord
+              key={t.id}
+              title={t.title}
+              meta={`${TASK_TYPES[t.task_type] || 'Task'}${t.shop_name ? ` · ${t.shop_name}` : ''}`}
+              status={<StatusBadge status={t.status} />}
+              amount={t.status === 'done' ? `+${t.points_awarded} pts` : `⭐ ${t.points} pts`}
+              amountTone={t.status === 'done' ? 'green' : undefined}
+              primary={
+                <Link to="/" className="btn btn-secondary btn-sm" style={{ textDecoration: 'none' }}>
+                  View
+                </Link>
+              }
+            >
+              <CollectionBalance task={t} />
+              {t.due_at && <p><strong>Due:</strong> {fmtDateTime(t.due_at)}</p>}
+              {t.completed_at && <p><strong>Completed:</strong> {fmtDateTime(t.completed_at)}</p>}
+              {t.overdue && <p><span className="badge badge-danger">Overdue</span></p>}
+            </PhoneRecord>
           ))}
         </div>
       )}

@@ -2,11 +2,14 @@ import React, { useEffect, useState } from 'react'
 import { api } from '../../lib/api'
 import { ago, fmtTime, telHref, todayIST } from '../../lib/format'
 import MapView, { escapeHtml } from '../../components/MapView'
+import PhoneRecord from '../../components/PhoneRecord'
 import { Empty, ErrorNote, PageHeader, useLoad } from '../../components/ui'
+import usePhoneLayout from '../../hooks/usePhoneLayout'
 
 const COLOR = { on_duty: '#1f6b3a', checked_out: '#8e8e93', off: '#9b1c1c' }
 
 export default function Live() {
+  const phone = usePhoneLayout()
   const { data, error, reload } = useLoad(() => api.get('/api/track/live'), [])
   const [selected, setSelected] = useState(null)
   const [day, setDay] = useState(todayIST())
@@ -52,8 +55,26 @@ export default function Live() {
       <div className="stack" style={{ gap: 16 }}>
         <MapView markers={selected ? [...trailMarkers, ...markers.filter(m => m.id === selected)] : markers} paths={paths} fitKey={`${selected}-${day}`} />
         {selected && trail && <div className="xs muted">{trail.points.length} points on {day}. The trail has gaps while the agent's phone is locked or the app is closed.</div>}
-        {staff.length === 0 ? <Empty>No active staff yet.</Empty> : (
-          <div className="table-wrap">
+        {staff.length === 0 ? <Empty>No active staff yet.</Empty> : phone ? (
+          <div className="phone-record-list mobile-only-records">
+            {staff.map(s => (
+              <PhoneRecord
+                key={s.staff_id}
+                title={s.name}
+                meta={[s.at_shop ? `At ${s.at_shop}` : s.next_shop ? `Next: ${s.next_shop}` : 'On route', ago(s.last_seen_at)].filter(Boolean).join(' · ')}
+                status={<span className={`badge ${s.duty === 'on_duty' ? 'badge-success' : 'badge-muted'}`}>{s.duty.replace('_', ' ')}</span>}
+                amount={s.stops_total ? `${s.stops_done}/${s.stops_total} shops` : 'No route'}
+                amountTone={s.duty === 'on_duty' ? 'green' : 'yellow'}
+                primary={<button className="btn btn-secondary btn-sm" onClick={() => setSelected(s.staff_id)}>Trail</button>}
+              >
+                {s.phone && <p className="xs muted">Phone: <a href={telHref(s.phone)}>{s.phone}</a></p>}
+                {s.check_in_at && <p className="xs muted">Checked in at: {fmtTime(s.check_in_at)}</p>}
+                {s.location && <p className="xs muted">GPS accuracy: ±{Math.round(s.location.accuracy || 0)} m</p>}
+              </PhoneRecord>
+            ))}
+          </div>
+        ) : (
+          <div className="table-wrap desktop-only-table">
             <table className="table">
               <thead><tr><th>Staff</th><th>Duty</th><th>Route progress</th><th>Now</th><th>Last seen</th><th /></tr></thead>
               <tbody>
