@@ -23,6 +23,7 @@ import UniversalSearch from '../components/UniversalSearch'
 import NotificationBell from '../components/NotificationBell'
 import BusinessName from '../components/BusinessName'
 import { useAppearance } from '../hooks/useAppearance'
+import usePhoneLayout from '../hooks/usePhoneLayout'
 import SyncNudgeModal from '../components/hosting/SyncNudgeModal'
 import WebLocalOnlyNotice from '../components/hosting/WebLocalOnlyNotice'
 import SidebarContextMenu from '../components/layout/SidebarContextMenu'
@@ -37,7 +38,7 @@ import { useDocLabels } from '../hooks/useDocLabels'
 import { HALT_COPY, resolveHaltReason } from '../utils/syncHalt'
 // HostingOnboardingModal removed: hosting is now chosen once, in Register.
 // The post-login onboarding pop-up duplicated that choice and was intrusive.
-import { BillsIcon, CashIcon, ChevronDownIcon, CloseIcon, ConnectionIcon, ContactsIcon, CounterIcon, DashboardIcon, HomeIcon, ImportIcon, InventoryIcon, LockIcon, LogoutIcon, OrderIcon, ReportsIcon, SettingsIcon, SummaryIcon, TaxIcon, TruckIcon, ZapIcon, SunIcon, MoonIcon, MonitorIcon, UserIcon, CheckIcon, AlertIcon, SyncIcon, DownloadIcon, PlusIcon, MessageIcon } from '../components/Icons'
+import { BillsIcon, CashIcon, ChevronDownIcon, CloseIcon, ConnectionIcon, ContactsIcon, CounterIcon, DashboardIcon, HomeIcon, ImportIcon, InventoryIcon, LockIcon, LogoutIcon, OrderIcon, ReportsIcon, SettingsIcon, SummaryIcon, TaxIcon, TruckIcon, ZapIcon, SunIcon, MoonIcon, MonitorIcon, UserIcon, CheckIcon, AlertIcon, SyncIcon, DownloadIcon, PlusIcon, MessageIcon, SearchIcon } from '../components/Icons'
 
 
 // Separate apps opened from the sidebar — a NAV item's `external` names one.
@@ -906,16 +907,10 @@ export default function AppLayout({ children, title }) {
     try { return localStorage.getItem('billing_sidebar_collapsed') === 'true' }
     catch { return false }
   })
-  const [isMobileViewport, setIsMobileViewport] = React.useState(() =>
-    window.matchMedia('(max-width: 768px)').matches
-  )
+  const isMobileViewport = usePhoneLayout()
   React.useEffect(() => {
-    const media = window.matchMedia('(max-width: 768px)')
-    const update = () => setIsMobileViewport(media.matches)
-    update()
-    media.addEventListener('change', update)
-    return () => media.removeEventListener('change', update)
-  }, [])
+    if (!isMobileViewport) setMobileMenuOpen(false)
+  }, [isMobileViewport])
   // The mobile drawer always opens at full width, retaining the desktop choice.
   const sidebarInRailMode = sidebarCollapsed && !isMobileViewport
 
@@ -1148,25 +1143,23 @@ export default function AppLayout({ children, title }) {
     }
   }, [title])
 
-  // ── App zoom: apply from settings whenever businessConfig changes ─────────
+  // Restore the saved desktop scale when resizing out of the phone layout.
   React.useEffect(() => {
     // Try localStorage first (instant, before API resolves)
     const stored = localStorage.getItem('billing_app_zoom')
     const zoom = businessConfig?.general?.app_zoom
       ?? (stored ? parseInt(stored, 10) : null)
       ?? 100
-    // On mobile devices (width <= 768px), force zoom to 100% to prevent fixed container layout offsets and bottom gaps
-    const isMobile = window.innerWidth <= 768
-    const finalZoom = isMobile ? 100 : zoom
+    const finalZoom = isMobileViewport ? 100 : zoom
 
     document.documentElement.style.zoom = `${finalZoom}%`
     document.documentElement.style.setProperty('--zoom', finalZoom / 100)
     // Remove old minHeight hack — the --zoom formula handles this correctly
     document.documentElement.style.minHeight = ''
-    if (!isMobile && stored !== String(zoom)) {
+    if (!isMobileViewport && stored !== String(zoom)) {
       localStorage.setItem('billing_app_zoom', String(zoom))
     }
-  }, [businessConfig])
+  }, [businessConfig, isMobileViewport])
 
   // ── Inactivity timer: wire to LockContext ─────────────────────────────────
   React.useEffect(() => {
@@ -2730,36 +2723,42 @@ export default function AppLayout({ children, title }) {
         <header className="mobile-header">
           <button
             type="button"
-            className="mobile-menu-toggle"
-            onClick={() => setMobileMenuOpen(true)}
+            className={`mobile-menu-toggle ${mobileMenuOpen ? 'is-active' : ''}`}
+            onClick={() => setMobileMenuOpen(prev => !prev)}
             aria-label="Open menu"
             aria-controls="mobile-navigation"
             aria-expanded={mobileMenuOpen}
           >
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="3" y1="12" x2="21" y2="12"></line>
-              <line x1="3" y1="6" x2="21" y2="6"></line>
-              <line x1="3" y1="18" x2="21" y2="18"></line>
-            </svg>
+            <span className="m-menu-bar" />
+            <span className={`m-menu-bar ${mobileMenuOpen ? 'is-open' : ''}`} />
           </button>
 
           <Link className="mobile-header-brand" to="/" aria-label="STATER Bill home">
             {profile?.logo ? (
-              <img src={profile.logo} alt="Logo" style={{ width: 28, height: 28, objectFit: 'contain', borderRadius: '4px' }} />
+              <img src={profile.logo} alt="Logo" className="mobile-header-logo" style={{ width: 28, height: 28, objectFit: 'contain', borderRadius: '6px' }} />
             ) : (
-              <BuildingMark size={22} />
+              <BuildingMark size={24} />
             )}
             <span className="mobile-brand-copy">
-              <span className="mobile-brand-name">STATER <b>Bill</b></span>
-              <span className="mobile-business-name"><BusinessName>{profile?.business_name || user?.business_name || pageTitle}</BusinessName></span>
+              <span className="mobile-business-name"><BusinessName>{profile?.business_name || user?.business_name || businessConfig?.name || pageTitle || 'My Business'}</BusinessName></span>
+              <span className="mobile-brand-name">powered by STATER <b>Bill</b></span>
             </span>
           </Link>
 
           <div className="mobile-profile-actions">
-          {isMobileViewport && !isCashier && !isSupplyAdder && (
-            <NotificationBell onOpen={() => setShowProfileMenu(false)} />
-          )}
-          <div className="mobile-user-avatar-wrapper" ref={userChipRef}>
+            <button
+              type="button"
+              className="mobile-search-btn"
+              onClick={() => window.dispatchEvent(new CustomEvent('open-universal-search'))}
+              aria-label="Search"
+              title="Search (Ctrl+K)"
+            >
+              <SearchIcon size={17} />
+            </button>
+            {isMobileViewport && !isCashier && !isSupplyAdder && (
+              <NotificationBell onOpen={() => setShowProfileMenu(false)} />
+            )}
+            <div className="mobile-user-avatar-wrapper" ref={userChipRef}>
             <button
               type="button"
               className="mobile-user-avatar"
@@ -2848,7 +2847,7 @@ export default function AppLayout({ children, title }) {
         </header>
 
       {/* Backdrop overlay for mobile drawer */}
-      {mobileMenuOpen && (
+      {isMobileViewport && mobileMenuOpen && (
         <div
           className="mobile-drawer-backdrop"
           onClick={() => setMobileMenuOpen(false)}

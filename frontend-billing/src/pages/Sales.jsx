@@ -12,6 +12,7 @@ import { useAuth, useBusinessConfig } from '../contexts/AuthContext'
 import { useConfirm } from '../contexts/ConfirmContext'
 import { AlertIcon, BillsIcon, CheckIcon, ChevronRightIcon, CloseIcon } from '../components/Icons'
 import { usePageLifecycle } from '../hooks/usePageLifecycle'
+import usePhoneLayout, { PHONE_QUERY } from '../hooks/usePhoneLayout'
 import UnsavedChangesModal from '../components/common/UnsavedChangesModal'
 // Shared formatting helpers (money / today / amount-in-words) live in utils/format.
 import { getTodayDateStr, getFromDateStr } from '../utils/format'
@@ -88,7 +89,7 @@ function effectiveHostingMode() {
 
 // Touch catalogue picks should not summon the phone keyboard after every item.
 function refocusScanner(ref, delay) {
-  if (typeof window !== 'undefined' && window.matchMedia('(max-width: 768px)').matches) return
+  if (typeof window !== 'undefined' && window.matchMedia?.(PHONE_QUERY)?.matches) return
   setTimeout(() => ref.current?.focus(), delay)
 }
 
@@ -96,14 +97,8 @@ function refocusScanner(ref, delay) {
 // ── 3. STATE INITIALIZATION (COUNTER & DB DATA) ──
 // ============================================================================
 export default function Sales(props = {}) {
-  const [phoneCounter, setPhoneCounter] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 768px)').matches)
+  const phoneCounter = usePhoneLayout()
   const [mobilePane, setMobilePane] = useState('products')
-  useEffect(() => {
-    const media = window.matchMedia('(max-width: 768px)')
-    const update = () => setPhoneCounter(media.matches)
-    media.addEventListener('change', update)
-    return () => media.removeEventListener('change', update)
-  }, [])
   const { authFetch, profile, user, networkMode } = useAuth()
   // Business-type billing profile (Phase 2) — follows the counter-mode switcher
   // live; FAIL-OPEN (null when offline → no behavior change).

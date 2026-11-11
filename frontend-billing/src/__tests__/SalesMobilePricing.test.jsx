@@ -33,7 +33,7 @@ beforeEach(() => {
   state.products = [state.product]
   state.mobile = true
   vi.stubGlobal('matchMedia', vi.fn(query => ({
-    matches: state.mobile && query.includes('max-width: 768px'), media: query,
+    matches: state.mobile && query === 'screen and (max-width: 600px)', media: query,
     addEventListener() {}, removeEventListener() {},
   })))
   // jsdom does not apply viewport media queries. Apply the phone pane rule so

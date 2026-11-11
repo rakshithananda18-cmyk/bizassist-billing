@@ -1,0 +1,102 @@
+/* A phone presentation, independent of the tablet and desktop workspaces. */
+@media screen and (max-width: 600px) {
+  .phone-record-list { display: grid; gap: 0; border: 1px solid var(--border); border-radius: 12px; background: var(--bg-2); overflow: hidden; }
+  .app-shell .b2b-shell > .page-header.b2b-phone-heading { display: grid !important; grid-template-columns: minmax(0, 1fr) auto; align-items: center !important; }
+  .b2b-phone-heading .page-actions { display: contents !important; }
+  .b2b-phone-heading .mobile-only-header-tabs { grid-column: 1 / -1; width: 100%; }
+  .b2b-phone-heading .page-tabs, .phone-workspace-tabs .page-tabs { width: 100%; display: flex; overflow: visible; }
+  .b2b-phone-heading .page-tab, .phone-workspace-tabs .page-tab { min-width: 0; flex: 1; padding: 8px 5px; font-size: 11px; min-height: 42px; justify-content: center; }
+  .phone-record { padding: 12px; min-width: 0; border-bottom: 1px solid var(--border); }
+  .phone-record:last-child { border-bottom: 0; }
+  .phone-record-heading { display: flex; gap: 12px; justify-content: space-between; align-items: flex-start; }
+  .phone-record-title { flex: 1; min-width: 0; font-size: 13px; line-height: 1.4; }
+  .phone-record-title > button { display: block; max-width: 100%; padding: 0; border: 0; text-align: left; background: none; color: var(--text-primary); font: inherit; font-weight: 650; overflow-wrap: anywhere; }
+  .phone-record-title > strong { overflow-wrap: anywhere; }
+  .phone-record-meta { color: var(--text-muted); font-size: 12px; margin-top: 3px; overflow-wrap: anywhere; }
+  .phone-record-amount { flex: 0 1 auto; max-width: 44%; text-align: right; color: var(--text-primary); font-size: 14px; line-height: 1.4; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+  .phone-record-bottom { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; color: var(--text-muted); font-size: 12px; }
+  .phone-record-status { flex: 1; min-width: 0; }
+  .phone-record-bottom > div { display: flex; gap: 6px; }
+  .phone-record .btn { min-height: 40px; font-size: 12px; padding: 7px 10px; border-radius: 8px; }
+  .phone-record-details { flex: 0 0 auto; color: var(--text-secondary); font-size: 12px; }
+  .phone-record-details[open] { flex: 1 0 100%; }
+  .phone-record-details > summary { width: fit-content; min-height: 36px; display: flex; gap: 6px; align-items: center; cursor: pointer; color: var(--accent); font-weight: 550; }
+  .phone-record-details > summary::after { content: '+'; }
+  .phone-record-details[open] > summary::after { content: '−'; }
+  .phone-record-details > div { display: flex; flex-wrap: wrap; gap: 6px; padding-top: 5px; }
+  .phone-record-details p { width: 100%; margin: 2px 0; overflow-wrap: anywhere; line-height: 1.5; }
+  .phone-list-empty { padding: 24px 16px; text-align: center; color: var(--text-muted); font-size: 13px; }
+  .khata-shell, .money-phone-workspace, .b2b-shell, .pos-shell { min-width: 0 !important; height: auto !important; min-height: 100%; overflow: visible !important; }
+  .khata-shell .khata-body, .money-phone-workspace .money-phone-body, .b2b-shell .b2b-body, .pos-shell .pos-body { padding: 0 !important; min-width: 0; overflow: visible !important; }
+  .khata-shell > .page-header, .money-phone-workspace > .page-header, .b2b-shell > .page-header, .pos-shell > .page-header { flex-direction: column; align-items: stretch !important; gap: 8px !important; background: none !important; border: 0 !important; border-radius: 0 !important; }
+  .khata-shell > .page-header .page-subtitle, .money-phone-workspace > .page-header .page-subtitle, .b2b-shell > .page-header .page-subtitle, .pos-shell > .page-header .page-subtitle { display: none !important; }
+  .khata-shell > .page-header .page-actions, .money-phone-workspace > .page-header .page-actions, .b2b-shell > .page-header .page-actions { width: 100% !important; }
+  .khata-shell .mobile-only-header-tabs, .b2b-shell .mobile-only-header-tabs { flex: 1; min-width: 0; width: 100%; }
+  .khata-shell .ws-embed, .phone-contacts-view, .phone-transactions-view, .phone-invoices-view { min-width: 0; height: auto !important; overflow: visible !important; }
+  .phone-workspace-tools { display: grid; gap: 8px; margin-bottom: 10px; }
+  .phone-workspace-tools .phone-segmented { display: flex; gap: 2px; padding: 3px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-2); overflow-x: auto; }
+  .phone-segmented > button { flex: 1; min-height: 38px; padding: 7px 9px; border: 0; border-radius: 7px; background: none; color: var(--text-muted); font: inherit; font-size: 12px; white-space: nowrap; }
+  .phone-segmented > button[aria-pressed="true"] { color: var(--accent); background: var(--accent-dim); font-weight: 650; }
+  .phone-workspace-tools .phone-tool-row { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; align-items: center; }
+  .phone-tool-row > .search-bar { flex: 1 1 170px !important; max-width: none !important; min-width: 0 !important; height: 42px !important; }
+  .phone-tool-row input { min-width: 0; font-size: 16px !important; }
+  .phone-tool-row .btn { min-height: 42px; font-size: 12px; }
+  .phone-tool-row details { flex: 0 0 auto; }
+  .phone-tool-row details > summary { min-height: 42px; display: flex; align-items: center; padding: 0 12px; border: 1px solid var(--border); border-radius: 9px; color: var(--text-secondary); font-size: 12px; cursor: pointer; }
+  .phone-tool-row details[open] { flex: 1 0 100%; }
+  .phone-tool-row details > div { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 0 2px; }
+  .phone-invoices-view > .page-subbar { display: flex !important; flex-wrap: wrap !important; padding: 0 !important; gap: 6px !important; background: none; border: 0; }
+  .phone-invoices-view > .page-subbar > .search-bar { flex: 1 0 100% !important; max-width: none !important; height: 42px !important; }
+  .phone-invoices-view .pagination-bar { flex-direction: column; gap: 8px; padding: 10px !important; }
+  .phone-invoices-view .pagination-bar button { min-height: 40px; font-size: 12px; }
+  .money-phone-body { gap: 10px !important; }
+  .money-phone-workspace .page-subbar .search-bar { width: 100% !important; }
+  .phone-account { gap: 10px !important; }
+  .phone-account-header { display: grid !important; grid-template-columns: 1fr auto; gap: 8px !important; }
+  .phone-account-header > button { grid-column: 1 / -1; justify-self: start; }
+  .phone-account-header > div { min-width: 0 !important; }
+  .phone-account-actions { display: flex !important; flex-wrap: wrap; gap: 6px !important; }
+  .phone-account-actions button { min-height: 42px; font-size: 12px; }
+  .phone-cashbook-toolbar { flex-wrap: nowrap !important; overflow-x: auto; }
+  .phone-cashbook-toolbar button { flex-shrink: 0; min-height: 40px; }
+  .b2b-shell .b2b-header-card { display: grid; grid-template-columns: 1fr; padding: 12px !important; gap: 12px; }
+  .b2b-shell .b2b-header-divider { display: none; }
+  .b2b-shell .b2b-header-col { min-width: 0; }
+  .b2b-shell .b2b-summary-card { display: flex; padding: 10px !important; border-radius: 10px; gap: 8px; overflow-x: auto; }
+  .b2b-shell .b2b-stat-segment { min-width: fit-content; padding: 0 7px; }
+  .b2b-shell .b2b-stat-value { font-size: 17px; }
+  .b2b-shell .b2b-stat-label { font-size: 11px; }
+  .b2b-shell .b2b-filter-bar { display: flex; flex-wrap: wrap; gap: 6px; padding: 0; background: none; border: 0; margin-bottom: 10px; }
+  .b2b-shell .b2b-filter-bar > .search-bar { flex: 1 0 100%; width: 100% !important; height: 42px !important; }
+  .b2b-shell .b2b-filter-bar .col-layout-btn { display: none; }
+  .b2b-shell .b2b-filter-bar .btn { min-height: 42px; }
+  .phone-order-sort > summary { display: flex; align-items: center; min-height: 42px; padding: 0 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 12px; cursor: pointer; }
+  .phone-order-sort[open] { flex: 1 0 100%; }
+  .phone-order-sort > div { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 0; }
+  .b2b-shell .b2b-request { padding: 12px; gap: 8px; border-radius: 10px; flex-direction: column; }
+  .b2b-shell .b2b-request-actions { justify-content: flex-end; }
+  .b2b-shell .b2b-request-actions button { min-height: 42px; }
+  .b2b-shell .b2b-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 8px; }
+  .b2b-shell .b2b-tile { border-radius: 10px; min-width: 0; }
+  .b2b-shell .b2b-tile-media { padding: 8px 8px 0; }
+  .b2b-shell .b2b-tile-body { padding: 8px 8px 0; }
+  .b2b-shell .b2b-tile-action { padding: 8px; }
+  .b2b-shell .b2b-tile-name { font-size: 13px; line-height: 1.35; }
+  .b2b-shell .b2b-tile-add, .b2b-shell .b2b-qty-btn { min-height: 42px; }
+  .b2b-shell .b2b-toolbar { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 0 10px; background: none; }
+  .b2b-shell .b2b-toolbar > div:first-child { flex: 1 0 100%; min-width: 0 !important; }
+  .b2b-shell .b2b-toolbar > div:first-child > button { width: 100% !important; min-width: 0 !important; min-height: 42px; }
+  .b2b-shell .b2b-toolbar .scan-search { flex: 1 0 100%; min-width: 0; min-height: 42px; }
+  .b2b-shell .b2b-phone-identity > summary { min-height: 40px; display: flex; align-items: center; color: var(--accent); font-weight: 600; cursor: pointer; }
+  .b2b-shell .b2b-phone-identity:not([open]) > :not(summary) { display: none; }
+  .b2b-shell .b2b-tile-thumb { height: 46px; min-height: 46px; font-size: 18px; }
+  .b2b-shell .b2b-cart { width: 100% !important; max-width: 100% !important; }
+  .pos-shell .pos-counter-grid { display: grid; grid-template-columns: 1fr !important; gap: 10px !important; }
+  .pos-shell .counter-tile { min-width: 0; border-radius: 12px; }
+  .pos-shell .pos-network-legend { padding: 0; margin-bottom: 10px !important; }
+  .pos-shell .pos-empty-card { margin: 12px 0 !important; padding: 20px 14px !important; }
+  .credit-drawer { width: 100% !important; max-width: 100% !important; border-left: 0 !important; box-shadow: none !important; }
+  .credit-drawer > div { padding: 12px !important; gap: 8px; }
+  .credit-drawer button { min-height: 40px; }
+  .credit-drawer .data-table-wrap { max-width: 100%; overflow-x: auto; }
+}

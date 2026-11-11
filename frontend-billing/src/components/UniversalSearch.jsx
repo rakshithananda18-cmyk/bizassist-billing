@@ -298,6 +298,12 @@ export default function UniversalSearch({ hideTrigger = false }) {
     navigate(item.route)
   }, [close, navigate, runAsk])
 
+  React.useEffect(() => {
+    const onOpen = () => setOpen(true)
+    window.addEventListener('open-universal-search', onOpen)
+    return () => window.removeEventListener('open-universal-search', onOpen)
+  }, [])
+
   // ── Keyboard ──────────────────────────────────────────────────────────────
   // CAPTURE phase, on window. The POS binds Escape, Ctrl+S, Ctrl+P and `+` at
   // the window (pages/Sales.jsx) and does not always check whether focus is in

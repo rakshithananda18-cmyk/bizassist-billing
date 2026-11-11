@@ -55,6 +55,8 @@ import Profile from './Profile'
 import './settings-profile.css'
 import SettingsSearch from '../components/settings/SettingsSearch'
 import SettingsSaveButton from '../components/settings/SettingsSaveButton'
+import usePhoneLayout from '../hooks/usePhoneLayout'
+import './phone-utilities.css'
 
 // ─── Tabs ─────────────────────────────────────────────────────────────────────
 const TABS = [
@@ -123,6 +125,10 @@ function SettingsWorkspace() {
   const [showPasscodeModal, setShowPasscodeModal] = useState(false)
   const [searchParams, setSearchParams] = useSearchParams()
   const [settingsSearchQuery, setSettingsSearchQuery] = useState('')
+  const phoneLayout = usePhoneLayout()
+  const StaffFormContainer = phoneLayout ? 'details' : React.Fragment
+  const [phoneOverview, setPhoneOverview] = useState(() => !searchParams.has('tab'))
+  const [phoneSectionQuery, setPhoneSectionQuery] = useState('')
 
   const [activeTab, setActiveTab] = useState(() => {
     let tabParam = searchParams.get('tab')
@@ -133,6 +139,7 @@ function SettingsWorkspace() {
 
   useEffect(() => {
     let tabParam = searchParams.get('tab')
+    setPhoneOverview(!tabParam)
     if (tabParam === 'hosting') tabParam = 'network'
     if (isCashier && tabParam && !['general', 'support'].includes(tabParam)) {
       setActiveTab('general')
@@ -533,6 +540,7 @@ function SettingsWorkspace() {
     logger.debug('[Settings] Tab changed to:', tabId)
     if (saveStatus === 'unsaved') save(false)
     setActiveTab(tabId)
+    setPhoneOverview(false)
     setSearchParams({ tab: tabId })
   }
 
@@ -610,17 +618,18 @@ function SettingsWorkspace() {
   // ============================================================================
   return (
     <AppLayout title="App Settings">
-      <div className="slide-up settings-shell" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', height: '100%', minHeight: 0 }}>
+      <div className={`slide-up settings-shell${phoneLayout && phoneOverview ? ' settings-phone-overview' : ''}`} style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', height: '100%', minHeight: 0 }}>
 
         {/* ── Page header (sticky, title + subtitle + Save button) ── */}
         <div className="page-header" style={{ flexShrink: 0 }}>
           <div className="page-header-left">
-            <h1 className="page-title">App Settings</h1>
-            <p className="page-subtitle">Configure how your billing system behaves — transactions, printing, stock, and more.</p>
+            {phoneLayout && !phoneOverview && <button type="button" className="settings-phone-back" onClick={() => { setPhoneOverview(true); setSearchParams({}) }} aria-label="Back to settings"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="m14 6-6 6 6 6" /></svg><span>Settings</span></button>}
+            <h1 className="page-title">{phoneLayout ? phoneOverview ? 'Settings' : visibleTabs.find(tab => tab.id === activeTab)?.label || 'Settings' : 'App Settings'}</h1>
+            <p className="page-subtitle">{phoneLayout ? phoneOverview ? 'Your business, your preferences.' : visibleTabs.find(tab => tab.id === activeTab)?.desc : 'Configure how your billing system behaves — transactions, printing, stock, and more.'}</p>
           </div>
           <div className="page-actions" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <HeaderSearchSlot />
-            {activeTab !== 'profile' && activeTab !== 'migration' && activeTab !== 'activity' && activeTab !== 'ops_health' && activeTab !== 'support' && (
+            {!(phoneLayout && phoneOverview) && activeTab !== 'profile' && activeTab !== 'migration' && activeTab !== 'activity' && activeTab !== 'ops_health' && activeTab !== 'support' && (
               <SettingsSaveButton saveStatus={saveStatus} saving={saving} onSave={() => save(true)} />
             )}
           </div>
@@ -647,7 +656,17 @@ function SettingsWorkspace() {
           </div>
         )}
 
+        {phoneLayout && phoneOverview && <div className="settings-phone-launcher">
+          <label className="settings-phone-search"><SettingsIcon size={17} /><input type="search" aria-label="Find a settings section" placeholder="Find a setting" value={phoneSectionQuery} onChange={event => setPhoneSectionQuery(event.target.value)} /></label>
+          {settingsGroups.map(group => {
+            const sections = group.tabs.filter(tab => `${tab.label} ${tab.desc}`.toLowerCase().includes(phoneSectionQuery.trim().toLowerCase()))
+            return sections.length > 0 && <section className="settings-phone-group" key={group.title} aria-label={group.title}><h2>{group.title}</h2><div>{sections.map(tab => <button key={tab.id} type="button" className="settings-phone-section" onClick={() => handleTabChange(tab.id)}><span className="settings-phone-section-icon">{tab.icon}</span><span><strong>{tab.label}</strong><small>{tab.desc}</small></span><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><path d="m9 6 6 6-6 6" /></svg></button>)}</div></section>
+          })}
+          {!visibleTabs.some(tab => `${tab.label} ${tab.desc}`.toLowerCase().includes(phoneSectionQuery.trim().toLowerCase())) && <p className="settings-phone-empty" role="status">No matching settings. Try “staff”, “print” or “support”.</p>}
+        </div>}
+
         {/* ── Panel container (Split-pane layout: Left sub-sidebar, Right form body) ── */}
+        {!(phoneLayout && phoneOverview) && (
         <div className="card settings-panel settings-split-layout" style={{
           overflow: 'hidden',
           flex: 1,
@@ -817,7 +836,7 @@ function SettingsWorkspace() {
                 <div className="inv-row">
                   <div className="inv-row-body">
                     <div className="inv-row-label">App Display Size</div>
-                    <div className="inv-row-hint">Scale the entire application interface to suit your screen and preference.</div>
+                    <div className="inv-row-hint">{phoneLayout ? 'Sets the display size for tablet and desktop. The phone layout keeps its natural size.' : 'Scale the entire application interface to suit your screen and preference.'}</div>
                   </div>
                   <div className="settings-zoom-options" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                     {[80, 90, 100, 110, 120, 130].map(v => {
@@ -828,8 +847,9 @@ function SettingsWorkspace() {
                           onClick={async () => {
                             patch('general', 'app_zoom', v)
                             localStorage.setItem('billing_app_zoom', String(v))
-                            document.documentElement.style.zoom = `${v}%`
-                            document.documentElement.style.setProperty('--zoom', v / 100)
+                            const displayZoom = phoneLayout ? 100 : v
+                            document.documentElement.style.zoom = `${displayZoom}%`
+                            document.documentElement.style.setProperty('--zoom', displayZoom / 100)
                             document.documentElement.style.minHeight = ''
 
                             // Auto-saved via debounced hybrid model
@@ -2026,12 +2046,12 @@ function SettingsWorkspace() {
 
           {/* ═══════════════════════════ STAFF MANAGEMENT ═════════════════════════ */}
           {activeTab === 'staff' && !isCashier && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 32 }}>
+            <div className="settings-staff-section" style={{ display: 'flex', flexDirection: 'column', gap: 32 }}>
 
               <div>
-                <SectionHeader title="Staff & Role Management" />
+                {!phoneLayout && <SectionHeader title="Staff & Role Management" />}
                 <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: 20, marginTop: 4, lineHeight: 1.5 }}>
-                  Create and manage staff sub-accounts for your business. Define user roles (Cashier or Supply Adder) and assign custom billing counters.
+                  {phoneLayout ? 'Manage staff access and billing counters.' : 'Create and manage staff sub-accounts for your business. Define user roles (Cashier or Supply Adder) and assign custom billing counters.'}
                 </p>
 
                 {staffError && (
@@ -2069,7 +2089,9 @@ function SettingsWorkspace() {
                 )}
 
                 {/* Add Staff Form */}
-                <form onSubmit={handleAddStaff} className="card" style={{
+                <StaffFormContainer {...(phoneLayout ? { className: 'settings-phone-staff-create' } : {})}>
+                {phoneLayout && <summary>Add staff <span aria-hidden="true">+</span></summary>}
+                <form onSubmit={handleAddStaff} className="card settings-staff-create-form" style={{
                   background: 'var(--bg-3)',
                   border: '1px solid var(--border)',
                   padding: 20,
@@ -2154,6 +2176,7 @@ function SettingsWorkspace() {
                     {staffSubmit ? 'Adding…' : '+ Add Staff'}
                   </button>
                 </form>
+                </StaffFormContainer>
 
                 {/* Staff List */}
                 {staffLoading ? (
@@ -2167,7 +2190,7 @@ function SettingsWorkspace() {
                   </div>
                 ) : (
                   <div className="data-table-wrap" style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', overflow: 'hidden' }}>
-                    <table className="data-table" style={{ margin: 0 }}>
+                    <table className="data-table settings-staff-table" style={{ margin: 0 }}>
                       <thead>
                         <tr>
                           <th>Username</th>
@@ -2200,17 +2223,17 @@ function SettingsWorkspace() {
                               ]})
                             }}
                           >
-                            <td className="td-primary" style={{ fontWeight: 600 }}>{s.username}</td>
-                            <td>
+                            <td className="td-primary" data-label="Username" style={{ fontWeight: 600 }}>{s.username}</td>
+                            <td data-label="Role">
                               <span className="badge badge-muted" style={{ textTransform: 'capitalize' }}>{s.role}</span>
                             </td>
-                            <td style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                            <td data-label="Phone" style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
                               {s.phone || '—'}
                             </td>
-                            <td style={{ fontSize: '0.78rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                            <td data-label="Created" style={{ fontSize: '0.78rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
                               {s.created_at ? new Date(s.created_at).toLocaleDateString() : '—'}
                             </td>
-                            <td style={{ fontSize: '0.78rem', whiteSpace: 'nowrap' }}>
+                            <td data-label="Last used" style={{ fontSize: '0.78rem', whiteSpace: 'nowrap' }}>
                               {s.last_login ? (
                                 <span style={{ color: 'var(--text-muted)' }}>
                                   {new Date(s.last_login).toLocaleDateString()}
@@ -2230,7 +2253,7 @@ function SettingsWorkspace() {
                                 </span>
                               )}
                             </td>
-                            <td>
+                            <td data-label="Counter">
                               <CustomSelect
                                 className="form-input"
                                 value={s.counter_prefix || ''}
@@ -2243,7 +2266,7 @@ function SettingsWorkspace() {
                                 ))}
                               </CustomSelect>
                             </td>
-                            <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                            <td data-label="Actions" style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
                               <button
                                 type="button"
                                 className="btn btn-ghost btn-sm"
@@ -2534,6 +2557,7 @@ function SettingsWorkspace() {
           )}
           </div>
         </div>
+        )}
 
       </div>
 

@@ -1477,7 +1477,7 @@ body,
   }
 }
 
-@media (max-width: 768px) {
+@media (max-width: 600px) {
   .dashboard-grid {
     grid-template-columns: 1fr !important;
     gap: 20px !important;
@@ -4636,7 +4636,7 @@ input[type="checkbox"] {
 }
 
 /* === MOBILE POS RESPONSIVE OVERRIDES === */
-@media (max-width: 768px) {
+@media (max-width: 600px) {
   .pos-workspace {
     flex-direction: column !important;
     height: auto !important;
@@ -5004,7 +5004,7 @@ input[type="checkbox"] {
   display: none;
 }
 
-@media (max-width: 768px) and (orientation: portrait) {
+@media (max-width: 600px) and (orientation: portrait) {
   .pos-portrait-overlay {
     display: flex !important;
     position: fixed;
@@ -5078,7 +5078,7 @@ input[type="checkbox"] {
 }
 
 /* Sidebar Responsive Collapse on Mobile Viewports */
-@media (max-width: 768px) {
+@media (max-width: 600px) {
   .app-shell {
     flex-direction: column !important;
     height: 100vh !important;
@@ -5586,14 +5586,14 @@ input[type="checkbox"] {
 }
 
 /* On mobile portrait, hide the fullscreen trigger */
-@media (max-width: 768px) {
+@media (max-width: 600px) {
   .table-fullscreen-btn {
     display: none !important;
   }
 }
 
 /* On mobile landscape, show it */
-@media (max-width: 768px) and (orientation: landscape) {
+@media (max-width: 600px) and (orientation: landscape) {
   .table-fullscreen-btn {
     display: inline-flex !important;
   }
@@ -6976,7 +6976,7 @@ body.is-col-resizing * {
    deliberately owns the whole viewport. */
 .mobile-bottombar { display: none; }
 
-@media (max-width: 768px) {
+@media (max-width: 600px) {
   /* Sync warnings are actionable; keep them above the fixed thumb-bar rather
      than covering the primary navigation on phones. */
   .sync-prompt-banner {
@@ -7337,7 +7337,7 @@ body.is-col-resizing * {
    already lives in a class on .sidebar — the same approach the POS portrait
    overlay uses further down. No sidebar at all (/sales) falls through to the
    viewport-centred default above. */
-@media (min-width: 769px) {
+@media (min-width: 601px) {
   body:has(.sidebar) .usearch-dock { left: calc(var(--sidebar-w) + 7px); }
   body:has(.sidebar.collapsed) .usearch-dock { left: calc(var(--sidebar-rail-w) + 7px); }
 }
@@ -7453,7 +7453,7 @@ body.is-col-resizing * {
 
 .usearch-close:hover { color: var(--text-primary); border-color: var(--border-strong); }
 
-@media (max-width: 768px) {
+@media (max-width: 600px) {
   .usearch-dock {
     bottom: calc(var(--bottombar-h) + env(safe-area-inset-bottom, 0px) + 14px);
   }
@@ -7772,7 +7772,7 @@ body.is-col-resizing * {
   box-shadow: var(--shadow-sm);
 }
 
-@media (max-width: 768px) {
+@media (max-width: 600px) {
   .page-content > .slide-up:not(.home-page):not(.pos-layout-shell),
   .page-content > .fade-in:not(.ws-embed) { width: 100%; }
   .page-header .page-actions .btn-primary { box-shadow: none; }

@@ -12,6 +12,8 @@ import { BuildingMark } from '../components/Logo'
 import AnnouncementsCard from '../components/AnnouncementsCard'
 import { useForegroundRefresh } from '../hooks/useForegroundRefresh'
 import { logger } from '../utils/logger'
+import usePhoneLayout from '../hooks/usePhoneLayout'
+import PhoneHome from '../components/phone/PhoneHome'
 import {
   CounterIcon,
   DashboardIcon,
@@ -34,6 +36,7 @@ const QUICK_LINKS = [
 export default function Home() {
   const { profile, user, authFetch, settings } = useAuth()
   const navigate = useNavigate()
+  const phoneLayout = usePhoneLayout()
 
   const isCashier = (user?.role || '').toLowerCase() === 'cashier'
   const OWNER_ONLY_PATHS = React.useMemo(() => new Set(['/purchases', '/b2b', '/b2b-network', '/b2b-orders', '/reports', '/import', '/staff', '/dashboard']), [])
@@ -101,6 +104,7 @@ export default function Home() {
 
   return (
     <AppLayout title="Home">
+      {phoneLayout ? <PhoneHome greeting={greeting} isCashier={isCashier} today={today} todayError={todayError} onRetry={() => loadTodayRef.current?.()} /> : (
       <div className="home-page slide-up">
         <section className="home-hero" aria-labelledby="home-title">
           <div className="home-hero-copy">
@@ -207,6 +211,7 @@ export default function Home() {
           <BuildingMark size={15} strokeWidth={2.2} /> Advanced Billing System · Stater
         </footer>
       </div>
+      )}
     </AppLayout>
   )
 }

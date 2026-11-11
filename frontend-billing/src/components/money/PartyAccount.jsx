@@ -1,3 +1,6 @@
+import usePhoneLayout from '../../hooks/usePhoneLayout'
+import PhoneRecord from '../common/PhoneRecord'
+import '../../pages/money-phone.css'
 // ============================================================================
 // PartyAccount — the drill-down: everything about one customer on ONE screen.
 // Header (outstanding + advance), quick actions (Settle · Record Payment ·
@@ -6,7 +9,8 @@
 // ============================================================================
 import React, { useEffect, useState, useCallback } from 'react'
 import { CheckIcon, MessageIcon, CashIcon } from '../Icons'
-import InvoiceActions from '../invoice/InvoiceActions'
+import InvoiceActions, { invoiceActionItems } from '../invoice/InvoiceActions'
+import { useDocLabels } from '../../hooks/useDocLabels'
 
 const fmt = (n) => `₹${Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`
 
@@ -18,6 +22,8 @@ function StatusTag({ status }) {
 }
 
 export default function PartyAccount({ authFetch, party, onBack, actions, onSettle, onRecordPayment, onReminder, reloadKey = 0 }) {
+  const phone = usePhoneLayout()
+  const label = useDocLabels()
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
 
@@ -38,9 +44,9 @@ export default function PartyAccount({ authFetch, party, onBack, actions, onSett
   const entries = (data?.entries || []).filter(e => e.type === 'invoice')
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+    <div className="phone-account" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
+      <div className="phone-account-header" style={{ display: 'flex', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
         <button className="btn btn-ghost btn-sm" onClick={onBack} aria-label="Back">← Back</button>
         <div style={{ flex: 1, minWidth: 200 }}>
           <div style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--text-primary)' }}>{party?.name}</div>
@@ -61,7 +67,7 @@ export default function PartyAccount({ authFetch, party, onBack, actions, onSett
       </div>
 
       {/* Actions */}
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+      <div className="phone-account-actions" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         {outstanding > 0 && (
           <button className="btn btn-primary btn-sm" onClick={() => onSettle && onSettle(party)}><CheckIcon size={13} /> Settle dues</button>
         )}
@@ -74,7 +80,13 @@ export default function PartyAccount({ authFetch, party, onBack, actions, onSett
       {/* Ledger */}
       {loading ? (
         <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', padding: 12 }}>Loading account…</div>
-      ) : (
+      ) : phone ? <div className="phone-record-list" aria-label="Account invoices">{!entries.length ? <div className="phone-list-empty">No invoices for this customer.</div> : entries.map(e => {
+        const isNote = (e.status || '').toLowerCase().includes('note') || (e.invoice_type || '').includes('note');
+        const inv = { ...e, invoice_number: e.invoice_no, can_record_payment: e.outstanding > 0 && !isNote, can_return: !isNote };
+        return <PhoneRecord key={e.invoice_id} title={e.invoice_no} meta={e.date || 'No date'} amount={fmt(e.total_amount)} onOpen={() => actions.view(e.invoice_no)} status={<StatusTag status={e.status} />} primary={<span>{fmt(e.outstanding)} due</span>}>
+          <p>Paid {fmt(e.paid_amount)}</p>{invoiceActionItems(inv, actions, party, label).map(item => <button className="btn btn-secondary" key={item.label} onClick={item.action}>{item.icon}{item.label}</button>)}
+        </PhoneRecord>;
+      })}</div> : (
         <div className="data-table-wrap" style={{ overflowX: 'auto' }}>
           <table className="data-table" style={{ width: '100%', fontSize: '0.84rem' }}>
             <thead>

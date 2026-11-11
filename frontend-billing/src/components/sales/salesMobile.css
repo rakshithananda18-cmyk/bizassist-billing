@@ -2,7 +2,7 @@
 .pos-mobile-view-switch, .pos-mobile-empty, .pos-mobile-details-toggle, .pos-mobile-quantity-button { display: none; }
 .pos-counter-global-search { display: contents; }
 
-@media screen and (max-width: 768px) {
+@media screen and (max-width: 600px) {
   .sales-counter { min-height: 0; min-width: 0; max-width: 100%; overflow: hidden; }
   .sales-counter .pos-counter-topbar { height: auto !important; min-height: 48px; flex-wrap: wrap; padding: 6px 10px !important; gap: 5px !important; }
   .sales-counter .pos-counter-brand, .sales-counter .pos-counter-clock, .sales-counter .pos-counter-divider, .sales-counter .pos-counter-global-search,
@@ -86,4 +86,52 @@
   .pos-phone-checkout-card .pos-checkout-column div { min-width: 0; }
   .pos-phone-checkout-card .pos-checkout-actions { position: sticky; bottom: -16px; padding: 12px 0; background: var(--bg-2); }
   .pos-phone-checkout-card .pos-checkout-actions > button { min-width: 0; min-height: 48px; }
+}
+
+/* Phone counter: bill picker, category rail, product rows and a focused pay dock. */
+@media screen and (max-width: 600px) {
+  .sales-counter .pos-phone-header { flex: 0 0 auto; padding: 10px 14px 7px; border-bottom: 1px solid var(--border-hairline); background: var(--bg); }
+  .pos-phone-header-line { display: flex; gap: 8px; align-items: center; }
+  .pos-phone-active-bill { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 3px; }
+  .pos-phone-active-bill > span { font-size: 10px; color: var(--text-muted); }
+  .pos-phone-active-bill > select { width: 100%; min-width: 0; height: 33px; padding: 0 20px 0 0; border: 0; background: transparent; color: var(--text-primary); font: inherit; font-size: 14px; font-weight: 650; text-overflow: ellipsis; }
+  .pos-phone-new-bill { display: inline-flex; gap: 5px; align-items: center; justify-content: center; min-height: 44px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-2); color: var(--accent); font: inherit; font-size: 12px; white-space: nowrap; }
+  .pos-phone-context { display: flex; align-items: center; flex-wrap: wrap; gap: 5px 8px; min-height: 25px; font-size: 10px; color: var(--text-muted); }
+  .pos-phone-context > select { max-width: 49%; min-width: 0; min-height: 30px; padding: 3px 5px; background: var(--bg-1); color: var(--text-secondary); border: 0; border-radius: 5px; font-size: 10px; }
+  .pos-phone-context [role="tablist"] { overflow-x: auto; max-width: 100%; }
+  .pos-phone-context [role="tab"] { min-height: 32px; white-space: nowrap; }
+  .pos-phone-shift-dot { margin-left: auto; color: var(--success); }
+  .sales-counter .pos-mobile-view-switch { padding: 8px 14px 0; gap: 0; background: var(--bg); }
+  .sales-counter .pos-mobile-view-switch > button { border-radius: 0; border: 0; border-bottom: 2px solid var(--border-hairline); background: transparent; min-height: 42px; font-size: 13px; }
+  .sales-counter .pos-mobile-view-switch > button[aria-pressed="true"] { border-bottom-color: var(--accent); background: transparent; color: var(--accent); }
+  .sales-counter .pos-search-container { padding: 10px 14px 6px; }
+  .sales-counter .pos-product-search-row .search-bar { min-height: 44px; border-radius: 11px; background: var(--bg-2); }
+  .sales-counter .pos-product-search-row > button { border-radius: 10px; font-size: 12px !important; }
+  .sales-counter .pos-right-pane.pos-phone-catalogue { display: flex; flex-direction: column; gap: 9px !important; padding: 6px 14px 12px !important; }
+  .pos-phone-categories { display: flex; gap: 6px; overflow-x: auto; flex: 0 0 auto; padding: 0 0 5px; scrollbar-width: none; }
+  .pos-phone-categories > button { min-height: 35px; padding: 7px 11px; border: 1px solid var(--border-hairline); border-radius: 20px; background: var(--bg-2); color: var(--text-muted); font: inherit; font-size: 11px; white-space: nowrap; cursor: pointer; }
+  .pos-phone-categories > button[aria-pressed="true"] { background: var(--accent-dim); border-color: transparent; color: var(--accent); }
+  .pos-phone-catalogue-heading { display: flex; justify-content: space-between; gap: 8px; font-size: 10px !important; color: var(--text-muted); padding: 0 2px; }
+  .pos-phone-product-list { border: 1px solid var(--border-hairline); border-radius: 13px; background: var(--bg-2); flex: 0 0 auto; overflow: hidden; }
+  .pos-phone-product { display: flex; align-items: center; gap: 10px; width: 100%; min-width: 0; min-height: 60px; padding: 8px 12px; background: transparent; border: 0; color: var(--text-primary); font: inherit; text-align: left; cursor: pointer; }
+  .pos-phone-product + .pos-phone-product { border-top: 1px solid var(--border-hairline); }
+  .pos-phone-product-mark { display: grid; place-items: center; flex: 0 0 34px; height: 38px; color: var(--accent); background: var(--accent-glow); border: 1px solid var(--accent-dim); border-radius: 9px; font-family: 'Crimson Pro', Georgia, serif; font-size: 23px; }
+  .pos-phone-product-copy { display: flex; flex-direction: column; gap: 5px; flex: 1; min-width: 0; }
+  .pos-phone-product-copy > strong { font-size: 12px; font-weight: 600; line-height: 1.4; overflow-wrap: anywhere; }
+  .pos-phone-product-copy > small { font-size: 10px; color: var(--text-muted); line-height: 1.4; }
+  .pos-phone-product-price { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; flex: 0 1 auto; max-width: 37%; overflow-wrap: anywhere; }
+  .pos-phone-product-price > span { display: grid; place-items: center; width: 23px; height: 28px; color: var(--accent); background: var(--accent-dim); border-radius: 7px; font-size: 17px; flex-shrink: 0; }
+  .sales-counter .pos-cart-wrapper { padding: 3px 14px 0; }
+  .sales-counter .pos-cart-table tr.item-row { border-radius: 13px; border-color: var(--border-hairline); gap: 10px; }
+  .sales-counter .pos-total-container { padding: 9px 14px; border-top: 1px solid var(--border-hairline); background: var(--bg); }
+  .pos-phone-totals { min-width: 0; }
+  .pos-phone-pay-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .pos-phone-total-summary { display: flex; flex-direction: column; gap: 3px; text-align: left; padding: 0; border: 0; background: transparent; color: var(--text-primary); min-width: 0; flex: 1; cursor: pointer; }
+  .pos-phone-total-summary small { font-size: 10px; color: var(--text-muted); }
+  .pos-phone-total-summary strong { font-size: 24px; font-family: 'Crimson Pro', Georgia, serif; font-weight: 600; line-height: 1.1; overflow-wrap: anywhere; }
+  .pos-phone-pay-row > .btn { display: flex; justify-content: center; align-items: center; gap: 9px; min-height: 48px; max-width: 57%; padding: 9px 15px; border-radius: 12px; font-size: 12px; }
+  .pos-phone-total-breakdown { display: flex; gap: 20px; margin: 0 0 10px; padding-bottom: 9px; border-bottom: 1px solid var(--border-hairline); }
+  .pos-phone-total-breakdown > div { display: flex; gap: 7px; align-items: baseline; font-size: 11px; }
+  .pos-phone-total-breakdown dt { color: var(--text-muted); }
+  .pos-phone-total-breakdown dd { margin: 0; font-weight: 600; }
 }

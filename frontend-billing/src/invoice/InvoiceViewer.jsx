@@ -20,6 +20,8 @@ import {
 } from '../components/Icons'
 import { useDocLabels } from '../hooks/useDocLabels'
 import { useConfirm } from '../contexts/ConfirmContext'
+import usePhoneLayout from '../hooks/usePhoneLayout'
+import '../pages/phone-utilities.css'
 const LAST_USED_KEY = (bizId) => `invoice.template.${bizId || 'default'}`
 const PDF_DOWNLOAD_STYLE = { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 30, height: 30, borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', cursor: 'pointer', background: 'var(--bg-2)', color: 'var(--text-secondary)', transition: 'all 0.15s ease' }
 
@@ -78,6 +80,8 @@ class TemplateBoundary extends Component {
 }
 
 export default function InvoiceViewer({ invoiceNo: invoiceNoProp = null, embedded = false, onBack = null, onClose = null }) {
+  const phoneLayout = usePhoneLayout()
+  const [phoneView, setPhoneView] = useState('details')
   const label = useDocLabels()
   const confirm = useConfirm()
   // Embedded mode (e.g. inside the Payments page): the invoice number comes in
@@ -290,7 +294,7 @@ export default function InvoiceViewer({ invoiceNo: invoiceNoProp = null, embedde
   )
 
   return (
-    <div className="invoice-viewer" data-testid="invoice-viewer" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+    <div className="invoice-viewer" data-testid="invoice-viewer" data-phone-view={phoneLayout ? phoneView : undefined} style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       {/* toolbar (hidden in print via .no-print) */}
       <div className="invoice-viewer-toolbar no-print" style={{
         display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap',
@@ -474,6 +478,8 @@ export default function InvoiceViewer({ invoiceNo: invoiceNoProp = null, embedde
 
       {printError && <div className="no-print" role="alert" style={{ padding: '10px 14px', color: 'var(--danger)', background: 'var(--danger-dim)' }}>{printError}</div>}
       {pdfError && <div className="no-print" role="alert" style={{ padding: '10px 14px', color: 'var(--danger)', background: 'var(--danger-dim)', borderBottom: '1px solid var(--border)', fontSize: '0.83rem' }}>{pdfError}</div>}
+
+      {phoneLayout && <div className="invoice-phone-views no-print" role="group" aria-label="Invoice view"><button type="button" aria-pressed={phoneView === 'details'} onClick={() => setPhoneView('details')}>Details & payments</button><button type="button" aria-pressed={phoneView === 'document'} onClick={() => setPhoneView('document')}>Document</button></div>}
 
       {/* ── Body: preview + side panel ────────────────────────────────────────── */}
       <div className="no-print invoice-viewer-body" style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden' }}>

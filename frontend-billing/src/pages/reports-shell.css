@@ -295,7 +295,7 @@
 }
 
 /* ── Responsive Rules ─────────────────────────────────────────────────────── */
-@media (max-width: 1024px) and (min-width: 769px) {
+@media (max-width: 1024px) and (min-width: 601px) {
   .reports-sub-sidebar {
     width: 210px;
     min-width: 210px;
@@ -311,7 +311,7 @@
   }
 }
 
-@media (max-width: 768px) {
+@media (max-width: 600px) {
   .reports-split-layout,
   .reports-shell.slide-up > .card.reports-split-layout {
     flex-direction: column !important;

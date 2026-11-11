@@ -2,8 +2,9 @@
 // ====================================
 // The always-visible bottom totals bar for the POS counter.
 // Includes the subtotal, tax, inline keyboard shortcuts (always visible), and grand total with Pay button.
-import React from 'react'
+import React, { useState } from 'react'
 import { fmt } from '../../utils/format'
+import usePhoneLayout from '../../hooks/usePhoneLayout'
 
 export default function PosTotalBar({
   subtotal,
@@ -12,12 +13,19 @@ export default function PosTotalBar({
   onPay,
   funcKeys = {},
 }) {
+  const phone = usePhoneLayout()
+  const [showBreakdown, setShowBreakdown] = useState(false)
   const searchKey = funcKeys?.barcodeFocus || 'F9'
   const customerKey = funcKeys?.customerFocus || 'F11'
   const saveKey = funcKeys?.saveInvoice || 'Ctrl+S'
   const printKey = funcKeys?.printInvoice || 'Ctrl+P'
   const newBillKey = funcKeys?.newBill || 'Ctrl+T'
   const closeTabKey = funcKeys?.closeTab || 'Ctrl+W'
+
+  if (phone) return <div className="pos-phone-totals">
+    {showBreakdown && <dl className="pos-phone-total-breakdown"><div><dt>Subtotal</dt><dd>{fmt(subtotal)}</dd></div><div><dt>Tax</dt><dd>{fmt(gstAmt)}</dd></div></dl>}
+    <div className="pos-phone-pay-row"><button type="button" className="pos-phone-total-summary" aria-expanded={showBreakdown} aria-label="Show bill total breakdown" onClick={() => setShowBreakdown(value => !value)}><small>Bill total <span aria-hidden="true">{showBreakdown ? '⌃' : '⌄'}</span></small><strong>{fmt(grandTotal)}</strong></button><button type="button" className="btn btn-primary" onClick={onPay}>Continue to pay <span aria-hidden="true">→</span></button></div>
+  </div>
 
   return (
     <div className="pos-totals-bar" style={{

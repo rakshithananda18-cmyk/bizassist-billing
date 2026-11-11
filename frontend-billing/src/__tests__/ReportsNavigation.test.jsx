@@ -20,9 +20,30 @@ function show(entry = '/reports') {
   return render(<MemoryRouter initialEntries={[entry]}><Navigation /><Reports /></MemoryRouter>)
 }
 beforeEach(() => { localStorage.clear(); authFetch.mockReset().mockResolvedValue(response([])) })
-afterEach(cleanup)
+afterEach(() => { cleanup(); vi.unstubAllGlobals() })
 
 describe('Reports navigation and request ownership', () => {
+  const phoneViewport = () => vi.stubGlobal('matchMedia', vi.fn(query => ({ matches: query === 'screen and (max-width: 600px)', media: query, addEventListener() {}, removeEventListener() {} })))
+
+  it('lets a phone user choose a report before explicitly running it', async () => {
+    phoneViewport()
+    show('/reports?tab=sales-register')
+    fireEvent.change(screen.getByLabelText('Choose report'), { target: { value: 'gst' } })
+    expect(authFetch).not.toHaveBeenCalled()
+    expect(screen.getByText('Ready to run')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Run report', exact: true }))
+    expect(await screen.findByTestId('rows')).toHaveTextContent('[]')
+    expect(authFetch).toHaveBeenCalledWith(expect.stringContaining('/billing/reports/gst?'), expect.objectContaining({ signal: expect.any(AbortSignal) }))
+  })
+
+  it('shows required party filters immediately for a phone ledger deep link', () => {
+    phoneViewport()
+    show('/reports?tab=party-ledger')
+    expect(screen.getByRole('button', { name: 'Report dates and filters' })).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByRole('button', { name: 'vendor', exact: true })).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Run report', exact: true })).toBeDisabled()
+  })
+
   it('follows router deep links both at mount and while the page remains mounted', async () => {
     show('/reports?tab=gst')
     expect(screen.getByRole('heading', { level: 2, name: /GST Report/ })).toBeInTheDocument()

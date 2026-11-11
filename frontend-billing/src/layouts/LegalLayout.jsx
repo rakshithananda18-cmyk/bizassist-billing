@@ -4,6 +4,7 @@ import { BuildingMark } from '../components/Logo'
 import { useAuth } from '../contexts/AuthContext'
 import { BillsIcon, ShieldIcon, CashIcon, ContactsIcon } from '../components/Icons'
 import './legal-layout.css'
+import '../pages/phone-utilities.css'
 
 export default function LegalLayout({ title, subtitle, lastUpdated, children }) {
   const location = useLocation()

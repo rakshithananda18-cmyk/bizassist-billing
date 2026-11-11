@@ -1,0 +1,11 @@
+@media screen and (max-width: 600px) {
+  .phone-action-menu { position: relative; flex: 0 0 auto; }
+  .phone-action-trigger { display: grid; place-items: center; width: 44px; height: 44px; padding: 0; color: var(--text-secondary); background: var(--bg-2); border: 1px solid var(--border); border-radius: 10px; cursor: pointer; }
+  .phone-action-trigger[aria-expanded="true"] { color: var(--accent); border-color: var(--accent); }
+  .phone-action-popover { position: absolute; top: calc(100% + 5px); right: 0; z-index: 1020; display: grid; width: min(245px, calc(100vw - 32px)); max-height: min(55dvh, 400px); padding: 5px; overflow-y: auto; color: var(--text-primary); background: var(--bg-2); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 12px 32px #0003; }
+  .phone-action-popover > button { display: flex; align-items: center; gap: 9px; min-height: 44px; padding: 9px 10px; text-align: left; color: inherit; background: transparent; border: 0; border-radius: 7px; font: inherit; font-size: 13px; cursor: pointer; }
+  .phone-action-popover > button:hover, .phone-action-popover > button:focus-visible { background: var(--bg-3); }
+  .phone-action-popover > button > span { flex: 1; }
+  .phone-action-popover > button > small { color: var(--accent); font-size: 10px; }
+  .phone-action-popover > button:disabled { opacity: .4; cursor: default; }
+}

@@ -46,7 +46,9 @@ Publish capabilities as available only after they are implemented and verified. 
 
 ## 4. Automation delivery sequence
 
-Start with a complete purchasing workflow: **draft → review → approve → send → track**.
+Detailed workflow, Automation-page, recurring-billing and runtime specification: [Agentic billing and everyday automations](2026-11-11-STATER-AGENTIC-BILLING-AND-AUTOMATION-PLAN.md).
+
+The detailed plan refines the rollout: first prove the shared runtime with a small daily-work/recurring-billing private pilot, then deliver a complete purchasing-agent workflow: **draft → review → approve → send → track**. The purchasing scope below remains required; a recommendation log does not complete it.
 
 1. Supplier-grouped reorder proposals using normalized stock, minimums, units/pack sizes, preferred suppliers, agreed prices and existing open inbound orders.
 2. Chat and voice instructions that prepare PO drafts within the owner's budget. Collect supplier lead times before claiming demand-based ordering.

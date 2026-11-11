@@ -1,3 +1,6 @@
+import usePhoneLayout from '../../hooks/usePhoneLayout'
+import PhoneRecord from '../../components/common/PhoneRecord'
+import '../../pages/money-phone.css'
 // ============================================================================
 // b2b/components/OrdersTab.jsx — the "Incoming Orders" and "Outgoing Orders" tabs.
 // ----------------------------------------------------------------------------
@@ -82,6 +85,7 @@ export default function OrdersTab({
   onReconcilePurchaseBill,
   reconcilingOrderId,
 }) {
+  const phone = usePhoneLayout()
   const [fullScreen, setFullScreen] = useState(false)
   const [showFilterModal, setShowFilterModal] = useState(false)
   const [dateFilter, setDateFilter] = useState('all') // 'all' | 'today' | '7days' | '30days'
@@ -336,6 +340,7 @@ export default function OrdersTab({
           </span>
         )}
 
+        {phone && <details className="phone-order-sort"><summary>Sort{sort.key ? ` · ${sort.direction === 'desc' ? '↓' : '↑'}` : ''}</summary><div>{COLUMNS.filter(c => c.sortable).map(c => <button type="button" className="btn btn-secondary" key={c.key} aria-pressed={sort.key === c.key} onClick={() => toggleSort(c.key)}>{c.key === 'party' ? partyLabel : c.label}</button>)}</div></details>}
         <div style={{ flex: 1 }} />
 
         <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
@@ -359,7 +364,21 @@ export default function OrdersTab({
 
       {loading ? (
         <div className="page-loader"><span className="spinner" /> Loading orders…</div>
-      ) : fullScreen ? (
+      ) : phone ? <div className="phone-record-list" aria-label={title}>
+        {!displayOrders.length ? <div className="phone-list-empty">No orders match. {direction === 'outgoing' && <button className="btn btn-primary" onClick={onGoToOrderDesk}>Start an order</button>}</div> : displayOrders.map(order => {
+          const cp = counterpartyOf(order, direction);
+          const status = STATUS_FLOW[order.status] || { label: order.status, variant: 'secondary' };
+          const sellerInvoicePosted = Boolean(order.seller_invoice_posted || order.seller_invoice_id);
+          const received = Boolean(order.buyer_stock_received || justInvoiced?.has(order.order_number));
+          return <PhoneRecord key={order.id} title={cp.name} amount={fmt(order.total_amount)} meta={`${order.order_number} · ${new Date(order.created_at || order.order_date).toLocaleDateString('en-IN')}`} onOpen={() => onOpenOrder(order)} status={<span className={`badge badge-${status.variant}`}>{status.label}</span>} primary={<button className="btn btn-secondary" onClick={() => onOpenOrder(order)}>View order</button>}>
+            <p>{partyLabel}: {cp.bizid}</p><p>Subtotal {fmt(order.subtotal)} · Tax {fmt((order.cgst_total || 0) + (order.sgst_total || 0) + (order.igst_total || 0))}</p>
+            {isRetiredBusiness(order) && <p>Business account deleted · no new trade</p>}
+            {direction === 'outgoing' && order.status === 'completed' && <p>{received ? 'Stock received' : sellerInvoicePosted ? 'Stock receipt needs review' : 'Order completed'}{order.buyer_purchase_invoice_id ? ' · Purchase bill posted' : ''}</p>}
+            {actionsFor(order, direction).map(a => <button key={a.key} className={a.variant === 'danger' ? 'btn btn-secondary' : 'btn btn-primary'} onClick={() => onChangeStatus(order.id, a.key)}>{a.label}</button>)}
+            {direction === 'outgoing' && order.status === 'completed' && sellerInvoicePosted && !order.buyer_purchase_invoice_id && onReconcilePurchaseBill && <button className="btn btn-primary" disabled={reconcilingOrderId === order.id} onClick={() => onReconcilePurchaseBill(order)}>{reconcilingOrderId === order.id ? 'Creating…' : 'Create purchase bill'}</button>}
+          </PhoneRecord>;
+        })}
+      </div> : fullScreen ? (
         <div className="table-fullscreen-overlay" onClick={e => { if (e.target === e.currentTarget) setFullScreen(false) }}>
           <div className="table-fullscreen-panel">
             <div className="table-fullscreen-header">

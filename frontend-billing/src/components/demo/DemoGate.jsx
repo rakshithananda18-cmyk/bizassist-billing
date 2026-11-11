@@ -4,6 +4,7 @@
  * while driving free trial conversions.
  */
 import React from 'react'
+import '../../pages/phone-utilities.css'
 
 export default function DemoGate({
   children,

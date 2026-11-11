@@ -34,6 +34,9 @@ import BulkPreviewModal from '../components/common/BulkPreviewModal'
 import { isProtectedTourPreview, PRIVATE_STOCK_COLUMNS } from '../demo/tourPrivacy'
 import { TourPrivateValue } from '../demo/TourPrivatePreview'
 import './stockPurchasesMobile.css'
+import usePhoneLayout from '../hooks/usePhoneLayout'
+import PhoneActionMenu from '../components/common/PhoneActionMenu'
+import StockPhoneCatalogue from '../components/stock/StockPhoneCatalogue'
 
 const fmt = (n) =>
   n != null ? `₹${Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '—'
@@ -134,6 +137,8 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
   // StockPurchases.jsx once the new page is signed off.
   const { authFetch, settings, user } = useAuth()
   const protectTour = isProtectedTourPreview(user)
+  const phone = usePhoneLayout()
+  const [phoneFiltersOpen, setPhoneFiltersOpen] = useState(false)
   // Sample intake stays separate from the owner's saved working draft.
   const intakeDraftPrefix = user?.is_demo ? 'stater_demo_' : ''
   const confirm = useConfirm()
@@ -530,7 +535,7 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
 
   // ─── View state ─────────────────────────────────────────────────────────────
   const navigate = useNavigate()
-  const [activeView, setActiveView] = useState('intake')  // 'intake' | 'catalogue' | 'godowns'
+  const [activeView, setActiveView] = useState(() => phone ? 'catalogue' : 'intake')  // 'intake' | 'catalogue' | 'godowns'
   const [prefillProduct, setPrefillProduct] = useState(null)  // product to pre-load in intake
   const [ctxMenu, setCtxMenu] = useState(null)  // { x, y, items } for right-click context menu
   const [intakeRows, setIntakeRows] = useState(() => {
@@ -788,6 +793,86 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
   )
 
   // Tab definitions
+  const catalogueFilters = (<>
+                  {settings?.inventory?.item_categories_enabled !== false && (
+                    <CustomSelect className="form-select" style={{ height: 34, fontSize: '0.82rem', minWidth: 140, width: 'auto', flexShrink: 0 }}
+                      value={catFilter} onChange={e => setCatFilter(e.target.value)}>
+                      <option value="">All Categories</option>
+                      {categories.map(c => <option key={c} value={c}>{c}</option>)}
+                    </CustomSelect>
+                  )}
+                  <CustomSelect className="form-select" style={{ height: 34, fontSize: '0.82rem', minWidth: 120, width: 'auto', flexShrink: 0 }}
+                    value={stockStatusFilter} onChange={e => setStockStatusFilter(e.target.value)}>
+                    <option value="">All Status</option>
+                    <option value="in">In Stock</option>
+                    <option value="low">Low Stock</option>
+                    <option value="out">Out of Stock</option>
+                  </CustomSelect>
+                  <CustomSelect className="form-select" style={{ height: 34, fontSize: '0.82rem', minWidth: 110, width: 'auto', flexShrink: 0 }}
+                    value={activeFilter} onChange={e => setActiveFilter(e.target.value)}>
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                    <option value="">All</option>
+                  </CustomSelect>
+                  {godowns?.length > 0 && (
+                    <CustomSelect
+                      className="form-select"
+                      style={{ height: 34, fontSize: '0.82rem', minWidth: 125, width: 'auto', flexShrink: 0 }}
+                      value={godownFilter}
+                      onChange={e => setGodownFilter(e.target.value)}
+                    >
+                      <option value="">All Godowns</option>
+                      {godowns.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                    </CustomSelect>
+                  )}
+                  <div style={{ display: 'inline-flex', background: 'var(--bg-3)', padding: 2, borderRadius: 'var(--radius-md)', height: 34 }}>
+                    {[
+                      { id: 'all', label: 'All Cols' },
+                      { id: 'operations', label: 'Operations' },
+                      { id: 'margins', label: 'Margins' }
+                    ].map(vp => (
+                      <button
+                        key={vp.id}
+                        type="button"
+                        className={`btn btn-xs ${viewPreset === vp.id ? 'btn-primary' : 'btn-ghost'}`}
+                        style={{ padding: '0 8px', fontSize: '0.72rem' }}
+                        onClick={() => setViewPreset(vp.id)}
+                      >
+                        {vp.label}
+                      </button>
+                    ))}
+                  </div>
+                  <div style={{ flex: 1 }} />
+                  {isRefreshing && (
+                    <span className="toolbar-refresh-spinner">
+                      <span className="spin" /> Refreshing…
+                    </span>
+                  )}
+                  {/* Column-width controls. Widths are also drag-adjustable
+                      straight from the header edges; these are the discoverable
+                      equivalents plus the reset the drag can't offer. */}
+                  <button
+                    type="button"
+                    className="col-layout-btn"
+                    onClick={() => invCols.autoFitAll()}
+                    title="Size every column to fit its widest value"
+                  >
+                    Fit columns
+                  </button>
+                  <button
+                    type="button"
+                    className="col-layout-btn"
+                    onClick={() => invCols.resetWidths()}
+                    disabled={!invCols.isCustomized}
+                    title={invCols.isCustomized ? 'Restore the default column widths' : 'Column widths are already at their defaults'}
+                  >
+                    Reset widths
+                  </button>
+                  <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 600 }}>
+                    {filtered.length} of {products.length} products
+                  </span>
+  </>)
+
   const TABS = [
     { key: 'intake',    label: 'Stock Intake', icon: <ZapIcon size={14} /> },
     { key: 'catalogue', label: 'Catalogue',    icon: <InventoryIcon size={14} /> },
@@ -925,7 +1010,7 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
            table stops scrolling — that is the missing-scroll complaint, so the
            height is capped rather than set to auto. */
         .inv-shell--inline { height: calc(100vh - 132px); min-height: 420px; }
-        @media (max-width: 768px) {
+        @media (max-width: 600px) {
           .inv-shell--inline { height: calc(100vh - 168px); }
         }
         .inv-body { flex: 1; display: flex; min-height: 0; overflow: hidden; }
@@ -968,9 +1053,25 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
         .inv-table-wrap { flex: 1; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; }
       `}</style>
 
-      <div className={`inv-shell stock-mobile-page${inlinePage ? ' inv-shell--inline' : ''}`}>
+      <div className={`inv-shell stock-mobile-page${inlinePage ? ' inv-shell--inline' : ''}`} data-inventory-view={activeView}>
         {/* ── Top bar — shared WorkspaceTopBar (identical to Purchases/Parties/Payments) ── */}
-        <WorkspaceTopBar
+        {phone ? (
+          <div className="stock-phone-toolbar">
+            <div className="stock-phone-tabs" role="tablist" aria-label="Inventory pages">
+              {[TABS[1], TABS[0], TABS[2]].map(tab => <button key={tab.key} type="button" role="tab" aria-selected={activeView === tab.key} onClick={() => setActiveView(tab.key)}>{tab.icon}{tab.key === 'catalogue' ? 'Items' : tab.key === 'intake' ? 'Receive' : tab.label}</button>)}
+            </div>
+            <div className="stock-phone-main-actions">
+              <span>{activeView === 'catalogue' ? 'Your inventory' : activeView === 'intake' ? 'Receive stock' : 'Stock locations'}</span>
+              {toolbarActions.filter(action => action.primary).map(action => <button key={action.label} type="button" className="btn btn-primary" disabled={action.disabled} onClick={action.action}>{action.icon}{action.label}</button>)}
+              <PhoneActionMenu label="Inventory actions" actions={[...toolbarActions.filter(action => !action.primary), { label: 'Inventory settings', action: () => navigate('/settings?tab=inventory') }]} />
+            </div>
+            {alert && <div className={`alert alert-${alert.type}`} role="status">{alert.msg}<button type="button" aria-label="Dismiss inventory notice" onClick={() => setAlert(null)}><CloseIcon size={15} /></button></div>}
+            {activeView === 'catalogue' && <BulkActionBar count={rowSel.count} onClear={rowSel.clear} actions={[
+              { label: 'Labels', action: () => setShowLabelModal(true) },
+              { label: allSelectedInactive ? 'Reactivate' : 'Deactivate', action: () => setBulkRequest({ action: 'bulk_set_product_active', params: { ids: rowSel.selectedIds, active: allSelectedInactive }, label: allSelectedInactive ? 'Reactivate products' : 'Deactivate products' }) },
+            ]} />}
+          </div>
+        ) : <WorkspaceTopBar
           settingsTab="inventory"
           windowControls={!inlinePage}
           showMinimize={!inlinePage}
@@ -1080,7 +1181,7 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
               {tab.icon} {tab.label}
             </button>
           ))}
-        </WorkspaceTopBar>
+        </WorkspaceTopBar>}
 
         <div className="stock-mobile-overview" aria-label="Inventory overview">
           {[
@@ -1138,87 +1239,14 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
                     <span style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}><SearchIcon size={15} /></span>
                     <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search products…" autoFocus />
                   </div>
-                  {settings?.inventory?.item_categories_enabled !== false && (
-                    <CustomSelect className="form-select" style={{ height: 34, fontSize: '0.82rem', minWidth: 140, width: 'auto', flexShrink: 0 }}
-                      value={catFilter} onChange={e => setCatFilter(e.target.value)}>
-                      <option value="">All Categories</option>
-                      {categories.map(c => <option key={c} value={c}>{c}</option>)}
-                    </CustomSelect>
-                  )}
-                  <CustomSelect className="form-select" style={{ height: 34, fontSize: '0.82rem', minWidth: 120, width: 'auto', flexShrink: 0 }}
-                    value={stockStatusFilter} onChange={e => setStockStatusFilter(e.target.value)}>
-                    <option value="">All Status</option>
-                    <option value="in">In Stock</option>
-                    <option value="low">Low Stock</option>
-                    <option value="out">Out of Stock</option>
-                  </CustomSelect>
-                  <CustomSelect className="form-select" style={{ height: 34, fontSize: '0.82rem', minWidth: 110, width: 'auto', flexShrink: 0 }}
-                    value={activeFilter} onChange={e => setActiveFilter(e.target.value)}>
-                    <option value="active">Active</option>
-                    <option value="inactive">Inactive</option>
-                    <option value="">All</option>
-                  </CustomSelect>
-                  {godowns?.length > 0 && (
-                    <CustomSelect
-                      className="form-select"
-                      style={{ height: 34, fontSize: '0.82rem', minWidth: 125, width: 'auto', flexShrink: 0 }}
-                      value={godownFilter}
-                      onChange={e => setGodownFilter(e.target.value)}
-                    >
-                      <option value="">All Godowns</option>
-                      {godowns.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
-                    </CustomSelect>
-                  )}
-                  <div style={{ display: 'inline-flex', background: 'var(--bg-3)', padding: 2, borderRadius: 'var(--radius-md)', height: 34 }}>
-                    {[
-                      { id: 'all', label: 'All Cols' },
-                      { id: 'operations', label: 'Operations' },
-                      { id: 'margins', label: 'Margins' }
-                    ].map(vp => (
-                      <button
-                        key={vp.id}
-                        type="button"
-                        className={`btn btn-xs ${viewPreset === vp.id ? 'btn-primary' : 'btn-ghost'}`}
-                        style={{ padding: '0 8px', fontSize: '0.72rem' }}
-                        onClick={() => setViewPreset(vp.id)}
-                      >
-                        {vp.label}
-                      </button>
-                    ))}
-                  </div>
-                  <div style={{ flex: 1 }} />
-                  {isRefreshing && (
-                    <span className="toolbar-refresh-spinner">
-                      <span className="spin" /> Refreshing…
-                    </span>
-                  )}
-                  {/* Column-width controls. Widths are also drag-adjustable
-                      straight from the header edges; these are the discoverable
-                      equivalents plus the reset the drag can't offer. */}
-                  <button
-                    type="button"
-                    className="col-layout-btn"
-                    onClick={() => invCols.autoFitAll()}
-                    title="Size every column to fit its widest value"
-                  >
-                    Fit columns
-                  </button>
-                  <button
-                    type="button"
-                    className="col-layout-btn"
-                    onClick={() => invCols.resetWidths()}
-                    disabled={!invCols.isCustomized}
-                    title={invCols.isCustomized ? 'Restore the default column widths' : 'Column widths are already at their defaults'}
-                  >
-                    Reset widths
-                  </button>
-                  <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontWeight: 600 }}>
-                    {filtered.length} of {products.length} products
-                  </span>
+                  {phone ? <>
+                    <button type="button" className="stock-phone-filter-toggle" aria-expanded={phoneFiltersOpen} onClick={() => setPhoneFiltersOpen(open => !open)}>Filters<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M4 7h16M7 12h10M10 17h4"/></svg></button>
+                    <div className="stock-phone-filter-panel" hidden={!phoneFiltersOpen}>{catalogueFilters}</div>
+                  </> : catalogueFilters}
                 </div>
 
-                <p className="stock-mobile-table-note">Swipe across for pricing and details. Use ± Stock to receive items.</p>
-                <div className="inv-table-wrap stock-catalogue-scroll" tabIndex={0} role="region" aria-label="Inventory table, scroll horizontally for all columns">
+                {!phone && <p className="stock-mobile-table-note">Swipe across for pricing and details. Use ± Stock to receive items.</p>}
+                <div className="inv-table-wrap stock-catalogue-scroll" tabIndex={0} role="region" aria-label={phone ? 'Inventory items' : 'Inventory table, scroll horizontally for all columns'}>
                   {/* Dense inventory grid — reference-style columns, compact spacing.
                       Money columns drop the ₹ (header carries it); %/cost figures
                       are computed (deriveInv), nothing new is stored. Barcode,
@@ -1280,6 +1308,15 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
                       <p style={{ color: 'var(--text-muted)', marginBottom: '1rem' }}>Could not reach the server to load inventory records. Please check your connection.</p>
                       <button onClick={load} className="btn btn-secondary">Retry</button>
                     </div>
+                  ) : phone ? (
+                    <StockPhoneCatalogue products={filtered} selection={rowSel.selected} onToggle={rowSel.toggle} onToggleAll={rowSel.toggleAll} allSelected={rowSel.isAllSelected} someSelected={rowSel.isSomeSelected} onIntake={goIntake} onEdit={setEditProduct} getStatus={getStatus} derive={deriveInv} num={num} pct={pct} protectTour={protectTour} getActions={product => [
+                      { label: 'Adjust stock', action: () => { setAdjustForm({ ...defaultAdjust, product_id: product.id }); setShowAdjustModal(true) } },
+                      { label: 'Transfer stock', action: () => { setTransferForm({ ...defaultTransfer, product_id: product.id }); setShowTransferModal(true) } },
+                      { label: product.is_active === false ? 'Reactivate product' : 'Deactivate product', action: () => toggleProductActive(product) },
+                      { label: 'Copy product code', action: () => navigator.clipboard.writeText(product.sku || String(product.id)) },
+                      { label: 'Copy product name', action: () => navigator.clipboard.writeText(product.name) },
+                      { label: 'Delete product', action: () => deleteProduct(product) },
+                    ]} />
                   ) : (
                     <table ref={invCols.tableRef} className={`data-table inv-dense ${invCols.tableClassName}`.trim()}>
                       <thead><tr>

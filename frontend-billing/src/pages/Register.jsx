@@ -22,8 +22,11 @@ import AuthRoadmap from '../components/auth/AuthRoadmap'
 import AuthThemeToggle from '../components/auth/AuthThemeToggle'
 import RegistrationStory from '../components/auth/RegistrationStory'
 import { renderGoogleButton } from '../utils/googleAuth'
+import usePhoneLayout from '../hooks/usePhoneLayout'
+import './phone-utilities.css'
 
 export default function Register() {
+  const phoneLayout = usePhoneLayout()
   const { signup, setSession } = useAuth()
   const navigate  = useNavigate()
   const location  = useLocation()
@@ -565,11 +568,14 @@ export default function Register() {
                     </div>
                   ))}
                 </div>
+                <details className="registration-storage-disclosure" open={!phoneLayout}>
+                  <summary hidden={!phoneLayout}>Setup and trial details</summary>
                 <div className="registration-storage-help">
                   <p id="cloud-storage-help">{IS_LOCAL_APP ? 'Bill locally on this computer, even without the internet. Choose Local + Cloud to connect your desktop and browser.' : 'This browser uses the cloud database. Add the desktop app for local, offline billing.'}</p>
                   <p id="registration-trial-help"><strong>{trialDays}-day Pro trial</strong> for eligible first-time phone registrations. Local + Cloud sync requires Pro or an eligible trial. After your trial, Local billing keeps working; cloud sync needs Pro. Field Team is included during the trial.</p>
                   {IS_LOCAL_APP && hostingChoice === 'hybrid' && <p>Sync is included during your eligible {trialDays}-day Pro trial. Upgrade to Pro to keep syncing afterward.</p>}
                 </div>
+                </details>
               </fieldset>
 
             <fieldset style={{ border: 0, padding: 0, margin: '8px 0 6px 0', minWidth: 0 }}>

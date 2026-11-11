@@ -1,3 +1,6 @@
+import usePhoneLayout from '../hooks/usePhoneLayout'
+import PhoneRecord from '../components/common/PhoneRecord'
+import './money-phone.css'
 // ============================================================================
 // Page: Parties.jsx
 // Description: Customer and Vendor Directory. Handles listing business contacts,
@@ -55,6 +58,7 @@ export default function Parties({ embedded = false, headerTabs = null, inlinePag
   // so this view renders only its own toolbar and body. `headerTabs` is the
   // older arrangement where the tabs were injected into that toolbar; both are
   // "embedded", hence the combined flag.
+  const phone = usePhoneLayout()
   const inWorkspace = Boolean(headerTabs) || inlinePage
   const { authFetch, user, settings, profile } = useAuth()
   const { print: handlePrintInvoice } = useInvoiceActions(authFetch)
@@ -537,7 +541,7 @@ export default function Parties({ embedded = false, headerTabs = null, inlinePag
 
   return (
     <PageShell embedded={embedded} title="Parties & Invoices">
-      <div className={`${inWorkspace ? 'fade-in ws-embed' : 'slide-up'}`}>
+      <div className={`phone-contacts-view ${inWorkspace ? 'fade-in ws-embed' : 'slide-up'}`}>
 
         {alert && (
           <div className={`alert alert-${alert.type} mb-4`}>
@@ -564,7 +568,14 @@ export default function Parties({ embedded = false, headerTabs = null, inlinePag
         )}
 
         {/* Embedded (Godown): 48px workspace bar */}
-        {inWorkspace && (
+        {phone ? (
+          <div className="phone-workspace-tools">
+            <div className="phone-segmented" aria-label="Contact type">
+              {['Customers', 'Vendors', 'Other Invoices'].map(t => <button type="button" key={t} aria-pressed={activeTab === t} onClick={() => setActiveTab(t)}>{t === 'Other Invoices' ? 'Walk-in bills' : t}</button>)}
+            </div>
+            <div className="phone-tool-row">{filterControls}<button className="btn btn-primary" onClick={() => { setForm(defaultForm); setShowModal(true) }}><PlusIcon size={14} /> Add contact</button></div>
+          </div>
+        ) : inWorkspace && (
           <WorkspaceTopBar
             settingsTab="parties"
             actions={inlinePage ? (
@@ -592,7 +603,7 @@ export default function Parties({ embedded = false, headerTabs = null, inlinePag
         )}
 
         {/* ── Unified filter bar: Search | FilterDropdown | SortDropdown ── */}
-        {!inWorkspace && (
+        {!phone && !inWorkspace && (
           <div className="page-subbar" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             <div className="tabs" style={{ margin: 0, flexShrink: 0 }}>
               <button className={`tab${activeTab === 'Customers' ? ' active' : ''}`} onClick={() => setActiveTab('Customers')}>
@@ -841,6 +852,28 @@ export default function Parties({ embedded = false, headerTabs = null, inlinePag
             <h3>Contacts are unavailable</h3>
             <p>Customer, supplier or balance data could not be loaded. Retry before relying on account balances.</p>
             <button type="button" className="btn btn-secondary" onClick={load}>Retry contacts</button>
+          </div>
+          if (phone) return <div className="phone-record-list" aria-label={activeTab}>
+            {!filtered.length && <div className="phone-list-empty">No matching contacts or bills.</div>}
+            {filtered.map(p => activeTab === 'Other Invoices' ? <PhoneRecord key={p.id}
+              title={p.customer || p.customer_name || 'Walk-in customer'} amount={fmt(p.total_amount)}
+              meta={`${p.invoice_number || p.invoice_no || `#${p.id}`} · ${p.date ? new Date(p.date).toLocaleDateString('en-IN') : 'No date'}`}
+              status={<span className="badge badge-secondary">{p.status || 'unpaid'}</span>}
+              primary={<button className="btn btn-secondary" onClick={() => handlePrintInvoice(p.invoice_number || p.invoice_no)}>Print</button>}>
+              <button className="btn btn-secondary" onClick={() => handleWhatsAppShareInvoice(p)}>Share invoice</button>
+              {p.invoice_type !== 'credit_note' && <button className="btn btn-secondary" onClick={() => handleOpenReturn(p)}>Record return</button>}
+            </PhoneRecord> : <PhoneRecord key={p.id} title={p.name} amount={fmt(p.outstanding_balance ?? 0)}
+              meta={p.phone || 'No phone number'} status={<span>{p.is_active === false ? 'Inactive · ' : ''}{Number(p.outstanding_balance) > 0 ? 'Outstanding' : 'No dues'}</span>}
+              onOpen={() => setCreditDrawerParty(p)}
+              primary={<button className="btn btn-secondary" onClick={() => activeTab === 'Customers' ? handleViewInvoices(p) : handleViewPurchases(p)}>{activeTab === 'Customers' ? 'Invoices' : 'Purchases'}</button>}>
+              {p.email && <p>{p.email}</p>}{p.gstin && <p>GSTIN {p.gstin}</p>}{p.address && <p>{p.address}</p>}
+              <button className="btn btn-secondary" onClick={() => setCreditDrawerParty(p)}>Credit statement</button>
+              {activeTab === 'Customers' && Number(p.outstanding_balance) > 0 && <>
+                {!isCashier && <button className="btn btn-primary" onClick={() => navigate(`/parties/payments?customer=${encodeURIComponent(p.name)}`)}>Settle dues</button>}
+                <button className="btn btn-secondary" onClick={() => handleWhatsAppReminder(p)}>Payment reminder</button>
+              </>}
+              <button className="btn btn-secondary" onClick={() => togglePartyActive(p)}>{p.is_active === false ? 'Reactivate' : 'Deactivate'}</button>
+            </PhoneRecord>)}
           </div>
           if (isFullScreen) return (
             <div className="table-fullscreen-overlay" onClick={e => { if (e.target === e.currentTarget) setIsFullScreen(false) }}>

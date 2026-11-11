@@ -1,3 +1,6 @@
+import usePhoneLayout from '../../hooks/usePhoneLayout'
+import PhoneRecord from '../common/PhoneRecord'
+import '../../pages/money-phone.css'
 // ============================================================================
 // FieldCollections — Contacts & Payments → "Field collections" (owner only).
 // ----------------------------------------------------------------------------
@@ -115,6 +118,7 @@ function ConfirmModal({ collection, onClose, onDone, onRefresh }) {
 }
 
 export default function FieldCollections() {
+  const phone = usePhoneLayout()
   const { user } = useAuth()
   const localSource = usesLocalBilling()
   const cloudUrl = onlineCollectionsUrl(user?.public_id)
@@ -152,7 +156,10 @@ export default function FieldCollections() {
       {notice && <div className="alert alert-success" style={{ marginBottom: 12 }}>{notice}</div>}
       {data.collections.length === 0 ? (
         <div className="empty-state card">Nothing to confirm. Money your Field Team staff collect at shops appears here until you record it.</div>
-      ) : (
+      ) : phone ? <div className="phone-record-list" aria-label="Field collections">{data.collections.map(c => <PhoneRecord key={c.task_uid} title={c.shop || 'Unlinked shop'} amount={fmt(c.remaining)} meta={`${c.staff || 'Staff'} · ${c.collected_on || 'No date'}`} status={<span>{c.payment_mode} · To confirm</span>} primary={<button className="btn btn-primary" disabled={!c.bills.length} onClick={() => { setNotice(null); setOpen(c) }}>Confirm</button>}>
+        <p>{c.bills.length ? c.bills.map(b => b.number).join(', ') : c.shop_linked ? 'No unpaid bills' : 'Shop not linked to a customer'}</p>
+        {c.payment_ref && <p>Reference {c.payment_ref}</p>}{c.already_confirmed > 0 && <p>{fmt(c.already_confirmed)} already recorded</p>}
+      </PhoneRecord>)}</div> : (
         <div className="data-table-wrap">
           <table className="data-table">
             <thead>

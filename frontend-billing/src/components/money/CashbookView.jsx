@@ -1,3 +1,6 @@
+import usePhoneLayout from '../../hooks/usePhoneLayout'
+import PhoneRecord from '../common/PhoneRecord'
+import '../../pages/money-phone.css'
 // ============================================================================
 // CashbookView — one running list of money in/out (receipts + expenses),
 // replacing the parallel All/Received/Made/Expenses tabs with filter chips.
@@ -10,6 +13,7 @@ const fmt = (n) => `₹${Number(n || 0).toLocaleString('en-IN', { maximumFractio
 const CHIPS = ['All', 'Received', 'Paid', 'Expenses']
 
 export default function CashbookView({ authFetch, reloadKey = 0 }) {
+  const phone = usePhoneLayout()
   const [rows, setRows] = useState([])
   const [chip, setChip] = useState('All')
   const [loading, setLoading] = useState(true)
@@ -43,13 +47,13 @@ export default function CashbookView({ authFetch, reloadKey = 0 }) {
 
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '4px 0 10px', flexWrap: 'wrap' }}>
+      <div className="phone-cashbook-toolbar" style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '4px 0 10px', flexWrap: 'wrap' }}>
         {CHIPS.map(c => (
           <button key={c} className={`tab${chip === c ? ' active' : ''}`} style={{ margin: 0, padding: '4px 12px', fontSize: '0.8rem' }} onClick={() => setChip(c)}>{c}</button>
         ))}
         <button className="btn btn-ghost btn-sm" style={{ marginLeft: 'auto' }} onClick={load} title="Refresh"><SyncIcon size={14} /></button>
       </div>
-      <div className="data-table-wrap" style={{ overflowX: 'auto' }}>
+      {phone ? <div className="phone-record-list" aria-label="Cashbook entries">{!filtered.length ? <div className="phone-list-empty">Nothing here yet.</div> : filtered.map(r => <PhoneRecord key={r.id} title={r.party} meta={r.date || 'No date'} amount={`${r.dir > 0 ? '+' : '−'}${fmt(r.amount)}`} status={<span>{r.kind} · {r.method}</span>}>{r.ref && <p>{r.ref}</p>}</PhoneRecord>)}</div> : <div className="data-table-wrap" style={{ overflowX: 'auto' }}>
         <table className="data-table" style={{ width: '100%', fontSize: '0.84rem' }}>
           <thead>
             <tr>
@@ -74,7 +78,7 @@ export default function CashbookView({ authFetch, reloadKey = 0 }) {
             ))}
           </tbody>
         </table>
-      </div>
+      </div>}
     </div>
   )
 }

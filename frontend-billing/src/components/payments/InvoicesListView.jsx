@@ -1,3 +1,6 @@
+import usePhoneLayout from '../../hooks/usePhoneLayout'
+import PhoneRecord from '../common/PhoneRecord'
+import '../../pages/money-phone.css'
 // ============================================================================
 // InvoicesListView — all invoices with norms-aware Actions column and 25-item pagination.
 // Filter bar matches Transactions tab: Search | Filters | Sort | [Customer chip] | Refresh
@@ -41,6 +44,7 @@ export default function InvoicesListView({
   // one without moving this component's filter state anywhere.
   barActions = null,
 }) {
+  const phone = usePhoneLayout()
   const [rows, setRows]       = useState([])
   const [loading, setLoading] = useState(true)
   const [q, setQ]             = useState('')
@@ -145,7 +149,7 @@ export default function InvoicesListView({
   if (loading) return <div style={{ padding: 20, color: 'var(--text-muted)', fontSize: '0.85rem' }}>Loading invoices…</div>
 
   return (
-    <div>
+    <div className="phone-invoices-view">
       {/* Filter bar — matches Transactions */}
       <div className="page-subbar" style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
         <div className="search-bar" style={{ margin: 0, height: 34, boxSizing: 'border-box', display: 'flex', alignItems: 'center', flex: '1 1 200px', maxWidth: 320 }}>
@@ -223,7 +227,12 @@ export default function InvoicesListView({
         {barActions}
       </div>
 
-      <div className="data-table-wrap" style={{ overflowX: 'auto' }}>
+      {phone ? <div className="phone-record-list" aria-label="Invoices">
+        {loadError ? <div className="phone-list-empty" role="alert">Invoices could not load. <button className="btn" onClick={load}>Retry invoices</button></div> : !paginatedRows.length ? <div className="phone-list-empty">No invoices found.</div> : paginatedRows.map(inv => <PhoneRecord key={inv.id} title={inv.customer_name || 'Walk-in customer'} amount={fmt(inv.total_amount)} meta={`${inv.invoice_no} · ${formatISTDateTime(inv.created_at || inv.invoice_date)}`} onOpen={() => actions.view(inv.invoice_no)} status={<StatusTag status={inv.status} />} primary={<span>{fmt(inv.outstanding)} due</span>}>
+          {(inv.paid_at || inv.payment_date) && <p>Paid {formatISTDateTime(inv.paid_at || inv.payment_date)}</p>}
+          {invoiceActionItems(inv, actions, null, label).map(item => <button key={item.label} type="button" className={item.accent ? 'btn btn-primary' : 'btn btn-secondary'} onClick={item.action}>{item.icon}{item.label}</button>)}
+        </PhoneRecord>)}
+      </div> : <div className="data-table-wrap" style={{ overflowX: 'auto' }}>
         <table className="data-table" style={{ width: '100%', fontSize: '0.82rem' }}>
           <thead>
             <tr>
@@ -286,7 +295,7 @@ export default function InvoicesListView({
             ))}
           </tbody>
         </table>
-      </div>
+      </div>}
 
       {/* 25-Item Pagination Controls */}
       {filtered.length > PAGE_SIZE && (

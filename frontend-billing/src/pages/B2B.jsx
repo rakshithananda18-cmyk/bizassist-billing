@@ -1,3 +1,4 @@
+import './money-phone.css'
 // ============================================================================
 // Page: B2B.jsx — the unified B2B workspace.
 // ----------------------------------------------------------------------------
@@ -23,6 +24,7 @@ import { isDemoMode } from '../demo/demoEngine'
 import DemoGate from '../components/demo/DemoGate'
 import AppLayout from '../layouts/AppLayout'
 import { useAuth } from '../contexts/AuthContext'
+import usePhoneLayout from '../hooks/usePhoneLayout'
 import { useConfirm } from '../contexts/ConfirmContext'
 import { logger } from '../utils/logger'
 import {
@@ -67,6 +69,7 @@ export default function B2B() {
 
 function B2BWorkspace() {
   const { authFetch, token, user, settings, isDemoMode: authDemoMode } = useAuth()
+  const phone = usePhoneLayout()
   if (user?.is_demo || authDemoMode) {
     return (
       <AppLayout title="B2B Network">
@@ -364,10 +367,10 @@ function B2BWorkspace() {
         )}
 
         {/* Signature Page Header */}
-        <div className="page-header">
+        <div className={`page-header${phone ? ' b2b-phone-heading' : ''}`}>
           <div className="page-header-left">
             <h1 className="page-title">
-              <ConnectionIcon size={20} style={{ color: 'var(--accent)' }} /> B2B Network & Orders
+              <ConnectionIcon size={20} style={{ color: 'var(--accent)' }} /> {phone ? 'B2B' : 'B2B Network & Orders'}
             </h1>
             <p className="page-subtitle">Connect with suppliers & customers, manage purchase orders, and track live order status</p>
           </div>
@@ -412,7 +415,7 @@ function B2BWorkspace() {
               </button>
             )}
             <div className="mobile-only-header-tabs">
-              <PageTabs inline label="B2B pages" tabs={TABS.map(({ key, label, icon: Icon }) => ({ id: key, label, icon: <Icon size={15} />, badge: badges[key] }))} active={tab} onChange={goTab} />
+              <PageTabs inline label="B2B pages" tabs={TABS.map(({ key, label, icon: Icon }) => ({ id: key, label: phone ? label.replace(' Orders', '') : label, icon: phone ? null : <Icon size={15} />, badge: badges[key] }))} active={tab} onChange={goTab} />
             </div>
           </div>
         </div>

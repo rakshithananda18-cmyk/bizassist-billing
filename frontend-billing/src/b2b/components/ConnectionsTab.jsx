@@ -1,3 +1,6 @@
+import PhoneRecord from '../../components/common/PhoneRecord'
+import usePhoneLayout from '../../hooks/usePhoneLayout'
+import '../../pages/money-phone.css'
 // ============================================================================
 // b2b/components/ConnectionsTab.jsx — the "Connections" tab.
 // ----------------------------------------------------------------------------
@@ -259,6 +262,9 @@ export default function ConnectionsTab({ myBizId, connections, onCopyBizId, copi
     if (ok) { setBizid(''); setMessage(''); setTarget(undefined); setActiveTab(connectAs === 'buyer' ? 'suppliers' : 'customers'); setSubStatus('sent') }
   }
 
+  const phone = usePhoneLayout()
+  const IdentityPanel = phone ? 'details' : 'div'
+
   // Re-send a stuck (unattributable) request in my own name. The backend CLAIMS
   // the existing row rather than creating a second one, so this moves it from
   // "nobody can approve" to a normal request addressed to the counterparty.
@@ -270,7 +276,8 @@ export default function ConnectionsTab({ myBizId, connections, onCopyBizId, copi
       {/* ── Identity + Request Form: Single Unified Header Card ─────────── */}
       <div className="card b2b-header-card mb-4">
         {/* Left Column: My Network Address */}
-        <div className="b2b-header-col">
+        <IdentityPanel className="b2b-header-col b2b-phone-identity">
+          {phone && <summary>Your BizID &amp; invitation</summary>}
           <div>
             <div className="b2b-card-eyebrow">
               <ConnectionIcon size={14} style={{ color: 'var(--accent)', marginRight: 6, verticalAlign: 'middle' }} />
@@ -306,7 +313,7 @@ export default function ConnectionsTab({ myBizId, connections, onCopyBizId, copi
             <ShieldIcon size={12} style={{ marginRight: 4, verticalAlign: 'middle', color: 'var(--success)' }} />
             Safe to share — gives zero access until you approve.
           </div>
-        </div>
+        </IdentityPanel>
 
         {/* Vertical Divider */}
         <div className="b2b-header-divider" />
@@ -499,7 +506,10 @@ export default function ConnectionsTab({ myBizId, connections, onCopyBizId, copi
                     <p>Use "Request a connection" above to connect with your suppliers and order from their catalogue.</p>
                   </div>
                 </div>
-              ) : (
+              ) : phone ? <div className="phone-record-list" aria-label="Connected suppliers">{suppliers.map(c => <PhoneRecord key={c.id} title={c.counterparty_name || c.seller_name} amount={fmt(c.outstanding_balance)} meta={c.counterparty_bizid || c.seller_bizid} status={<span>{isRetiredBusiness(c) ? 'Business account deleted' : 'Connected'} · {c.price_tier}</span>}>
+                <p>Discount {c.discount_pct > 0 ? `${c.discount_pct}%` : 'None'} · Credit limit {c.credit_limit > 0 ? fmt(c.credit_limit) : 'Unlimited'}</p>
+                <p>Connected {since(c.responded_at || c.created_at)}</p><button className="btn btn-secondary" disabled={isRetiredBusiness(c)} onClick={() => setRevokeFor(c)}>Revoke connection</button>
+              </PhoneRecord>)}</div> : (
                 <div className="data-table-wrap" style={{ border: 'none' }}>
                   <table className="data-table">
                     <thead><tr>
@@ -584,7 +594,10 @@ export default function ConnectionsTab({ myBizId, connections, onCopyBizId, copi
                     <p>Share your BizID above so your buyers can connect with you and order from your catalogue.</p>
                   </div>
                 </div>
-              ) : (
+              ) : phone ? <div className="phone-record-list" aria-label="Connected customers">{customers.map(c => <PhoneRecord key={c.id} title={c.counterparty_name || c.buyer_name} meta={c.counterparty_bizid || c.buyer_bizid} status={<span>{isRetiredBusiness(c) ? 'Business account deleted' : 'Connected'} · {c.price_tier}</span>} primary={<button className="btn btn-secondary" disabled={isRetiredBusiness(c)} onClick={() => setPolicyFor(c)}>Policy</button>}>
+                <p>Discount {c.discount_pct > 0 ? `${c.discount_pct}%` : 'None'} · Credit limit {c.credit_limit > 0 ? fmt(c.credit_limit) : 'Unlimited'}</p><p>Stock visibility {c.stock_visibility} · Categories {c.catalog_category || 'All'}</p>
+                <p>Connected {since(c.responded_at || c.created_at)}</p><button className="btn btn-secondary" onClick={() => setRevokeFor(c)}>Revoke connection</button>
+              </PhoneRecord>)}</div> : (
                 <div className="data-table-wrap" style={{ border: 'none' }}>
                   <table className="data-table">
                     <thead><tr>

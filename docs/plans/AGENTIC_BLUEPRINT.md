@@ -1,5 +1,7 @@
 # BizAssist — Agentic Architecture Blueprint
 
+Current delivery specification (11 November 2026): [STATER Bill agentic billing and everyday automations](2026-11-11-STATER-AGENTIC-BILLING-AND-AUTOMATION-PLAN.md). Use that plan for the Automation page, durable recurring execution and current Local/Pro packaging; the phases below are historical architecture context.
+
 Turning BizAssist from a chat assistant into an **efficient, interactive, agentic** business
 system using a **4-tier response model**: deterministic first, AI on-demand, actions when needed.
 

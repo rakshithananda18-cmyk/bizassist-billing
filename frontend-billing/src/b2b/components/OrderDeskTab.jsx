@@ -1,3 +1,5 @@
+import usePhoneLayout from '../../hooks/usePhoneLayout'
+import '../../pages/money-phone.css'
 // ============================================================================
 // b2b/components/OrderDeskTab.jsx — the "Order" tab: a B2B storefront.
 // ----------------------------------------------------------------------------
@@ -119,6 +121,7 @@ export default function OrderDeskTab({
   onGoToConnections,
   onRefresh,
 }) {
+  const phone = usePhoneLayout()
   const [query, setQuery] = useState('')
   const [category, setCategory] = useState('')
   const [sort, setSort] = useState('name')
@@ -139,8 +142,8 @@ export default function OrderDeskTab({
   // Keep the scanner armed — a hardware scanner just types, so the field must
   // already hold focus when the trigger is pulled.
   useEffect(() => {
-    if (selectedSupplier && !catalogLoading) scanRef.current?.focus()
-  }, [selectedSupplier, catalogLoading])
+    if (!phone && selectedSupplier && !catalogLoading) scanRef.current?.focus()
+  }, [selectedSupplier, catalogLoading, phone])
 
   const categories = useMemo(
     () => [...new Set(catalog.map(p => p.category).filter(Boolean))].sort(),

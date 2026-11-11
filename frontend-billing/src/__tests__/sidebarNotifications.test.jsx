@@ -47,7 +47,7 @@ afterEach(cleanup)
 describe('profile notifications', () => {
   it('keeps the closed mobile drawer out of focus and restores focus after Escape', async () => {
     const media = vi.spyOn(window, 'matchMedia').mockImplementation(query => ({
-      matches: query === '(max-width: 768px)', media: query,
+      matches: query === 'screen and (max-width: 600px)', media: query,
       addEventListener: () => {}, removeEventListener: () => {},
     }))
     try {

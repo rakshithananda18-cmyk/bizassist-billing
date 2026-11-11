@@ -54,7 +54,7 @@ it('opens server health in Local mode only when requested and restores keyboard 
 
 it('closes health details before dismissing the mobile navigation drawer', async () => {
   vi.spyOn(window, 'matchMedia').mockImplementation(query => ({
-    matches: query === '(max-width: 768px)', media: query,
+    matches: query === 'screen and (max-width: 600px)', media: query,
     addEventListener: () => {}, removeEventListener: () => {},
   }))
   render(<MemoryRouter><AppLayout title="Home">Workspace</AppLayout></MemoryRouter>)

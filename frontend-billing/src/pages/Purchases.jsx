@@ -22,6 +22,8 @@ import UnsavedChangesModal from '../components/common/UnsavedChangesModal'
 import { logger } from '../utils/logger'
 import { readAllPages, readList } from '../utils/readPages'
 import './stockPurchasesMobile.css'
+import usePhoneLayout from '../hooks/usePhoneLayout'
+import PhoneActionMenu from '../components/common/PhoneActionMenu'
 
 const fmt = (n) =>
   n != null ? `₹${Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '—'
@@ -30,6 +32,7 @@ const fmt = (n) =>
 // ── 2. STATE INITIALIZATION (BILLS & MODALS) ──
 // ============================================================================
 export default function Purchases({ embedded = false, headerTabs = null, inlinePage = false }) {
+  const phone = usePhoneLayout()
   // See Stock.jsx — same trial flag, same removal condition. Purchase Bills
   // already had showMinimize={false}, so only the close button differs here.
   const { authFetch, settings } = useAuth()
@@ -488,7 +491,7 @@ export default function Purchases({ embedded = false, headerTabs = null, inlineP
   // standalone page header must NOT also render — otherwise the view shows the
   // Pending/Confirmed/Returns tabs twice, and its own title under the
   // workspace's. Was `headerTabs` alone, which missed the inlinePage case.
-  const tabsInBar = Boolean(headerTabs) || inlinePage
+  const tabsInBar = Boolean(headerTabs) || inlinePage || phone
 
   // Search box, defined once. It goes INSIDE the workspace toolbar when
   // embedded — otherwise this view spends a whole 48px row on a single input,
@@ -562,7 +565,20 @@ export default function Purchases({ embedded = false, headerTabs = null, inlineP
             tabs live in the page header), and without this the tab rendered NO
             toolbar and fell through to the standalone page header below —
             a second "Purchases" title under the workspace's own. */}
-        {(headerTabs || inlinePage) && (
+        {phone ? (
+          <div className="purchase-phone-controls">
+            <div className="stock-phone-tabs" role="tablist" aria-label="Purchase bill status">
+              {['Pending Review', 'Confirmed', 'Returns (Debit Notes)'].map((tab, index) => <button key={tab} type="button" role="tab" aria-selected={activeTab === tab} onClick={() => setActiveTab(tab)}>{['Review', 'Confirmed', 'Returns'][index]}<small>{index === 2 ? debitNotes.length : bills.filter(bill => String(bill.status || '').toLowerCase() === (index === 0 ? 'pending' : 'confirmed')).length}</small></button>)}
+            </div>
+            <div className="purchase-phone-search-row">{searchBox}<PhoneActionMenu label="Purchase actions" actions={purchaseActions} /></div>
+            <div className="purchase-phone-result-row"><span>{filtered.length} {isReturnsTab ? filtered.length === 1 ? 'return' : 'returns' : filtered.length === 1 ? 'bill' : 'bills'}</span>
+              <select aria-label="Sort purchase bills" value={sortConfig.key && sortConfig.direction ? `${sortConfig.key}:${sortConfig.direction}` : ''} onChange={event => { const [key, direction] = event.target.value.split(':'); setSortConfig({ key, direction }) }}>
+                <option value="">Sort bills</option><option value="date:desc">Newest first</option><option value="date:asc">Oldest first</option><option value="supplier_name:asc">Supplier A–Z</option><option value="total_amount:desc">Highest amount</option><option value="total_amount:asc">Lowest amount</option>
+              </select>
+              {purchaseActions.filter(action => action.primary).map(action => <button key={action.label} type="button" className="btn btn-primary" onClick={action.action}>{action.icon}{action.label}</button>)}
+            </div>
+          </div>
+        ) : (headerTabs || inlinePage) && (
           <WorkspaceTopBar
             wrap={inlinePage}
             settingsTab="transactions"

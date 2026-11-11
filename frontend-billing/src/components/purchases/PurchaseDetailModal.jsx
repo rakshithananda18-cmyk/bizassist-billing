@@ -56,7 +56,7 @@ export default function PurchaseDetailModal({ selectedDetail, setShowDetailModal
               <div>
                 <h3 style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 10 }}>Line Items</h3>
                 <div className="data-table-wrap">
-                  <table className="data-table" style={{ fontSize: '0.8rem' }}>
+                  <table className="data-table purchase-detail-items" style={{ fontSize: '0.8rem' }}>
                     <thead>
                       <tr>
                         <th>Item Description</th>
@@ -78,11 +78,11 @@ export default function PurchaseDetailModal({ selectedDetail, setShowDetailModal
                               {li.product_name}
                               {li.batch && <span style={{ display: 'block', fontSize: '0.7rem', color: 'var(--text-muted)' }}>Batch: {li.batch} {li.expiry ? `(Exp: ${li.expiry})` : ''}</span>}
                             </td>
-                            <td className="td-mono">{li.hsn_sac || '—'}</td>
-                            <td style={{ textAlign: 'center' }}>{li.quantity} {li.purchase_unit || li.unit || 'Nos'}</td>
-                            <td style={{ textAlign: 'right' }}>{fmt(li.unit_price)}</td>
-                            <td style={{ textAlign: 'center', color: 'var(--text-muted)' }}>{taxDesc}</td>
-                            <td style={{ textAlign: 'right', fontWeight: 600, color: 'var(--text-primary)' }}>{fmt(li.line_total)}</td>
+                            <td className="td-mono" data-label="HSN/SAC">{li.hsn_sac || '—'}</td>
+                            <td data-label="Quantity" style={{ textAlign: 'center' }}>{li.quantity} {li.purchase_unit || li.unit || 'Nos'}</td>
+                            <td data-label="Unit price" style={{ textAlign: 'right' }}>{fmt(li.unit_price)}</td>
+                            <td data-label="Tax" style={{ textAlign: 'center', color: 'var(--text-muted)' }}>{taxDesc}</td>
+                            <td data-label="Line total" style={{ textAlign: 'right', fontWeight: 600, color: 'var(--text-primary)' }}>{fmt(li.line_total)}</td>
                           </tr>
                         )
                       })}
@@ -92,7 +92,7 @@ export default function PurchaseDetailModal({ selectedDetail, setShowDetailModal
               </div>
 
               {/* Summary Breakdown */}
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8, borderTop: '1px solid var(--border)', paddingTop: 16 }}>
+              <div className="purchase-detail-summary" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8, borderTop: '1px solid var(--border)', paddingTop: 16 }}>
                 <div style={{ display: 'flex', width: '280px', justifyContent: 'space-between', fontSize: '0.82rem' }}>
                   <span style={{ color: 'var(--text-secondary)' }}>Subtotal:</span>
                   <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{fmt(selectedDetail.subtotal)}</span>

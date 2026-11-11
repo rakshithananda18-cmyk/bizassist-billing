@@ -9,6 +9,8 @@ import CounterMenu from './CounterMenu'
 import CounterModeSwitcher from './CounterModeSwitcher'
 import HeaderSearchSlot from '../common/HeaderSearchSlot'
 import { IS_LOCAL_APP } from '../../config'
+import usePhoneLayout from '../../hooks/usePhoneLayout'
+import PhoneActionMenu from '../common/PhoneActionMenu'
 
 // ── Shared inline styles (mirrors inv-top-bar scoped CSS) ───────────────────
 const topBarStyle = {
@@ -246,6 +248,7 @@ export default function PosTopBar({
   onCashMovement,
   onCloseShift,
 }) {
+  const phone = usePhoneLayout()
   const [lanStatus, setLanStatus] = useState(() => {
     const useLanDb = typeof localStorage !== 'undefined' && localStorage.getItem('bizassist_use_lan_db') === 'true'
     let host = ''
@@ -273,6 +276,26 @@ export default function PosTopBar({
     window.addEventListener('lan_status_changed', update)
     return () => window.removeEventListener('lan_status_changed', update)
   }, [])
+
+  if (phone) return <div className="pos-phone-header">
+    <div className="pos-phone-header-line">
+      <label className="pos-phone-active-bill"><span>Current bill</span><select aria-label="Active bill" value={activeTabId} onChange={event => onSelectTab(tabs.find(tab => String(tab.id) === event.target.value)?.id)}>{tabs.map(tab => <option key={tab.id} value={tab.id}>{tab.name}</option>)}</select></label>
+      <button type="button" className="pos-phone-new-bill" onClick={onNewBill}><PlusIcon size={16} /><span>New bill</span></button>
+      <PhoneActionMenu label="Counter actions" actions={[
+        { label: 'Counter settings', icon: <SettingsIcon size={16} />, action: onOpenSettings },
+        ...(canManageCounters ? [{ label: 'Manage counters', action: onManageCounters }] : []),
+        ...(shift && !shift.offline ? [{ label: 'Cash movement', action: onCashMovement }, { label: 'Close shift', action: onCloseShift }] : []),
+        { label: 'Close current bill', action: () => onCloseTab(activeTabId) },
+        { label: 'Leave counter', action: onMinimize },
+        { label: 'Close POS', icon: <CloseIcon size={16} />, action: onClose },
+      ]} />
+    </div>
+    <div className="pos-phone-context"><span>{liveModeStatus ? (liveModeStatus.isEditing ? 'Editing live counter' : 'View only') : 'Billing counter'}</span>
+      {canManageCounters && availableCounters.length ? <select aria-label="Billing counter" value={availableCounters.find(counter => counter.label === counterPrefix)?.value ?? ''} onChange={event => { const counter = availableCounters.find(item => String(item.value) === event.target.value); if (counter) onSelectCounter?.(counter.value) }}>{availableCounters.map(counter => <option key={counter.value} value={counter.value}>{counter.label}{counter.name ? ` · ${counter.name}` : ''}</option>)}</select> : <span>{counterPrefix || '—'}</span>}
+      <CounterModeSwitcher />
+      {shift && !shift.offline && <span className="pos-phone-shift-dot">Shift open</span>}
+    </div>
+  </div>
 
   return (
     <div className="pos-counter-topbar" style={{ ...topBarStyle, position: 'relative' }}>

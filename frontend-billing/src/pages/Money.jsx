@@ -1,3 +1,6 @@
+import usePhoneLayout from '../hooks/usePhoneLayout'
+import PhoneRecord from '../components/common/PhoneRecord'
+import './money-phone.css'
 // ============================================================================
 // Money — the unified money workspace (Parties · Invoices · Cashbook) with a
 // party drill-down, styled with the app's standard workspace theme
@@ -26,6 +29,7 @@ import { readAllPages } from '../utils/readPages'
 const fmt = (n) => `₹${Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`
 
 export default function Money() {
+  const phone = usePhoneLayout()
   const { view: viewParam } = useParams()
   const navigate = useNavigate()
   const { authFetch, user } = useAuth()
@@ -86,7 +90,7 @@ export default function Money() {
 
   return (
     <AppLayout title="Money">
-      <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
+      <div className="money-phone-workspace" style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
         <div className="page-header">
           <div className="page-header-left">
             <h1 className="page-title">Money</h1>
@@ -101,7 +105,7 @@ export default function Money() {
           </div>
         </div>
 
-        <div style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: '14px 18px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div className="money-phone-body" style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: '14px 18px', display: 'flex', flexDirection: 'column', gap: 12 }}>
           {/* ── Parties ── */}
           {view === 'parties' && (selectedParty ? (
             <PartyAccount
@@ -120,7 +124,12 @@ export default function Money() {
                   <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search customers…" />
                 </div>
               </div>
-              <div className="data-table-wrap">
+              {phone ? <div className="phone-record-list" aria-label="Customer accounts">
+                {partiesLoading ? <div className="phone-list-empty" role="status">Loading customer accounts…</div> : partiesError ? <div className="phone-list-empty" role="alert">Customer accounts are unavailable. <button className="btn" onClick={loadParties}>Retry customers</button></div> : !filteredCustomers.length ? <div className="phone-list-empty">No customers found.</div> : filteredCustomers.map(c => <PhoneRecord key={c.id} title={c.name} meta={c.phone || 'No phone number'} amount={fmt(c.outstanding_balance)} onOpen={() => setSelectedParty(c)} status={<span>Outstanding</span>} primary={<button className="btn btn-secondary" onClick={() => setSelectedParty(c)}>Open account</button>}>
+                  <p>Advance {fmt(c.credit_balance)}</p>
+                  {Number(c.outstanding_balance) > 0 && <>{!isCashier && <button className="btn btn-primary" onClick={() => setSettleParty(c)}>Settle dues</button>}<button className="btn btn-secondary" onClick={() => sendReminder(c)}>Send reminder</button></>}
+                </PhoneRecord>)}
+              </div> : <div className="data-table-wrap">
                 <table className="data-table">
                   <thead>
                     <tr>
@@ -168,7 +177,7 @@ export default function Money() {
                     })}
                   </tbody>
                 </table>
-              </div>
+              </div>}
             </>
           ))}
 

@@ -6,6 +6,8 @@ import { IS_LOCAL_APP } from '../../config'
 import { SUPPORT_CONTACTS } from '../../config/supportContacts'
 import { version } from '../../../package.json'
 import './support-section.css'
+import usePhoneLayout from '../../hooks/usePhoneLayout'
+import '../../pages/phone-utilities.css'
 import {
   AlertIcon, CheckIcon, PhoneIcon, MailIcon, MessageIcon,
   PrinterIcon, SyncIcon, ShieldIcon, SparkleIcon,
@@ -46,6 +48,8 @@ const FAQS = [
 ]
 
 export default function SupportSection() {
+  const phoneLayout = usePhoneLayout()
+  const [phoneView, setPhoneView] = useState('request')
   const navigate = useNavigate()
   const { user, profile, authFetch, networkMode } = useAuth()
   const formId = useId()
@@ -149,7 +153,7 @@ export default function SupportSection() {
   return (
     <div className="support-section" style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
       {/* Top Header Strip */}
-      <div style={{
+      <div className="support-section-header" style={{
         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
         flexWrap: 'wrap', gap: 16, paddingBottom: 16, borderBottom: '1px solid var(--border)'
       }}>
@@ -172,7 +176,7 @@ export default function SupportSection() {
         </div>
 
         {/* Quick System Status Badge */}
-        <div style={{
+        <div className="support-system-status" style={{
           display: 'flex', alignItems: 'center', gap: 14, background: 'var(--bg-1)',
           padding: '8px 14px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border)'
         }}>
@@ -197,8 +201,9 @@ export default function SupportSection() {
         </div>
       </div>
 
+      {phoneLayout && <div className="support-phone-views" role="group" aria-label="Support view"><button type="button" aria-pressed={phoneView === 'request'} onClick={() => setPhoneView('request')}>Get help</button><button type="button" aria-pressed={phoneView === 'answers'} onClick={() => setPhoneView('answers')}>Common questions</button></div>}
       {/* 2-Column Main Workspace */}
-      <div className="support-workspace">
+      <div className="support-workspace" data-phone-view={phoneLayout ? phoneView : undefined}>
 
         {/* ── Left Column: Support Form ── */}
         <div className="support-form-card" style={{
@@ -254,10 +259,10 @@ export default function SupportSection() {
 
             {/* Category selector with outline SVG icons */}
             <div>
-              <label style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: 8 }}>
+              <label htmlFor={phoneLayout ? `${formId}-category` : undefined} style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', display: 'block', marginBottom: 8 }}>
                 Issue Category
               </label>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 8 }}>
+              {phoneLayout ? <select id={`${formId}-category`} className="support-phone-category" value={category} onChange={event => setCategory(event.target.value)} disabled={submitting}>{CATEGORIES.map(cat => <option key={cat.id} value={cat.id}>{cat.label}</option>)}</select> : <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 8 }}>
                 {CATEGORIES.map(cat => (
                   <button
                     key={cat.id}
@@ -285,7 +290,7 @@ export default function SupportSection() {
                     </span>
                   </button>
                 ))}
-              </div>
+              </div>}
             </div>
 
             {/* Subject & Priority */}
@@ -463,7 +468,7 @@ export default function SupportSection() {
         </div>
 
         {/* ── Right Column: Direct Channels & FAQs ── */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+        <div className="support-answers" style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
           {/* Direct Channels Card */}
           {showDirectContacts && <div style={{

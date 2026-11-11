@@ -293,7 +293,7 @@
 .profile-notice-success { background: var(--success-dim); color: var(--success); border: 1px solid var(--success); }
 .profile-notice-error { background: var(--danger-dim); color: var(--danger); border: 1px solid var(--danger); }
 /* ── Split layout responsive rules ── */
-@media (max-width: 960px) and (min-width: 769px) {
+@media (max-width: 960px) and (min-width: 601px) {
   .settings-sub-sidebar {
     width: 195px;
     min-width: 195px;
@@ -309,7 +309,7 @@
   }
 }
 
-@media (max-width: 768px) {
+@media (max-width: 600px) {
   .settings-split-layout,
   .settings-shell.slide-up > .card.settings-split-layout {
     flex-direction: column !important;

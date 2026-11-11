@@ -4,11 +4,34 @@
 // (repo restructure). Also fixes a latent crash: the original inline JSX used
 // <InventoryIcon> without importing it in Sales.jsx.
 // ============================================================================
-import React from 'react'
+import React, { useEffect, useState } from 'react'
 import { InventoryIcon } from '../Icons'
 import { fmt } from '../../utils/format'
+import usePhoneLayout from '../../hooks/usePhoneLayout'
 
 export default function MenuCataloguePane({ groupedProducts, onSelectProduct }) {
+  const phone = usePhoneLayout()
+  const [category, setCategory] = useState('')
+  const categories = Object.keys(groupedProducts)
+  useEffect(() => { if (category && !groupedProducts[category]) setCategory('') }, [category, groupedProducts])
+  if (phone) {
+    const entries = category ? [[category, groupedProducts[category] || []]] : Object.entries(groupedProducts)
+    return <div className="pos-right-pane pos-phone-catalogue">
+      <div className="pos-phone-categories" aria-label="Product categories">
+        <button type="button" aria-pressed={!category} onClick={() => setCategory('')}>All items</button>
+        {categories.map(name => <button key={name} type="button" aria-pressed={category === name} onClick={() => setCategory(name)}>{name}</button>)}
+      </div>
+      <div className="pos-phone-catalogue-heading"><span>{entries.reduce((sum, [, items]) => sum + items.length, 0)} items</span><span>Tap an item to add</span></div>
+      <div className="pos-phone-product-list">
+        {entries.flatMap(([name, items]) => items.map(product => <button key={product.id} type="button" className="pos-phone-product" aria-label={`Add ${product.name} to bill`} onClick={() => onSelectProduct(product)}>
+          <span className="pos-phone-product-mark" aria-hidden="true">{product.name?.slice(0, 1)}</span>
+          <span className="pos-phone-product-copy"><strong>{product.name}</strong><small>{product.unit || 'pcs'}<span aria-hidden="true"> · </span>{name}</small></span>
+          <span className="pos-phone-product-price">{fmt(product.selling_price)}<span aria-hidden="true">+</span></span>
+        </button>))}
+        {!entries.some(([, items]) => items.length) && <div className="pos-mobile-empty"><strong>No matching items</strong><span>Try a different search or category.</span></div>}
+      </div>
+    </div>
+  }
   return (
     <div
       className="pos-right-pane"

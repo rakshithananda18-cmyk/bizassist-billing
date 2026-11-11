@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client'
 import App from './App.jsx'
 import './index.css'
 import './mobile-shell.css'
+import './phone-system.css'
 import { initTelemetry } from './utils/telemetry'
 
 // Capture unhandled frontend errors → backend telemetry (local + cloud),

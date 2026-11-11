@@ -59,6 +59,23 @@ afterEach(() => {
 })
 
 describe('InvoiceViewer', () => {
+  it('switches phone details and document views without refetching or mutating the invoice', async () => {
+    const matchMedia = vi.spyOn(window, 'matchMedia').mockImplementation(query => ({ matches: query === 'screen and (max-width: 600px)', media: query, addEventListener() {}, removeEventListener() {} }))
+    const payload = gstPayload()
+    const snapshot = JSON.parse(JSON.stringify(payload))
+    apiGet.mockResolvedValue(payload)
+    mount()
+    const documentView = await screen.findByRole('button', { name: 'Document', exact: true })
+    expect(screen.getByTestId('invoice-viewer')).toHaveAttribute('data-phone-view', 'details')
+    await userEvent.click(documentView)
+    expect(screen.getByTestId('invoice-viewer')).toHaveAttribute('data-phone-view', 'document')
+    await userEvent.click(screen.getByRole('button', { name: 'Details & payments' }))
+    expect(screen.getByTestId('invoice-viewer')).toHaveAttribute('data-phone-view', 'details')
+    expect(apiGet).toHaveBeenCalledOnce()
+    expect(payload).toEqual(snapshot)
+    matchMedia.mockRestore()
+  })
+
   it.each([
     [0, 100],
     [10, 0],

@@ -2,11 +2,14 @@ import React, { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { resolveTemplate, FALLBACK_TEMPLATE } from '../invoice/registry'
 import { api } from '../api/client'
+import usePhoneLayout from '../hooks/usePhoneLayout'
+import './phone-utilities.css'
 
 // Since it's public, we don't have an auth token. The client might try to send one
 // if logged in, but the backend doesn't require it.
 
 export default function PublicInvoiceViewer() {
+  const phoneLayout = usePhoneLayout()
   const { uid } = useParams()
   const [payload, setPayload] = useState(null)
   const [error, setError] = useState(null)
@@ -64,8 +67,9 @@ export default function PublicInvoiceViewer() {
   const Template = entry.component
 
   return (
-    <div style={{ background: '#f4f4f1', minHeight: '100vh', padding: '20px', overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-      <div style={{ 
+    <div className="public-invoice-page" style={{ background: '#f4f4f1', minHeight: '100vh', padding: '20px', overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+      {phoneLayout && <header className="public-invoice-phone-header no-print"><span>STATER <b>Bill</b></span><h1>{payload.invoice?.title || 'Invoice'} {payload.invoice?.number}</h1><p>Swipe the document sideways to view every column.</p></header>}
+      <div className="public-invoice-document" style={{
         width: '100%',
         maxWidth: 820, 
         minWidth: entry.key.includes('thermal') ? 'auto' : 'min(800px, 100%)',

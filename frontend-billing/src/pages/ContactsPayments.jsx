@@ -1,3 +1,4 @@
+import './money-phone.css'
 // ============================================================================
 // Page: ContactsPayments.jsx — Contacts & Payments workspace (merged Parties + Payments).
 // ----------------------------------------------------------------------------
@@ -18,6 +19,7 @@
 import { useEffect } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
+import usePhoneLayout from '../hooks/usePhoneLayout'
 import AppLayout from '../layouts/AppLayout'
 import PageTabs from '../components/common/PageTabs'
 import HeaderSearchSlot from '../components/common/HeaderSearchSlot'
@@ -45,6 +47,7 @@ export default function ContactsPayments() {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const { user } = useAuth()
+  const phone = usePhoneLayout()
   const TABS = STAFF_ROLES.has((user?.role || '').toLowerCase()) ? BASE_TABS : [...BASE_TABS, FIELD_TAB]
 
   // Path param first; legacy ?tab= second; remembered tab third.
@@ -96,8 +99,8 @@ export default function ContactsPayments() {
           </div>
           <div className="page-actions">
             <HeaderSearchSlot />
-            <div className="mobile-only-header-tabs">
-              <PageTabs inline tabs={TABS} active={tab} onChange={handleTabChange} />
+            <div className={`mobile-only-header-tabs${phone ? ' phone-workspace-tabs' : ''}`}>
+              <PageTabs inline tabs={phone ? TABS.map(item => ({ ...item, label: ({ payments: 'Payments', invoices: 'Bills', field: 'Collections' })[item.id] || item.label, icon: null })) : TABS} active={tab} onChange={handleTabChange} />
             </div>
           </div>
         </div>

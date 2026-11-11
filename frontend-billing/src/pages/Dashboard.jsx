@@ -28,6 +28,8 @@ import ContextMenu from '../components/common/ContextMenu'
 import { useDocLabels } from '../hooks/useDocLabels'
 import { isProtectedTourPreview } from '../demo/tourPrivacy'
 import TourPrivatePreview, { TourPrivateValue } from '../demo/TourPrivatePreview'
+import usePhoneLayout from '../hooks/usePhoneLayout'
+import PhoneDashboard from '../components/phone/PhoneDashboard'
 
 function StatCard({ icon, label, value, sub, variant = 'accent', badge, badgeType }) {
   return (
@@ -55,6 +57,7 @@ export default function Dashboard() {
   }, [settings])
 
   const navigate = useNavigate()
+  const phoneLayout = usePhoneLayout()
   const [stats, setStats]       = useState(null)
   const [payments, setPayments] = useState([])
   const [chartsData, setChartsData] = useState(null)
@@ -202,6 +205,7 @@ export default function Dashboard() {
 
   return (
     <AppLayout title="Dashboard">
+      {phoneLayout ? <PhoneDashboard stats={s} loading={loading} summaryError={summaryError} paymentsError={paymentsError} dayFeed={dayFeed} chartsData={chartsData} privacyMode={privacyMode} protectTour={protectTour} onRetry={load} isRefreshing={isRefreshing} /> : (
       <div className="slide-up">
         {/* Header */}
         <div className="page-header" style={{ marginBottom: '20px' }}>
@@ -461,6 +465,7 @@ export default function Dashboard() {
         )}
       </div>
 
+      )}
       {/* ── Invoice modal portal — extracted to components/invoice/InvoiceViewerModal ── */}
       <InvoiceViewerModal invoiceNo={viewingInvoiceNo} onClose={() => setViewingInvoiceNo(null)} />
       <ContextMenu menu={ctxMenu} onClose={() => setCtxMenu(null)} />

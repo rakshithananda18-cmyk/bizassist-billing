@@ -1,3 +1,6 @@
+import usePhoneLayout from '../hooks/usePhoneLayout'
+import PhoneRecord from '../components/common/PhoneRecord'
+import './money-phone.css'
 // ============================================================================
 // Page: POSLiveCounter.jsx
 // Description: Owner Live Counters view. Shows active POS cashier sessions,
@@ -143,7 +146,11 @@ function ConnectionStrip({ sseProbe, networkMode }) {
 
 // ── Counter tile ──────────────────────────────────────────────────────────────
 function CounterTile({ s, highlight, onClick }) {
+  const phone = usePhoneLayout()
   const isOffline = s.offline || s.idle
+  if (phone) return <PhoneRecord title={s.counter || 'Counter'} amount={isOffline ? '—' : money(s.cart_total)} meta={`${s.username || 'Unknown'} · ${s.item_count || 0} items`} status={<span>{isOffline ? 'Offline' : 'Live'}{!isOffline && s.network_mode ? ` · ${s.network_mode === 'local' ? 'LAN' : 'Cloud'}` : ''}</span>} primary={!isOffline && <button className="btn btn-secondary" onClick={() => onClick(s)}>View cart</button>}>
+    <p>Bill {s.active_bill || '—'}</p><p>{s.role || 'Cashier'} · Last seen {isOffline ? '—' : relTime(s._recv)}</p>
+  </PhoneRecord>
 
   return (
     <div
@@ -530,7 +537,7 @@ function LiveCounterWorkspace() {
             {/* Local-only mode: cloud upgrade needed. Gated on modeKnown so a
                 cold load cannot flash a refusal before /settings has answered. */}
             {isOwner && modeKnown && !canShowCounters && (
-              <div className="card" style={{
+              <div className="card pos-empty-card" style={{
                 padding: '48px 32px', textAlign: 'center',
                 maxWidth: 560, margin: '48px auto',
                 borderRadius: 18, border: '1px solid var(--border)',
@@ -569,7 +576,7 @@ function LiveCounterWorkspace() {
                 <ConnectionStrip sseProbe={sseProbe} networkMode={networkMode} />
 
                 {/* Network legend */}
-                <div style={{
+                <div className="pos-network-legend" style={{
                   display: 'flex', gap: 14, alignItems: 'center',
                   marginBottom: 20, flexWrap: 'wrap',
                 }}>
@@ -623,7 +630,7 @@ function LiveCounterWorkspace() {
                     </div>
                   </div>
                 ) : (
-                  <div style={{
+                  <div className="pos-counter-grid" style={{
                     display: 'grid',
                     gridTemplateColumns: 'repeat(auto-fill, minmax(270px, 1fr))',
                     gap: 16,

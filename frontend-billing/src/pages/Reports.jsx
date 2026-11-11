@@ -5,6 +5,8 @@
 //              (Day Book, Trial Balance, General Ledger, Balance Sheet).
 // ============================================================================
 import React, { useState, useMemo, useEffect, useRef } from 'react'
+import usePhoneLayout from '../hooks/usePhoneLayout'
+import PhoneActionMenu from '../components/common/PhoneActionMenu'
 import { useSearchParams } from 'react-router-dom'
 import AppLayout from '../layouts/AppLayout'
 import HeaderSearchSlot from '../components/common/HeaderSearchSlot'
@@ -264,7 +266,12 @@ const fmt = (val) => {
   return `₹${Number(val).toFixed(2)}`
 }
 
-function ReportPlaceholder({ report, onGenerate, generating }) {
+const shortReportDate = value => /^\d{4}-\d{2}-\d{2}$/.test(value || '')
+  ? new Date(`${value}T00:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
+  : 'Choose date'
+
+function ReportPlaceholder({ report, onGenerate, generating, compact = false }) {
+  if (compact) return <div className="reports-phone-empty"><TaxIcon size={25} /><h3>{report ? 'Ready to run' : 'Choose your report'}</h3><p>{report ? 'Check the dates above, then tap Run report.' : 'Select a report to view your business records.'}</p></div>
   return (
     <div className="empty-state card reports-placeholder" style={{ margin: 'auto', maxWidth: 440, padding: 32, textAlign: 'center' }}>
       <div className="empty-icon" style={{ display: 'inline-flex', marginBottom: 12 }}><TaxIcon size={32} /></div>
@@ -316,6 +323,8 @@ export default function Reports() {
     )
   }
   const [searchParams, setSearchParams] = useSearchParams()
+  const phone = usePhoneLayout()
+  const [phoneFiltersOpen, setPhoneFiltersOpen] = useState(() => Boolean(REPORTS_BY_ID[searchParams.get('tab')]?.needsParty))
   const reportRequestRef = useRef(0)
   const reportAbortRef = useRef(null)
   const partyRequestRef = useRef(0)
@@ -491,7 +500,11 @@ export default function Reports() {
     setMobileCategory(report.category)
     setTabInUrl(report.id)
     if (report.needsParty) {
+      if (phone) setPhoneFiltersOpen(true)
       setReportData(null)
+    } else if (phone) {
+      setReportData(null)
+      setPhoneFiltersOpen(false)
     } else {
       handleGenerate(report)
     }
@@ -641,7 +654,13 @@ export default function Reports() {
         {/* Master-Detail Split Layout */}
         <div className="card reports-panel reports-split-layout">
           {/* Mobile-only tab strip */}
-          <div className="reports-mobile-tabs">
+          {phone ? <div className="reports-phone-selector">
+            <label htmlFor="phone-report-choice">Your report</label>
+            <select id="phone-report-choice" aria-label="Choose report" value={activeReport?.id || ''} onChange={event => selectReport(REPORTS_BY_ID[event.target.value])}>
+              <option value="">Choose a report…</option>
+              {REPORT_CATEGORIES.map(category => <optgroup key={category.title} label={category.title}>{category.ids.map(id => REPORTS_BY_ID[id]).filter(Boolean).map(report => <option key={report.id} value={report.id}>{report.title}</option>)}</optgroup>)}
+            </select>
+          </div> : <div className="reports-mobile-tabs">
             <PageTabs
               label="Report categories"
               tabs={REPORT_CATEGORIES.map(c => ({ id: c.title, label: c.title }))}
@@ -664,7 +683,7 @@ export default function Reports() {
                 })}
               </CustomSelect>
             </div>
-          </div>
+          </div>}
 
           {/* Desktop & Tablet: Left Directory Sub-Sidebar */}
           <aside className={`reports-sub-sidebar${sidebarCollapsed ? ' is-collapsed' : ''}`} aria-label="Reports directory">
@@ -815,7 +834,15 @@ export default function Reports() {
           <main className="reports-canvas">
             {/* Sticky Canvas Toolbar */}
             <div className="reports-canvas-toolbar">
-              <div className="reports-filter-controls" style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+              {phone && <div className="reports-phone-run-bar">
+                <button type="button" className="reports-phone-filter-button" aria-expanded={phoneFiltersOpen} aria-label="Report dates and filters" onClick={() => setPhoneFiltersOpen(open => !open)}><span>Dates & filters</span><small>{shortReportDate(dateRange.from)} – {shortReportDate(dateRange.to)}</small></button>
+                <button type="button" className="btn btn-primary" disabled={!activeReport || generating === activeReport?.id || (activeReport?.needsParty && !partyId)} onClick={() => { handleGenerate(activeReport); setPhoneFiltersOpen(false) }}>{generating === activeReport?.id ? 'Loading…' : reportData ? 'Refresh' : 'Run report'}</button>
+                <PhoneActionMenu label="Report actions" actions={[
+                  { label: 'Export CSV', icon: <DownloadIcon size={15} />, disabled: reportData === null, action: triggerExport },
+                  { label: 'Full screen view', icon: <ExpandIcon size={15} />, disabled: reportData === null, action: () => setIsFullScreen(true) },
+                ]} />
+              </div>}
+              {(!phone || phoneFiltersOpen) && <div className="reports-filter-controls" style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
                 {sidebarCollapsed && (
                   <button
                     type="button"
@@ -916,10 +943,10 @@ export default function Reports() {
                     </button>
                   </div>
                 )}
-              </div>
+              </div>}
 
               {/* Right: Actions */}
-              <div className="reports-export-actions" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              {!phone && <div className="reports-export-actions" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 {reportData !== null && (
                   <>
                     <button
@@ -956,7 +983,7 @@ export default function Reports() {
                     <span>{generating === activeReport.id ? 'Loading…' : 'Refresh'}</span>
                   </button>
                 )}
-              </div>
+              </div>}
             </div>
 
             {/* Scrollable Canvas Body */}
@@ -979,6 +1006,7 @@ export default function Reports() {
               {/* Data View or Placeholder */}
               {reportData === null ? (
                 <ReportPlaceholder
+                  compact={phone}
                   report={activeReport}
                   onGenerate={() => activeReport && handleGenerate(activeReport)}
                   generating={generating === activeReport?.id}

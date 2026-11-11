@@ -1,3 +1,7 @@
+import useInvoiceActions from '../hooks/useInvoiceActions'
+import usePhoneLayout from '../hooks/usePhoneLayout'
+import PhoneRecord from '../components/common/PhoneRecord'
+import './money-phone.css'
 // ============================================================================
 // Page: Payments.jsx
 // Description: Payment Journals and Expense Tracker. Registers cash/bank inflows
@@ -47,6 +51,7 @@ export default function Payments({ embedded = false, headerTabs = null, inlinePa
   // See Parties.jsx. Dropping this view's own page header also removes the
   // duplicate primary action: `Record Payment` / `Log Expense` were rendered
   // BOTH in that header and in the toolbar below it.
+  const phone = usePhoneLayout()
   const inWorkspace = Boolean(headerTabs) || inlinePage
   const { authFetch, settings, user } = useAuth()
   const confirm = useConfirm()
@@ -127,6 +132,8 @@ export default function Payments({ embedded = false, headerTabs = null, inlinePa
       })
       .finally(() => { if (request === loadRequestRef.current) setLoading(false) })
   }, [authFetch, user?.id])
+
+  const invoiceActions = useInvoiceActions(authFetch, { onChanged: load })
 
   // Page lifecycle: guard form + silent refresh on tab resume
   const { blocker, isRefreshing, dirtyMessage } = usePageLifecycle({
@@ -769,7 +776,7 @@ export default function Payments({ embedded = false, headerTabs = null, inlinePa
   return (
     <PageShell embedded={embedded} title="Payments">
       <>
-      <div className={`${inWorkspace ? 'fade-in ws-embed' : 'slide-up'}`}>
+      <div className={`phone-transactions-view ${inWorkspace ? 'fade-in ws-embed' : 'slide-up'}`}>
         {/* Signature Page Header */}
         {!inlinePage && (
         <div className="page-header">
@@ -814,7 +821,7 @@ export default function Payments({ embedded = false, headerTabs = null, inlinePa
         {!isCashier && ['owner', 'manager', 'admin'].includes((user?.role || 'owner').toLowerCase()) && <FinancialSettlements authFetch={authFetch} onChanged={load} />}
         {/* Embedded (Khata): the SAME 48px workspace bar as Godown's tabs —
             workspace tabs · divider · group switch · actions · window controls. */}
-        {inWorkspace && (
+        {phone ? <div className="phone-workspace-tools"><div className="phone-segmented" aria-label="Transaction view">{['All', 'Received', 'Made', 'Pending Dues', 'Expenses', 'Credit Notes'].map(t => <button type="button" key={t} aria-pressed={activeTab === t} onClick={() => setActiveTab(t)}>{t === 'Pending Dues' ? 'Dues' : t}</button>)}</div><div className="phone-tool-row">{filterControls}<details><summary>More</summary><div><button className="btn btn-secondary" onClick={() => setShowStats(!showStats)}>{showStats ? 'Hide summary' : 'Show summary'}</button>{canSettleDues && <button className="btn btn-secondary" onClick={openSettleDues}>Settle dues</button>}</div></details><button className="btn btn-primary" onClick={() => activeTab === 'Expenses' ? (setExpenseForm(defaultExpenseForm), setShowExpenseModal(true)) : (setForm(defaultForm), setShowModal(true))}><PlusIcon size={14} />{activeTab === 'Expenses' ? 'Expense' : 'Payment'}</button></div></div> : inWorkspace && (
           <WorkspaceTopBar
             settingsTab="transactions"
             windowControls={false}
@@ -1001,7 +1008,7 @@ export default function Payments({ embedded = false, headerTabs = null, inlinePa
         </div>
 
         {/* ── Unified filter bar: Search | Sub-tabs | FilterDropdown ── */}
-        {!inWorkspace && (
+        {!phone && !inWorkspace && (
           <div className="page-subbar" style={{ display: 'flex', flexFlow: 'row wrap', gap: 8, alignItems: 'center' }}>
             {filterControls}
           </div>
@@ -1020,6 +1027,7 @@ export default function Payments({ embedded = false, headerTabs = null, inlinePa
           <div className="slide-up">
             <InvoicesListView
               authFetch={authFetch}
+              actions={invoiceActions}
               reloadKey={invoicesReloadKey}
               onView={(no) => setViewingInvoiceNo(no)}
               onRecordPayment={(inv) => {
@@ -1028,6 +1036,23 @@ export default function Payments({ embedded = false, headerTabs = null, inlinePa
               }}
               onReturn={(inv) => setViewingInvoiceNo(inv.invoice_no)}
             />
+          </div>
+        ) : phone ? (
+          <div className="phone-record-list" aria-label="Transaction records">
+            {(() => {
+              const rows = activeTab === 'Expenses' ? filteredExpenses.map(p => ({ ...p, title: p.category, displayAmount: p.amount, displayDate: p.expense_date, detail: p.note, kind: p.expense_type || 'Expense', expense: true }))
+                : activeTab === 'Pending Dues' ? filteredPendingDues.map(p => ({ ...p, title: p.customer, displayAmount: p.balance_due, displayDate: p.due_date, detail: p.invoice_id, kind: p.status || 'Due', due: true }))
+                : activeTab === 'Credit Notes' ? filteredCreditNotes.map(p => ({ ...p, title: p.customer, displayAmount: p.amount, displayDate: p.date, detail: p.note, kind: 'Credit note' }))
+                : filtered.map(p => ({ ...p, title: p.party_name || p.customer_name || p.supplier_name || (p.type === 'expense' ? p.reference : 'Transaction'), displayAmount: p.amount, displayDate: p.date, detail: p.reference, kind: (p.type || 'Payment').replaceAll('_', ' ') }));
+              if (!rows.length) return <div className="phone-list-empty">No matching transactions.</div>;
+              return rows.map(p => <PhoneRecord key={p.id} title={p.title || 'Transaction'} amount={fmt(p.displayAmount)} meta={p.displayDate ? formatISTDate(p.displayDate) : 'No date'} status={<span>{p.kind} · {p.method || p.payment_mode || '—'}</span>}
+                primary={(p.invoice_number || p.invoice_ref || p.invoice_id) && <button className="btn btn-secondary" onClick={() => setViewingInvoiceNo(p.invoice_number || p.invoice_ref || p.invoice_id)}>View bill</button>}>
+                {p.detail && <p>{p.detail}</p>}
+                {(p.due || p.type === 'pending_due') && !isCashier && <button className="btn btn-primary" onClick={() => { setSettlePreset({ customerId: p.customer_id ?? p._customerId ?? null, customerName: p.customer || p.party_name || '', outstanding: Number(p.displayAmount) }); setShowSettleModal(true) }}>Settle dues</button>}
+                {p.expense && <button className="btn btn-secondary" onClick={() => handleExpenseDelete(p.id)}>Delete expense</button>}
+                <button className="btn btn-secondary" onClick={() => navigator.clipboard.writeText(p.detail || p.invoice_number || p.invoice_id || '')}>Copy reference</button>
+              </PhoneRecord>);
+            })()}
           </div>
         ) : activeTab === 'Expenses' ? (
           <div className="slide-up">
@@ -1515,6 +1540,7 @@ export default function Payments({ embedded = false, headerTabs = null, inlinePa
 
 
       {/* ── Invoice modal portal — extracted to components/invoice/InvoiceViewerModal ── */}
+      {invoiceActions.modals}
       <InvoiceViewerModal invoiceNo={viewingInvoiceNo} onClose={() => setViewingInvoiceNo(null)} />
       </>
       <ContextMenu menu={ctxMenu} onClose={() => setCtxMenu(null)} />

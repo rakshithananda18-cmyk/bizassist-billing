@@ -1,0 +1,179 @@
+/* Dedicated phone presentations. Desktop, tablet and printed documents keep
+   their existing layout and every form uses its original state/actions. */
+@media screen and (max-width: 600px) {
+  .app-shell .settings-shell {
+    height: auto !important;
+    min-height: 100%;
+    overflow: visible !important;
+    gap: 0;
+  }
+  .settings-phone-launcher { display: grid; gap: 14px; padding: 4px 0 12px; }
+  .settings-phone-search { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg-2); color: var(--text-muted); }
+  .settings-phone-search input { width: 100%; min-width: 0; min-height: 44px; padding: 0; font: inherit; font-size: 16px; color: var(--text-primary); background: transparent; border: 0; outline: none; }
+  .settings-phone-search:focus-within { border-color: var(--accent); outline: 2px solid var(--accent-dim); }
+  .settings-phone-group > h2 { margin: 0 0 8px 4px; padding: 0; border: 0; font-size: 11px; font-weight: 650; text-transform: uppercase; letter-spacing: .07em; color: var(--text-muted); }
+  .settings-phone-group > div { overflow: hidden; border: 1px solid var(--border); border-radius: 14px; background: var(--bg-2); }
+  .settings-phone-section { display: flex; align-items: center; gap: 11px; width: 100%; min-height: 58px; padding: 8px 12px; border: 0; border-bottom: 1px solid var(--border); background: transparent; text-align: left; color: var(--text-primary); }
+  .settings-phone-section:last-child { border-bottom: 0; }
+  .settings-phone-section > span:nth-child(2) { flex: 1; min-width: 0; }
+  .settings-phone-section strong { display: block; font-size: 13px; font-weight: 600; line-height: 1.4; }
+  .settings-phone-section small { display: block; margin-top: 2px; font-size: 11px; line-height: 1.4; color: var(--text-muted); }
+  .settings-phone-section > svg { color: var(--text-muted); }
+  .settings-phone-section-icon { display: grid; place-items: center; width: 34px; height: 34px; flex: 0 0 34px; border-radius: 10px; color: var(--accent); background: var(--accent-dim); }
+  .settings-phone-section:active { background: var(--bg-3); }
+  .settings-phone-section:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
+  .settings-phone-empty { margin: 0; padding: 20px 12px; font-size: 13px; line-height: 1.5; color: var(--text-muted); }
+  .settings-shell .settings-phone-back { display: inline-flex; align-items: center; gap: 2px; min-height: 38px; padding: 0 3px 0 0; border: 0; background: transparent; color: var(--accent); font: inherit; font-size: 12px; }
+  .app-shell .settings-shell .page-header-left { flex: 1 1 auto !important; }
+  .app-shell .settings-shell .page-header { align-items: flex-end !important; }
+  .app-shell .settings-shell > .page-header { flex-direction: row !important; flex-wrap: nowrap !important; }
+  .settings-shell .page-header .page-actions { flex: 0 0 auto; width: auto !important; }
+  .settings-shell .page-header .settings-save-button { width: auto !important; min-width: 0; min-height: 36px !important; padding: 6px 8px !important; font-size: 11px !important; border-radius: 8px; }
+  .settings-shell .page-header .settings-save-button[data-save-state="saved"] { background: var(--bg-2) !important; color: var(--text-muted) !important; border-color: var(--border-hairline); box-shadow: none; }
+  .app-shell .settings-shell .settings-panel.settings-split-layout { display: block !important; height: auto !important; max-height: none !important; flex: 0 0 auto !important; overflow: visible !important; padding: 0 !important; margin: 6px 0 0 !important; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+  .settings-shell .settings-mobile-tabs, .settings-shell .settings-sub-sidebar { display: none !important; }
+  .settings-shell .settings-panel-body { overflow: visible !important; padding: 0 0 12px !important; min-width: 0; }
+  .settings-shell .settings-panel-body > * { min-width: 0; max-width: 100%; }
+  .settings-shell .inv-group { margin-top: 12px; border-radius: 12px; box-shadow: none; }
+  .settings-shell .inv-group-header { padding: 11px 12px; flex-wrap: wrap; gap: 6px; background: var(--bg-2); }
+  .settings-shell .inv-group-title { font-size: 12px; }
+  .settings-shell .inv-group-desc { flex-basis: 100%; margin: 0; font-size: 11px; }
+  .settings-shell .inv-row { padding: 12px; gap: 10px; align-items: center; }
+  .settings-shell .inv-row-body { min-width: 0 !important; flex: 1 1 170px; }
+  .settings-shell .inv-row-label { font-size: 13px; line-height: 1.4; }
+  .settings-shell .inv-row-hint { font-size: 12px; line-height: 1.45; margin-top: 3px; }
+  .settings-shell .inv-row > .form-input, .settings-shell .inv-row > .custom-select-wrapper { max-width: 100%; }
+  .settings-shell .setting-row { flex-wrap: wrap; padding: 12px 0 !important; gap: 9px !important; }
+  .settings-shell .setting-row > div { min-width: 0; max-width: 100%; }
+  .settings-shell .setting-row > div:first-child { flex: 1 1 175px !important; }
+  .settings-shell .setting-row > div:last-child { flex-shrink: 1 !important; }
+  .settings-shell :is(.form-input, .form-textarea) { min-width: 0; max-width: 100%; font-size: 16px; }
+  .settings-shell :is(.form-input, .custom-select-btn) { min-height: 42px; }
+  .settings-shell .btn { min-height: 40px; }
+  .settings-shell .print-settings-layout { display: grid !important; grid-template-columns: minmax(0, 1fr); gap: 16px !important; margin-top: 0 !important; }
+  .settings-shell .print-settings-layout > div { min-width: 0 !important; max-width: 100%; overflow-x: auto; }
+  .settings-shell .grid-2 { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .settings-shell .profile-group { margin: 0 0 12px; padding: 14px 12px; border-radius: 12px; }
+  .settings-shell .profile-group-description { font-size: 12px; line-height: 1.5; margin-bottom: 12px; }
+  .settings-shell .profile-fields-grid { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .settings-shell .profile-brand-editor { align-items: flex-start; gap: 12px; }
+  .settings-shell .profile-logo-preview { width: 64px; height: 64px; flex-basis: 64px; }
+  .settings-shell .profile-save-row { position: sticky; bottom: 0; padding: 10px 0; background: var(--bg); z-index: 2; gap: 10px; }
+  .settings-shell .profile-save-row > button { min-height: 44px; }
+  .settings-shell .appearance-panel { margin: 0; padding: 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg-2); }
+  .settings-shell .appearance-mode-preview { height: 48px; }
+  .settings-shell .appearance-palette-preview { height: 46px; }
+  .settings-shell .appearance-option-hint { font-size: 11px; line-height: 1.4; }
+  .settings-shell .appearance-fieldset { margin-top: 14px; }
+  .settings-shell .appearance-heading { gap: 8px; flex-wrap: wrap; }
+  .settings-staff-section { gap: 16px !important; }
+  .settings-phone-staff-create { border: 1px solid var(--border); border-radius: 12px; background: var(--bg-2); }
+  .settings-phone-staff-create > summary { display: flex; align-items: center; justify-content: space-between; min-height: 46px; padding: 11px 12px; list-style: none; color: var(--accent); font-size: 13px; font-weight: 600; cursor: pointer; }
+  .settings-phone-staff-create > summary::-webkit-details-marker { display: none; }
+  .settings-shell .settings-staff-create-form { display: grid !important; grid-template-columns: minmax(0, 1fr) !important; padding: 12px !important; gap: 12px !important; margin: 0 !important; border: 0 !important; background: transparent !important; }
+  .settings-shell .settings-staff-create-form > * { width: 100%; min-width: 0; }
+  .settings-shell .settings-staff-create-form :is(input, .custom-select-btn, button[type="submit"]) { min-height: 44px; }
+  .settings-staff-section .data-table-wrap { border: 0 !important; background: transparent; }
+  .settings-shell .staff-add-form { display: grid !important; grid-template-columns: minmax(0, 1fr); padding: 12px !important; gap: 10px !important; }
+  .settings-shell .staff-add-form > * { min-width: 0 !important; width: 100% !important; }
+  .settings-shell .settings-staff-table { display: block; min-width: 0 !important; background: transparent; }
+  .settings-staff-table thead { display: none; }
+  .settings-staff-table tbody { display: grid; gap: 10px; }
+  .settings-staff-table tbody tr { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; padding: 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg-2); }
+  .settings-staff-table tbody td { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; padding: 0 !important; border: 0; text-align: left !important; white-space: normal !important; overflow-wrap: anywhere; }
+  .settings-staff-table td::before { content: attr(data-label); display: block; margin-bottom: 3px; color: var(--text-muted); font-size: 10px; line-height: 1.4; }
+  .settings-staff-table td:first-child { grid-column: 1 / -1; font-size: 14px; }
+  .settings-staff-table td:first-child::before { display: none; }
+  .settings-staff-table td:last-child { grid-column: 1 / -1; flex-direction: row; justify-content: flex-end; align-items: center; gap: 8px; }
+  .settings-staff-table td:last-child::before { margin: 0 auto 0 0; }
+  .settings-staff-table .btn { min-height: 40px; }
+  .settings-shell .support-workspace { gap: 12px; }
+  .settings-shell .support-form-card { padding: 12px !important; border-radius: 12px !important; }
+  .settings-shell .support-submit-row { gap: 10px; }
+  .settings-shell .support-submit-row > button { width: 100%; min-height: 44px; justify-content: center; }
+  .settings-shell .support-section textarea { min-height: 110px !important; font-size: 16px !important; }
+  .support-section { gap: 12px !important; }
+  .support-section-header { padding-bottom: 10px !important; gap: 10px !important; }
+  .support-section-header h2 { font-size: 17px !important; }
+  .support-section-header > div:first-child > p { font-size: 12px !important; line-height: 1.5; }
+  .support-system-status { padding: 8px 10px !important; gap: 12px !important; width: 100%; }
+  .support-phone-views { display: grid; grid-template-columns: 1fr 1fr; padding: 3px; gap: 3px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-2); }
+  .support-phone-views > button { min-height: 42px; padding: 7px; border: 0; border-radius: 7px; background: transparent; color: var(--text-muted); font: inherit; font-size: 12px; font-weight: 600; }
+  .support-phone-views > button[aria-pressed='true'] { background: var(--accent-dim); color: var(--accent); }
+  .support-workspace[data-phone-view='request'] .support-answers, .support-workspace[data-phone-view='answers'] .support-form-card { display: none !important; }
+  .support-section .support-form-card { gap: 14px !important; box-shadow: none !important; }
+  .support-section .support-form-card > div:first-child > p { font-size: 12px !important; }
+  .support-section .support-form-card form { gap: 14px !important; }
+  .support-phone-category { width: 100%; min-height: 44px; padding: 9px 10px; border: 1px solid var(--border); border-radius: 9px; background: var(--bg-1); color: var(--text-primary); font: inherit; font-size: 16px; }
+
+  /* Registration uses the approved login palette, with a short form rhythm. */
+  .registration-page.roadmap-auth { padding: 8px 12px 16px; }
+  .registration-page .registration-mobile-header { min-height: 44px; font-size: 14px; }
+  .registration-page.roadmap-auth > .split-left { padding: 8px 0 14px; }
+  .registration-page.roadmap-auth .login-card--wide { padding: 18px 16px; border-radius: 16px; box-shadow: 0 8px 28px #00000014 !important; }
+  .registration-page .login-title { font-size: 23px !important; line-height: 1.2; }
+  .registration-page .registration-form-intro { font-size: 12px; line-height: 1.5; }
+  .registration-page .registration-signin { margin: 8px 0 14px; font-size: 12px; }
+  .registration-page #register-form { gap: 14px !important; }
+  .registration-page #register-form .registration-section { gap: 11px; }
+  .registration-page #register-form .registration-section > legend { margin-bottom: 9px; font-size: 13px; }
+  .registration-page #register-form .registration-section + .registration-section { padding-top: 14px; }
+  .registration-page #register-form .form-group label { font-size: 12px; }
+  .registration-page #register-form :is(.form-group input, .custom-select-btn) { min-height: 44px; padding: 9px 11px; border-radius: 9px; font-size: 16px !important; }
+  .registration-page #register-form .registration-extra-grid { grid-template-columns: minmax(86px, .8fr) minmax(0, 1.2fr); gap: 9px; }
+  .registration-page #register-form .registration-storage-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .registration-page #register-form .registration-storage-option { padding: 10px; min-height: 74px; border-radius: 10px; }
+  .registration-page .registration-storage-title { font-size: 12px; gap: 4px; }
+  .registration-page .registration-trial-badge { font-size: 8px; }
+  .registration-storage-disclosure > summary { min-height: 40px; padding: 12px 0 0; font-size: 12px; line-height: 1.4; color: var(--accent); cursor: pointer; }
+  .registration-storage-disclosure .registration-storage-help { padding: 10px; border: 1px solid var(--border); border-radius: 9px; margin-top: 8px; font-size: 12px; }
+  .registration-page #register-form #agreeTerms { min-height: 20px; padding: 0; }
+  .registration-page #register-form .login-submit-btn { min-height: 46px; }
+  .registration-page .registration-story-disclosure > summary { font-size: 13px; min-height: 44px; padding: 12px 14px; }
+
+  /* Invoice account information is the useful first view on a phone. */
+  .invoice-viewer { min-width: 0; max-width: 100%; overflow: hidden; }
+  .invoice-viewer .invoice-viewer-toolbar { gap: 6px !important; padding: 8px !important; box-shadow: none !important; flex-shrink: 0; }
+  .invoice-viewer-toolbar button { min-height: 38px; }
+  .invoice-viewer-toolbar [role='tablist'] { max-width: 100%; overflow-x: auto; }
+  .invoice-viewer-toolbar [role='tablist'] button { flex-shrink: 0; padding-inline: 8px !important; }
+  .invoice-phone-views { display: grid; grid-template-columns: 1fr 1fr; gap: 3px; padding: 3px; margin: 8px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-2); flex-shrink: 0; }
+  .invoice-phone-views button { min-height: 42px; border: 0; border-radius: 7px; background: transparent; color: var(--text-muted); font: inherit; font-size: 12px; font-weight: 600; }
+  .invoice-phone-views button[aria-pressed='true'] { color: var(--accent); background: var(--accent-dim); }
+  .invoice-viewer[data-phone-view='details'] .invoice-viewer-preview,
+  .invoice-viewer[data-phone-view='document'] .invoice-viewer-account { display: none !important; }
+  .invoice-viewer[data-phone-view] .invoice-viewer-body { flex: 1; min-height: 0; overflow: auto !important; }
+  .invoice-viewer[data-phone-view] .invoice-viewer-account { width: 100% !important; border: 0 !important; min-height: 100%; }
+  .invoice-viewer[data-phone-view] .invoice-viewer-account > div { padding: 12px !important; }
+  .invoice-viewer[data-phone-view] .invoice-viewer-preview { padding: 10px !important; max-height: none !important; min-height: 100%; flex: 1 !important; }
+  .invoice-viewer .ivp-card { padding: 10px 12px; box-shadow: none; }
+  .public-invoice-page { padding: 12px !important; overflow-x: hidden !important; }
+  .public-invoice-document { overflow-x: auto; max-width: 100%; border: 1px solid #e6e3de; border-radius: 10px; box-shadow: none !important; }
+  .public-invoice-phone-header { padding: 4px 0 14px; color: #1c252e; }
+  .public-invoice-phone-header > span { font-size: 12px; font-weight: 750; letter-spacing: .04em; }
+  .public-invoice-phone-header b { color: #bb6144; font-family: Georgia, serif; font-size: 15px; }
+  .public-invoice-phone-header h1 { font-size: 20px; margin: 14px 0 5px; line-height: 1.3; overflow-wrap: anywhere; }
+  .public-invoice-phone-header p { margin: 0; font-size: 12px; color: #66717a; }
+
+  .app-shell .demo-gate-container { min-height: 330px !important; margin: 4px 0 !important; border-radius: 14px !important; }
+  .app-shell .demo-gate-blurred-content { min-height: 330px !important; }
+  .app-shell .demo-gate-overlay { gap: 14px !important; padding: 24px 18px !important; }
+  .app-shell .demo-gate-overlay h3 { font-size: 19px !important; }
+  .app-shell .demo-gate-overlay p { font-size: 13px !important; }
+  .app-shell .demo-gate-overlay a { min-height: 44px; padding: 11px 20px !important; font-size: 13px; }
+
+  .legal-shell { height: auto; min-height: 100dvh; overflow: visible; }
+  .legal-sidebar { width: 100%; padding: 14px 12px; gap: 12px; }
+  .legal-sidebar-header { padding: 0; }
+  .legal-sidebar-nav { display: flex; overflow-x: auto; gap: 6px; padding: 0; }
+  .legal-sidebar-nav .legal-nav-group-label, .legal-nav-desc { display: none; }
+  .legal-sidebar-nav .legal-nav-item { flex: 0 0 auto; min-height: 42px; padding: 8px 10px; border-radius: 9px; font-size: 12px; }
+  .legal-sidebar-footer { padding: 0; }
+  .legal-doc-scroll { overflow: visible; min-height: 0; }
+  .legal-doc-content { padding: 20px 16px; }
+  .legal-doc-header { margin-bottom: 20px; }
+  .legal-doc-title { font-size: 27px; }
+  .legal-doc-subtitle { font-size: 13px; line-height: 1.55; }
+  .legal-prose { font-size: 13px; line-height: 1.7; }
+  .legal-prose h2 { font-size: 19px; margin-top: 26px; }
+}
