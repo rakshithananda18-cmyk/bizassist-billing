@@ -16,7 +16,7 @@ import { logger, setBizId } from '../utils/logger'
 import { reconcileBizIdOnLogin } from '../utils/loginSync'
 import { isUpgradeToPro } from '../utils/planTransition'
 import { discoverLocalBackend, getNetworkMode, clearDiscoveryCache } from '../utils/networkDiscovery'
-import { reconcileDeviceModeOnLogin } from '../utils/deviceMode'
+import { reconcileDeviceModeOnLogin, getHostingPreference, setHostingPreference } from '../utils/deviceMode'
 import { syncManager } from '../sync/syncManager'
 import { tokenStorage } from '../utils/tokenStorage'
 import { clearBillingProfileCache } from '../hooks/useBillingProfile'
@@ -151,6 +151,24 @@ function syncScopeFor(user) {
 
 export function AuthProvider({ children }) {
   const authGeneration = useRef(0)
+  const modeGeneration = useRef(0)
+  const modeChangePending = useRef(false)
+  const modeWrites = useRef(Promise.resolve())
+  // An explicit Local save must land after any automatic Pro-mode save that
+  // was already in flight. Otherwise a late login request can turn sync back on.
+  const saveHostingMode = useCallback((backend, sessionToken, mode) => {
+    const generation = authGeneration.current
+    const save = modeWrites.current.catch(() => {}).then(() => {
+      if (generation !== authGeneration.current || tokenStorage.getItem('billing_token') !== sessionToken) return null
+      return authFetchWithTimeout(`${backend}/settings`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionToken}` },
+        body: JSON.stringify({ general: { hosting_mode: mode } }),
+      })
+    })
+    modeWrites.current = save.catch(() => {})
+    return save
+  }, [])
   const reportedLoadErrors = useRef(new Set())
   const reportLoadError = async (response, path) => {
     if (response.ok) { reportedLoadErrors.current.delete(path); return }
@@ -331,14 +349,15 @@ export function AuthProvider({ children }) {
    */
   const _provisionCloudSyncToken = useCallback(async (username, password, localToken, cloudToken = null) => {
     if (!IS_LOCAL_APP || !localToken) return null
+    if (getHostingPreference() === 'local') return null
     if (typeof navigator !== 'undefined' && navigator.onLine === false) return null
     const generation = authGeneration.current
-    const current = () => generation === authGeneration.current && tokenStorage.getItem('billing_token') === localToken
+    const current = () => generation === authGeneration.current && tokenStorage.getItem('billing_token') === localToken && getHostingPreference() !== 'local'
     try {
       if (!current()) return null
       let token = cloudToken
       if (!token) {
-        const res = await fetch(`${CLOUD_URL}/login`, {
+        const res = await authFetchWithTimeout(`${CLOUD_URL}/login`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ username, password }),
@@ -348,14 +367,15 @@ export function AuthProvider({ children }) {
       }
       if (!token) return null
       if (!current()) return null
-      localStorage.setItem('bizassist_cloud_token', token)
-      await fetch(`${LOCAL_URL}/api/sync/cloud-token`, {
+      const provisioned = await authFetchWithTimeout(`${LOCAL_URL}/api/sync/cloud-token`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localToken}` },
         body: JSON.stringify({ token }),
       })
-      if (!current()) return null
+      if (!provisioned.ok || !current()) return null
+      localStorage.setItem('bizassist_cloud_token', token)
       logger.info('[SYNC] Cloud sync token provisioned (24h, business-scoped)')
+      window.dispatchEvent(new CustomEvent('refresh-settings'))
       // Keep the CLOUD record's hosting_mode in step with this device when it's
       // on Local + Cloud, so the Admin Console shows "Local + Cloud" (the sync
       // worker moves business data, not the settings JSON). Runs for BOTH paths
@@ -690,6 +710,10 @@ export function AuthProvider({ children }) {
       logger.info(`[SIGNUP] Cloud-issued BizID ${bizId} ${didReclaim ? 'reclaimed onto' : 'mirrored to'} local. Logged in locally.`)
       _saveSession(localData)
 
+      // Only a choice the owner actually made is an opt-out. A fallback caused
+      // by missing trial eligibility must auto-enable sync on a later upgrade.
+      if (!fellBackToLocal) setHostingPreference(bizId, effectiveHosting)
+
       // ── Automate the hosting choice made at signup — NO separate onboarding
       //    and NO migration. A brand-new account has no data to move, so:
       //      • 'local'          → stay offline-only on the local backend.
@@ -860,6 +884,9 @@ export function AuthProvider({ children }) {
    * new backend and gets a fresh, correct JWT.
    */
   const switchMode = useCallback(async (newMode) => {
+    if (modeChangePending.current) return false
+    modeGeneration.current++
+    modeChangePending.current = true
     logger.info(`[MODE SWITCH] Switching to "${newMode}" mode — will logout to refresh JWT`)
     // 1. Save the new mode to the CURRENT backend before switching.
     //    Backend exposes PUT /settings (a merge-patch); there is no PATCH route,
@@ -867,14 +894,8 @@ export function AuthProvider({ children }) {
     //    which meant the sync worker (reads general.hosting_mode from the DB)
     //    never engaged hybrid. Use PUT to match the rest of the app.
     try {
-      const res = await fetch(`${API_BASE}/settings`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ general: { hosting_mode: newMode } }),
-      })
+      const res = await saveHostingMode(API_BASE, token, newMode)
+      if (!res) return false
       // Pro-gate: the backend refuses to enable hybrid/cloud on a free plan (402).
       // Abort the switch and tell the user — do NOT flip mode, log out, or migrate.
       if (res.status === 402) {
@@ -884,10 +905,14 @@ export function AuthProvider({ children }) {
         logger.info('[MODE SWITCH] Blocked — Pro plan required')
         return false
       }
-      if (!res.ok) logger.warn(`[MODE SWITCH] Save mode returned HTTP ${res.status}`)
+      if (!res.ok) throw new Error(`Could not save storage mode (HTTP ${res.status}). Please try again.`)
     } catch (err) {
-      logger.warn('[MODE SWITCH] Could not save mode to backend (continuing anyway):', err)
+      window.dispatchEvent(new CustomEvent('show_toast', { detail: { type: 'error', msg: err.message || 'Could not save storage mode. Please try again.' } }))
+      return false
+    } finally {
+      modeChangePending.current = false
     }
+    setHostingPreference(user?.public_id || user?.username || user?.id, newMode)
     // 2. Update localStorage so the new API_BASE is effective immediately
     await logout()
     updateApiBase(newMode)
@@ -902,7 +927,8 @@ export function AuthProvider({ children }) {
       detail: { type: 'info', msg: `Switched to ${modeLabel}. Please log in again.` }
     }))
     logger.info(`[MODE SWITCH] Done. API_BASE is now: ${API_BASE}`)
-  }, [token, logout])
+    return true
+  }, [token, logout, saveHostingMode, user?.public_id, user?.username, user?.id])
 
   /**
    * setHostingMode — flip between Local and Local+Cloud (hybrid) WITHOUT a logout.
@@ -917,13 +943,19 @@ export function AuthProvider({ children }) {
    * confirming a mode is a pure, instant, non-destructive preference change.
    */
   const setHostingMode = useCallback(async (newMode) => {
+    if (modeChangePending.current) return false
+    // A legacy cloud-routed desktop holds a cloud JWT. It needs a local login
+    // before it can use the on-device database; never reuse that JWT locally.
+    if (IS_LOCAL_APP && isCloudEndpoint(API_BASE) && newMode === 'local') return switchMode(newMode)
+    modeGeneration.current++
+    modeChangePending.current = true
+    const generation = authGeneration.current
+    const backend = API_BASE
+    const current = () => generation === authGeneration.current && tokenStorage.getItem('billing_token') === token && API_BASE === backend
     logger.info(`[MODE] Setting hosting mode to "${newMode}" (no logout — same local backend)`)
     try {
-      const res = await fetch(`${API_BASE}/settings`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ general: { hosting_mode: newMode } }),
-      })
+      const res = await saveHostingMode(backend, token, newMode)
+      if (!res) return false
       // Pro-gate: enabling hybrid on a free plan is refused (402). Abort and tell
       // the user instead of falsely toasting "Local + Cloud enabled". Switching
       // back to 'local' is never gated, so this only trips when turning cloud ON.
@@ -934,22 +966,29 @@ export function AuthProvider({ children }) {
         logger.info('[MODE] Hybrid blocked — Pro plan required')
         return false
       }
-      if (!res.ok) logger.warn(`[MODE] Save mode returned HTTP ${res.status}`)
+      if (!res.ok) throw new Error(`Could not save storage mode (HTTP ${res.status}). Your current mode is unchanged.`)
     } catch (err) {
-      logger.warn('[MODE] Could not save mode to backend (continuing anyway):', err)
+      if (current()) window.dispatchEvent(new CustomEvent('show_toast', { detail: { type: 'error', msg: err.message || 'Could not save storage mode. Your current mode is unchanged.' } }))
+      return false
+    } finally {
+      modeChangePending.current = false
     }
+    if (!current()) return false
+    setHostingPreference(user?.public_id || user?.username || user?.id, newMode)
     updateApiBase(newMode)
+    setSettings(previous => previous ? { ...previous, general: { ...previous.general, hosting_mode: newMode } } : previous)
     window.dispatchEvent(new CustomEvent('refresh-settings'))
     window.dispatchEvent(new CustomEvent('show_toast', {
       detail: {
         type: 'success',
         msg: newMode === 'local'
-          ? 'Switched to Local. Cloud sync is paused — billing stays fast and offline.'
+          ? 'Local only selected for this business on this device. Cloud sync is paused in both directions; web and other-device changes will not appear here until you enable Local + Cloud.'
           : 'Local + Cloud enabled. Your data now syncs to the cloud in the background.',
       },
     }))
     logger.info(`[MODE] Done. API_BASE is now: ${API_BASE}`)
-  }, [token])
+    return true
+  }, [token, switchMode, saveHostingMode, user?.public_id, user?.username, user?.id])
 
   useSessionRefresh(isDemoMode || user?.is_demo || token === DEMO_TOKEN ? null : token)
   useEffect(() => {
@@ -988,8 +1027,10 @@ export function AuthProvider({ children }) {
 
   const fetchSettings = useCallback(async (force = false) => {
     if (!token || isDemoMode || isDemoRequested() || token === DEMO_TOKEN || user?.is_demo) return
+    if (modeChangePending.current) return
     const backend = API_BASE, generation = authGeneration.current
-    const current = () => generation === authGeneration.current && tokenStorage.getItem('billing_token') === token && isSameBackendOrCloudFailover(API_BASE, backend)
+    const modeEpoch = modeGeneration.current
+    const current = () => !modeChangePending.current && modeEpoch === modeGeneration.current && generation === authGeneration.current && tokenStorage.getItem('billing_token') === token && isSameBackendOrCloudFailover(API_BASE, backend)
     try {
       if (!current()) return
       const url = force ? `${backend}/settings?force=true` : `${backend}/settings`
@@ -1033,11 +1074,13 @@ export function AuthProvider({ children }) {
           (typeof profile?.is_premium === 'boolean' ? (profile.is_premium ? 'pro' : 'free') : undefined)
         const planKnown = typeof readPlan === 'string'
         const userPlan = readPlan
+        const explicitChoice = getHostingPreference(user?.public_id || user?.username || user?.id)
         const realMode = resolveHostingMode({
           isLocalApp: IS_LOCAL_APP,
           plan: userPlan,
           savedMode,
           deviceMode,
+          explicitChoice,
           planKnown,
         })
 
@@ -1058,7 +1101,7 @@ export function AuthProvider({ children }) {
         if (data?.general) data.general.hosting_mode = realMode
         setSettings(data)
 
-        if (data?.general && shouldPersistMode(realMode, savedMode, { isLocalApp: IS_LOCAL_APP, planKnown })) {
+        if (data?.general && shouldPersistMode(realMode, savedMode, { isLocalApp: IS_LOCAL_APP, planKnown, explicitChoice })) {
           logger.info(
             `[AUTH] hosting_mode resolves to '${realMode}' ` +
             `(stored '${savedMode || 'unset'}', plan '${readPlan || 'unknown'}', ` +
@@ -1068,11 +1111,13 @@ export function AuthProvider({ children }) {
           // deterministic from session facts, so this settles on the first load
           // rather than oscillating the way the old reconcile did.
           if (!current()) return
-          fetch(`${backend}/settings`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-            body: JSON.stringify({ general: { hosting_mode: realMode } }),
-          }).then(res => {
+          saveHostingMode(backend, token, realMode).then(res => {
+            if (!res) return
+            if (res.ok && current() && deviceMode !== 'cloud') {
+              // Both local modes retain the same API and JWT. Keep routing/UI
+              // defaults aligned without recording an explicit owner choice.
+              updateApiBase(realMode)
+            }
             if (res.status === 402) {
               // Plan lapsed between resolve and write — resolveHostingMode will
               // degrade to 'local' on the next pass once the plan is refreshed.
@@ -1088,15 +1133,13 @@ export function AuthProvider({ children }) {
           )
         }
         logger.info('Loaded app settings successfully in context')
-        // NOTE: We do NOT call updateApiBase here.
-        // The user's home mode (bizassist_user_home_mode) is the source of truth
-        // for which backend to hit. Overriding it from settings would cause
-        // wrong-backend routing after a mode switch + re-login.
+        // Reconciliation never moves a cloud-routed session onto a local JWT.
+        // Only successful same-backend local/hybrid saves update the device key.
       }
     } catch (err) {
       logger.error('Failed to fetch settings in context:', err)
     }
-  }, [token, logout])
+  }, [token, logout, saveHostingMode, profile?.plan, profile?.is_premium, user?.public_id, user?.username, user?.id])
 
   useEffect(() => {
     if (!token || settings) return

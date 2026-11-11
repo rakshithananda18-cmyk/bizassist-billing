@@ -132,7 +132,7 @@ export default function HostingModeSection({ currentMode, onModeChange, token, i
       mode: 'local',
       icon: <MonitorIcon size={18} />,
       title: 'Local Only',
-      desc: 'Sub-second execution. 100% offline uptime. Data stays on your device. AI & cloud backups disabled.',
+      desc: 'Works offline on this computer. Cloud sync pauses in both directions: local changes stay here and cloud changes are not downloaded. Your local data is kept.',
       badges: [
         { icon: <ZapIcon size={12} />, text: 'Fast' },
         { icon: <WifiOffIcon size={12} />, text: 'No internet needed' },
@@ -175,17 +175,16 @@ export default function HostingModeSection({ currentMode, onModeChange, token, i
 
   const handleCardClick = (mode) => {
     const state = cardState(mode)
+    // A deliberate Local choice must be saved even when the card is already
+    // active, so the desktop can distinguish it from a default mode.
+    if (mode === 'local') {
+      onModeChange('local')
+      return
+    }
     if (state === 'active') {
       window.dispatchEvent(new CustomEvent('show_toast', {
         detail: { type: 'info', msg: explainBlocked(mode, state) },
       }))
-      return
-    }
-    // Switching to Local is always safe & instant: going offline-only needs no
-    // connection and no data move (the local DB is already the source of truth).
-    // No re-login — Local and Local + Cloud share the same local backend.
-    if (mode === 'local') {
-      onModeChange('local')
       return
     }
     // Local + Cloud: needs a reachable cloud to sync to. If it isn't reachable,
@@ -212,6 +211,13 @@ export default function HostingModeSection({ currentMode, onModeChange, token, i
     // Legacy links may still carry ?switch=cloud (pure-cloud mode is gone) — map
     // it to 'hybrid' (Local + Cloud), which is its replacement.
     const target = autoSwitchTarget === 'cloud' ? 'hybrid' : autoSwitchTarget
+    if (target === 'local') {
+      // Local and hybrid share the same database. Pause sync directly, as
+      // the Local card does; no cloud checks, migration or queue clearing.
+      onModeChange('local')
+      onAutoSwitchConsumed?.()
+      return
+    }
     if (['local', 'hybrid'].includes(target) && target !== currentMode) {
       const state = cardState(target)
       if (state === 'ready') {
@@ -507,6 +513,7 @@ export default function HostingModeSection({ currentMode, onModeChange, token, i
           localProbe={localProbe}
           cloudProbe={cloudProbe}
           internetProbe={internetProbe}
+          onRetry={recheck}
           onClose={() => setPreflightTarget(null)}
           onProceed={() => {
             setConsequenceTarget(preflightTarget)

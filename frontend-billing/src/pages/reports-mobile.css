@@ -1,0 +1,531 @@
+/* Reports owns its mobile layout. Keep desktop dimensions and printed reports
+   in reports-shell.css; wide accounting tables scroll inside their own region. */
+.reports-shell .reports-table-hint {
+  display: none;
+}
+
+@media screen and (max-width: 768px) {
+  .reports-shell {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    height: auto;
+    min-height: 0;
+    overflow: visible;
+    padding-bottom: 12px;
+  }
+
+  .reports-shell > .page-header {
+    position: static;
+    margin-bottom: 14px;
+    padding: 0;
+    gap: 8px;
+    background: transparent;
+  }
+
+  .reports-shell .page-header-left {
+    flex-basis: auto;
+    gap: 6px;
+  }
+
+  .reports-shell .page-title {
+    font-size: 1.25rem;
+    line-height: 1.25;
+    letter-spacing: -0.035em;
+  }
+
+  .reports-shell .page-title svg {
+    flex-shrink: 0;
+    filter: none;
+  }
+
+  .reports-shell .page-subtitle {
+    font-size: 0.78rem;
+    line-height: 1.5;
+    white-space: normal;
+  }
+
+  .reports-shell .page-actions:empty {
+    display: none;
+  }
+
+  .reports-shell.slide-up > .card.reports-split-layout {
+    flex: none !important;
+    width: 100%;
+    min-width: 0;
+    height: auto !important;
+    max-height: none !important;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    border-radius: 20px;
+    box-shadow: none;
+    background: var(--bg-1);
+  }
+
+  .reports-shell .reports-mobile-tabs {
+    width: 100%;
+    min-width: 0;
+    padding: 12px;
+    overflow: visible;
+    background: var(--bg-1);
+  }
+
+  .reports-shell .reports-mobile-tabs .page-tabs {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+    padding: 0;
+    overflow: visible;
+    border: 0;
+    background: transparent;
+  }
+
+  .reports-shell .reports-mobile-tabs .page-tab {
+    min-width: 0;
+    min-height: 44px;
+    padding: 8px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--bg);
+    font-size: 0.73rem;
+    line-height: 1.35;
+    white-space: normal;
+    text-align: center;
+  }
+
+  .reports-shell .reports-mobile-tabs .page-tab.is-active {
+    border-color: var(--accent);
+    background: var(--accent-dim);
+    color: var(--accent);
+  }
+
+  .reports-shell .reports-mobile-picker {
+    margin-top: 12px !important;
+  }
+
+  .reports-shell .reports-picker-label {
+    display: block;
+    margin-bottom: 6px;
+    color: var(--text-muted);
+    font-size: 0.63rem;
+    font-weight: 700;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+  }
+
+  .reports-shell .reports-mobile-picker .form-input {
+    width: 100% !important;
+    min-width: 0;
+    height: 44px !important;
+    border-radius: 12px;
+    font-size: 0.88rem !important;
+    font-weight: 600;
+  }
+
+  .reports-shell .reports-canvas {
+    flex: none;
+    width: 100%;
+    min-width: 0;
+    height: auto;
+    overflow: visible;
+    background: var(--bg);
+  }
+
+  .reports-shell .reports-canvas-toolbar {
+    gap: 10px;
+    padding: 12px;
+    background: var(--bg-1);
+  }
+
+  .reports-shell .reports-filter-controls {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px !important;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .reports-shell .reports-sidebar-toggle-btn,
+  .reports-shell .reports-filter-divider {
+    display: none !important;
+  }
+
+  .reports-shell .reports-date-field {
+    flex-direction: column;
+    align-items: stretch !important;
+    gap: 5px !important;
+    min-width: 0;
+  }
+
+  .reports-shell .reports-date-field > span {
+    color: var(--text-muted) !important;
+    font-size: 0.7rem !important;
+  }
+
+  .reports-shell .reports-date-field input {
+    width: 100% !important;
+    min-width: 0;
+    max-width: 100%;
+    height: 44px !important;
+    padding: 0 9px !important;
+    border-radius: 11px;
+    font-size: 0.8rem !important;
+  }
+
+  .reports-shell .reports-quick-periods {
+    grid-column: 1 / -1;
+    gap: 6px !important;
+    flex-wrap: nowrap !important;
+    min-width: 0;
+    max-width: 100%;
+    padding: 1px 1px 5px;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+
+  .reports-shell .reports-quick-periods .btn {
+    flex: 0 0 auto;
+    min-height: 40px;
+    padding: 0 12px !important;
+    border-radius: 999px;
+    background: transparent;
+    font-size: 0.73rem !important;
+  }
+
+  .reports-shell .reports-party-controls {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-column: 1 / -1;
+    gap: 8px !important;
+    min-width: 0;
+  }
+
+  .reports-shell .reports-party-type {
+    grid-column: 1 / -1;
+  }
+
+  .reports-shell .reports-party-type .btn {
+    flex: 1;
+    min-height: 40px;
+    border-radius: 10px;
+    font-size: 0.78rem !important;
+  }
+
+  .reports-shell .reports-party-controls > .form-input {
+    width: 100% !important;
+    min-width: 0;
+    height: 44px !important;
+    border-radius: 10px;
+  }
+
+  .reports-shell .reports-party-controls > .btn {
+    min-height: 44px;
+    border-radius: 10px;
+  }
+
+  .reports-shell .reports-export-actions {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .reports-shell .reports-export-actions:empty {
+    display: none !important;
+  }
+
+  .reports-shell .reports-export-actions .btn {
+    flex: 1 1 auto;
+    justify-content: center;
+    min-width: 0;
+    height: 44px !important;
+    padding: 0 12px;
+    border-radius: 11px;
+    font-size: 0.8rem;
+  }
+
+  .reports-shell .reports-export-actions .reports-fullscreen-trigger {
+    flex: 0 0 44px;
+    width: 44px !important;
+    padding: 0;
+  }
+
+  .reports-shell .reports-canvas-body {
+    flex: none;
+    min-width: 0;
+    padding: 16px 12px 12px;
+    overflow: visible !important;
+  }
+
+  .reports-shell .reports-canvas-header {
+    min-width: 0;
+    margin-bottom: 12px;
+  }
+
+  .reports-shell .reports-canvas-header > div {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .reports-shell .reports-canvas-title {
+    flex-wrap: wrap;
+    gap: 7px;
+    font-size: 1.08rem;
+    line-height: 1.4;
+    letter-spacing: -0.025em;
+  }
+
+  .reports-shell .reports-canvas-title > svg {
+    flex-shrink: 0;
+  }
+
+  .reports-shell .reports-canvas-period-badge {
+    flex-basis: 100%;
+    width: fit-content;
+    margin: 2px 0 0;
+    padding: 5px 8px;
+    font-size: 0.7rem;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .reports-shell .reports-canvas-desc {
+    font-size: 0.76rem;
+    line-height: 1.55;
+  }
+
+  .reports-shell .reports-results {
+    flex: none !important;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .reports-shell .reports-table-hint {
+    display: block;
+    margin: 0 0 8px;
+    color: var(--text-muted);
+    font-size: 0.67rem;
+    line-height: 1.4;
+  }
+
+  .reports-shell .report-view-card {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    padding: 12px !important;
+    border-radius: 14px;
+    box-shadow: none;
+  }
+
+  .reports-shell .report-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+    margin-bottom: 18px !important;
+  }
+
+  .reports-shell .report-summary-grid .stat-card {
+    min-width: 0;
+    gap: 2px;
+    padding: 12px 10px !important;
+    border-radius: 12px !important;
+    box-shadow: none;
+    transform: none;
+  }
+
+  .reports-shell .report-summary-grid .stat-card > div:first-child {
+    font-size: 0.68rem !important;
+    line-height: 1.4;
+  }
+
+  .reports-shell .report-summary-grid .stat-card > div:last-child {
+    font-size: clamp(0.88rem, 4.5vw, 1.14rem) !important;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.035em;
+    overflow-wrap: anywhere;
+  }
+
+  .reports-shell .report-summary-grid .stat-card:last-child {
+    grid-column: 1 / -1;
+  }
+
+  .reports-shell .report-summary-grid .stat-card:last-child > div:last-child {
+    font-size: 1.3rem !important;
+  }
+
+  .reports-shell .report-table-scroll,
+  .reports-shell .reports-canvas-body .data-table-wrap {
+    flex: none !important;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    overflow-x: auto !important;
+    overscroll-behavior-x: contain;
+    touch-action: pan-x pan-y !important;
+    -webkit-overflow-scrolling: touch;
+    border-radius: 10px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+
+  .reports-shell .report-table-scroll:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  .reports-shell .report-table-scroll table {
+    width: max-content !important;
+    min-width: 100%;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .reports-shell .data-table th {
+    padding: 11px 10px;
+    font-size: 0.67rem;
+    white-space: nowrap;
+  }
+
+  .reports-shell .data-table td {
+    min-width: 100px;
+    padding: 12px 10px;
+    font-size: 0.79rem;
+    white-space: nowrap;
+  }
+
+  .reports-shell .data-table td:not(.pos-align-right):not(.td-mono):not([style*="text-align: right"]) {
+    max-width: 220px;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .reports-shell .report-balance-columns {
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 20px !important;
+  }
+
+  .reports-shell .report-balance-columns > div {
+    min-width: 0;
+  }
+
+  .reports-shell .report-balance-sheet table {
+    table-layout: fixed;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .reports-shell .report-balance-sheet td:first-child {
+    width: 55%;
+    padding-right: 10px !important;
+    font-size: 0.8rem !important;
+    overflow-wrap: anywhere;
+  }
+
+  .reports-shell .report-balance-sheet td:last-child {
+    width: 45%;
+    font-size: 0.8rem;
+    overflow-wrap: anywhere;
+  }
+
+  .reports-shell .report-equity-callout {
+    flex-direction: column;
+    align-items: flex-start !important;
+    gap: 12px;
+    padding: 14px !important;
+  }
+
+  .reports-shell .report-equity-callout > div:last-child {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .reports-shell .report-party-heading,
+  .reports-shell .report-ledger-heading,
+  .reports-shell .report-journal-heading,
+  .reports-shell .report-balance-status {
+    flex-wrap: wrap;
+    gap: 10px;
+    min-width: 0;
+  }
+
+  .reports-shell .report-party-heading > div,
+  .reports-shell .report-ledger-heading > *,
+  .reports-shell .report-journal-heading > *,
+  .reports-shell .report-balance-status > * {
+    min-width: 0;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
+
+  .reports-shell .report-journal-entry {
+    min-width: 0;
+  }
+
+  .reports-shell .report-journal .report-table-scroll table {
+    min-width: 430px;
+  }
+
+  .reports-shell .report-journal table td {
+    padding: 8px 12px !important;
+    font-size: 0.8rem;
+    white-space: nowrap;
+  }
+
+  .reports-shell .report-balance-status {
+    padding: 12px !important;
+    line-height: 1.6;
+  }
+
+  .reports-shell .reports-placeholder {
+    width: 100%;
+    max-width: none !important;
+    margin: 8px 0 !important;
+    padding: 26px 16px !important;
+    border-radius: 14px;
+  }
+
+  .reports-shell .reports-placeholder .btn {
+    min-height: 44px;
+    max-width: 100%;
+    white-space: normal;
+  }
+
+  .reports-shell .table-fullscreen-overlay {
+    padding: calc(8px + env(safe-area-inset-top, 0px)) 8px calc(8px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+
+  .reports-shell .report-fullscreen-panel {
+    width: 100% !important;
+    border-radius: 18px !important;
+  }
+
+  .reports-shell .report-fullscreen-panel .table-fullscreen-header {
+    gap: 8px;
+    padding: 10px 12px;
+  }
+
+  .reports-shell .report-fullscreen-panel .table-fullscreen-btn {
+    display: inline-flex !important;
+    min-height: 44px;
+    padding: 0 12px;
+    border-radius: 10px;
+  }
+
+  .reports-shell .reports-fullscreen-body {
+    min-width: 0;
+    min-height: 0;
+    padding: 12px !important;
+    overflow-y: auto !important;
+    touch-action: pan-x pan-y !important;
+  }
+
+  .reports-shell .report-fullscreen-panel .report-view-card {
+    flex: none !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  .reports-shell .report-fullscreen-panel .general-ledger-wrapper {
+    flex: none !important;
+    min-width: 0;
+    overflow: visible !important;
+  }
+}

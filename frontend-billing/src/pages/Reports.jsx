@@ -38,6 +38,7 @@ import RegisterView from '../components/reports/RegisterView'
 import CustomSelect from '../components/common/CustomSelect'
 import { reportPeriod } from '../utils/reportPeriods'
 import './reports-shell.css'
+import './reports-mobile.css'
 import { isDemoMode } from '../demo/demoEngine'
 import DemoGate from '../components/demo/DemoGate'
 
@@ -265,7 +266,7 @@ const fmt = (val) => {
 
 function ReportPlaceholder({ report, onGenerate, generating }) {
   return (
-    <div className="empty-state card" style={{ margin: 'auto', maxWidth: 440, padding: 32, textAlign: 'center' }}>
+    <div className="empty-state card reports-placeholder" style={{ margin: 'auto', maxWidth: 440, padding: 32, textAlign: 'center' }}>
       <div className="empty-icon" style={{ display: 'inline-flex', marginBottom: 12 }}><TaxIcon size={32} /></div>
       <h3 style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: 6 }}>
         {report ? `Run ${report.title}` : 'Select a report'}
@@ -273,7 +274,7 @@ function ReportPlaceholder({ report, onGenerate, generating }) {
       <p style={{ fontSize: '0.84rem', color: 'var(--text-muted)', lineHeight: 1.5, margin: 0 }}>
         {report
           ? 'Generate the report to see detailed metrics and ledger records for the selected period.'
-          : 'Pick a report from the directory on the left and set your date range to begin.'}
+          : 'Choose a report and set your date range to begin.'}
       </p>
       {report && (
         <button
@@ -647,8 +648,10 @@ export default function Reports() {
               active={activeCategory}
               onChange={setMobileCategory}
             />
-            <div style={{ marginTop: 8 }}>
+            <div className="reports-mobile-picker" style={{ marginTop: 8 }}>
+              <label htmlFor="mobile-report-choice" className="reports-picker-label">Choose your report</label>
               <CustomSelect
+                id="mobile-report-choice"
                 className="form-input"
                 style={{ width: '100%', height: 34, fontSize: '0.84rem' }}
                 value={activeReport?.id || ''}
@@ -812,7 +815,7 @@ export default function Reports() {
           <main className="reports-canvas">
             {/* Sticky Canvas Toolbar */}
             <div className="reports-canvas-toolbar">
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+              <div className="reports-filter-controls" style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
                 {sidebarCollapsed && (
                   <button
                     type="button"
@@ -826,7 +829,7 @@ export default function Reports() {
                     <span>Reports</span>
                   </button>
                 )}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div className="reports-date-field" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 600 }}>From</span>
                   <input
                     aria-label="From date"
@@ -837,7 +840,7 @@ export default function Reports() {
                     onChange={e => setDate('from', e.target.value)}
                   />
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div className="reports-date-field" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontWeight: 600 }}>To</span>
                   <input
                     aria-label="To date"
@@ -849,9 +852,9 @@ export default function Reports() {
                   />
                 </div>
 
-                <div style={{ width: 1, height: 22, background: 'var(--border)', margin: '0 4px' }} />
+                <div className="reports-filter-divider" style={{ width: 1, height: 22, background: 'var(--border)', margin: '0 4px' }} />
 
-                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                <div className="reports-quick-periods" role="group" aria-label="Quick date ranges" style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                   {[
                     { label: 'Today', fn: () => reportPeriod('today') },
                     { label: 'This Month', fn: getThisMonth },
@@ -873,15 +876,16 @@ export default function Reports() {
                 </div>
 
                 {activeReport?.needsParty && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                    <div style={{ width: 1, height: 22, background: 'var(--border)', margin: '0 4px' }} />
-                    <div style={{ display: 'flex', gap: 4 }}>
+                  <div className="reports-party-controls" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    <div className="reports-filter-divider" style={{ width: 1, height: 22, background: 'var(--border)', margin: '0 4px' }} />
+                    <div className="reports-party-type" role="group" aria-label="Party type" style={{ display: 'flex', gap: 4 }}>
                       {['customer', 'vendor'].map(t => (
                         <button
                           key={t}
                           type="button"
                           className={`btn btn-xs ${partyType === t ? 'btn-primary' : 'btn-secondary'}`}
                           style={{ textTransform: 'capitalize', padding: '2px 8px', fontSize: '0.72rem', height: 30 }}
+                          aria-pressed={partyType === t}
                           onClick={() => { setPartyType(t); loadParties(t) }}
                         >
                           {t}
@@ -915,7 +919,7 @@ export default function Reports() {
               </div>
 
               {/* Right: Actions */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div className="reports-export-actions" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 {reportData !== null && (
                   <>
                     <button
@@ -929,10 +933,11 @@ export default function Reports() {
                     </button>
                     <button
                       type="button"
-                      className="btn btn-secondary btn-sm"
+                      className="btn btn-secondary btn-sm reports-fullscreen-trigger"
                       style={{ height: 32, width: 34, padding: 0, justifyContent: 'center' }}
                       onClick={() => setIsFullScreen(true)}
                       title="Full Screen View"
+                      aria-label="Full Screen View"
                     >
                       <ExpandIcon size={14} />
                     </button>
@@ -979,7 +984,8 @@ export default function Reports() {
                   generating={generating === activeReport?.id}
                 />
               ) : (
-                <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+                <div className="reports-results" style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+                  {activeReport?.id !== 'balance-sheet' && <p className="reports-table-hint">Swipe tables sideways to see every column.</p>}
                   {(() => {
                     const View = {
                       'day-book': DayBookView,
@@ -1008,7 +1014,7 @@ export default function Reports() {
                 <h3>{activeReport?.title || 'Report'}</h3>
                 <button type="button" className="table-fullscreen-btn" onClick={() => setIsFullScreen(false)}>✕ Close</button>
               </div>
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', padding: '16px 20px' }}>
+              <div className="reports-fullscreen-body" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', padding: '16px 20px' }}>
                 {reportData === null ? (
                   <ReportPlaceholder report={activeReport} onGenerate={() => activeReport && handleGenerate(activeReport)} generating={generating === activeReport?.id} />
                 ) : (() => {

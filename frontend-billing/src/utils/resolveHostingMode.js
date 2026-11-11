@@ -25,7 +25,7 @@
  * queued for sync"), emptied the outbox, and hid every hybrid-gated control. No
  * amount of re-picking it in Settings survived the next page load.
  *
- * A saved 'local' or 'hybrid' is still honoured as a deliberate opt-out — a Pro
+ * A recorded local-only preference is honoured as a deliberate opt-out — a Pro
  * owner may genuinely want local-only for privacy or an offline counter. A saved
  * 'cloud' on a local install is NOT honoured: it is indistinguishable from the
  * corruption above, and cloud-only on desktop is reachable through the explicit
@@ -42,11 +42,12 @@ export const HOSTING_CLOUD = 'cloud'
  * @param {string}  [args.plan]     - subscription plan, e.g. 'pro' | 'free'
  * @param {string}  [args.savedMode]- account's general.hosting_mode, if any
  * @param {string}  [args.deviceMode]- localStorage 'bizassist_hosting_mode', if any
+ * @param {string}  [args.explicitChoice] - this business's deliberate device preference
  * @param {boolean} [args.planKnown=true] - the plan was actually READ from the
  *   session, not inferred. See the note on optimism below.
  * @returns {'local'|'hybrid'|'cloud'}
  */
-export function resolveHostingMode({ isLocalApp, plan, savedMode, deviceMode, planKnown = true } = {}) {
+export function resolveHostingMode({ isLocalApp, plan, savedMode, deviceMode, explicitChoice, planKnown = true } = {}) {
   // 1. URL lock — a browser on a non-local origin has no local backend at all.
   if (!isLocalApp) return HOSTING_CLOUD
 
@@ -76,7 +77,10 @@ export function resolveHostingMode({ isLocalApp, plan, savedMode, deviceMode, pl
   const isPro = plan === 'pro' || !planKnown
 
   // 3. Explicit, still-valid opt-out by the owner.
-  if (savedMode === HOSTING_LOCAL) return HOSTING_LOCAL
+  if (explicitChoice === HOSTING_LOCAL) return HOSTING_LOCAL
+  // While entitlement is still loading, preserve an existing local setup.
+  // Once Pro is confirmed, old/default local values no longer disable sync.
+  if (!planKnown && savedMode === HOSTING_LOCAL) return HOSTING_LOCAL
   if (savedMode === HOSTING_HYBRID) return isPro ? HOSTING_HYBRID : HOSTING_LOCAL
 
   // 4. Derived default. A saved 'cloud' on a local install lands here on purpose.
@@ -127,16 +131,18 @@ export function resolveHostingMode({ isLocalApp, plan, savedMode, deviceMode, pl
  * @param {boolean} [ctx.planKnown=true]  - the plan was actually read, not guessed
  */
 export function shouldPersistMode(resolved, savedMode, ctx = {}) {
-  const { isLocalApp = true, planKnown = true } = ctx
+  const { isLocalApp = true, planKnown = true, explicitChoice } = ctx
 
   if (!resolved || resolved === savedMode) return false
 
   // A web session is a viewer of this account, never the author of how it is hosted.
   if (!isLocalApp) return false
 
-  // Losing 'hybrid' is the destructive direction: it is what switches the sync
-  // worker off. Never do it on a guess.
-  if (savedMode === HOSTING_HYBRID && resolved !== HOSTING_HYBRID && !planKnown) return false
+  // An owner may always pause syncing; that choice does not need Pro access.
+  if (resolved === HOSTING_LOCAL && explicitChoice === HOSTING_LOCAL) return true
+
+  // Never change the worker's persisted state using an unread entitlement.
+  if (!planKnown) return false
 
   return true
 }

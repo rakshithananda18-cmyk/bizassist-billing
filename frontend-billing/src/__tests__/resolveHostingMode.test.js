@@ -33,7 +33,7 @@ describe('resolveHostingMode — derived from plan', () => {
   it('restores hybrid automatically when a free plan upgrades to Pro', () => {
     expect(resolveHostingMode({
       isLocalApp: true, plan: 'pro', savedMode: 'local',
-    })).toBe('local')  // explicit opt-out is still honoured
+    })).toBe('hybrid')  // old defaults are not a deliberate opt-out
     expect(resolveHostingMode({
       isLocalApp: true, plan: 'pro', savedMode: undefined,
     })).toBe('hybrid')
@@ -44,6 +44,7 @@ describe('resolveHostingMode — explicit opt-out', () => {
   it('honours a deliberate local-only choice on a Pro desktop', () => {
     expect(resolveHostingMode({
       isLocalApp: true, plan: 'pro', savedMode: 'local',
+      explicitChoice: 'local',
     })).toBe('local')
   })
 
@@ -150,9 +151,13 @@ describe('shouldPersistMode — only a local install may author the account fiel
     expect(shouldPersistMode('local', 'hybrid', { isLocalApp: true, planKnown: true })).toBe(true)
   })
 
-  it('allows an UPGRADE to hybrid even when the plan was not readable', () => {
-    // Only the destructive direction is gated.
-    expect(shouldPersistMode('hybrid', 'cloud', { isLocalApp: true, planKnown: false })).toBe(true)
+  it('does not persist an upgrade before Pro is confirmed', () => {
+    expect(shouldPersistMode('hybrid', 'cloud', { isLocalApp: true, planKnown: false })).toBe(false)
+  })
+
+  it('always lets an explicit Local choice pause sync even if the plan is unavailable', () => {
+    expect(shouldPersistMode('local', 'hybrid', { isLocalApp: true, planKnown: false, explicitChoice: 'local' })).toBe(true)
+    expect(shouldPersistMode('local', 'hybrid', { isLocalApp: false, planKnown: false, explicitChoice: 'local' })).toBe(false)
   })
 
   it('defaults to the local-install caller when no context is supplied', () => {

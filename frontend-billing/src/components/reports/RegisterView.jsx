@@ -69,7 +69,7 @@ export default function RegisterView({ reportData, colKeys }) {
   }
 
   return (
-    <div className="data-table-wrap">
+    <div className="data-table-wrap report-table-scroll" tabIndex={0} role="region" aria-label="Report rows">
       <table className="data-table">
         {reportData.some(row => row.complete === false) && <caption role="status">Unavailable — historical cost needs reconciliation. Profit cannot be confirmed for this period.</caption>}
         <thead>

@@ -1,14 +1,22 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { logger } from '../utils/logger'
-import { LOCAL_URL, CLOUD_URL, PRIMARY_CLOUD_RUN_URL, SECONDARY_HF_URL, IS_LOCAL_APP } from '../config'
+import { LOCAL_URL, PRIMARY_CLOUD_RUN_URL, IS_LOCAL_APP } from '../config'
 
 const INTERVAL_MS = 30_000
 
 // Timeout-aware fetch
-function fetchWithTimeout(url, timeout, opts = {}) {
+function fetchWithTimeout(url, timeout, opts = {}, consume = response => response) {
   const ctrl = new AbortController()
   const id = setTimeout(() => ctrl.abort(), timeout)
-  return fetch(url, { ...opts, signal: ctrl.signal }).finally(() => clearTimeout(id))
+  return fetch(url, { ...opts, signal: ctrl.signal }).then(consume).finally(() => clearTimeout(id))
+}
+
+async function assertHealthyBackend(res) {
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  const body = await res.json()
+  if (body?.status !== 'ok' || body?.db !== 'connected') {
+    throw new Error('Server database is not ready. Restart the backend and try again.')
+  }
 }
 
 // ── Probe runners ─────────────────────────────────────────────────────────────
@@ -21,9 +29,8 @@ async function runLocalProbe() {
     // 3s, not 500ms: /health does real DB work (users.settings scan) and can
     // exceed 500ms on first hit / dev --reload. A dead server still fails
     // instantly (connection refused) — the timeout only guards a hung one.
-    const res = await fetchWithTimeout(`${targetLocal}/health`, 3000, { mode: 'cors' })
+    await fetchWithTimeout(`${targetLocal}/health`, 3000, { mode: 'cors' }, assertHealthyBackend)
     const ms = Date.now() - t0
-    if (!res.ok) return { status: 'offline', ms: null, error: `HTTP ${res.status}` }
     return { status: ms > 1000 ? 'slow' : 'online', ms, error: null }
   } catch (err) {
     const ms = Date.now() - t0
@@ -44,22 +51,8 @@ async function runLocalProbe() {
 async function runNamedCloudProbe(url) {
   const t0 = Date.now()
   try {
-    const res = await fetchWithTimeout(`${url}/health`, 6000)
+    await fetchWithTimeout(`${url}/health`, 6000, {}, assertHealthyBackend)
     const ms = Date.now() - t0
-    if (!res.ok) return { status: 'offline', ms: null, error: `HTTP ${res.status}` }
-    return { status: ms > 1000 ? 'slow' : 'online', ms, error: null }
-  } catch (err) {
-    if (err?.name === 'AbortError') return { status: 'offline', ms: null, error: 'Timeout' }
-    return { status: 'offline', ms: null, error: err?.message || 'Network error' }
-  }
-}
-
-async function runCloudProbe() {
-  const t0 = Date.now()
-  try {
-    const res = await fetchWithTimeout(`${CLOUD_URL}/health`, 6000)
-    const ms = Date.now() - t0
-    if (!res.ok) return { status: 'offline', ms: null, error: `HTTP ${res.status}` }
     return { status: ms > 1000 ? 'slow' : 'online', ms, error: null }
   } catch (err) {
     if (err?.name === 'AbortError') return { status: 'offline', ms: null, error: 'Timeout' }
@@ -87,40 +80,42 @@ const INIT = { status: 'checking', ms: null, error: null }
 export function useReadinessProbe() {
   const [localProbe,    setLocalProbe]    = useState(INIT)
   const [googleProbe,   setGoogleProbe]   = useState(INIT)
-  const [hfProbe,       setHfProbe]       = useState(INIT)
+  // The standby probe is disabled; it must not keep the preflight pending.
+  const [hfProbe]                       = useState(null)
   const [cloudProbe,    setCloudProbe]    = useState(INIT)
   const [internetProbe, setInternetProbe] = useState(INIT)
   const [sseProbe,      setSseProbe]      = useState(INIT)
 
   const intervalRef = useRef(null)
+  const runRef = useRef(0)
 
   const runAll = useCallback(async () => {
+    const run = ++runRef.current
+    const publish = (setter) => (result) => {
+      if (run === runRef.current) setter(result)
+      return result
+    }
     setLocalProbe(INIT)
     setGoogleProbe(INIT)
-    setHfProbe(INIT)
     setCloudProbe(INIT)
     setInternetProbe(INIT)
     setSseProbe(INIT)
 
-    logger.debug('[PROBE] Initiating readiness probes (local, Google Cloud Run, Hugging Face, internet)...')
+    logger.debug('[PROBE] Initiating readiness probes (local, Google Cloud Run, internet)...')
     
     // Request latest SSE status update
     window.dispatchEvent(new CustomEvent('sync-status-request'))
 
-    const [lResult, gResult, hResult, iResult] = await Promise.all([
-      runLocalProbe(),
-      runNamedCloudProbe(PRIMARY_CLOUD_RUN_URL),
-      // Hugging Face standby probe disabled (uncomment to re-enable):
-      // SECONDARY_HF_URL ? runNamedCloudProbe(SECONDARY_HF_URL) : Promise.resolve(null),
-      Promise.resolve(null),
-      runInternetProbe(),
+    // Publish each result independently: Local mode must not wait for cloud.
+    const [lResult, gResult, iResult] = await Promise.all([
+      runLocalProbe().then(publish(setLocalProbe)),
+      runNamedCloudProbe(PRIMARY_CLOUD_RUN_URL).then(publish((result) => {
+        setGoogleProbe(result)
+        setCloudProbe(result)
+      })),
+      runInternetProbe().then(publish(setInternetProbe)),
     ])
-    logger.debug('[PROBE] Probe results received:', { local: lResult.status, google: gResult.status, hf: hResult.status, internet: iResult.status })
-    setLocalProbe(lResult)
-    setGoogleProbe(gResult)
-    setHfProbe(hResult)
-    setCloudProbe(gResult)
-    setInternetProbe(iResult)
+    logger.debug('[PROBE] Probe results received:', { local: lResult.status, google: gResult.status, internet: iResult.status })
   }, [])
 
   const recheck = useCallback(() => {
@@ -134,6 +129,7 @@ export function useReadinessProbe() {
     runAll()
     intervalRef.current = setInterval(runAll, INTERVAL_MS)
     return () => {
+      runRef.current += 1
       if (intervalRef.current) clearInterval(intervalRef.current)
     }
   }, [runAll])

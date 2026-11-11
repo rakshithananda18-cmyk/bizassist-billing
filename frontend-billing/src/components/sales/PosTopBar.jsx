@@ -103,6 +103,7 @@ function LiveClock() {
   return (
     <div
       title={`Business time (${CLOCK_TZ})`}
+      className="pos-counter-clock"
       style={{
         display: 'inline-flex', alignItems: 'center', gap: 6,
         fontSize: '0.75rem', fontWeight: 600, padding: '3px 9px',
@@ -274,7 +275,7 @@ export default function PosTopBar({
   }, [])
 
   return (
-    <div style={{ ...topBarStyle, position: 'relative' }}>
+    <div className="pos-counter-topbar" style={{ ...topBarStyle, position: 'relative' }}>
 
       {/* ── Live-view mode badge (centred, absolute) ── */}
       {liveModeStatus && (
@@ -304,6 +305,7 @@ export default function PosTopBar({
       <button
         type="button"
         onClick={() => {}}
+        className="pos-counter-brand"
         style={{
           display: 'inline-flex', alignItems: 'center', gap: 7,
           padding: '5px 10px', borderRadius: 6, border: 'none',
@@ -317,7 +319,7 @@ export default function PosTopBar({
       </button>
 
       {/* Divider */}
-      <div style={dividerStyle} />
+      <div className="pos-counter-divider" style={dividerStyle} />
 
       {/* ── Bill tabs scroll container (solves no scroll issue) ── */}
       <div
@@ -368,12 +370,12 @@ export default function PosTopBar({
         </TabPill>
       </div>
 
-      <HeaderSearchSlot compact />
+      <div className="pos-counter-global-search"><HeaderSearchSlot compact /></div>
 
       {/* ── Shift details custom dropdown (accent colored pill) ── */}
       {shift && !shift.offline && (
         <>
-          <div style={dividerStyle} />
+      <div className="pos-counter-divider" style={dividerStyle} />
           <ShiftMenu
             shift={shift}
             onCashMovement={onCashMovement}
@@ -383,13 +385,13 @@ export default function PosTopBar({
       )}
 
       {/* Divider */}
-      <div style={dividerStyle} />
+      <div className="pos-counter-divider" style={dividerStyle} />
 
       {/* ── Clock ── */}
       <LiveClock />
 
       {/* Divider */}
-      <div style={dividerStyle} />
+      <div className="pos-counter-divider" style={dividerStyle} />
 
       {/* ── Counter menu (integrated with LAN status dot) ── */}
       <CounterModeSwitcher />
@@ -403,7 +405,7 @@ export default function PosTopBar({
       />
 
       {/* Divider */}
-      <div style={dividerStyle} />
+      <div className="pos-counter-divider" style={dividerStyle} />
 
       {/* ── Settings ── */}
       <WinBtn onClick={onOpenSettings} title="Settings">
@@ -411,7 +413,7 @@ export default function PosTopBar({
       </WinBtn>
 
       {/* Divider */}
-      <div style={dividerStyle} />
+      <div className="pos-counter-divider" style={dividerStyle} />
 
       {/* ── Minimize + Close ── */}
       <WinBtn onClick={onMinimize} title="Minimize — go back">

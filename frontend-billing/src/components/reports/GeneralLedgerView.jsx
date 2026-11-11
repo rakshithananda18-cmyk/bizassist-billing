@@ -6,14 +6,14 @@ export default function GeneralLedgerView({ reportData, fmt }) {
   return (
     <div className="general-ledger-wrapper" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
       {reportData.ledgers?.map((g, i) => (
-        <div key={i} className="card" style={{ padding: '16px 20px' }}>
-          <div className="flex items-center justify-between mb-2">
+        <div key={i} className="card report-view-card" style={{ padding: '16px 20px' }}>
+          <div className="flex items-center justify-between mb-2 report-ledger-heading">
             <h3 style={{ fontWeight: 700, fontSize: '0.92rem' }}>{g.account}</h3>
             <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
               Closing: <strong style={{ color: 'var(--text-primary)' }}>{fmt(g.closing_balance)}</strong>
             </span>
           </div>
-          <div className="data-table-wrap">
+          <div className="data-table-wrap report-table-scroll" tabIndex={0} role="region" aria-label={`${g.account} postings`}>
             <table className="data-table">
               <thead>
                 <tr>

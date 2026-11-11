@@ -4,8 +4,8 @@
 // callout). Extracted VERBATIM from Reports.jsx (R5). Presentational; `fmt` injected.
 export default function BalanceSheetView({ reportData, fmt }) {
   return (
-    <div className="card" style={{ padding: '24px 32px' }}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 32 }}>
+    <div className="card report-view-card report-balance-sheet" style={{ padding: '24px 32px' }}>
+      <div className="report-balance-columns" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 32 }}>
         {/* Assets Side */}
         <div>
           <h3 style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-primary)', borderBottom: '2px solid var(--border)', paddingBottom: 8, marginBottom: 12 }}>
@@ -62,7 +62,7 @@ export default function BalanceSheetView({ reportData, fmt }) {
       </div>
 
       {/* Equity Callout */}
-      <div style={{
+      <div className="report-equity-callout" style={{
         marginTop: 24,
         background: 'var(--bg-3)',
         padding: '16px 20px',

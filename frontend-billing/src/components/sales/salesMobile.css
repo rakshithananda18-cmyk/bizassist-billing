@@ -1,0 +1,89 @@
+/* Scoped phone counter; shared invoice calculations and desktop layout stay intact. */
+.pos-mobile-view-switch, .pos-mobile-empty, .pos-mobile-details-toggle, .pos-mobile-quantity-button { display: none; }
+.pos-counter-global-search { display: contents; }
+
+@media screen and (max-width: 768px) {
+  .sales-counter { min-height: 0; min-width: 0; max-width: 100%; overflow: hidden; }
+  .sales-counter .pos-counter-topbar { height: auto !important; min-height: 48px; flex-wrap: wrap; padding: 6px 10px !important; gap: 5px !important; }
+  .sales-counter .pos-counter-brand, .sales-counter .pos-counter-clock, .sales-counter .pos-counter-divider, .sales-counter .pos-counter-global-search,
+  .sales-counter .pos-counter-topbar button[title^="Minimize"] { display: none !important; }
+  .sales-counter .pos-counter-topbar button { min-height: 36px; }
+  .sales-counter .pos-tabs-scroll-container { order: 2; flex: 1 0 100% !important; width: 100%; margin: 0 !important; scrollbar-width: none; padding-block: 2px; }
+  .sales-counter .pos-tab-close { width: 28px !important; height: 36px !important; }
+  .sales-counter .pos-mobile-view-switch { display: grid; grid-template-columns: 1fr 1fr; flex-shrink: 0; padding: 8px 10px 4px; gap: 6px; background: var(--bg); }
+  .pos-mobile-view-switch > button { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 42px; border: 1px solid var(--border); border-radius: 10px; color: var(--text-secondary); background: var(--bg-2); font: inherit; font-weight: 650; }
+  .pos-mobile-view-switch > button[aria-pressed="true"] { background: var(--accent-muted, var(--accent-glow)); border-color: var(--accent); color: var(--accent); }
+  .pos-mobile-view-switch span { font-size: 11px; padding: 2px 6px; background: var(--bg-3); border-radius: 6px; }
+  .sales-counter .pos-workspace { flex: 1; min-height: 0; min-width: 0; height: auto !important; overflow: hidden !important; display: flex; flex-direction: column !important; }
+  .sales-counter .pos-left-pane { display: contents; max-height: none !important; }
+  .sales-counter .pos-search-container { order: 0; flex-shrink: 0; padding: 8px 10px; margin: 0; }
+  .sales-counter .pos-product-search-row { min-width: 0; align-items: stretch; }
+  .sales-counter .pos-product-search-row .search-bar { min-width: 0; padding: 8px !important; min-height: 44px; }
+  .sales-counter .pos-product-search-row input { min-width: 0; font-size: 16px; }
+  .sales-counter .pos-product-search-row > button { padding: 0 10px !important; min-height: 44px; font-size: 11px !important; }
+  .sales-counter .pos-product-search-results { max-height: min(45dvh, 340px); overflow-y: auto !important; }
+  .sales-counter .pos-product-search-results button > div { min-width: 0; overflow-wrap: anywhere; }
+  .sales-counter .pos-product-search-results button > span { flex-shrink: 0; margin-left: 8px; }
+  .sales-counter .pos-cart-wrapper { order: 1; min-height: 0; min-width: 0; padding: 0 10px; }
+  .sales-counter .pos-cart-container { min-height: 0; min-width: 0; overflow-x: hidden !important; border: none; background: transparent; }
+  .sales-counter[data-mobile-pane="products"] .pos-cart-wrapper { display: none !important; }
+  .sales-counter[data-mobile-pane="cart"] .pos-right-pane { display: none !important; }
+  .sales-counter .pos-right-pane { order: 1; flex: 1; width: 100% !important; min-width: 0 !important; min-height: 0; height: auto !important; padding: 10px !important; overflow: auto; border: 0 !important; gap: 14px !important; }
+  .sales-counter .pos-right-pane > div:first-child { font-size: 14px !important; }
+  .sales-counter .pos-right-pane h3 { font-size: 11px !important; }
+  .sales-counter .pos-right-pane .menu-product-card { min-width: 0; min-height: 100px !important; overflow-wrap: anywhere; }
+  .sales-counter .pos-cart-table { display: block; width: 100% !important; min-width: 0 !important; table-layout: auto !important; }
+  .sales-counter .pos-cart-table colgroup, .sales-counter .pos-cart-table thead, .sales-counter .pos-cart-table tfoot,
+  .sales-counter .pos-cart-table tbody > tr:not(.item-row) { display: none !important; }
+  .sales-counter .pos-cart-table tbody { display: grid; gap: 10px; padding: 2px 0 10px; }
+  .sales-counter .pos-cart-table tr.item-row { position: relative; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; padding: 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg-2); }
+  .sales-counter .pos-cart-table tr.item-row > td { display: none !important; position: static !important; left: auto !important; width: auto !important; min-width: 0 !important; max-width: none !important; height: auto !important; padding: 0 !important; border: 0 !important; background: transparent !important; box-shadow: none !important; white-space: normal; flex-direction: column; align-items: stretch; gap: 4px; text-align: left !important; }
+  .sales-counter .pos-cart-table tr.item-row > :is(.col-name, .col-qty, .col-rate, .col-total) { display: flex !important; }
+  .sales-counter .pos-cart-table tr.item-row > .col-name { grid-column: 1 / -1; order: 0; padding-right: 38px !important; }
+  .sales-counter .pos-cart-table tr.item-row > .col-qty { order: 1; }
+  .sales-counter .pos-cart-table tr.item-row > .col-rate { order: 2; }
+  .sales-counter .pos-cart-table tr.item-row > .col-total { grid-column: 1 / -1; order: 3; flex-direction: row; justify-content: space-between; align-items: center; }
+  .sales-counter .pos-cart-table tr.item-row > td::before { content: attr(data-label); font-size: 10px; font-weight: 600; color: var(--text-muted); }
+  .sales-counter .pos-cart-table tr.item-row > .col-name::before { display: none; }
+  .sales-counter .pos-cart-table tr.item-row > .pos-hover-remove-cell { display: flex !important; position: absolute !important; top: 8px; right: 8px; width: 36px !important; }
+  .sales-counter .pos-hover-remove-cell .index-number { display: none; }
+  .sales-counter .pos-delete-btn-hover { position: static !important; display: inline-flex !important; opacity: 1 !important; width: 36px !important; height: 36px !important; }
+  .sales-counter .pos-mobile-details-toggle { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: fit-content; min-height: 32px; padding: 0; border: 0; color: var(--accent); background: none; font-size: 11px; }
+  .sales-counter .pos-cart-table tr.item-row[data-mobile-expanded="true"] > td:not(.pos-hover-remove-cell) { display: flex !important; }
+  .sales-counter .pos-cart-table tr.item-row > td:not(:is(.col-name, .col-qty, .col-rate, .col-total, .pos-hover-remove-cell)) { order: 4; grid-column: 1 / -1; }
+  .sales-counter .pos-cell-text { font-size: 14px; overflow-wrap: anywhere; }
+  .sales-counter .col-name .pos-cell-text { font-weight: 700; line-height: 1.4; }
+  .sales-counter .pos-cell-input { width: 100%; min-width: 0 !important; min-height: 42px; font-size: 16px; border: 1px solid var(--border); border-radius: 8px; padding: 8px; background: var(--bg); }
+  .sales-counter .pos-quantity-control { display: flex; align-items: center; min-width: 0; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--bg); }
+  .sales-counter .pos-quantity-control input { flex: 1; width: 0; padding: 4px !important; border: 0; border-radius: 0; -moz-appearance: textfield; }
+  .sales-counter .pos-quantity-control input::-webkit-inner-spin-button { -webkit-appearance: none; }
+  .sales-counter .pos-mobile-quantity-button { display: inline-flex; align-items: center; justify-content: center; width: 36px; min-height: 42px; flex-shrink: 0; border: 0; background: transparent; color: var(--accent); font-size: 20px; }
+  .sales-counter .pos-mobile-quantity-button:disabled { opacity: .3; }
+  .sales-counter .pos-mobile-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 10px; padding: 36px 20px; color: var(--text-muted); }
+  .pos-mobile-empty > strong { color: var(--text-primary); font-size: 16px; }
+  .pos-mobile-empty > span { font-size: 12px; line-height: 1.6; }
+  .pos-mobile-empty > button { padding: 10px 16px; border: 1px solid var(--border); background: var(--bg-2); color: var(--accent); border-radius: 8px; }
+  .sales-counter .pos-total-container { order: 3; flex-shrink: 0; padding: 8px 10px; background: var(--bg); border-top: 1px solid var(--border); }
+  .sales-counter .pos-totals-bar { display: grid !important; grid-template-columns: minmax(0, 1fr); gap: 8px !important; margin: 0 !important; padding: 10px !important; border-radius: 12px; }
+  .sales-counter .pos-totals-bar .pos-totals-detail { display: flex; gap: 12px !important; }
+  .sales-counter .pos-totals-detail > div { flex-direction: row !important; align-items: baseline; gap: 6px; }
+  .sales-counter .pos-totals-detail span { font-size: 11px !important; text-transform: none !important; }
+  .sales-counter .pos-totals-shortcuts { display: none !important; }
+  .sales-counter .pos-totals-pay { display: flex; justify-content: space-between; gap: 12px !important; min-width: 0; }
+  .sales-counter .pos-totals-grand { display: flex; flex-direction: column; gap: 4px !important; align-items: flex-start !important; min-width: 0; }
+  .sales-counter .pos-totals-grand > span:first-child { font-size: 10px !important; }
+  .sales-counter .pos-totals-grand > span:last-child { font-size: 24px !important; overflow-wrap: anywhere; }
+  .sales-counter .pos-totals-pay > button { min-height: 48px; min-width: 110px; justify-content: center; padding: 10px 16px !important; }
+  .sales-counter .pos-totals-pay > button span { display: none; }
+  .pos-phone-checkout-overlay { padding: 8px; align-items: flex-end !important; }
+  .pos-phone-checkout-card { width: 100% !important; min-width: 0; padding: 16px !important; border-radius: 16px !important; max-height: calc(100dvh - 16px - env(safe-area-inset-top)) !important; overflow-x: hidden; }
+  .pos-phone-checkout-card .pos-checkout-columns { flex-direction: column; gap: 20px !important; }
+  /* Keep Close reachable while the customer dropdown's dismiss layer is open. */
+  .pos-phone-checkout-card .pos-checkout-header { position: relative; z-index: 1000; }
+  .pos-phone-checkout-card .pos-checkout-header > button { display: grid; place-items: center; min-width: 44px; min-height: 44px; }
+  .pos-phone-checkout-card .pos-checkout-column { min-width: 0 !important; width: 100%; }
+  .pos-phone-checkout-card input, .pos-phone-checkout-card select, .pos-phone-checkout-card textarea { min-width: 0; max-width: 100%; font-size: 16px !important; }
+  .pos-phone-checkout-card .pos-checkout-column div { min-width: 0; }
+  .pos-phone-checkout-card .pos-checkout-actions { position: sticky; bottom: -16px; padding: 12px 0; background: var(--bg-2); }
+  .pos-phone-checkout-card .pos-checkout-actions > button { min-width: 0; min-height: 48px; }
+}

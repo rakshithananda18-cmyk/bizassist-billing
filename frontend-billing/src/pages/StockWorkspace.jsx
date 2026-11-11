@@ -31,6 +31,7 @@ import { useDocLabels } from '../hooks/useDocLabels'
 
 import Stock from './Stock'
 import Purchases from './Purchases'
+import './stockPurchasesMobile.css'
 
 // Shared with StockPurchases on purpose: both pages must remember the SAME tab,
 // or moving between the old and new page during the trial resets the operator's
@@ -84,7 +85,7 @@ export default function StockWorkspace() {
       {/* Shell geometry copied from `.b2b-shell` — a full-height flex column
           whose body scrolls internally, with nothing above the header, so the
           title and tabs land at the same y as every other workspace. */}
-      <div className="slide-up stock-shell">
+      <div className="slide-up stock-shell stock-workspace-mobile">
 
         {/* Signature Page Header — the same block B2B and Contacts & Payments
             use. This is the piece that was missing: the old page had no page

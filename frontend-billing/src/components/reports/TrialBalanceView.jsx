@@ -41,8 +41,8 @@ export default function TrialBalanceView({ reportData, fmt }) {
   }
 
   return (
-    <div className="card" style={{ padding: '20px 24px' }}>
-      <div className="data-table-wrap">
+    <div className="card report-view-card" style={{ padding: '20px 24px' }}>
+      <div className="data-table-wrap report-table-scroll" tabIndex={0} role="region" aria-label="Trial Balance accounts">
         <table className="data-table">
           <thead>
             <tr>
@@ -90,7 +90,7 @@ export default function TrialBalanceView({ reportData, fmt }) {
           </tbody>
         </table>
       </div>
-      <div style={{
+      <div className="report-balance-status" style={{
         marginTop: 16, padding: '12px 16px', borderRadius: 'var(--radius-md)',
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         background: reportData.totals?.balanced ? 'rgba(46, 125, 50, 0.08)' : 'rgba(220, 38, 38, 0.08)',

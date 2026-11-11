@@ -2296,18 +2296,20 @@ function SettingsWorkspace() {
                 // only two choices — Local and Local + Cloud (hybrid). Any legacy
                 // account stored as 'cloud' is shown as 'hybrid' (Local + Cloud).
                 currentMode={IS_LOCAL_APP ? ((g.hosting_mode === 'cloud' ? 'hybrid' : g.hosting_mode) || 'local') : 'cloud'}
-                onModeChange={(newMode) => {
-                  patch('general', 'hosting_mode', newMode)
+                onModeChange={async (newMode) => {
+                  let saved
                   if (newMode === 'hybrid') {
                     // Enabling Local + Cloud needs a cloud token (minted from the
                     // password at login), so route through the guarded re-login.
                     // Data migration is handled by the modals prior to this call.
-                    switchMode('hybrid')
+                    saved = await switchMode('hybrid')
                   } else {
                     // Going Local (offline-only) stays on the same local backend
                     // — no logout, no data move, instant.
-                    setHostingMode('local')
+                    saved = await setHostingMode('local')
                   }
+                  if (saved !== false) patch('general', 'hosting_mode', newMode)
+                  return saved
                 }}
                 token={token}
                 // The cloud refuses a free-plan upload with a 402 (the import

@@ -36,7 +36,7 @@ export default function PosTotalBar({
       zIndex: 101
     }}>
       {/* Left side: Subtotal & Tax */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '20px', flexShrink: 0 }}>
+      <div className="pos-totals-detail" style={{ display: 'flex', alignItems: 'center', gap: '20px', flexShrink: 0 }}>
         <div style={{ display: 'flex', flexDirection: 'column' }}>
           <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>Subtotal</span>
           <span style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)' }}>{fmt(subtotal)}</span>
@@ -48,7 +48,7 @@ export default function PosTotalBar({
       </div>
 
       {/* Middle: Fixed Keyboard Shortcuts Inline (Not pill-shaped, just clean inline layout) */}
-      <div style={{
+      <div className="pos-totals-shortcuts" style={{
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -90,8 +90,8 @@ export default function PosTotalBar({
       </div>
 
       {/* Right side: Grand Total & Pay button */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '24px', flexShrink: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+      <div className="pos-totals-pay" style={{ display: 'flex', alignItems: 'center', gap: '24px', flexShrink: 0 }}>
+        <div className="pos-totals-grand" style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
           <span style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', fontWeight: 600 }}>Grand Total</span>
           <span style={{ fontSize: '1.75rem', fontWeight: 900, color: 'var(--accent)', lineHeight: 1 }}>{fmt(grandTotal)}</span>
         </div>

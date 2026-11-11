@@ -4,8 +4,8 @@
 // balance entries + closing total). Extracted VERBATIM from Reports.jsx (R5).
 export default function PartyLedgerView({ reportData, fmt }) {
   return (
-    <div className="card" style={{ padding: '20px 24px' }}>
-      <div className="flex items-center justify-between mb-4" style={{ flexWrap: 'wrap', gap: 8 }}>
+    <div className="card report-view-card" style={{ padding: '20px 24px' }}>
+      <div className="flex items-center justify-between mb-4 report-party-heading" style={{ flexWrap: 'wrap', gap: 8 }}>
         <div>
           <div style={{ fontWeight: 700, fontSize: '0.95rem' }}>{reportData.party?.name}</div>
           <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', textTransform: 'capitalize' }}>{reportData.party?.type} statement</div>
@@ -17,7 +17,7 @@ export default function PartyLedgerView({ reportData, fmt }) {
           </div>
         </div>
       </div>
-      <div className="data-table-wrap">
+      <div className="data-table-wrap report-table-scroll" tabIndex={0} role="region" aria-label="Party Ledger transactions">
         <table className="data-table">
           <thead>
             <tr>

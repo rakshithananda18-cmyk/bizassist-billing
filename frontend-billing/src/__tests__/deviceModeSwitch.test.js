@@ -11,7 +11,7 @@
  * See utils/deviceMode.js.
  */
 import { describe, it, expect, beforeEach } from 'vitest'
-import { reconcileDeviceModeOnLogin } from '../utils/deviceMode'
+import { reconcileDeviceModeOnLogin, getHostingPreference, setHostingPreference } from '../utils/deviceMode'
 
 const MODE = 'bizassist_hosting_mode'
 const OWNER = 'bizassist_device_mode_owner'
@@ -74,5 +74,22 @@ describe('reconcileDeviceModeOnLogin', () => {
     localStorage.setItem(MODE, 'local')
     expect(reconcileDeviceModeOnLogin(null)).toBeNull()
     expect(localStorage.getItem(MODE)).toBe('local')
+  })
+
+  it('preserves an explicit local choice for the same business across account switches', () => {
+    reconcileDeviceModeOnLogin('BIZ-A')
+    setHostingPreference('BIZ-A', 'local')
+    reconcileDeviceModeOnLogin('BIZ-B')
+    expect(getHostingPreference('BIZ-B')).toBeNull()
+    reconcileDeviceModeOnLogin('BIZ-A')
+    expect(getHostingPreference()).toBe('local')
+  })
+
+  it('does not treat a legacy local routing value as an explicit choice', () => {
+    localStorage.setItem(MODE, 'local')
+    localStorage.setItem(OWNER, 'BIZ-A')
+    expect(getHostingPreference('BIZ-A')).toBeNull()
+    setHostingPreference('BIZ-A', 'hybrid')
+    expect(getHostingPreference('BIZ-A')).toBe('hybrid')
   })
 })

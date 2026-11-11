@@ -53,6 +53,7 @@ import { getPriceOptions as buildPriceOptions, withQty as withQtyFor } from '../
 import { nextInvoiceNo, syncTabNames as syncTabNamesFor } from '../lib/posInvoiceNumbers'
 import { playScanBeep, playErrorTone } from '../utils/posAudio'
 import { isProtectedTourPreview } from '../demo/tourPrivacy'
+import '../components/sales/salesMobile.css'
 
 // ============================================================================
 // ── 2. GLOBAL DEFAULTS & VALUE SCHEMAS ──
@@ -85,10 +86,24 @@ function effectiveHostingMode() {
   return m.toLowerCase()
 }
 
+// Touch catalogue picks should not summon the phone keyboard after every item.
+function refocusScanner(ref, delay) {
+  if (typeof window !== 'undefined' && window.matchMedia('(max-width: 768px)').matches) return
+  setTimeout(() => ref.current?.focus(), delay)
+}
+
 // ============================================================================
 // ── 3. STATE INITIALIZATION (COUNTER & DB DATA) ──
 // ============================================================================
 export default function Sales(props = {}) {
+  const [phoneCounter, setPhoneCounter] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 768px)').matches)
+  const [mobilePane, setMobilePane] = useState('products')
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 768px)')
+    const update = () => setPhoneCounter(media.matches)
+    media.addEventListener('change', update)
+    return () => media.removeEventListener('change', update)
+  }, [])
   const { authFetch, profile, user, networkMode } = useAuth()
   // Business-type billing profile (Phase 2) — follows the counter-mode switcher
   // live; FAIL-OPEN (null when offline → no behavior change).
@@ -279,7 +294,7 @@ export default function Sales(props = {}) {
       })
       setPriceSelectorIndex(null)
       setSelectedPriceOptIndex(0)
-      setTimeout(() => barcodeRef.current?.focus(), 50)
+      refocusScanner(barcodeRef, 50)
     }
   }
 
@@ -1068,7 +1083,7 @@ export default function Sales(props = {}) {
       isLoadingRef.current = false
       isSystemLoadingRef.current = false
       setLoading(false)
-      setTimeout(() => barcodeRef.current?.focus(), 300)
+      refocusScanner(barcodeRef, 300)
     })
   }, [])
 
@@ -1277,7 +1292,7 @@ export default function Sales(props = {}) {
     setActiveTabId(newId)
     setPriceSelectorIndex(null)
     setSelectedPriceOptIndex(0)
-    setTimeout(() => barcodeRef.current?.focus(), 100)
+    refocusScanner(barcodeRef, 100)
   }
 
   // ============================================================================
@@ -1323,7 +1338,7 @@ export default function Sales(props = {}) {
           isSystemLoadingRef.current = false
         }, 500)
       })
-      setTimeout(() => barcodeRef.current?.focus(), 100)
+      refocusScanner(barcodeRef, 100)
       return
     }
 
@@ -1752,7 +1767,7 @@ export default function Sales(props = {}) {
     } else {
       setPriceSelectorIndex(null)
       setSelectedPriceOptIndex(0)
-      setTimeout(() => barcodeRef.current?.focus(), 50)
+      refocusScanner(barcodeRef, 50)
     }
   }, [customers, fetchBatchesForProduct, productBatches, authFetch, profile])
 
@@ -1902,7 +1917,7 @@ export default function Sales(props = {}) {
     setSelectedPriceOptIndex(0)
     setAlert(null)
     setSearchQuery('')
-    setTimeout(() => barcodeRef.current?.focus(), 100)
+    refocusScanner(barcodeRef, 100)
   }
 
   // Accidental exit prevention handler
@@ -2150,7 +2165,7 @@ export default function Sales(props = {}) {
   // Auto refocus barcode input when modals close
   useEffect(() => {
     if (!showPaymentPopup && !showSettingsModal && !showBreakupModal && !printJob) {
-      setTimeout(() => barcodeRef.current?.focus(), 100)
+      refocusScanner(barcodeRef, 100)
     }
   }, [showPaymentPopup, showSettingsModal, showBreakupModal, printJob])
 
@@ -2203,7 +2218,7 @@ export default function Sales(props = {}) {
   // Rank: exact barcode/SKU first → name starts-with → name/barcode/SKU contains.
   // useMemo means this only re-runs when the debounced query or product list
   // changes — not on every keystroke or unrelated state update.
-  const filteredProducts = useMemo(() => {
+  const matchingProducts = useMemo(() => {
     const q = debouncedSearchQuery.trim()
     if (!q) return []
     const ql = q.toLowerCase()
@@ -2233,16 +2248,17 @@ export default function Sales(props = {}) {
       }
     }
 
-    // Return top 8 across all tiers
-    return [...exact, ...starts, ...contains].slice(0, 8)
+    return [...exact, ...starts, ...contains]
   }, [debouncedSearchQuery, products])
+  // Autocomplete stays compact; the mobile catalogue must show every match.
+  const filteredProducts = useMemo(() => matchingProducts.slice(0, 8), [matchingProducts])
 
   // ============================================================================
   // ── 12. POS COUNTER RENDER (JSX) ──
   // ============================================================================
   return (
     <AppLayout title="POS Counter">
-      <div style={{ height: '100%', display: 'flex', flexDirection: 'column', position: 'relative' }}>
+      <div className="sales-counter" data-mobile-pane={mobilePane} style={{ height: '100%', display: 'flex', flexDirection: 'column', position: 'relative' }}>
 
         {isLiveView && isRemoteCartLoading && (
           <LiveViewOverlay
@@ -2355,6 +2371,11 @@ export default function Sales(props = {}) {
           />
         )}
 
+        <div className="pos-mobile-view-switch" role="group" aria-label="Billing view">
+          <button type="button" aria-pressed={mobilePane === 'products'} onClick={() => setMobilePane('products')}>Products</button>
+          <button type="button" aria-pressed={mobilePane === 'cart'} onClick={() => setMobilePane('cart')}>Current bill <span>{form.items.length}</span></button>
+        </div>
+
         {/* Workspace body split */}
         <div
           className="pos-workspace"
@@ -2397,9 +2418,10 @@ export default function Sales(props = {}) {
               onSearchChange={(v) => { setSearchQuery(v); setSelectedIndex(-1) }}
               onKeyDown={handleSearchKeyDown}
               placeholder={loading ? "Loading products/items from database..." : `Scan barcode or search by ${t('product', 'item')} code, model no or name (F9)…`}
-              onAddCustom={addCustomItemToCart}
+              onAddCustom={() => { addCustomItemToCart(); setMobilePane('cart') }}
               filteredProducts={filteredProducts}
               selectedIndex={selectedIndex}
+              showResults={!phoneCounter || mobilePane === 'cart'}
               onHoverIndex={setSelectedIndex}
               onPick={addProductToCart}
               disabled={loading || (isLiveView && editState !== 'granted')}
@@ -2408,6 +2430,7 @@ export default function Sales(props = {}) {
             {/* Cart Table list container */}
             <div className="pos-cart-wrapper" style={{ position: 'relative', display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
               <div ref={tableContainerRef} className="pos-cart-container" style={{ flex: 1, overflow: 'auto' }}>
+                {form.items.length === 0 && <div className="pos-mobile-empty"><BillsIcon size={28} /><strong>Your bill is empty</strong><span>Choose products or search above to add the first item.</span><button type="button" onClick={() => setMobilePane('products')}>Browse products</button></div>}
                 <table
                   ref={cartCols.tableRef}
                   className={`pos-cart-table ${cartCols.tableClassName}`.trim()}
@@ -2475,22 +2498,11 @@ export default function Sales(props = {}) {
                 </table>
               </div>
 
-              {priceSelectorIndex !== null && (
-                <PriceSelectorModal
-                  protectTour={isProtectedTourPreview(user)}
-                  productName={form.items[priceSelectorIndex]?.product}
-                  options={getPriceOptions(form.items[priceSelectorIndex])}
-                  selectedIndex={selectedPriceOptIndex}
-                  onHoverIndex={setSelectedPriceOptIndex}
-                  onSelect={handleSelectPriceOption}
-                  onClose={() => setPriceSelectorIndex(null)}
-                />
-              )}
             </div>
 
             {/* Bottom Sticky Totals Bar — extracted to components/sales/PosTotalBar */}
             {!showPaymentPopup && (
-              <div style={{ pointerEvents: (isLiveView && editState !== 'granted') ? 'none' : 'auto' }}>
+              <div className="pos-total-container" style={{ pointerEvents: (isLiveView && editState !== 'granted') ? 'none' : 'auto' }}>
                 <PosTotalBar
                   subtotal={subtotal}
                   gstAmt={gstAmt}
@@ -2504,14 +2516,32 @@ export default function Sales(props = {}) {
           </div>
 
           {/* Right Pane (42% in menu mode) — extracted to components/sales/MenuCataloguePane */}
-          {entryMode === 'menu' && (
+          {(entryMode === 'menu' || (phoneCounter && mobilePane === 'products')) && (
             <MenuCataloguePane
-              groupedProducts={groupedProducts}
+              groupedProducts={phoneCounter && debouncedSearchQuery.trim() ? matchingProducts.reduce((groups, product) => {
+                const category = product.category || 'General'
+                ;(groups[category] ||= []).push(product)
+                return groups
+              }, {}) : groupedProducts}
               onSelectProduct={handleSelectProduct}
             />
           )}
 
         </div>
+
+        {/* The picker belongs to both mobile panes; the cart pane is hidden
+            while choosing products from the catalogue. */}
+        {priceSelectorIndex !== null && (
+          <PriceSelectorModal
+            protectTour={isProtectedTourPreview(user)}
+            productName={form.items[priceSelectorIndex]?.product}
+            options={getPriceOptions(form.items[priceSelectorIndex])}
+            selectedIndex={selectedPriceOptIndex}
+            onHoverIndex={setSelectedPriceOptIndex}
+            onSelect={handleSelectPriceOption}
+            onClose={() => setPriceSelectorIndex(null)}
+          />
+        )}
 
       </div>
 

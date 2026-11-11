@@ -611,7 +611,7 @@ export default function CheckoutModal({
   return (
     <>
       <div
-        className="payment-modal-overlay"
+        className="payment-modal-overlay pos-phone-checkout-overlay"
         style={{
           position: 'fixed',
           inset: 0,
@@ -627,7 +627,7 @@ export default function CheckoutModal({
       >
         <div
           ref={modalRef}
-          className="payment-modal-card"
+          className="payment-modal-card pos-phone-checkout-card"
           style={{
             background: 'var(--glass-bg, var(--bg-2))',
             backdropFilter: 'blur(30px) saturate(190%)',
@@ -649,7 +649,7 @@ export default function CheckoutModal({
           onClick={e => e.stopPropagation()}
         >
           {/* Header */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)', paddingBottom: '12px' }}>
+          <div className="pos-checkout-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)', paddingBottom: '12px' }}>
             <span style={{ fontSize: '1.3rem', fontWeight: 800, color: 'var(--text-primary)' }}>POS Checkout</span>
             <button
               type="button"
@@ -659,10 +659,10 @@ export default function CheckoutModal({
           </div>
 
           {/* Two Column Layout */}
-          <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap' }}>
+          <div className="pos-checkout-columns" style={{ display: 'flex', gap: '24px', flexWrap: 'wrap' }}>
 
             {/* Left Column - Billing & Breakdown */}
-            <div style={{ flex: 1, minWidth: '350px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            <div className="pos-checkout-column" style={{ flex: 1, minWidth: '350px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <div style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--accent)', borderBottom: '1px dashed var(--border)', paddingBottom: '4px' }}>
                 <UserIcon size={16} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Billing Info
               </div>
@@ -1149,7 +1149,7 @@ export default function CheckoutModal({
             </div>
 
             {/* Right Column - Tendering & Checkout */}
-            <div style={{ flex: 1, minWidth: '350px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            <div className="pos-checkout-column" style={{ flex: 1, minWidth: '350px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <div style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--accent)', borderBottom: '1px dashed var(--border)', paddingBottom: '4px' }}>
                 <CashIcon size={16} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Tendering
               </div>

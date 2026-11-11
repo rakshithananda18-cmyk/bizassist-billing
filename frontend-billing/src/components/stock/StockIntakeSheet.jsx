@@ -850,13 +850,13 @@ export default function StockIntakeSheet({ products = [], onSaved, onExit, prefi
   // ─────────────────────────────────────────────────────────────────────────
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
+    <div className="stock-intake-sheet" style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
 
       {/* ── Top bar: scanner + search + upload + global ref ─────────────── */}
       {/* No top padding: the workspace toolbar's 14px margin already spaces this
           row. The extra 10px made Stock Intake sit 24px below the bar while the
           Catalogue sat at 14 — the two views read as different layouts. */}
-      <div style={{
+      <div className="stock-intake-toolbar" style={{
         display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap',
         padding: '0 0 10px', borderBottom: '2px solid var(--border)', flexShrink: 0,
       }}>
@@ -1505,7 +1505,7 @@ export default function StockIntakeSheet({ products = [], onSaved, onExit, prefi
       {/* Footer mirrors the header: 48px tall like every toolbar in the app, so
           the sheet is bounded by two rows of the same height rather than by two
           differently-sized strips. */}
-      <div style={{
+      <div className="stock-intake-footer" style={{
         display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap',
         minHeight: 48, padding: '8px 0 0', borderTop: '1px solid var(--border)', flexShrink: 0,
       }}>

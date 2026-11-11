@@ -21,6 +21,7 @@ import ContextMenu from '../components/common/ContextMenu'
 import UnsavedChangesModal from '../components/common/UnsavedChangesModal'
 import { logger } from '../utils/logger'
 import { readAllPages, readList } from '../utils/readPages'
+import './stockPurchasesMobile.css'
 
 const fmt = (n) =>
   n != null ? `₹${Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '—'
@@ -553,7 +554,7 @@ export default function Purchases({ embedded = false, headerTabs = null, inlineP
 
   return (
     <PageShell embedded={embedded} title="Purchases">
-      <div className={`${tabsInBar ? 'fade-in ws-embed' : 'slide-up'}`}>
+      <div className={`purchase-mobile-page ${tabsInBar ? 'fade-in ws-embed' : 'slide-up'}`}>
 
         {/* Embedded (Godown): the SAME 48px workspace bar as the Stock tab —
             workspace tabs · divider · view tabs · actions · window controls.
@@ -610,7 +611,7 @@ export default function Purchases({ embedded = false, headerTabs = null, inlineP
                 "Stock & Inventory" on the PURCHASES bar; harmless while both
                 tabs showed the same string, wrong the moment this bar appears
                 under a workspace header that already says it. */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingRight: 4 }}>
+            <div className="stock-purchase-bar-title" style={{ display: 'flex', alignItems: 'center', gap: 8, paddingRight: 4 }}>
               <BillsIcon size={18} style={{ color: 'var(--accent)' }} />
               <span style={{ fontWeight: 800, fontSize: '0.9rem', color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
                 Purchase Bills
@@ -622,7 +623,7 @@ export default function Purchases({ embedded = false, headerTabs = null, inlineP
             {headerTabs && <WsDivider />}
             {/* Inner sub-tabs: Pending Review · Confirmed · Returns */}
             {['Pending Review', 'Confirmed', 'Returns (Debit Notes)'].map(t => (
-              <button key={t} className={`ws-tab ${activeTab === t ? 'active' : ''}`} onClick={() => setActiveTab(t)}>
+              <button key={t} className={`ws-tab purchase-mobile-tab ${activeTab === t ? 'active' : ''}`} onClick={() => setActiveTab(t)}>
                 {t}
                 <span style={{ fontSize: '0.68rem', opacity: 0.7 }}>
                   ({
@@ -701,7 +702,7 @@ export default function Purchases({ embedded = false, headerTabs = null, inlineP
             </div>
           ) : null
           const tableContent = (
-            <table className="data-table" data-tour="purchase-table">
+            <table className="data-table purchase-ledger-table" data-tour="purchase-table">
               <thead><tr>
                 <th className="sortable" onClick={() => handleSort('id_number')}>
                   Bill / Return #
@@ -756,11 +757,11 @@ export default function Purchases({ embedded = false, headerTabs = null, inlineP
                       ]})
                     }}
                   >
-                    <td className="td-mono td-primary">{b.invoice_number || b.bill_number || `#${b.id}`}</td>
-                    <td className="td-primary">{b.supplier_name || '—'}</td>
-                    <td>{b.date || b.invoice_date ? new Date(b.date || b.invoice_date).toLocaleDateString('en-IN') : '—'}</td>
-                    <td style={{ color: 'var(--text-muted)' }}>{b.item_count ?? b.items?.length ?? b.lines?.length ?? '—'}</td>
-                    <td style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{fmt(b.total_amount)}</td>
+                    <td className="td-mono td-primary" data-label="Bill / Return">{b.invoice_number || b.bill_number || `#${b.id}`}</td>
+                    <td className="td-primary" data-label="Supplier">{b.supplier_name || '—'}</td>
+                    <td data-label="Date">{b.date || b.invoice_date ? new Date(b.date || b.invoice_date).toLocaleDateString('en-IN') : '—'}</td>
+                    <td data-label="Items" style={{ color: 'var(--text-muted)' }}>{b.item_count ?? b.items?.length ?? b.lines?.length ?? '—'}</td>
+                    <td data-label="Total" style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{fmt(b.total_amount)}</td>
                     <td>
                       {activeTab === 'Returns (Debit Notes)' ? (
                         <span className="badge badge-accent">Returned</span>
@@ -800,8 +801,8 @@ export default function Purchases({ embedded = false, headerTabs = null, inlineP
             </div>
           )
           return (
-            <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
-              <button type="button" onClick={() => setIsFullScreen(true)} style={{ position: 'absolute', top: 6, right: 6, zIndex: 10, background: 'var(--bg-1)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: 4, cursor: 'pointer', color: 'var(--text-secondary)' }} title="Full Screen">
+            <div className="purchase-records" style={{ position: 'relative', display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+              <button className="purchase-expand-table" type="button" onClick={() => setIsFullScreen(true)} style={{ position: 'absolute', top: 6, right: 6, zIndex: 10, background: 'var(--bg-1)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: 4, cursor: 'pointer', color: 'var(--text-secondary)' }} title="Full Screen">
                 <ExpandIcon size={14} />
               </button>
               <div className="data-table-wrap">{tableContent}</div>

@@ -41,9 +41,9 @@ export default function DayBookView({ reportData, fmt }) {
   }
 
   return (
-    <div className="card" style={{ padding: '20px 24px' }}>
+    <div className="card report-view-card report-day-book" style={{ padding: '20px 24px' }}>
       {/* Summary Cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 16, marginBottom: 24 }}>
+      <div className="report-summary-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 16, marginBottom: 24 }}>
         <div className="stat-card" style={{ background: 'var(--bg-3)', padding: 12, borderRadius: 8, border: '1px solid var(--border)' }}>
           <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>Total Sales</div>
           <div style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-primary)', marginTop: 4 }}>
@@ -92,7 +92,7 @@ export default function DayBookView({ reportData, fmt }) {
           No transactions recorded for this period.
         </div>
       ) : (
-        <div className="data-table-wrap">
+        <div className="data-table-wrap report-table-scroll" tabIndex={0} role="region" aria-label="Day Book transactions">
           <table className="data-table">
             <thead>
               <tr>

@@ -35,6 +35,24 @@ function renderRow(props = {}) {
 }
 
 describe('CartItemRow', () => {
+  it('uses the existing quantity handler for touch increments and preserves fractional quantities', () => {
+    const onQtyChange = vi.fn()
+    renderRow({ item: { ...item, qty: 0.5 }, onQtyChange })
+    expect(screen.getByRole('button', { name: 'Decrease quantity of Rice' })).toBeDisabled()
+    fireEvent.click(screen.getByRole('button', { name: 'Increase quantity of Rice' }))
+    expect(onQtyChange).toHaveBeenCalledWith(0, '1.5')
+  })
+
+  it('expands mobile item details without changing the line or removing it', () => {
+    const setItem = vi.fn(), onRemove = vi.fn()
+    const { container } = renderRow({ setItem, onRemove })
+    const button = screen.getByRole('button', { name: 'Show details for Rice' })
+    fireEvent.click(button)
+    expect(button).toHaveAttribute('aria-expanded', 'true')
+    expect(container.querySelector('.item-row')).toHaveAttribute('data-mobile-expanded', 'true')
+    expect(setItem).not.toHaveBeenCalled()
+    expect(onRemove).not.toHaveBeenCalled()
+  })
   it('lets a custom item without a catalogue id receive a price', () => {
     const setItem = vi.fn()
     renderRow({ item: { ...item, product_id: '', product: 'Custom service', is_custom: true, price: '' }, columnOrder: ['rate'], colVisible: { rate: true }, setItem })

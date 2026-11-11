@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, cleanup, waitFor, act } from '@testing-library/react'
 import React from 'react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 
@@ -72,6 +72,7 @@ import { AuthProvider, useAuth } from '../contexts/AuthContext'
 import Login from '../pages/Login'
 import Register from '../pages/Register'
 import Settings from '../pages/Settings'
+import { getHostingPreference, setHostingPreference } from '../utils/deviceMode'
 
 // Helper consumer component to execute and test AuthProvider context functions directly
 const AuthTestConsumer = ({ actionRef }) => {
@@ -647,6 +648,7 @@ describe('Settings two-mode switch (T5)', () => {
 
   it('clicking Local + Cloud while cloud is offline shows an error toast (no silent no-op)', async () => {
     mockSettings = { general: { hosting_mode: 'local' } }
+    setHostingPreference('owner1', 'local')
     localStorage.setItem('billing_token', 'user-session-jwt')
     localStorage.setItem('billing_user', JSON.stringify({ username: 'owner1' }))
 
@@ -682,6 +684,128 @@ describe('Settings two-mode switch (T5)', () => {
     expect(toastSpy.mock.calls[0][0].detail.msg).toContain('offline/unreachable')
 
     window.removeEventListener('show_toast', toastSpy)
+  })
+})
+
+describe('Desktop Pro hosting preference', () => {
+  const owner = { id: 1, user_id: 1, username: 'owner1', public_id: 'BA-PRO', role: 'enterprise' }
+  const mount = async () => {
+    localStorage.setItem('billing_token', 'local-jwt')
+    localStorage.setItem('billing_user', JSON.stringify(owner))
+    localStorage.setItem('bizassist_device_mode_owner', owner.public_id)
+    const actionRef = React.createRef()
+    render(<AuthProvider><AuthTestConsumer actionRef={actionRef} /></AuthProvider>)
+    await waitFor(() => expect(actionRef.current?.settings).toBeTruthy())
+    return actionRef
+  }
+
+  it('automatically enables Local + Cloud for confirmed Pro despite an old local default', async () => {
+    mockSettings = { general: { hosting_mode: 'local' }, subscription: { plan: 'pro' } }
+    localStorage.setItem('bizassist_hosting_mode', 'local')
+    const auth = await mount()
+    await waitFor(() => expect(localStorage.getItem('bizassist_hosting_mode')).toBe('hybrid'))
+    expect(auth.current.settings.general.hosting_mode).toBe('hybrid')
+    expect(getHostingPreference(owner.public_id)).toBeNull()
+    expect(localStorage.getItem('billing_token')).toBe('local-jwt')
+    expect(globalMockFetch.mock.calls.some(([url, options]) => String(url) === 'http://local-backend/settings' && options?.method === 'PUT' && JSON.parse(options.body).general.hosting_mode === 'hybrid')).toBe(true)
+  })
+
+  it('keeps a confirmed Free desktop local', async () => {
+    mockSettings = { general: { hosting_mode: 'local' }, subscription: { plan: 'free' } }
+    mockProfile = { is_premium: false }
+    const auth = await mount()
+    expect(auth.current.settings.general.hosting_mode).toBe('local')
+    expect(globalMockFetch.mock.calls.filter(([url, options]) => String(url).endsWith('/settings') && options?.method === 'PUT')).toHaveLength(0)
+  })
+
+  it('honours an explicit Local choice on later settings loads and session restores', async () => {
+    mockSettings = { general: { hosting_mode: 'hybrid' }, subscription: { plan: 'pro' } }
+    let auth = await mount()
+    await act(async () => { expect(await auth.current.setHostingMode('local')).toBe(true) })
+    expect(getHostingPreference(owner.public_id)).toBe('local')
+    cleanup()
+    // A synced account value or a new Pro check cannot overrule this device.
+    mockSettings = { general: { hosting_mode: 'hybrid' }, subscription: { plan: 'pro' } }
+    auth = await mount()
+    expect(auth.current.settings.general.hosting_mode).toBe('local')
+    expect(localStorage.getItem('billing_token')).toBe('local-jwt')
+  })
+
+  it('does not claim Local is enabled or store an opt-out when its save fails', async () => {
+    mockSettings = { general: { hosting_mode: 'hybrid' }, subscription: { plan: 'pro' } }
+    const auth = await mount()
+    localStorage.setItem('bizassist_hosting_mode', 'hybrid')
+    const original = (...args) => globalMockFetch(...args)
+    vi.stubGlobal('fetch', vi.fn((url, options) => String(url).endsWith('/settings') && options?.method === 'PUT'
+      ? Promise.resolve({ ok: false, status: 500 }) : original(url, options)))
+    await act(async () => { expect(await auth.current.setHostingMode('local')).toBe(false) })
+    expect(getHostingPreference(owner.public_id)).toBeNull()
+    expect(localStorage.getItem('bizassist_hosting_mode')).toBe('hybrid')
+    expect(auth.current.settings.general.hosting_mode).toBe('hybrid')
+  })
+
+  it('keeps an explicit Local choice through sign-in and does not provision cloud sync', async () => {
+    mockSettings = { general: { hosting_mode: 'local' }, subscription: { plan: 'pro' } }
+    setHostingPreference('BA-NEW', 'local')
+    const auth = await mount()
+    globalMockFetch.mockClear()
+    await act(async () => { await auth.current.login('owner1', 'Password123!') })
+    await waitFor(() => expect(auth.current.user?.public_id).toBe('BA-NEW'))
+    await waitFor(() => expect(auth.current.settings?.general.hosting_mode).toBe('local'))
+    expect(getHostingPreference('BA-NEW')).toBe('local')
+    expect(globalMockFetch.mock.calls.some(([url]) => String(url) === 'http://cloud-backend/login' || String(url).includes('/sync/cloud-token'))).toBe(false)
+  })
+
+  it('finishes a hung Local save with an error and leaves the previous choice intact', async () => {
+    mockSettings = { general: { hosting_mode: 'hybrid' }, subscription: { plan: 'pro' } }
+    const auth = await mount()
+    localStorage.setItem('bizassist_hosting_mode', 'hybrid')
+    vi.stubGlobal('fetch', vi.fn((url, options) => {
+      if (String(url).endsWith('/settings') && options?.method === 'PUT') {
+        return new Promise((resolve, reject) => options.signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), { once: true }))
+      }
+      return globalMockFetch(url, options)
+    }))
+    vi.useFakeTimers()
+    try {
+      await act(async () => {
+        const pending = auth.current.setHostingMode('local')
+        await vi.advanceTimersByTimeAsync(8000)
+        expect(await pending).toBe(false)
+      })
+      expect(getHostingPreference(owner.public_id)).toBeNull()
+      expect(localStorage.getItem('bizassist_hosting_mode')).toBe('hybrid')
+    } finally { vi.useRealTimers() }
+  })
+
+  it('serializes a Local choice after an already-running automatic hybrid save', async () => {
+    mockSettings = { general: { hosting_mode: 'local' }, subscription: { plan: 'pro' } }
+    const original = (...args) => globalMockFetch(...args)
+    let completeHybrid
+    const modes = []
+    vi.stubGlobal('fetch', vi.fn((url, options) => {
+      if (String(url).endsWith('/settings') && options?.method === 'PUT') {
+        const mode = JSON.parse(options.body).general.hosting_mode
+        modes.push(mode)
+        if (mode === 'hybrid') return new Promise(resolve => { completeHybrid = () => resolve({ ok: true, status: 200 }) })
+        return Promise.resolve({ ok: true, status: 200 })
+      }
+      return original(url, options)
+    }))
+    const auth = await mount()
+    await waitFor(() => expect(completeHybrid).toBeTypeOf('function'))
+    let saved
+    await act(async () => {
+      const pending = auth.current.setHostingMode('local')
+      expect(modes).toEqual(['hybrid'])
+      completeHybrid()
+      saved = await pending
+    })
+    expect(saved).toBe(true)
+    expect(modes.slice(0, 2)).toEqual(['hybrid', 'local'])
+    expect(getHostingPreference(owner.public_id)).toBe('local')
+    expect(localStorage.getItem('bizassist_hosting_mode')).toBe('local')
+    expect(auth.current.settings.general.hosting_mode).toBe('local')
   })
 })
 
@@ -739,6 +863,8 @@ describe('Pro trial and Local + Cloud (T6)', () => {
   it('Register explains the switch to Local when no trial was given, then lets you in', async () => {
     mockTrialOffer = { days: 14 }
     mockCloudTrial = null
+    mockProfile = { is_premium: false }
+    mockSettings = { general: { hosting_mode: 'local' }, subscription: { plan: 'free' } }
     const { container } = renderRegister()
     await waitFor(() => expect(hybridBtn()).toHaveAttribute('aria-pressed', 'true'))
     fireEvent.change(screen.getByLabelText('Store Username'), { target: { value: 'repeatphone' } })

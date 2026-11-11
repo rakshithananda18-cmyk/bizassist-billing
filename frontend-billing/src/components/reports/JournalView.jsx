@@ -6,7 +6,7 @@
 // Reports.jsx (R5). Presentational; `fmt` injected.
 export default function JournalView({ reportData, fmt, isAudit }) {
   return (
-    <div className="card" style={{ padding: '20px 24px' }}>
+    <div className="card report-view-card report-journal" style={{ padding: '20px 24px' }}>
       {isAudit && (
         <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: 12 }}>
           <LockIcon size={14} style={{ marginRight: 4, display: 'inline-block', verticalAlign: 'middle' }} /> Posted at transaction time · append-only audit trail
@@ -14,12 +14,12 @@ export default function JournalView({ reportData, fmt, isAudit }) {
       )}
       <div className="journal-entries-wrapper" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         {reportData.entries?.map((e, i) => (
-          <div key={i} style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', overflow: 'hidden' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 14px', background: 'var(--bg-3)', fontSize: '0.82rem' }}>
+          <div key={i} className="report-journal-entry" style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', overflow: 'hidden' }}>
+            <div className="report-journal-heading" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 14px', background: 'var(--bg-3)', fontSize: '0.82rem' }}>
               <span style={{ fontWeight: 600 }}>{e.date} · {e.type}</span>
               <span className="td-mono" style={{ color: 'var(--text-muted)' }}>{e.ref_no}</span>
             </div>
-            <div style={{ padding: '4px 0' }}>
+            <div className="report-table-scroll" tabIndex={0} role="region" aria-label={`Journal entry ${e.ref_no || i + 1}`} style={{ padding: '4px 0' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.84rem' }}>
                 <tbody>
                   {e.lines?.map((l, j) => (
@@ -36,7 +36,7 @@ export default function JournalView({ reportData, fmt, isAudit }) {
           </div>
         ))}
       </div>
-      <div style={{
+      <div className="report-balance-status" style={{
         marginTop: 16, padding: '12px 16px', borderRadius: 'var(--radius-md)',
         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
         background: reportData.totals?.balanced ? 'rgba(46, 125, 50, 0.08)' : 'rgba(220, 38, 38, 0.08)',

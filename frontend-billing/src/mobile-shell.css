@@ -1,0 +1,128 @@
+/* Phone navigation shares the landing page's outlined, floating surfaces. */
+@media screen and (max-width: 768px) {
+  :root {
+    --mobile-top-space: calc(82px + env(safe-area-inset-top, 0px));
+    --mobile-bottom-space: calc(84px + env(safe-area-inset-bottom, 0px));
+    --bottombar-h: 64px;
+  }
+
+  .app-shell,
+  .app-shell.pos-layout-shell { height: 100dvh !important; min-height: 0; }
+
+  .app-shell > .mobile-header {
+    position: fixed;
+    top: calc(10px + env(safe-area-inset-top, 0px));
+    left: 12px;
+    right: 12px;
+    height: 60px;
+    padding: 6px 8px;
+    gap: 6px;
+    border: 1px solid var(--border);
+    border-radius: 17px;
+    background: color-mix(in srgb, var(--bg-2) 92%, transparent) !important;
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    box-shadow: 0 6px 22px #151a120a;
+    isolation: isolate;
+    z-index: 910 !important;
+  }
+
+  .app-shell .mobile-menu-toggle {
+    flex: 0 0 40px;
+    width: 40px;
+    height: 44px;
+    padding: 10px;
+    border-radius: 11px;
+  }
+
+  .app-shell .mobile-header-brand {
+    position: static !important;
+    left: auto !important;
+    transform: none !important;
+    flex: 1 1 auto;
+    min-width: 0;
+    gap: 7px !important;
+    padding: 2px 0;
+    color: var(--text-primary);
+    text-decoration: none;
+  }
+
+  .mobile-brand-copy { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .app-shell .mobile-brand-name { max-width: none; font-size: 14px; letter-spacing: .025em; line-height: 1.2; }
+  .mobile-brand-name b { font-family: 'Crimson Pro', Georgia, serif; color: var(--accent); font-size: 18px; font-weight: 600; letter-spacing: -.02em; }
+  .mobile-business-name { color: var(--text-muted); font-size: 10px; line-height: 1.35; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mobile-business-name > * { max-width: 100%; }
+  .app-shell .mobile-profile-actions { flex: 0 0 auto; gap: 5px; }
+  .app-shell .mobile-user-avatar { width: 38px; height: 38px; min-width: 38px; padding: 0; font-family: inherit; font-size: 11px; border-radius: 12px; border: 1px solid var(--border); }
+  .app-shell .mobile-user-avatar img { border-radius: 11px; }
+  .app-shell .profile-menu.mobile-dropdown { max-width: calc(100vw - 40px); max-height: calc(100dvh - var(--mobile-top-space) - 20px); overflow-y: auto; border-radius: 14px; }
+
+  .app-shell > .main-area {
+    margin: var(--mobile-top-space) 0 var(--mobile-bottom-space) !important;
+    padding: 0 !important;
+    height: calc(100dvh - var(--mobile-top-space) - var(--mobile-bottom-space)) !important;
+    min-height: 0;
+    flex: 1 1 auto;
+    overflow: hidden;
+  }
+
+  .app-shell .main-area > .page-content {
+    width: 100%;
+    min-width: 0;
+    min-height: 0;
+    padding: 4px 12px 16px !important;
+    scroll-padding-block: 12px;
+    overscroll-behavior-y: contain;
+  }
+
+  .app-shell .page-header,
+  .app-shell .page-subbar,
+  .app-shell .tabs.page-subbar,
+  .app-shell .reports-controls {
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+  }
+
+  /* The desktop header's 240px flex basis becomes height in a phone column. */
+  .app-shell .page-header-left { flex: 0 1 auto; }
+
+  .app-shell > .mobile-bottombar {
+    left: 12px;
+    right: 12px;
+    bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+    height: 64px;
+    padding: 6px;
+    gap: 3px;
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    background: color-mix(in srgb, var(--bg-2) 94%, transparent);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    box-shadow: 0 6px 24px #151a1212;
+  }
+
+  .app-shell .mobile-bottombar .bb-item {
+    position: relative;
+    min-width: 0;
+    min-height: 48px;
+    padding: 8px;
+    border-radius: 12px;
+    color: var(--text-muted);
+    transition: color .2s ease, background-color .2s ease;
+  }
+
+  .app-shell .mobile-bottombar .bb-item.active { color: var(--accent); background: var(--accent-dim); }
+  .app-shell .mobile-bottombar .bb-icon { display: grid; place-items: center; }
+  .app-shell .mobile-bottombar .bb-icon svg { display: block; width: 23px; height: 23px; }
+  .app-shell .mobile-bottombar .bb-item.active::after { content: ''; position: absolute; bottom: 4px; width: 3px; height: 3px; border-radius: 50%; background: currentColor; }
+  .app-shell .mobile-bottombar .bb-item:focus-visible,
+  .app-shell .mobile-menu-toggle:focus-visible,
+  .app-shell .mobile-header-brand:focus-visible,
+  .app-shell .mobile-user-avatar:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .app-shell .sync-prompt-banner { bottom: calc(var(--mobile-bottom-space) + 8px) !important; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mobile-bottombar .bb-item { transition: none !important; }
+}

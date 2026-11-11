@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react'
+import React, { useCallback, useEffect, useRef } from 'react'
 import { CheckIcon, CloseIcon, DownloadIcon, SyncIcon } from '../Icons'
 
 // Which probes each mode needs
@@ -7,6 +7,8 @@ const MODE_REQUIREMENTS = {
   cloud:  { p1: false, p2: true,  p3: true  },
   hybrid: { p1: true,  p2: true,  p3: true  },
 }
+const CHECKING_PROBE = { status: 'checking', ms: null, error: null }
+const passed = probe => probe.status === 'online' || probe.status === 'slow'
 
 function statusColor(status) {
   switch (status) {
@@ -19,8 +21,9 @@ function statusColor(status) {
   }
 }
 
-function CheckRow({ label, probe, required }) {
+function CheckRow({ label, probe: receivedProbe, required }) {
   if (!required) return null
+  const probe = receivedProbe || CHECKING_PROBE
 
   const isChecking = probe.status === 'checking'
   const isPassed   = probe.status === 'online' || probe.status === 'slow'
@@ -85,29 +88,44 @@ export default function PreflightModal({
   internetProbe,
   onClose,
   onProceed,
+  onRetry,
 }) {
   const req = MODE_REQUIREMENTS[targetMode] || {}
 
   // Derive aggregate states
   const checks = [
-    req.p1 && localProbe,
-    req.p2 && cloudProbe,
-    req.p3 && internetProbe,
+    req.p1 && (localProbe || CHECKING_PROBE),
+    req.p2 && (cloudProbe || CHECKING_PROBE),
+    req.p3 && (internetProbe || CHECKING_PROBE),
   ].filter(Boolean)
 
   const isChecking  = checks.some(p => p.status === 'checking')
   const hasCorBlock  = checks.some(p => p.status === 'cors')
-  const hasFail      = checks.some(p => p.status === 'offline')
-  const allPass      = !isChecking && !hasCorBlock && !hasFail
+  const hasFail      = checks.some(p => p.status !== 'checking' && !passed(p))
+  const allPass      = checks.length > 0 && checks.every(passed)
+  const onProceedRef = useRef(onProceed)
+  const proceededRef = useRef(false)
+  onProceedRef.current = onProceed
+  const proceed = useCallback(() => {
+    if (!allPass || proceededRef.current) return
+    proceededRef.current = true
+    onProceedRef.current()
+  }, [allPass])
+  const close = () => {
+    proceededRef.current = true
+    onClose()
+  }
+
+  useEffect(() => { proceededRef.current = false }, [targetMode])
 
   // Auto-proceed when all pass
   useEffect(() => {
     if (allPass) {
       // Give user a moment to see the green ticks
-      const t = setTimeout(onProceed, 600)
+      const t = setTimeout(proceed, 600)
       return () => clearTimeout(t)
     }
-  }, [allPass, onProceed])
+  }, [allPass, proceed, targetMode])
 
   const modeLabel = {
     local:  'Local Mode',
@@ -118,10 +136,7 @@ export default function PreflightModal({
   return (
     <div
       className="pf-backdrop"
-      onMouseDown={(e) => {
-        // Block close while checking
-        if (!isChecking) onClose()
-      }}
+      onMouseDown={close}
     >
       <div
         className="pf-modal"
@@ -144,6 +159,15 @@ export default function PreflightModal({
 
         {/* Action area */}
         <div style={{ marginTop: 20, display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+          <button
+            onClick={close}
+            style={{
+              padding: '9px 18px', borderRadius: 8, border: '1px solid var(--border, rgba(255,255,255,0.15))',
+              background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.84rem',
+            }}
+          >
+            Cancel
+          </button>
           {isChecking && (
             <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', alignSelf: 'center' }}>
               Checking connectivity…
@@ -152,15 +176,6 @@ export default function PreflightModal({
 
           {hasCorBlock && !isChecking && (
             <>
-              <button
-                onClick={onClose}
-                style={{
-                  padding: '9px 18px', borderRadius: 8, border: '1px solid var(--border, rgba(255,255,255,0.15))',
-                  background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.84rem',
-                }}
-              >
-                Close
-              </button>
               <a
                 href="https://github.com/rakshithananda18-cmyk/bizassist-billing/releases"
                 target="_blank"
@@ -178,19 +193,9 @@ export default function PreflightModal({
             </>
           )}
 
-          {hasFail && !isChecking && !hasCorBlock && (
-            <>
+          {hasFail && !isChecking && !hasCorBlock && onRetry && (
               <button
-                onClick={onClose}
-                style={{
-                  padding: '9px 18px', borderRadius: 8, border: '1px solid var(--border, rgba(255,255,255,0.15))',
-                  background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.84rem',
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={onClose}
+                onClick={onRetry}
                 style={{
                   padding: '9px 20px', borderRadius: 8,
                   background: 'var(--accent-solid, var(--accent))', color: 'var(--accent-foreground, #fff)', border: 'none',
@@ -200,12 +205,11 @@ export default function PreflightModal({
               >
                 <SyncIcon size={14} /> Retry All
               </button>
-            </>
           )}
 
           {allPass && (
             <button
-              onClick={onProceed}
+              onClick={proceed}
               style={{
                 padding: '9px 20px', borderRadius: 8,
                 background: '#22c55e', color: '#fff', border: 'none',

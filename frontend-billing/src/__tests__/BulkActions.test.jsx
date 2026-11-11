@@ -11,7 +11,7 @@
 //  2. Stock's Catalogue wiring — ticking rows produces a bar, and the bar sends
 //     exactly the ticked ids.
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import BulkPreviewModal from '../components/common/BulkPreviewModal'
 import Stock from '../pages/Stock'
@@ -163,5 +163,31 @@ describe('Stock catalogue — selection drives the bar', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Clear' }))
     await waitFor(() => expect(screen.queryByTestId('bulk-count')).not.toBeInTheDocument())
+  })
+
+  it('mobile inventory overview filters low/out stock and restores all items without a write', async () => {
+    authFetch = vi.fn(async path => json(path.startsWith('/billing/products') ? [
+      { ...PRODUCTS[0], stock_qty: 2, min_stock: 5 },
+      { ...PRODUCTS[1], stock_qty: 0 },
+      { id: 43, name: 'Rice 1kg', sku: 'RC1', stock_qty: 20, is_active: true },
+    ] : []))
+    await renderPage()
+    const inventory = within(screen.getByRole('region', { name: 'Inventory table, scroll horizontally for all columns' }))
+    await inventory.findByText('Rice 1kg')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show low stock' }))
+    expect(inventory.getByText('Toor Dal 5kg')).toBeInTheDocument()
+    expect(inventory.queryByText('Sugar 1kg')).not.toBeInTheDocument()
+    expect(inventory.queryByText('Rice 1kg')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show out of stock' }))
+    expect(inventory.getByText('Sugar 1kg')).toBeInTheDocument()
+    expect(inventory.queryByText('Toor Dal 5kg')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show all items' }))
+    expect(inventory.getByText('Rice 1kg')).toBeInTheDocument()
+    expect(inventory.getByText('Toor Dal 5kg')).toBeInTheDocument()
+    expect(inventory.getByText('Sugar 1kg')).toBeInTheDocument()
+    expect(authFetch.mock.calls.every(([, options]) => !options?.method || options.method === 'GET')).toBe(true)
   })
 })

@@ -33,6 +33,7 @@ import BulkActionBar from '../components/common/BulkActionBar'
 import BulkPreviewModal from '../components/common/BulkPreviewModal'
 import { isProtectedTourPreview, PRIVATE_STOCK_COLUMNS } from '../demo/tourPrivacy'
 import { TourPrivateValue } from '../demo/TourPrivatePreview'
+import './stockPurchasesMobile.css'
 
 const fmt = (n) =>
   n != null ? `₹${Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '—'
@@ -967,7 +968,7 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
         .inv-table-wrap { flex: 1; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; }
       `}</style>
 
-      <div className={`inv-shell${inlinePage ? ' inv-shell--inline' : ''}`}>
+      <div className={`inv-shell stock-mobile-page${inlinePage ? ' inv-shell--inline' : ''}`}>
         {/* ── Top bar — shared WorkspaceTopBar (identical to Purchases/Parties/Payments) ── */}
         <WorkspaceTopBar
           settingsTab="inventory"
@@ -1056,7 +1057,7 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
           }
         >
           {/* Page icon & name on the left (matching POS style) */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingRight: 4 }}>
+          <div className="stock-purchase-bar-title" style={{ display: 'flex', alignItems: 'center', gap: 8, paddingRight: 4 }}>
             <InventoryIcon size={18} style={{ color: 'var(--accent)' }} />
             <span style={{ fontWeight: 800, fontSize: '0.9rem', color: 'var(--text-primary)', whiteSpace: 'nowrap' }}>
               Stock & Inventory
@@ -1073,13 +1074,29 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
             <button
               key={tab.key}
               data-tour={`stock-tab-${tab.key}`}
-              className={`ws-tab ${activeView === tab.key ? 'active' : ''}`}
+              className={`ws-tab stock-mobile-tab ${activeView === tab.key ? 'active' : ''}`}
               onClick={() => setActiveView(tab.key)}
             >
               {tab.icon} {tab.label}
             </button>
           ))}
         </WorkspaceTopBar>
+
+        <div className="stock-mobile-overview" aria-label="Inventory overview">
+          {[
+            { label: 'All items', value: totalProducts, filter: '', tone: 'all' },
+            { label: 'Low stock', value: lowStock, filter: 'low', tone: 'low' },
+            { label: 'Out of stock', value: outStock, filter: 'out', tone: 'out' },
+          ].map(metric => (
+            <button key={metric.tone} type="button" className={`stock-mobile-metric stock-mobile-metric--${metric.tone}`}
+              aria-label={`Show ${metric.label.toLowerCase()}`}
+              aria-pressed={activeView === 'catalogue' && stockStatusFilter === metric.filter}
+              onClick={() => { setStockStatusFilter(metric.filter); setActiveView('catalogue') }}>
+              <span>{loading || loadError ? '—' : metric.value}</span>
+              <small>{metric.label}</small>
+            </button>
+          ))}
+        </div>
 
         {/* ── Body ─────────────────────────────────────────────────────────── */}
         <div className="inv-body">
@@ -1116,7 +1133,7 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
             {/* ── CATALOGUE ──────────────────────────────────────────────── */}
             {activeView === 'catalogue' && (
               <div className="inv-full-panel">
-                <div className="inv-panel-toolbar">
+                <div className="inv-panel-toolbar stock-catalogue-filters">
                   <div className="search-bar" style={{ minWidth: 220, height: 34 }}>
                     <span style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}><SearchIcon size={15} /></span>
                     <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search products…" autoFocus />
@@ -1200,7 +1217,8 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
                   </span>
                 </div>
 
-                <div className="inv-table-wrap">
+                <p className="stock-mobile-table-note">Swipe across for pricing and details. Use ± Stock to receive items.</p>
+                <div className="inv-table-wrap stock-catalogue-scroll" tabIndex={0} role="region" aria-label="Inventory table, scroll horizontally for all columns">
                   {/* Dense inventory grid — reference-style columns, compact spacing.
                       Money columns drop the ₹ (header carries it); %/cost figures
                       are computed (deriveInv), nothing new is stored. Barcode,
@@ -1451,7 +1469,7 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
                   </button>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '340px 1fr', gap: 16, flex: 1, minHeight: 0, overflow: 'hidden' }}>
+                <div className="stock-godowns-layout" style={{ display: 'grid', gridTemplateColumns: '340px 1fr', gap: 16, flex: 1, minHeight: 0, overflow: 'hidden' }}>
                   {/* Left: Locations list + add form */}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 12, overflowY: 'auto' }}>
                     <div style={{ fontWeight: 700, fontSize: '0.82rem', color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Locations</div>
@@ -1645,7 +1663,7 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
             ) : (
               <>
                 {/* Stats */}
-                <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+                <div className="stock-sidebar-metrics" style={{ display: 'flex', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
                   {[
                     { label: 'Products', value: totalProducts, color: 'var(--accent)', tab: 'catalogue' },
                     { label: 'Low',      value: lowStock,      color: '#d97706',        tab: 'catalogue', filter: 'low' },

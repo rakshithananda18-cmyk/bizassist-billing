@@ -27,6 +27,14 @@ const base = {
 }
 
 describe('ProductSearchBar', () => {
+  it('keeps the mobile catalogue search usable without a duplicate autocomplete overlay', () => {
+    const onSearchChange = vi.fn()
+    render(<ProductSearchBar {...base} showResults={false} filteredProducts={products} onSearchChange={onSearchChange} />)
+    expect(screen.queryByRole('listbox')).toBeNull()
+    expect(screen.getByRole('combobox')).toHaveAttribute('aria-expanded', 'false')
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'rice' } })
+    expect(onSearchChange).toHaveBeenCalledWith('rice')
+  })
   it('renders the input with the placeholder and reflects the query', () => {
     render(<ProductSearchBar {...base} searchQuery="rice" />)
     const input = screen.getByPlaceholderText('Scan barcode…')

@@ -9,6 +9,7 @@ import { API_BASE, IS_LOCAL_APP } from '../config'
 import { logger } from '../utils/logger'
 import { formatIST } from '../utils/format'
 import { resolveHostingMode } from '../utils/resolveHostingMode'
+import { getHostingPreference } from '../utils/deviceMode'
 import { getAiDashboardUrl, openAiDashboard } from '../config/aiDashboard'
 import { fieldTeamNeedsCloudData, fieldTeamLaunchUrl, getFieldTeamUrl, openFieldTeam } from '../config/fieldTeam'
 import { applyNavOrder, navOrderKeys } from './navOrder'
@@ -16,6 +17,7 @@ import DesktopDownloadModal from '../components/DesktopDownloadModal'
 import { IS_DESKTOP_APP, openDownloadPage } from '../config/downloadApp'
 import { BuildingMark } from '../components/Logo'
 import PageLoader from '../components/PageLoader'
+import BootHealthCheck from '../components/BootHealthCheck'
 import PageHelp from '../components/PageHelp'
 import UniversalSearch from '../components/UniversalSearch'
 import NotificationBell from '../components/NotificationBell'
@@ -220,6 +222,8 @@ export default function AppLayout({ children, title }) {
     plan: settings?.subscription?.plan,
     savedMode: hostingMode,
     deviceMode,
+    explicitChoice: getHostingPreference(user?.public_id || user?.username || user?.id),
+    planKnown: typeof settings?.subscription?.plan === 'string',
   })
   const isSyncOn = effectiveMode === 'cloud' || effectiveMode === 'hybrid'
 
@@ -529,8 +533,25 @@ export default function AppLayout({ children, title }) {
   const syncBtnRef = React.useRef(null)
 
   React.useEffect(() => {
+    if (!showSyncPopover) return
+    syncPopoverRef.current?.focus()
+    const closeOnEscape = event => {
+      if (event.key !== 'Escape') return
+      event.preventDefault()
+      event.stopPropagation()
+      setShowSyncPopover(false)
+      syncBtnRef.current?.focus()
+    }
+    document.addEventListener('keydown', closeOnEscape, true)
+    return () => document.removeEventListener('keydown', closeOnEscape, true)
+  }, [showSyncPopover])
+
+  React.useEffect(() => {
     const handleStatusChange = (e) => {
       setSyncHealth(e.detail)
+    }
+    const handleNetworkChange = () => {
+      setSyncHealth(previous => ({ ...previous, isOnline: navigator.onLine }))
     }
     // Consume sync.progress SSE events (emitted by sync_worker per chunk)
     const handleSyncProgress = (e) => {
@@ -574,6 +595,8 @@ export default function AppLayout({ children, title }) {
       }
     }
     window.addEventListener('sync-status-change', handleStatusChange)
+    window.addEventListener('online', handleNetworkChange)
+    window.addEventListener('offline', handleNetworkChange)
     window.addEventListener('sync-event', handleSyncProgress)
 
     // Request fresh status from active listener on mount
@@ -616,6 +639,8 @@ export default function AppLayout({ children, title }) {
 
     return () => {
       window.removeEventListener('sync-status-change', handleStatusChange)
+      window.removeEventListener('online', handleNetworkChange)
+      window.removeEventListener('offline', handleNetworkChange)
       window.removeEventListener('sync-event', handleSyncProgress)
       document.removeEventListener('mousedown', handleOutsideClick)
       document.removeEventListener('visibilitychange', handleVisibilityChange)
@@ -1225,24 +1250,8 @@ export default function AppLayout({ children, title }) {
       <WebLocalOnlyNotice />
 
       {/* Global Toast Container */}
-      {/* Landscape orientation overlay for POS `/sales` page on mobile */}
-      {isSalesPage && (
-        <div className="pos-portrait-overlay">
-          <div className="pos-portrait-content">
-            <div className="rotate-icon-wrapper">
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="rotate-device-icon">
-                <rect x="5" y="2" width="14" height="20" rx="2" ry="2" transform="rotate(90 12 12)" />
-                <path d="M12 18h.01" />
-              </svg>
-            </div>
-            <h2>Rotate Your Device</h2>
-            <p>Please rotate your phone to landscape mode to use the Billing Counter.</p>
-          </div>
-        </div>
-      )}
-
       {/* ── Sidebar ── */}
-      {!isSalesPage && (
+      {(!isSalesPage || isMobileViewport) && (
         <aside ref={mobileSidebarRef} id="mobile-navigation"
           className={`sidebar ${mobileMenuOpen ? 'open' : ''} ${sidebarInRailMode ? 'collapsed' : ''}`}
           role={isMobileViewport ? 'dialog' : undefined}
@@ -1277,11 +1286,15 @@ export default function AppLayout({ children, title }) {
             )}
             <div style={{ flex: 1, minWidth: 0 }}>
               <div className="brand-name"><BusinessName>{profile?.business_name || user?.business_name || 'Stater'}</BusinessName></div>
-              {isSyncOn && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <div
+                  <button
+                    type="button"
                     ref={syncBtnRef}
                     className={`brand-tag sync-health-pill ${syncHealth.status}`}
+                    aria-label="View server and sync health details"
+                    aria-expanded={showSyncPopover}
+                    aria-controls="server-sync-health-details"
+                    aria-haspopup="dialog"
                     onClick={(e) => {
                       e.stopPropagation()
                       setShowSyncPopover(!showSyncPopover)
@@ -1294,11 +1307,12 @@ export default function AppLayout({ children, title }) {
                       padding: '2px 8px',
                       borderRadius: '12px',
                       fontSize: '0.68rem',
+                      fontFamily: 'inherit',
                       fontWeight: '600',
                       marginTop: '4px',
                       width: 'fit-content',
                       transition: 'all 0.2s ease',
-                      backgroundColor: haltTint
+                      backgroundColor: effectiveMode === 'local' ? 'var(--bg-3)' : haltTint
                         || (effectiveMode === 'hybrid'
                             ? (queueDepth.last_status === 'failed' && totalPendingSync > 0 ? 'rgba(239, 68, 68, 0.1)' :
                                totalPendingSync > 0 ? 'rgba(245, 158, 11, 0.1)' :
@@ -1306,7 +1320,7 @@ export default function AppLayout({ children, title }) {
                             : (syncHealth.status === 'connected' ? 'rgba(34, 197, 94, 0.1)' :
                                syncHealth.status === 'connecting' ? 'rgba(245, 158, 11, 0.1)' :
                                'rgba(239, 68, 68, 0.1)')),
-                      color: haltTone
+                      color: effectiveMode === 'local' ? 'var(--text-secondary)' : haltTone
                         || (effectiveMode === 'hybrid'
                             ? (queueDepth.last_status === 'failed' && totalPendingSync > 0 ? 'var(--danger, #ef4444)' :
                                totalPendingSync > 0 ? 'var(--warning, #f59e0b)' :
@@ -1318,9 +1332,11 @@ export default function AppLayout({ children, title }) {
                       textTransform: 'none',
                       letterSpacing: 'normal'
                     }}
-                    title="Click to view sync health check details"
+                    title="View server and sync health details"
                   >
-                    {haltReason ? (
+                    {effectiveMode === 'local' ? (
+                      <><MonitorIcon size={10} /><span>Server health</span></>
+                    ) : haltReason ? (
                       <>
                         <AlertIcon size={10} strokeWidth={2.5} />
                         {/* The badge names the actual halt. "Sync Paused" for a
@@ -1397,7 +1413,7 @@ export default function AppLayout({ children, title }) {
                         )}
                       </>
                     )}
-                  </div>
+                  </button>
 
                   {/* Manual Refresh App Content button (especially useful in windows desktop app wrapper) */}
                   <button
@@ -1433,7 +1449,6 @@ export default function AppLayout({ children, title }) {
                     <SyncIcon size={11} className={showRefreshFlash ? 'sync-spinner-small' : ''} />
                   </button>
                 </div>
-              )}
             </div>
             
             {/* Close button for mobile drawer */}
@@ -1458,9 +1473,13 @@ export default function AppLayout({ children, title }) {
               <CloseIcon size={18} />
             </button>
             
-            {isSyncOn && showSyncPopover && (
+            {showSyncPopover && (
               <div
                 ref={syncPopoverRef}
+                id="server-sync-health-details"
+                role="dialog"
+                aria-label="Server and sync health details"
+                tabIndex={-1}
                 className="sync-health-popover fade-in"
                 style={{
                   position: 'absolute',
@@ -1488,7 +1507,7 @@ export default function AppLayout({ children, title }) {
                 }}
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '0.8rem', fontWeight: '700', color: 'var(--text-primary)' }}>Sync Health Details</span>
+                  <span style={{ fontSize: '0.8rem', fontWeight: '700', color: 'var(--text-primary)' }}>Server &amp; Sync Health</span>
                   <button
                     style={{
                       background: 'none',
@@ -1499,12 +1518,14 @@ export default function AppLayout({ children, title }) {
                       display: 'flex',
                       alignItems: 'center'
                     }}
-                    onClick={(e) => { e.stopPropagation(); setShowSyncPopover(false); }}
+                    onClick={(e) => { e.stopPropagation(); setShowSyncPopover(false); syncBtnRef.current?.focus(); }}
                     aria-label="Close Popover"
                   >
                     <CloseIcon size={14} />
                   </button>
                 </div>
+
+                <BootHealthCheck />
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.78rem' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
@@ -1518,14 +1539,14 @@ export default function AppLayout({ children, title }) {
                     <span style={{ color: 'var(--text-secondary)' }}>Status</span>
                     <span style={{
                       fontWeight: '700',
-                      color: haltTone
+                      color: effectiveMode === 'local' ? 'var(--text-muted)' : haltTone
                         || (effectiveMode === 'hybrid'
                             ? (queueDepth.last_status === 'failed' && totalPendingSync > 0 ? 'var(--danger)' :
                                totalPendingSync > 0 ? 'var(--warning)' : 'var(--success)')
                             : (syncHealth.status === 'connected' ? 'var(--success)' :
                                syncHealth.status === 'connecting' ? 'var(--warning)' : 'var(--danger)'))
                     }}>
-                      {haltCopy
+                      {effectiveMode === 'local' ? 'Local only — cloud sync paused' : haltCopy
                         ? haltCopy.title
                         : (effectiveMode === 'hybrid'
                             ? (queueDepth.last_status === 'failed' && totalPendingSync > 0 ? 'Sync Error' :
@@ -1787,7 +1808,7 @@ export default function AppLayout({ children, title }) {
                     </div>
                   )}
 
-                  {cloudStatus?.cloud_state && (
+                  {isSyncOn && cloudStatus?.cloud_state && (
                     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }} title={cloudStatus.cloud_url || undefined}>
                       <span>Cloud service</span>
                       <span>{({ online: 'Online', waking: 'Starting…', busy: 'Busy — retrying…', offline: 'Unreachable' })[cloudStatus.cloud_state] || 'Unavailable'}</span>
@@ -2683,7 +2704,6 @@ export default function AppLayout({ children, title }) {
           Routes are taken from the SAME nav list the sidebar renders, so a
           renamed or removed route cannot leave a dead tab here — the "two
           copies of one thing" trap CLEANUP §6.1 records. */}
-      {!isSalesPage && (
         <nav className="mobile-bottombar" aria-label="Primary">
           {BOTTOM_BAR_ROUTES.map(to => {
             const item = orderedVisibleNav.find(n => n.to === to)
@@ -2694,19 +2714,19 @@ export default function AppLayout({ children, title }) {
               <NavLink
                 key={to}
                 to={to}
+                end={to === '/'}
+                aria-label={item.label}
+                title={item.label}
                 className={'bb-item' + (active ? ' active' : '')}
                 onClick={() => setMobileMenuOpen(false)}
               >
-                <span className="bb-icon">{item.icon}</span>
-                <span className="bb-label">{item.label}</span>
+                <span className="bb-icon" aria-hidden="true">{React.cloneElement(item.icon, { size: 22, strokeWidth: 1.7, className: undefined })}</span>
               </NavLink>
             )
           })}
         </nav>
-      )}
 
       {/* Mobile Top Header Bar */}
-      {!isSalesPage && (
         <header className="mobile-header">
           <button
             type="button"
@@ -2723,24 +2743,29 @@ export default function AppLayout({ children, title }) {
             </svg>
           </button>
 
-          <div className="mobile-header-brand" onClick={() => navigate('/')}>
+          <Link className="mobile-header-brand" to="/" aria-label="STATER Bill home">
             {profile?.logo ? (
               <img src={profile.logo} alt="Logo" style={{ width: 28, height: 28, objectFit: 'contain', borderRadius: '4px' }} />
             ) : (
               <BuildingMark size={22} />
             )}
-            <span className="mobile-brand-name">
-              <BusinessName>{profile?.business_name || user?.business_name || 'Stater'}</BusinessName>
+            <span className="mobile-brand-copy">
+              <span className="mobile-brand-name">STATER <b>Bill</b></span>
+              <span className="mobile-business-name"><BusinessName>{profile?.business_name || user?.business_name || pageTitle}</BusinessName></span>
             </span>
-          </div>
+          </Link>
 
           <div className="mobile-profile-actions">
           {isMobileViewport && !isCashier && !isSupplyAdder && (
             <NotificationBell onOpen={() => setShowProfileMenu(false)} />
           )}
           <div className="mobile-user-avatar-wrapper" ref={userChipRef}>
-            <div
+            <button
+              type="button"
               className="mobile-user-avatar"
+              aria-label="Open account menu"
+              aria-expanded={showProfileMenu}
+              aria-controls="mobile-account-menu"
               onClick={() => setShowProfileMenu(!showProfileMenu)}
             >
               {profile?.logo ? (
@@ -2748,11 +2773,11 @@ export default function AppLayout({ children, title }) {
               ) : (
                 initials
               )}
-            </div>
+            </button>
 
             {/* Profile Dropdown positioned below avatar on mobile */}
             {showProfileMenu && (
-              <div className="profile-menu mobile-dropdown" ref={profileMenuRef} onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}>
+              <div id="mobile-account-menu" className="profile-menu mobile-dropdown" ref={profileMenuRef} onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}>
                 <div className="profile-menu-header">
                   <div className="profile-menu-biz">{profile?.business_name || user?.username || 'Stater User'}</div>
                   <div className="profile-menu-sub">Enterprise Account</div>
@@ -2821,10 +2846,9 @@ export default function AppLayout({ children, title }) {
           </div>
           </div>
         </header>
-      )}
 
       {/* Backdrop overlay for mobile drawer */}
-      {mobileMenuOpen && !isSalesPage && (
+      {mobileMenuOpen && (
         <div
           className="mobile-drawer-backdrop"
           onClick={() => setMobileMenuOpen(false)}

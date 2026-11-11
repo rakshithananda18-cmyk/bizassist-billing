@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { API_BASE, CLOUD_URL, IS_LOCAL_APP } from '../config'
 import { sendDiagnostics } from '../utils/telemetry'
 import { logger } from '../utils/logger'
@@ -15,44 +15,51 @@ import { logger } from '../utils/logger'
  * `onClose` renders a dismiss button.
  */
 
-const CHECK = async (base) => {
+const CHECK = async (base, controller) => {
   const t0 = Date.now()
+  const id = setTimeout(() => controller.abort(), 6000)
   try {
-    const ctrl = new AbortController()
-    const id = setTimeout(() => ctrl.abort(), 6000)
-    const res = await fetch(`${base}/health`, { signal: ctrl.signal, mode: 'cors' })
-    clearTimeout(id)
+    const res = await fetch(`${base.replace(/\/$/, '')}/health`, { signal: controller.signal, mode: 'cors' })
     const ms = Date.now() - t0
     if (!res.ok) return { ok: false, ms, detail: `HTTP ${res.status}` }
-    const body = await res.json().catch(() => ({}))
+    const body = await res.json().catch(() => null)
+    if (!body || !['ok', 'error'].includes(body.status)) {
+      return { ok: false, ms, detail: 'Server returned an invalid health response.' }
+    }
     // Clock skew: compare server time (if present) to ours.
     let skewMs = null
-    const serverTime = body.time || body.now || res.headers.get('date')
+    const serverTime = body.time || body.now || res.headers?.get?.('date')
     if (serverTime) {
       const st = new Date(serverTime).getTime()
       if (!Number.isNaN(st)) skewMs = Math.abs(Date.now() - st)
     }
     return {
-      ok: body.status ? body.status === 'ok' : true,
+      ok: body.status === 'ok' && body.db === 'connected',
       ms,
       db: body.db || null,
+      dbType: body.db_type || null,
+      version: body.version || null,
       skewMs,
-      detail: body.db && body.db !== 'connected' ? `DB ${body.db}` : null,
+      detail: body.db && body.db !== 'connected' ? `DB ${body.db}`
+        : body.db !== 'connected' ? 'Database connection not verified.'
+        : body.status !== 'ok' ? 'Server reported an unhealthy state.' : null,
     }
   } catch (err) {
     return { ok: false, ms: Date.now() - t0, detail: err?.name === 'AbortError' ? 'Timeout' : (err?.message || 'Network error') }
+  } finally {
+    clearTimeout(id)
   }
 }
 
-function Row({ label, state }) {
+function Row({ label, state, running }) {
   const color = state == null ? 'var(--text-muted)' : state.ok ? 'var(--success)' : 'var(--danger)'
   const icon = state == null ? '…' : state.ok ? '✓' : '✕'
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 0', fontSize: '0.86rem' }}>
       <span style={{ width: 18, textAlign: 'center', color, fontWeight: 700 }}>{icon}</span>
       <span style={{ flex: 1, color: 'var(--text-primary)' }}>{label}</span>
-      <span style={{ color, fontSize: '0.78rem' }}>
-        {state == null ? 'checking…' : state.ok ? `${state.ms}ms` : (state.detail || 'failed')}
+      <span style={{ color, fontSize: '0.78rem' }} role="status">
+        {state == null ? (running ? 'checking…' : 'Not checked') : state.ok ? (state.value || `${state.ms}ms`) : (state.detail || 'failed')}
       </span>
     </div>
   )
@@ -63,22 +70,39 @@ export default function BootHealthCheck({ auto = true, onClose = null }) {
   const [cloud, setCloud] = useState(null)
   const [running, setRunning] = useState(false)
   const [sent, setSent] = useState(false)
+  const requestRef = useRef(0)
+  const controllersRef = useRef([])
 
   const run = useCallback(async () => {
+    const request = ++requestRef.current
+    controllersRef.current.forEach(controller => controller.abort())
+    const controllers = [new AbortController(), new AbortController()]
+    controllersRef.current = controllers
     setRunning(true); setSent(false)
     setActive(null); setCloud(null)
     const [a, c] = await Promise.all([
-      CHECK(API_BASE),
+      CHECK(API_BASE, controllers[0]).then(result => {
+        if (request === requestRef.current) setActive(result)
+        return result
+      }),
       // Only probe cloud separately when it differs from the active backend.
-      CLOUD_URL && CLOUD_URL !== API_BASE ? CHECK(CLOUD_URL) : Promise.resolve(null),
+      CLOUD_URL && CLOUD_URL !== API_BASE ? CHECK(CLOUD_URL, controllers[1]).then(result => {
+        if (request === requestRef.current) setCloud(result)
+        return result
+      }) : Promise.resolve(null),
     ])
-    setActive(a)
-    setCloud(c)
+    if (request !== requestRef.current) return
     setRunning(false)
     logger?.info?.('[HEALTH] self-test', { active: a?.ok, cloud: c?.ok })
   }, [])
 
-  useEffect(() => { if (auto) run() }, [auto, run])
+  useEffect(() => {
+    if (auto) run()
+    return () => {
+      requestRef.current += 1
+      controllersRef.current.forEach(controller => controller.abort())
+    }
+  }, [auto, run])
 
   const skew = active?.skewMs
   const skewBad = skew != null && skew > 120000  // >2 min → JWT trouble
@@ -104,13 +128,19 @@ export default function BootHealthCheck({ auto = true, onClose = null }) {
         )}
       </div>
 
-      <Row label="This device's backend" state={active} />
+      <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', overflowWrap: 'anywhere', marginBottom: 6 }}>Active server: {API_BASE}</div>
+      <Row label="This device's backend" state={active} running={running} />
       {CLOUD_URL && CLOUD_URL !== API_BASE && (
-        <Row label={IS_LOCAL_APP ? 'Cloud server (for sync / cloud mode)' : 'Cloud server'} state={cloud} />
+        <Row label={IS_LOCAL_APP ? 'Cloud server (for sync)' : 'Cloud server'} state={cloud} running={running} />
       )}
-      <Row label="Database connection" state={active == null ? null : { ok: !active.db || active.db === 'connected', ms: active.ms, detail: active.db && active.db !== 'connected' ? `DB ${active.db}` : null }} />
+      <Row label="Database connection" running={running} state={active == null ? null : { ok: active.db === 'connected', ms: active.ms, detail: active.db ? `DB ${active.db}` : 'Not verified' }} />
+      {(active?.dbType || active?.version) && (
+        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 4 }}>
+          {[active.dbType, active.version && `Version ${active.version}`].filter(Boolean).join(' · ')}
+        </div>
+      )}
       {skew != null && (
-        <Row label="Clock in sync with server" state={{ ok: !skewBad, ms: Math.round(skew / 1000) + 's off', detail: skewBad ? 'Clock skew — fix device time' : null }} />
+        <Row label="Clock in sync with server" state={{ ok: !skewBad, value: `${Math.round(skew / 1000)}s difference`, detail: skewBad ? 'Clock skew — fix device time' : null }} />
       )}
 
       <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>

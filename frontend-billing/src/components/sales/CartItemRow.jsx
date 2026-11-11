@@ -8,11 +8,12 @@
 // (`.pos-cart-table tbody tr input.qty-input`, `input.rate-input`, …), NOT React
 // refs — so the input classNames here MUST stay identical for F-key nav to work.
 // Returns a <tr> so it sits directly inside the existing <tbody>.
-import React from 'react'
+import React, { useState } from 'react'
 import { AlertIcon, CloseIcon } from '../../components/Icons'
 import { fmt } from '../../utils/format'
 import { lineTotal } from '../../utils/invoiceMath'
 import CustomSelect from '../../components/common/CustomSelect'
+import { colLabels } from '../../lib/posColumns'
 
 export default function CartItemRow({
   item,
@@ -35,15 +36,19 @@ export default function CartItemRow({
   logger,
   extraAttrFields = [],
 }) {
+  const [mobileExpanded, setMobileExpanded] = useState(false)
+  const detailsButton = <button type="button" className="pos-mobile-details-toggle"
+    aria-expanded={mobileExpanded} aria-label={`${mobileExpanded ? 'Hide' : 'Show'} details for ${item.product || 'custom item'}`}
+    onClick={() => setMobileExpanded(value => !value)}>{mobileExpanded ? 'Less details' : 'Item details'} <span aria-hidden="true">{mobileExpanded ? '−' : '+'}</span></button>
   return (
-    <tr className="item-row">
+    <tr className="item-row" data-mobile-expanded={mobileExpanded}>
       <td className="pos-sticky-index pos-hover-remove-cell" onClick={() => onRemove(index)} style={{ cursor: 'pointer', textAlign: 'center' }} title="Click to remove">
         <span className="index-number">{index + 1}</span>
         <button
           type="button"
           className="btn btn-ghost btn-icon btn-sm pos-delete-btn-hover"
           aria-label="Remove item"
-          tabIndex="-1"
+          tabIndex="0"
           style={{ padding: 0, height: 24, width: 24 }}
         >
           <CloseIcon size={14} color="var(--error)" />
@@ -75,6 +80,7 @@ export default function CartItemRow({
             <td
               key={col}
               className={`pos-col-collapsed col-${col} ${isSticky ? 'pos-sticky-cell sticky-left' : ''}`.trim()}
+                data-label={colLabels[col] || col}
               style={style}
               onClick={() => onExpandColumn && onExpandColumn(col)}
             />
@@ -108,6 +114,7 @@ export default function CartItemRow({
                     <span className="pos-cell-text">{item.product}</span>
                   </div>
                 )}
+                {detailsButton}
               </td>
             );
           }
@@ -290,15 +297,23 @@ export default function CartItemRow({
           if (col === 'qty') {
             return (
               <td key="qty">
+                <div className="pos-quantity-control">
+                <button type="button" className="pos-mobile-quantity-button" aria-label={`Decrease quantity of ${item.product || 'custom item'}`}
+                  disabled={(parseFloat(item.qty) || 0) <= 1}
+                  onClick={() => onQtyChange(index, String(Math.max(1, (parseFloat(item.qty) || 0) - 1)))}>−</button>
                 <input
                   type="number"
                   min="0.01"
                   step="any"
                   className="pos-cell-input qty-input pos-align-center"
+                  aria-label={`Quantity for ${item.product || 'custom item'}`}
                   value={item.qty}
                   onChange={e => onQtyChange(index, e.target.value)}
                   required
                 />
+                <button type="button" className="pos-mobile-quantity-button" aria-label={`Increase quantity of ${item.product || 'custom item'}`}
+                  onClick={() => onQtyChange(index, String((parseFloat(item.qty) || 0) + 1))}>+</button>
+                </div>
               </td>
             );
           }
@@ -426,6 +441,7 @@ export default function CartItemRow({
           const extraClasses = `col-${col} ${isSticky ? 'pos-sticky-cell' : ''} ${col === 'name' && isSticky ? 'pos-sticky-cell-name' : ''}`.trim();
           return React.cloneElement(cellEl, {
             className: `${cellEl.props.className || ''} ${extraClasses}`.trim(),
+            'data-label': col === 'rate' ? 'Rate (before tax)' : col === 'total' ? 'Line total' : colLabels[col] || col,
             style: { ...cellEl.props.style, ...style }
           });
         }

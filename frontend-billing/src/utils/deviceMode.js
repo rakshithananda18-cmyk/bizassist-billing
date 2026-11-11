@@ -21,6 +21,25 @@
 
 const OWNER_KEY = 'bizassist_device_mode_owner'
 const MODE_KEY = 'bizassist_hosting_mode'
+const PREFERENCE_PREFIX = 'bizassist_hosting_preference:'
+
+// A routing/default value is not consent to stop cloud updates. Keep the
+// owner's deliberate choice separately, scoped to this business on this device.
+export function getHostingPreference(owner, storage) {
+  const store = storage || (typeof localStorage !== 'undefined' ? localStorage : null)
+  try {
+    const account = owner || store?.getItem(OWNER_KEY)
+    const mode = account && store?.getItem(`${PREFERENCE_PREFIX}${account}`)
+    return mode === 'local' || mode === 'hybrid' ? mode : null
+  } catch { return null }
+}
+
+export function setHostingPreference(owner, mode, storage) {
+  const store = storage || (typeof localStorage !== 'undefined' ? localStorage : null)
+  const account = owner || store?.getItem(OWNER_KEY)
+  if (!store || !account || !['local', 'hybrid'].includes(mode)) return
+  store.setItem(`${PREFERENCE_PREFIX}${account}`, mode)
+}
 
 /**
  * Call on every session save (login/signup). Returns the stale mode that was

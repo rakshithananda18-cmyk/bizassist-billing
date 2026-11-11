@@ -20,12 +20,13 @@ const ProductSearchBar = forwardRef(function ProductSearchBar({
   onHoverIndex,       // setSelectedIndex
   onPick,             // addProductToCart
   disabled = false,   // block keyboard/clicks in view-only mode
+  showResults = true,
 }, ref) {
   const resultsId = `product-search-results-${useId().replace(/:/g, '')}`
-  const hasResults = !disabled && filteredProducts.length > 0
+  const hasResults = showResults && !disabled && filteredProducts.length > 0
   return (
     <div className="pos-search-container" style={{ position: 'relative' }}>
-      <div style={{ display: 'flex', gap: 8 }}>
+      <div className="pos-product-search-row" style={{ display: 'flex', gap: 8 }}>
         <div className="search-bar" style={{ flex: 1, padding: '8px 12px', background: 'var(--bg-2)', borderColor: 'var(--border)' }}>
           <span style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center' }}><SearchIcon size={14} /></span>
           <input
@@ -37,6 +38,7 @@ const ProductSearchBar = forwardRef(function ProductSearchBar({
             style={{ width: '100%', color: 'var(--text-primary)' }}
             disabled={disabled}
             role="combobox"
+            aria-label="Search products or scan barcode"
             aria-autocomplete="list"
             aria-expanded={hasResults}
             aria-controls={hasResults ? resultsId : undefined}
@@ -50,7 +52,7 @@ const ProductSearchBar = forwardRef(function ProductSearchBar({
 
       {/* Autocomplete Overlay */}
       {hasResults && (
-        <div id={resultsId} role="listbox" style={{
+        <div id={resultsId} role="listbox" className="pos-product-search-results" style={{
           position: 'absolute',
           top: '100%',
           left: 0,
