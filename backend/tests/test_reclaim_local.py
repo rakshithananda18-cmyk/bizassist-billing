@@ -1,16 +1,13 @@
 """
 tests/test_reclaim_local.py
 ===========================
-Signup self-heal: re-registering a username whose cloud account was deleted (so
-the username is free on the cloud) but whose stale LOCAL mirror still exists must
-RECLAIM the local row onto the new BizID instead of hard-400ing.
-
-The test DB is sqlite → _DB_MODE == 'local', so the local-only reclaim endpoint
-is active here.
+A new cloud identity cannot authorize replacing an existing local business.
+The legacy endpoint refuses the request and retains all original local data.
 """
 import os
 import sys
 import uuid
+from unittest.mock import Mock
 
 import pytest
 
@@ -38,11 +35,11 @@ def clear_rate_limit_windows():
 
 
 def _cloud_accepts(monkeypatch, public_id, business_name):
-    """The cloud signs these credentials in as the NEW account (reclaim now
-    checks that itself - tests/test_desktop_recovery_checks_cloud.py)."""
+    """Even valid proof of a NEW cloud account cannot authorize replacement."""
     import routes.auth as auth_routes
-    monkeypatch.setattr(auth_routes, "_confirm_with_cloud",
-                        lambda u, p: {"public_id": public_id, "business_name": business_name})
+    confirm = Mock(return_value={"public_id": public_id, "business_name": business_name})
+    monkeypatch.setattr(auth_routes, "_confirm_with_cloud", confirm)
+    return confirm
 
 
 def _signup(uname, public_id=None):
@@ -52,36 +49,32 @@ def _signup(uname, public_id=None):
     return client.post("/signup", json=signup_payload(body))
 
 
-def test_reclaim_rekeys_orphan_and_logs_in(monkeypatch):
-    _cloud_accepts(monkeypatch, "BA-NEWID2", "Reborn Co")
+def test_new_cloud_identity_cannot_rekey_existing_owner(monkeypatch):
+    confirm = _cloud_accepts(monkeypatch, "BA-NEWID2", "Reborn Co")
     uname = f"own_{uuid.uuid4().hex[:8]}"
     r = _signup(uname, public_id="BA-OLDID1")
     assert r.status_code == 200, r.text
     assert r.json()["public_id"] == "BA-OLDID1"
 
-    # Re-register (as the frontend does after a fresh cloud signup mints a new
-    # BizID): the local mirror still exists → reclaim onto the new BizID.
+    # Knowing the username and owning a different cloud account does not grant
+    # authority over this device's existing business.
     rc = client.post("/api/auth/reclaim_local", json={
         "username": uname,
         "password": "NewPass456!",
         "public_id": "BA-NEWID2",
         "business_name": "Reborn Co",
     })
-    assert rc.status_code == 200, rc.text
-    body = rc.json()
-    assert body["public_id"] == "BA-NEWID2"
-    assert body["business_name"] == "Reborn Co"
-    assert body.get("token")
+    assert rc.status_code == 409, rc.text
+    assert "all local records were kept" in rc.json()["detail"]
+    confirm.assert_not_called()
+    original = client.post("/login", json={"username": uname, "password": "TestPass123!"})
+    assert original.status_code == 200
+    assert original.json()["public_id"] == "BA-OLDID1"
+    assert original.json()["business_name"] == "Orphan Co"
+    assert client.post("/login", json={"username": uname, "password": "NewPass456!"}).status_code == 401
 
-    # The new password works; the old one no longer does.
-    assert client.post("/login", json={"username": uname, "password": "NewPass456!"}).status_code == 200
-    assert client.post("/login", json={"username": uname, "password": "TestPass123!"}).status_code == 401
 
-
-def test_reclaim_rekey_purges_staff_and_data_and_writes_tombstone(monkeypatch):
-    """T1.3 (MASTER_REVIEW §9.A): delete-and-recreate lifecycle must leave a
-    CLEAN business — re-key + 0 stale staff + 0 stale data + a tombstone row
-    recording the retired BizID."""
+def test_refused_reclaim_preserves_owner_staff_customers_products_and_identity(monkeypatch):
     uname = f"own_{uuid.uuid4().hex[:8]}"
     r = _signup(uname, public_id="BA-T13-OLD")
     assert r.status_code == 200, r.text
@@ -99,59 +92,70 @@ def test_reclaim_rekey_purges_staff_and_data_and_writes_tombstone(monkeypatch):
     }, headers=auth)
     assert rp.status_code in (200, 201), rp.text
 
-    # Cloud account deleted + re-registered → reclaim onto the NEW BizID.
-    _cloud_accepts(monkeypatch, "BA-T13-NEW", "Clean Slate Co")
+    from database.db import SessionLocal
+    from database.models import Customer, DeletedBusiness, Product, User
+    db = SessionLocal()
+    try:
+        owner = db.query(User).filter(User.username == uname).one()
+        owner_id = owner.id
+        customer = Customer(business_id=owner_id, uid="reclaim-original-customer", name="Original customer", phone="12345")
+        db.add(customer)
+        db.commit()
+        def original_rows():
+            def values(query):
+                return [{column.name: getattr(row, column.name) for column in row.__table__.columns}
+                        for row in query.order_by(query.column_descriptions[0]["entity"].id)]
+            return {
+                "users": values(db.query(User).filter((User.id == owner_id) | (User.parent_business_id == owner_id))),
+                "customers": values(db.query(Customer).filter(Customer.business_id == owner_id)),
+                "products": values(db.query(Product).filter(Product.business_id == owner_id)),
+                "tombstones": values(db.query(DeletedBusiness).filter(DeletedBusiness.public_id.in_(["BA-T13-OLD", "BA-T13-NEW"]))),
+            }
+        before = original_rows()
+    finally:
+        db.close()
+
+    confirm = _cloud_accepts(monkeypatch, "BA-T13-NEW", "Clean Slate Co")
     rc = client.post("/api/auth/reclaim_local", json={
         "username": uname,
         "password": "NewPass456!",
         "public_id": "BA-T13-NEW",
         "business_name": "Clean Slate Co",
     })
-    assert rc.status_code == 200, rc.text
-    assert rc.json()["public_id"] == "BA-T13-NEW"
-    new_tok = rc.json()["token"]
-    new_auth = {"Authorization": f"Bearer {new_tok}"}
+    assert rc.status_code == 409, rc.text
+    confirm.assert_not_called()
+    # Check every persisted column before login can legitimately rotate session
+    # fields. Neither credentials nor business/staff records may change.
+    db = SessionLocal()
+    try:
+        assert original_rows() == before
+    finally:
+        db.close()
+    login = client.post("/login", json={"username": uname, "password": "TestPass123!"})
+    assert login.status_code == 200
+    assert client.post("/login", json={"username": uname, "password": "NewPass456!"}).status_code == 401
+    preserved_auth = {"Authorization": f"Bearer {login.json()['token']}"}
 
-    # Clean re-key: new password works, old refused.
-    assert client.post("/login", json={"username": uname, "password": "NewPass456!"}).status_code == 200
-    assert client.post("/login", json={"username": uname, "password": "TestPass123!"}).status_code == 401
-
-    # 0 stale staff — the sub-account was purged with the old tenant.
-    staff_list = client.get("/staff", headers=new_auth)
+    staff_list = client.get("/staff", headers=preserved_auth)
     assert staff_list.status_code == 200, staff_list.text
-    assert staff_list.json() == []
+    assert len(staff_list.json()) == 1
 
-    # 0 stale data — no product from the old identity survives.
-    prods = client.get("/products", headers=new_auth)
+    prods = client.get("/products", headers=preserved_auth)
     assert prods.status_code == 200, prods.text
     page = prods.json()
-    assert page["total"] == 0, f"stale products survived the re-key: {page['items']}"
-
-    # Tombstone row records the RETIRED BizID with reason 'reclaim_rekey'.
-    from database.db import SessionLocal
-    from database.models import DeletedBusiness
-    s = SessionLocal()
-    try:
-        tomb = (s.query(DeletedBusiness)
-                  .filter(DeletedBusiness.public_id == "BA-T13-OLD")
-                  .order_by(DeletedBusiness.id.desc())
-                  .first())
-        assert tomb is not None, "expected a DeletedBusiness tombstone for the retired BizID"
-        assert tomb.reason == "reclaim_rekey"
-        assert tomb.username == uname
-    finally:
-        s.close()
+    assert page["total"] == 1
+    assert page["items"][0]["name"] == "Stale Widget"
 
 
-def test_reclaim_requires_public_id_and_existing_account():
-    # Missing public_id → 400.
+def test_legacy_reclaim_requests_always_receive_the_compatibility_refusal(monkeypatch):
+    confirm = _cloud_accepts(monkeypatch, "BA-X", "Unrelated cloud business")
     r = client.post("/api/auth/reclaim_local", json={
         "username": f"own_{uuid.uuid4().hex[:8]}", "password": "X1xxxxxx!", "public_id": "",
     })
-    assert r.status_code == 400, r.text
+    assert r.status_code == 409, r.text
 
-    # No such local account → 404.
     r = client.post("/api/auth/reclaim_local", json={
         "username": f"nobody_{uuid.uuid4().hex[:8]}", "password": "X1xxxxxx!", "public_id": "BA-X",
     })
-    assert r.status_code == 404, r.text
+    assert r.status_code == 409, r.text
+    confirm.assert_not_called()

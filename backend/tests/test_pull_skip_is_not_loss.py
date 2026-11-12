@@ -99,7 +99,7 @@ def db():
 class TestSkipReasonsAreDistinguishable:
 
     def test_the_two_recoverable_reasons_report_themselves_as_lost(self):
-        for reason in ("no-uid", "clock-skew"):
+        for reason in ("no-uid", "no-identity", "clock-skew"):
             assert _Applied("skipped", reason=reason).is_lost, (
                 f"{reason!r} leaves the row on the cloud and not here, so it "
                 f"must be inbox material"
@@ -108,7 +108,7 @@ class TestSkipReasonsAreDistinguishable:
     def test_the_three_deliberate_reasons_do_not(self):
         # These are decisions taken with BOTH copies in hand. Retrying them
         # would re-lose the same comparison every cycle, for ever.
-        for reason in ("no-identity", "lww-local-newer", "no-updated-at"):
+        for reason in ("lww-local-newer", "no-updated-at"):
             assert not _Applied("skipped", reason=reason).is_lost, (
                 f"{reason!r} is a decision, not a delivery failure — retrying it "
                 f"would spin"

@@ -261,10 +261,12 @@ export function splitCustomerRef(raw) {
   return { id: null, name: s }
 }
 
-export function buildInvoicePayload({ invoiceNo, form, gstEnabled, billDiscount = 0, cashDiscount = 0, paidAmount = 0, markPaid = false }) {
+export function buildInvoicePayload({ invoiceNo, counterPrefix, form, gstEnabled, billDiscount = 0, cashDiscount = 0, paidAmount = 0, markPaid = false }) {
   const cust = splitCustomerRef(form.customer_id)
   return {
     invoice_no: invoiceNo,
+    ...(typeof counterPrefix === 'string' && counterPrefix.trim()
+      ? { counter_prefix: counterPrefix.trim().replace(/-$/, '') } : {}),
     customer_id: cust.id,
     // Only present when the form held a name rather than an id. The server
     // resolves it against this business's customers, and records it verbatim if

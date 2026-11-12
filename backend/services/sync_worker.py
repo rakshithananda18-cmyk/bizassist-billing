@@ -40,6 +40,8 @@ from database.models import (
 )
 from services.auth import create_access_token
 from services.dates import utc_now
+from services import sync_retry
+from services.process_lock import acquire_sync_process_lease, file_lock
 
 logger = logging.getLogger("bizassist.sync_worker")
 
@@ -533,6 +535,8 @@ _PUSH_INFLIGHT_LOCK = threading.Lock()
 
 
 def _try_acquire_push(business_id: int) -> bool:
+    if not acquire_sync_process_lease():
+        return False
     with _PUSH_INFLIGHT_LOCK:
         if _PUSH_INFLIGHT.get(business_id):
             return False
@@ -547,17 +551,8 @@ def _release_push(business_id: int) -> None:
 
 def _hybrid_sync_enabled(business_id: int) -> bool:
     """Read committed device consent independently of a long-running sync session."""
-    if engine.dialect.name != "sqlite":
-        return False
-    try:
-        with SessionLocal() as mode_db:
-            raw = (mode_db.query(User.settings)
-                   .filter(User.id == business_id, User.parent_business_id.is_(None)).scalar())
-            general = (json.loads(raw or "{}") or {}).get("general") or {}
-            return general.get("hosting_mode") == "hybrid"
-    except Exception as exc:
-        logger.warning("[SYNC_WORKER] Could not verify hosting mode for business %s: %s; nothing sent", business_id, exc)
-        return False
+    from services.sync_policy import cloud_egress_allowed
+    return cloud_egress_allowed(business_id, session_factory=SessionLocal, bind_engine=engine)
 
 # IMPORTANT: The local backend and HF Space MUST share the same JWT_SECRET env variable.
 # If they differ, the sync worker's locally-signed tokens will be rejected by the cloud
@@ -682,11 +677,13 @@ def _save_token_map(m: Dict[str, str]) -> bool:
                 pass
 
 
-def store_cloud_token(business_id: int, token: str) -> None:
-    with _TOKEN_STORE_LOCK:
+def store_cloud_token(business_id: int, token: str, *, expected_token=None) -> bool:
+    with _TOKEN_STORE_LOCK, file_lock(_TOKEN_FILE.with_suffix(".lock")):
         m = _load_token_map()
         if _TOKEN_FILE.exists() and _TOKEN_STORE_LAST_STATE == "unreadable":
             raise OSError("Existing cloud credential store could not be read")
+        if expected_token is not None and m.get(str(business_id)) != expected_token:
+            return False
         m[str(business_id)] = token
         if not _save_token_map(m):
             raise OSError("Cloud sync credential could not be saved")
@@ -695,22 +692,37 @@ def store_cloud_token(business_id: int, token: str) -> None:
     _SELF_SIGNED_REJECTED.pop(business_id, None)
     _PLAN_BLOCKED.pop(business_id, None)
     _PULL_AUTH_BLOCKED.pop(business_id, None)
+    if expected_token is None:
+        _REFRESH_BACKOFF.pop(business_id, None)
+        _REFRESH_FAILURES.pop(business_id, None)
+        try:
+            sync_retry.success(business_id, "refresh")
+        except (OSError, ValueError) as exc:
+            logger.warning("[SYNC_WORKER] Credential saved but refresh retry state could not be cleared: %s", exc)
     logger.info("[SYNC_WORKER] Cloud sync token stored for business %s", business_id)
+    return True
 
 
 def _get_cloud_token(business_id: int) -> Optional[str]:
     return _load_token_map().get(str(business_id))
 
 
-def _invalidate_cloud_token(business_id: int):
+def _invalidate_cloud_token(business_id: int, *, expected_token=None):
     """Drop a rejected/expired cloud token — the next owner login provisions a fresh one."""
-    with _TOKEN_STORE_LOCK:
+    # An authentication response is only authoritative about its own token.
+    if expected_token is None:
+        return False
+    with _TOKEN_STORE_LOCK, file_lock(_TOKEN_FILE.with_suffix(".lock")):
         m = _load_token_map()
+        if m.get(str(business_id)) != expected_token:
+            return False
         if m.pop(str(business_id), None) is not None and _save_token_map(m):
             logger.info(
                 "[SYNC_WORKER] Cloud token invalidated for business %s — refreshes on next login",
                 business_id,
             )
+            return True
+    return False
 
 # ── Sliding refresh of the stored cloud token ────────────────────────────────
 # The cloud token is a normal 24 h access token, and until now it was ONLY ever
@@ -737,6 +749,12 @@ _REFRESH_FAILURES: Dict[int, int] = {}
 
 
 def _defer_refresh(business_id, response=None):
+    try:
+        sync_retry.defer(business_id, "refresh", response)
+    except (OSError, ValueError) as exc:
+        # The in-memory budget still prevents repeated attempts this process;
+        # ready() also fails closed when the durable budget cannot be read.
+        logger.warning("[SYNC_WORKER] Could not persist credential refresh retry state: %s", exc)
     failures = _REFRESH_FAILURES.get(business_id, 0)
     delay = _REFRESH_RETRY_DELAYS[min(failures, len(_REFRESH_RETRY_DELAYS) - 1)]
     if response is not None and response.status_code in (429, 503):
@@ -792,6 +810,8 @@ def ensure_fresh_cloud_token(business_id: int) -> Optional[str]:
     backoff_until = _REFRESH_BACKOFF.get(business_id)
     if backoff_until and utc_now() < backoff_until:
         return token
+    if not sync_retry.ready(business_id, "refresh"):
+        return token
 
     try:
         resp = httpx.post(
@@ -809,10 +829,10 @@ def ensure_fresh_cloud_token(business_id: int) -> Optional[str]:
         # Already expired, or revoked server-side. Nothing to salvage — drop it
         # so we stop presenting a dead credential, and let the next online login
         # provision a new one.
-        _invalidate_cloud_token(business_id)
+        _invalidate_cloud_token(business_id, expected_token=token)
         _REFRESH_BACKOFF.pop(business_id, None)
         _REFRESH_FAILURES.pop(business_id, None)
-        return None
+        return _get_cloud_token(business_id)
 
     if resp.status_code != 200:
         _defer_refresh(business_id, resp)
@@ -830,7 +850,9 @@ def ensure_fresh_cloud_token(business_id: int) -> Optional[str]:
         return token
 
     try:
-        store_cloud_token(business_id, fresh)
+        stored = store_cloud_token(business_id, fresh, expected_token=token)
+        if stored is False:
+            return _get_cloud_token(business_id)
     except OSError as exc:
         # The existing credential was not replaced. Keep using that still-valid
         # token and retry persistence later instead of breaking a B2B request or
@@ -840,6 +862,10 @@ def ensure_fresh_cloud_token(business_id: int) -> Optional[str]:
         return token
     _REFRESH_BACKOFF.pop(business_id, None)
     _REFRESH_FAILURES.pop(business_id, None)
+    try:
+        sync_retry.success(business_id, "refresh")
+    except (OSError, ValueError) as exc:
+        logger.warning("[SYNC_WORKER] Refreshed credential saved but retry state could not be cleared: %s", exc)
     logger.info("[SYNC_WORKER] Cloud token refreshed for business %s (slid before expiry)", business_id)
     return fresh
 
@@ -900,6 +926,9 @@ def run_hybrid_sync():
     """APScheduler recurring job. Runs every 5s on SQLite local backend."""
     if engine.dialect.name != "sqlite":
         # Cloud/Postgres does not sync from itself
+        return
+    if not acquire_sync_process_lease():
+        logger.error("[SYNC_WORKER] Another backend process owns this installation's sync worker; sync disabled in this process")
         return
 
     db = SessionLocal()
@@ -1164,9 +1193,11 @@ def _heal_unqueued_rows(db: Session, business_id: int, entities=None, ignore_sin
     Returns the number of rows queued so the caller can log it.
     """
     from database.models import _serialize_orm_obj
+    from core.sync.tombstones import queue_pending_deletes
+    delete_count = queue_pending_deletes(db, business_id)
     missing = find_unqueued_syncable_rows(db, business_id, entities=entities, ignore_since=ignore_since)
     if not missing:
-        return 0
+        return delete_count
 
     # Get the live connection so _serialize_orm_obj can look up parent UIDs.
     # This is what _queue_change does in models.py — we replicate the same
@@ -1223,7 +1254,7 @@ def _heal_unqueued_rows(db: Session, business_id: int, entities=None, ignore_sin
             business_id, queued,
             len({i['entity'] for i in missing}),
         )
-    return queued
+    return queued + delete_count
 
 
 def _repair_stuck_child_payloads(db: Session, business_id: int) -> int:
@@ -1663,6 +1694,12 @@ def _cloud_parity_check(db: Session, business_id: int) -> dict:
     }
 
     # ── Rate-limit ────────────────────────────────────────────────────────────
+    if not _hybrid_sync_enabled(business_id) or not acquire_sync_process_lease():
+        summary["errors"].append("Cloud synchronization is not permitted on this device")
+        return summary
+    if not sync_retry.ready(business_id, "parity"):
+        summary["errors"].append("Parity retry is deferred")
+        return summary
     now = utc_now()
     last = _LAST_PARITY.get(business_id)
     if last and (now - last).total_seconds() < _PARITY_INTERVAL_HOURS * 3600:
@@ -1674,7 +1711,6 @@ def _cloud_parity_check(db: Session, business_id: int) -> dict:
         return summary
 
     logger.info("[PARITY] biz=%s: starting cloud parity check", business_id)
-    _LAST_PARITY[business_id] = now
 
     # ── 1. Load local invoice uid→id map for this business ────────────────────
     local_inv_rows = db.execute(text(
@@ -1717,6 +1753,9 @@ def _cloud_parity_check(db: Session, business_id: int) -> dict:
     cloud_rows = {}
     body = {}
     while True:
+        if not _hybrid_sync_enabled(business_id):
+            summary["errors"].append("Cloud synchronization was disabled")
+            return summary
         if time.monotonic() - started >= _PARITY_BUDGET_S:
             summary["errors"].append("incomplete: parity time budget exhausted")
             return summary
@@ -1726,7 +1765,13 @@ def _cloud_parity_check(db: Session, business_id: int) -> dict:
                 params["cursor"] = cursor
             resp = httpx.get(f"{CLOUD_URL}/api/sync/pull", params=params,
                 headers={"Authorization": f"Bearer {token}"}, timeout=_PULL_TIMEOUT)
+            if not _hybrid_sync_enabled(business_id):
+                summary["errors"].append("Cloud synchronization was disabled")
+                return summary
             if resp.status_code != 200:
+                sync_retry.defer(business_id, "parity", resp)
+                if resp.status_code == 401:
+                    _invalidate_cloud_token(business_id, expected_token=token)
                 summary["errors"].append(f"pull HTTP {resp.status_code}")
                 return summary
             body = resp.json()
@@ -1750,6 +1795,7 @@ def _cloud_parity_check(db: Session, business_id: int) -> dict:
                 return summary
             cursor = next_cursor
         except Exception as exc:
+            sync_retry.defer(business_id, "parity", reason=type(exc).__name__)
             summary["errors"].append(f"pull request failed: {type(exc).__name__}")
             logger.warning("[PARITY] biz=%s pull failed: %s", business_id, exc)
             return summary
@@ -1861,6 +1907,10 @@ def _cloud_parity_check(db: Session, business_id: int) -> dict:
         local_map = local_child.get(table, {})
 
         for local_uid, correct_parent_uid in local_map.items():
+            if not _hybrid_sync_enabled(business_id):
+                db.rollback()
+                summary["errors"].append("Cloud synchronization was disabled")
+                return summary
             present_on_cloud = local_uid in cloud_uids_present
             cloud_parent_uid = cloud_uid_to_inv_uid.get(local_uid)
 
@@ -2031,6 +2081,10 @@ def _cloud_parity_check(db: Session, business_id: int) -> dict:
             _by_uid = {r.get("uid"): r for r in cloud_rows if r.get("uid")}
             _handed_over, _withheld = 0, []
             for _cuid in sorted(_cloud_only):
+                if not _hybrid_sync_enabled(business_id):
+                    db.rollback()
+                    summary["errors"].append("Cloud synchronization was disabled")
+                    return summary
                 _crow = _by_uid.get(_cuid)
                 if _crow is None:
                     continue
@@ -2088,6 +2142,10 @@ def _cloud_parity_check(db: Session, business_id: int) -> dict:
     # be rolled back and parity would re-discover them every run for ever.
     if summary["missing"] or summary["wrong_invoice"] or summary["cloud_only"]:
         try:
+            if not _hybrid_sync_enabled(business_id):
+                db.rollback()
+                summary["errors"].append("Cloud synchronization was disabled")
+                return summary
             db.commit()
         except Exception as e:
             summary["errors"].append(f"commit failed: {e}")
@@ -2105,6 +2163,10 @@ def _cloud_parity_check(db: Session, business_id: int) -> dict:
             cloud_pay_sum[inv_id] = cloud_pay_sum.get(inv_id, 0.0) + float(p.get("amount_paid") or 0)
 
     for inv in cloud_invs:
+        if not _hybrid_sync_enabled(business_id):
+            db.rollback()
+            summary["errors"].append("Cloud synchronization was disabled")
+            return summary
         cloud_inv_id  = inv.get("id")
         inv_uid       = inv.get("uid")
         stored_paid   = float(inv.get("paid_amount") or 0)
@@ -2175,6 +2237,10 @@ def _cloud_parity_check(db: Session, business_id: int) -> dict:
 
     if summary["paid_state"]:
         try:
+            if not _hybrid_sync_enabled(business_id):
+                db.rollback()
+                summary["errors"].append("Cloud synchronization was disabled")
+                return summary
             db.commit()
         except Exception as e:
             summary["errors"].append(f"paid-state commit failed: {e}")
@@ -2214,6 +2280,9 @@ def _cloud_parity_check(db: Session, business_id: int) -> dict:
             business_id, coverage,
         )
 
+    if not summary["errors"]:
+        sync_retry.success(business_id, "parity")
+        _LAST_PARITY[business_id] = utc_now()
     return summary
 
 
@@ -2279,7 +2348,7 @@ class _Applied:
     # Skip reasons where the row is real, absent here, and would come back if
     # tried again. `core.sync.inbox` retries with backoff, so a permanent
     # failure costs a bounded number of attempts and then shows up in Ops.
-    RECOVERABLE_SKIPS = frozenset({"no-uid", "clock-skew"})
+    RECOVERABLE_SKIPS = frozenset({"no-uid", "no-identity", "clock-skew", "version-conflict"})
 
     def __init__(self, status, conflicts=0, hook_failure=None, reason=None):
         self.status = status
@@ -2295,6 +2364,44 @@ class _Applied:
     def __repr__(self):
         return "_Applied(%r, reason=%r, conflicts=%s)" % (
             self.status, self.reason, self.conflicts)
+
+
+def _pulled_row_belongs_to_business(db, row, business_id: int) -> bool:
+    """Verify both ordinary ownership and membership in shared B2B rows."""
+    from database.models import _get_business_id
+    table_name = row.__tablename__
+    if table_name in {"b2b_connections", "b2b_orders"}:
+        return business_id in {row.seller_business_id, row.buyer_business_id}
+    if table_name == "b2b_order_line_items":
+        from core.models import B2BOrder
+        from sqlalchemy import or_
+        return db.query(B2BOrder.id).filter(
+            B2BOrder.id == row.order_id,
+            or_(B2BOrder.seller_business_id == business_id,
+                B2BOrder.buyer_business_id == business_id),
+        ).first() is not None
+    return _get_business_id(row, db.connection()) == business_id
+
+
+def _validate_pulled_shared_owners(db, table_name, data, existing, business_id):
+    """Shared record membership cannot be invented or repointed by replay."""
+    if table_name in {"b2b_connections", "b2b_orders"}:
+        parties = {}
+        for key in ("seller_business_id", "buyer_business_id"):
+            value = data.get(key, getattr(existing, key, None))
+            parties[key] = value
+            if existing is not None and value != getattr(existing, key):
+                raise ValueError("B2B durable identity cannot change its business parties")
+        if business_id not in parties.values():
+            raise ValueError("Cross-business B2B row denied")
+    elif table_name == "b2b_order_line_items":
+        from core.models import B2BOrder
+        parent_id = data.get("order_id", getattr(existing, "order_id", None))
+        if existing is not None and parent_id != existing.order_id:
+            raise ValueError("B2B durable line identity cannot change its parent order")
+        parent = db.query(B2BOrder).filter(B2BOrder.id == parent_id).first()
+        if parent is None or not _pulled_row_belongs_to_business(db, parent, business_id):
+            raise ValueError("Cross-business B2B order line denied")
 
 
 def _apply_pulled_row(db, business_id: int, table_name: str, model_cls, record: dict) -> "_Applied":
@@ -2322,7 +2429,18 @@ def _apply_pulled_row(db, business_id: int, table_name: str, model_cls, record: 
     _conflict_local_ts = None
     rec_uid = record.get("uid")
     rec_id = record.get("id")
+    if record.get("_sync_repair_only"):
+        if not rec_uid or not hasattr(model_cls, "uid"):
+            raise ValueError("A derived-state repair requires a durable UID")
+        target = db.query(model_cls).filter(model_cls.uid == rec_uid).one_or_none()
+        if target is None:
+            return _Applied("deferred")
+        if not _pulled_row_belongs_to_business(db, target, business_id):
+            raise ValueError("Cross-business invariant repair denied")
+        hook = _apply_hooks.run_post_apply(db, table_name, target, log_prefix="[SYNC_WORKER]")
+        return _Applied("applied", hook_failure=None if hook.ok else hook)
     if record.get("_sync_deleted"):
+        from core.sync import tombstones
         from database.sync_map import APPEND_ONLY_DELETE_BLOCKLIST
         if table_name in APPEND_ONLY_DELETE_BLOCKLIST:
             # Retain financial history; a reset/archive cannot erase books on a
@@ -2330,14 +2448,22 @@ def _apply_pulled_row(db, business_id: int, table_name: str, model_cls, record: 
             return _Applied("skipped", reason="retained-history")
         if not rec_uid or not hasattr(model_cls, "uid"):
             raise ValueError("A deletion requires a durable UID")
+        deleted_at = tombstones.delete_version(record)
+        if deleted_at is None or deleted_at > utc_now() + timedelta(minutes=5):
+            raise ValueError("A deletion requires valid version metadata; update the cloud/device")
         existing = db.query(model_cls).filter(model_cls.uid == rec_uid).first()
         if existing is not None:
-            from database.models import _get_business_id
-            if _get_business_id(existing, db.connection()) != business_id:
+            if not _pulled_row_belongs_to_business(db, existing, business_id):
                 raise ValueError("Cross-business deletion denied")
+            current_version = tombstones.normalized_version(getattr(existing, "updated_at", None))
+            if current_version and current_version > deleted_at:
+                return _Applied("skipped", reason="lww-local-newer")
             with db.begin_nested():
-                db.delete(existing)
-                db.flush()
+                if not tombstones.apply_remote_delete(db, business_id, table_name, rec_uid, deleted_at, existing):
+                    return _Applied("skipped", reason="lww-local-newer")
+        else:
+            if not tombstones.apply_remote_delete(db, business_id, table_name, rec_uid, deleted_at):
+                return _Applied("skipped", reason="lww-local-newer")
         return _Applied("applied")
     if not rec_id and not rec_uid:
         return _Applied("skipped", reason="no-identity")
@@ -2354,6 +2480,9 @@ def _apply_pulled_row(db, business_id: int, table_name: str, model_cls, record: 
                 table_name, rec_id
             )
             return _Applied("skipped", reason="no-uid")
+        from core.sync.tombstones import check_upsert
+        if not check_upsert(db, business_id, table_name, rec_uid, record.get("updated_at")):
+            return _Applied("skipped", reason="retained-delete")
         existing = db.query(model_cls).filter(model_cls.uid == rec_uid).first()
 
         # (DEDUP) If uid lookup found nothing, try a natural-key fallback
@@ -2365,19 +2494,27 @@ def _apply_pulled_row(db, business_id: int, table_name: str, model_cls, record: 
         # so future pulls use the fast uid path.
         if existing is None:
             cols = {c.name for c in model_cls.__table__.columns}
-            biz_id_val = record.get("business_id") or business_id
+            # Source numeric owner IDs are meaningless in this database. Only
+            # an unkeyed row owned by the verified receiving tenant can adopt
+            # an incoming UID; a name collision never changes durable identity.
+            from sqlalchemy import or_
+            biz_id_val = business_id
+            legacy_query = db.query(model_cls).filter(
+                model_cls.business_id == business_id,
+                or_(model_cls.uid.is_(None), model_cls.uid == ""),
+            ) if hasattr(model_cls, "business_id") else None
 
             if table_name == "invoices" and "invoice_id" in cols:
                 # Invoices: match by human-readable invoice number
                 inv_id_str = record.get("invoice_id")
                 if inv_id_str:
                     existing = (
-                        db.query(model_cls)
+                        legacy_query
                         .filter(
                             model_cls.business_id == biz_id_val,
                             model_cls.invoice_id  == inv_id_str,
                         )
-                        .first()
+                        .one_or_none()
                     )
                     if existing:
                         logger.info(
@@ -2392,12 +2529,12 @@ def _apply_pulled_row(db, business_id: int, table_name: str, model_cls, record: 
                 idem = record.get("idempotency_key")
                 if idem:
                     existing = (
-                        db.query(model_cls)
+                        legacy_query
                         .filter(
                             model_cls.business_id     == biz_id_val,
                             model_cls.idempotency_key == idem,
                         )
-                        .first()
+                        .one_or_none()
                     )
                     if existing:
                         logger.info(
@@ -2412,22 +2549,22 @@ def _apply_pulled_row(db, business_id: int, table_name: str, model_cls, record: 
                 name  = record.get("name")
                 if phone:
                     existing = (
-                        db.query(model_cls)
+                        legacy_query
                         .filter(
                             model_cls.business_id == biz_id_val,
                             model_cls.phone       == phone,
                         )
-                        .first()
+                        .one_or_none()
                     )
                 elif name:
                     # Fallback: name match (less reliable but better than dup)
                     existing = (
-                        db.query(model_cls)
+                        legacy_query
                         .filter(
                             model_cls.business_id == biz_id_val,
                             model_cls.name        == name,
                         )
-                        .first()
+                        .one_or_none()
                     )
                 if existing:
                     logger.info(
@@ -2441,21 +2578,21 @@ def _apply_pulled_row(db, business_id: int, table_name: str, model_cls, record: 
                 name  = record.get("name")
                 if phone:
                     existing = (
-                        db.query(model_cls)
+                        legacy_query
                         .filter(
                             model_cls.business_id == biz_id_val,
                             model_cls.phone       == phone,
                         )
-                        .first()
+                        .one_or_none()
                     )
                 elif name:
                     existing = (
-                        db.query(model_cls)
+                        legacy_query
                         .filter(
                             model_cls.business_id == biz_id_val,
                             model_cls.name        == name,
                         )
-                        .first()
+                        .one_or_none()
                     )
                 if existing:
                     logger.info(
@@ -2469,12 +2606,12 @@ def _apply_pulled_row(db, business_id: int, table_name: str, model_cls, record: 
                 pname = record.get("name")
                 if pname:
                     existing = (
-                        db.query(model_cls)
+                        legacy_query
                         .filter(
                             model_cls.business_id == biz_id_val,
                             model_cls.name        == pname,
                         )
-                        .first()
+                        .one_or_none()
                     )
                 if existing:
                     logger.info(
@@ -2483,16 +2620,26 @@ def _apply_pulled_row(db, business_id: int, table_name: str, model_cls, record: 
                     )
 
             elif table_name == "purchase_invoices" and "invoice_number" in cols:
-                # Purchase bills: match by invoice number from supplier
+                # A bill number is only meaningful within a supplier. Resolve
+                # that supplier's durable identity before any legacy adoption.
                 inv_num = record.get("invoice_number")
-                if inv_num:
+                supplier_uid = record.get("supplier_id_uid")
+                supplier = None
+                if supplier_uid:
+                    from database.models import Vendor
+                    supplier = db.query(Vendor).filter(
+                        Vendor.business_id == business_id,
+                        Vendor.uid == supplier_uid,
+                    ).one_or_none()
+                if inv_num and supplier is not None:
                     existing = (
-                        db.query(model_cls)
+                        legacy_query
                         .filter(
                             model_cls.business_id    == biz_id_val,
                             model_cls.invoice_number == inv_num,
+                            model_cls.supplier_id == supplier.id,
                         )
-                        .first()
+                        .one_or_none()
                     )
                 if existing:
                     logger.info(
@@ -2505,12 +2652,12 @@ def _apply_pulled_row(db, business_id: int, table_name: str, model_cls, record: 
                 idem = record.get("idempotency_key")
                 if idem:
                     existing = (
-                        db.query(model_cls)
+                        legacy_query
                         .filter(
                             model_cls.business_id     == biz_id_val,
                             model_cls.idempotency_key == idem,
                         )
-                        .first()
+                        .one_or_none()
                     )
                 if existing:
                     logger.info(
@@ -2518,7 +2665,14 @@ def _apply_pulled_row(db, business_id: int, table_name: str, model_cls, record: 
                     )
     else:
         if rec_id:
-            existing = db.query(model_cls).filter(model_cls.id == rec_id).first()
+            # An origin's integer key is not a cross-database identity.
+            raise ValueError("Pulled entities require a durable UID")
+
+    if existing is not None:
+        if not _pulled_row_belongs_to_business(db, existing, business_id):
+            raise ValueError("Cross-business sync update denied")
+        if getattr(existing, "uid", None) not in (None, "", rec_uid):
+            raise ValueError("A different durable UID cannot be adopted")
 
     # Apply Last-Write-Wins (LWW) locally
     cloud_updated_at = _parse_dt(record.get("updated_at"))
@@ -2590,7 +2744,7 @@ def _apply_pulled_row(db, business_id: int, table_name: str, model_cls, record: 
         # tenant. Writing the foreign integer through would attach the row to
         # whichever local business happens to hold that number.
         # See core/identity.py.
-        if "business_id" in data and hasattr(model_cls, "business_id"):
+        if hasattr(model_cls, "business_id"):
             data["business_id"] = business_id
 
         # Same user_id→owner re-point as the push path:
@@ -2625,8 +2779,11 @@ def _apply_pulled_row(db, business_id: int, table_name: str, model_cls, record: 
         # in one), so this call was their only guard and it was not applied.
         if resolve_parent_fk_uids(db, model_cls, data,
                                   business_id=business_id,
+                                  require_uid=True,
                                   log_prefix="[SYNC_WORKER]"):
             return _Applied("deferred")
+
+        _validate_pulled_shared_owners(db, table_name, data, existing, business_id)
 
         # The row is now going to be written, so the overwrite is real and the
         # losing version is worth recording. Deliberately after the deferral
@@ -2639,7 +2796,7 @@ def _apply_pulled_row(db, business_id: int, table_name: str, model_cls, record: 
                 business_id=business_id,
                 entity=table_name,
                 entity_id=getattr(existing, "id", rec_id),
-                incoming=dict(record),
+                incoming=dict(data),
                 existing_row=existing,
                 incoming_updated_at=cloud_updated_at,
                 existing_updated_at=_conflict_local_ts,
@@ -2657,7 +2814,7 @@ def _apply_pulled_row(db, business_id: int, table_name: str, model_cls, record: 
                 business_id=business_id,
                 entity=table_name,
                 entity_id=getattr(existing, "id", rec_id),
-                incoming=dict(record),
+                incoming=dict(data),
                 existing_row=existing,
                 incoming_updated_at=cloud_updated_at,
                 existing_updated_at=_conflict_local_ts,
@@ -2669,6 +2826,14 @@ def _apply_pulled_row(db, business_id: int, table_name: str, model_cls, record: 
 
         from core.sync.protected_fields import protect_history
         protect_history(table_name, data, existing)
+        if (existing and cloud_updated_at and _parse_dt(existing.updated_at) == cloud_updated_at
+                and table_name in _apply_hooks.FINANCIAL_ENTITIES
+                and _apply_hooks.payloads_differ(data, _apply_hooks.row_to_dict(existing))):
+            _apply_hooks.log_financial_conflict(db, business_id=business_id, entity=table_name,
+                entity_id=existing.id, incoming=data, existing_row=existing,
+                incoming_updated_at=cloud_updated_at, existing_updated_at=cloud_updated_at,
+                incoming_is_local=False, log_prefix="[SYNC_WORKER]")
+            return _Applied("skipped", reason="version-conflict")
         target_obj = existing if existing else model_cls()
 
         # If UID is present, we never overwrite or force the integer PK ID
@@ -2712,6 +2877,7 @@ def _apply_pulled_row(db, business_id: int, table_name: str, model_cls, record: 
 
 
 def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool = False, do_pull: bool = False):
+    from services import sync_retry
     business_id = user.id
     cloud_state = _CLOUD_STATE.get(business_id)
     if cloud_state and cloud_state.retry_after and time.time() < cloud_state.retry_after:
@@ -2793,6 +2959,8 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
                        business_id, _repair_err)
 
     # 1. Probe cloud endpoint health
+    if not _hybrid_sync_enabled(business_id) or not sync_retry.ready(business_id, "health"):
+        return
     now = time.time()
     previous_success = cloud_state.last_success_at if cloud_state else None
     try:
@@ -2803,15 +2971,18 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
         except (ValueError, AttributeError):
             healthy = False
         if not healthy:
+            sync_retry.defer(business_id, "health", resp)
             delay = _parse_retry_after(resp.headers.get("Retry-After"), now)
             _CLOUD_STATE[business_id] = CloudState("busy", now + delay * (1 + _rng.uniform(0, .2)), now, previous_success)
             logger.info("[SYNC_WORKER] Cloud busy/starting for business %s (HTTP %s)", business_id, resp.status_code)
             return
     except httpx.TimeoutException:
+        sync_retry.defer(business_id, "health", reason="Cloud health timed out")
         _CLOUD_STATE[business_id] = CloudState("waking", None, now, previous_success)
         logger.info("[SYNC_WORKER] Cloud is starting for business %s; retrying next tick", business_id)
         return
     except Exception as e:
+        sync_retry.defer(business_id, "health", reason=type(e).__name__)
         _CLOUD_STATE[business_id] = CloudState("offline", None, now, previous_success)
         logger.warning("[SYNC_WORKER] Cloud unreachable for business %s: %s", business_id, e)
         # (H-2) Only record a SyncLog row on the online→offline transition, so an
@@ -2830,6 +3001,7 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
 
     # Cloud is reachable — clear the offline flag so the next outage logs once.
     _CLOUD_STATE[business_id] = CloudState("online", None, now, now)
+    sync_retry.success(business_id, "health")
     _OFFLINE_STATE[business_id] = False
 
     # Pro-plan pause: the cloud already refused this business's sync (402). Don't
@@ -2856,6 +3028,8 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
         .limit(100)
         .all()
     )
+    if not sync_retry.ready(business_id, "push"):
+        queue_items = []
 
     # Must have a valid public_id (BizID) to sync to cloud — local integer ID
     # alone across network boundary is a multi-tenant security hazard.
@@ -2949,7 +3123,7 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
         total_pushed = 0
         total_pairs  = len(pairs)
         for start in range(0, total_pairs, _PUSH_CHUNK_SIZE):
-            if not _hybrid_sync_enabled(business_id):
+            if not _hybrid_sync_enabled(business_id) or not sync_retry.ready(business_id, "push"):
                 return
             chunk = pairs[start:start + _PUSH_CHUNK_SIZE]
             chunk_changes = [c for (_it, c) in chunk]
@@ -2967,7 +3141,10 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
                 "chunk_size":    len(chunk_changes),
             })
 
+            resp = None
             try:
+                if not _hybrid_sync_enabled(business_id):
+                    return
                 resp = httpx.post(
                     f"{CLOUD_URL}/api/sync/push",
                     json={"changes": chunk_changes},
@@ -3184,12 +3361,16 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
                         it.next_attempt_at = now + _push_backoff(it.attempts)
                         continue
                     it.synced_at = now
+                    if _c["operation"] == "DELETE":
+                        from core.sync.tombstones import acknowledge_delete
+                        acknowledge_delete(db, business_id, _c["entity"], _c["payload"])
                     it.error = None
                     it.attempts = 0
                     it.next_attempt_at = None
                     _acked += 1
                 db.commit()
                 total_pushed += _acked
+                sync_retry.success(business_id, "push")
 
                 # Broadcast progress AFTER success so UI reflects shrinking queue.
                 # `rejected` rides along so the UI can distinguish "queue drained"
@@ -3209,6 +3390,7 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
                 })
             except Exception as e:
                 err_msg = str(e)
+                sync_retry.defer(business_id, "push", resp, reason=type(e).__name__)
 
                 # 402 = the cloud enforces Pro and this business is on the free
                 # plan. This is NOT an error/outage — pause sync (so we stop
@@ -3239,7 +3421,7 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
                 # business until a cloud-issued token is provisioned (owner login) —
                 # otherwise we'd spam the cloud with invalid tokens every cycle.
                 if "401" in err_msg:
-                    _invalidate_cloud_token(business_id)
+                    _invalidate_cloud_token(business_id, expected_token=token)
                     if used_self_signed and not _SELF_SIGNED_REJECTED.get(business_id):
                         _SELF_SIGNED_REJECTED[business_id] = True
                         logger.error(
@@ -3376,6 +3558,9 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
         return
 
     # 3. Pull updates from cloud  (only when explicitly requested, do_pull=True)
+    from services import sync_retry
+    if not sync_retry.ready(business_id, "pull"):
+        return
     try:
         # (R-2) Use the CLOUD-clock cursor captured from the previous pull's
         # `pulled_at`. Comparing a cloud-issued timestamp against cloud rows'
@@ -3412,8 +3597,9 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
             # when there is no token — so the old message here ("will refresh
             # next cycle") described a recovery that could not happen, and the
             # pull retried for ever. Only a login mints a new one.
-            _invalidate_cloud_token(business_id)
-            _PULL_AUTH_BLOCKED[business_id] = True
+            invalidated = _invalidate_cloud_token(business_id, expected_token=token)
+            if invalidated or not _get_cloud_token(business_id):
+                _PULL_AUTH_BLOCKED[business_id] = True
             raise Exception(
                 "HTTP 401: token rejected by cloud — the stored token has been "
                 "dropped and pull is PAUSED for this business. It resumes when "
@@ -3423,14 +3609,21 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
             _PROTOCOL_BLOCKED[business_id] = True
             raise RuntimeError("Cloud/device sync protocol requires an upgrade; cursor retained")
         if resp.status_code != 200:
+            sync_retry.defer(business_id, "pull", resp)
             raise Exception(f"HTTP {resp.status_code}: {resp.text}")
 
         _resp_json = resp.json()
         if _resp_json.get("protocol") != 2:
             _PROTOCOL_BLOCKED[business_id] = True
             raise RuntimeError("Cloud sync requires protocol 2. Update the server before resuming; the pull cursor has not advanced.")
-        _PROTOCOL_BLOCKED.pop(business_id, None)
         pulled = _resp_json.get("changes", {})
+        unsupported = [name for name, rows in pulled.items() if rows and name not in _MODEL_MAP]
+        if unsupported:
+            _PROTOCOL_BLOCKED[business_id] = True
+            raise RuntimeError(
+                "Device update required for unsupported sync entities: "
+                + ", ".join(sorted(unsupported)) + "; pull cursor retained")
+        _PROTOCOL_BLOCKED.pop(business_id, None)
         # Capture the server's own pull timestamp, but DON'T advance the cursor
         # yet — we advance it only AFTER the batch is applied & committed below
         # (see end of this try). Advancing here risked skipping rows if the apply
@@ -3521,6 +3714,7 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
                 # Pre-compute total for progress reporting
                 _pull_total    = sum(len(recs) for _, recs in _ordered if recs)
                 _pull_done     = 0
+                _pull_processed = 0
                 # Post-apply invariants that failed (M-2 / M-7). Collected,
                 # logged at ERROR after the batch, and never swallowed — a
                 # document whose journal or paid state is missing means this
@@ -3535,6 +3729,19 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
                 # once the cursor moved. Now held in the inbox and counted here
                 # so the progress figures stop lying about them.
                 _pull_deferred = 0
+
+                class _InboxReceiptError(RuntimeError):
+                    pass
+
+                def _remember_required(**kwargs):
+                    receipt = _inbox.remember(db, business_id=business_id, **kwargs)
+                    if receipt is None:
+                        raise _InboxReceiptError("Pull inbox receipt failed; page cursor retained")
+                    try:
+                        db.flush()
+                    except Exception as exc:
+                        raise _InboxReceiptError("Pull inbox receipt could not be persisted") from exc
+                    return receipt
 
                 for table_name, records in _ordered:
                     model_cls = _MODEL_MAP.get(table_name)
@@ -3579,10 +3786,14 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
                             _conflicts_logged += _res.conflicts
                             if _res.hook_failure is not None:
                                 _apply_failures.append(_res.hook_failure)
+                                repair_record = dict(record, _sync_repair_only=True)
+                                _remember_required(
+                                    entity=table_name, record=repair_record,
+                                    reason="hook-failed",
+                                    error="; ".join(_res.hook_failure.errors)[:500],
+                                )
                             if _res.status == "deferred":
-                                _inbox.remember(
-                                    db,
-                                    business_id=business_id,
+                                _remember_required(
                                     entity=table_name,
                                     record=record,
                                     reason="deferred",
@@ -3593,20 +3804,20 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
                                 # The row was offered, declined, and is still on
                                 # the cloud. The cursor is about to move past it,
                                 # so this is the LAST time we will be shown it.
-                                _inbox.remember(
-                                    db,
-                                    business_id=business_id,
+                                _remember_required(
                                     entity=table_name,
                                     record=record,
                                     reason=_res.reason,
                                     error=(
-                                        "row has no uid — cannot be matched safely"
-                                        if _res.reason == "no-uid" else
+                                        "row has no durable identity — cannot be matched safely"
+                                        if _res.reason in {"no-uid", "no-identity"} else
                                         "cloud updated_at is >5 min ahead of this "
                                         "machine's clock"
                                     ),
                                 )
                                 _pull_deferred += 1
+                        except _InboxReceiptError:
+                            raise
                         except Exception as row_err:
                             # M-12: a rejected row is a MISSING row, not a log
                             # line. It is now DURABLE in the inbox and retried
@@ -3618,9 +3829,7 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
                                 "error": str(getattr(row_err, "orig", row_err)
                                              ).strip().splitlines()[0],
                             })
-                            _inbox.remember(
-                                db,
-                                business_id=business_id,
+                            _remember_required(
                                 entity=table_name,
                                 record=record,
                                 reason="rejected",
@@ -3637,15 +3846,10 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
                                 log_prefix="[SYNC_WORKER]",
                             )
 
-                    if records:
-                            # Successes only. Adding len(records) here regardless
-                            # is what let the progress bar reach 100% on a batch
-                            # that had dropped rows (M-12). Deferred rows are
-                            # excluded for the same reason — they have NOT landed.
-                            _pull_done += max(
-                                0, len(records)
-                                - sum(1 for f in _pull_row_failures
-                                      if f["entity"] == table_name))
+                    # Derived-state failures are incomplete records too.
+                    _pull_processed += len(records)
+                    _pull_done = max(0, _pull_processed - len(_pull_row_failures)
+                                     - _pull_deferred - len(_apply_failures))
 
                 if _pull_row_failures:
                     logger.error(
@@ -3690,10 +3894,11 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
                         "type":     "sync.progress",
                         "phase":    "pull",
                         "entities": [],
-                        "done":     _pull_total if not _pull_row_failures else _pull_done,
+                        "done":     _pull_done,
                         "total":    _pull_total,
                         "chunk_size": 0,
-                        "failed":   len(_pull_row_failures),
+                        "failed":   len(_pull_row_failures) + len(_apply_failures),
+                        "deferred": _pull_deferred,
                     })
 
                 
@@ -3798,28 +4003,35 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
                 raise RuntimeError(
                     f"entity {_entity!r} is no longer in the sync model map")
             _out = _apply_pulled_row(_db, business_id, _entity, _model, _record)
+            if _out.hook_failure is not None:
+                return "hook-failed"
             # A skip that means "still not here" must report its REASON, not the
             # bare status: `drain` reads this against `_HELD_OUTCOMES` to decide
             # whether the row was delivered or declined, and "skipped" alone
             # would be counted as delivered.
             return _out.reason if _out.is_lost else _out.status
 
+        _drain_failed = False
+        drain_sync_token = sync_disabled_var.set(True)
         try:
             _inbox.drain(db, business_id, _drain_apply)
         except Exception as _inbox_err:
+            _drain_failed = True
             # The inbox is a recovery mechanism. It failing must not take down
             # the pull that is otherwise working.
             logger.warning(
                 "[SYNC_WORKER] biz=%s: inbox drain failed (non-fatal, retried "
                 "next cycle): %s", business_id, _inbox_err,
             )
+        finally:
+            sync_disabled_var.reset(drain_sync_token)
 
         # A clean outbox is not proof that the initial cloud restore finished.
         # Only clear its durable marker after the final page and every held row
         # are applied, and the matching pull cursor has persisted successfully.
-        if _cloud_cursor and not _pull_has_more and not _pull_failed_tables:
+        remaining = _inbox.stats(db, business_id)
+        if _cloud_cursor and not _pull_has_more and not _pull_failed_tables and not _drain_failed:
             from database.models import SyncCursor
-            remaining = _inbox.stats(db, business_id)
             stored_cursor = (db.query(SyncCursor)
                              .filter(SyncCursor.business_id == business_id, SyncCursor.entity == "*").first())
             if remaining.get("pending_count", 0) == 0 and stored_cursor and stored_cursor.cursor_value == _cloud_cursor:
@@ -3837,7 +4049,17 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
                      .update({User.settings: json.dumps(current_settings)}, synchronize_session=False))
                     db.commit()
 
+        if _pull_failed_tables or _drain_failed or remaining.get("pending_count", 0):
+            sync_retry.defer(business_id, "pull", reason="Pull restore or invariant repairs remain pending")
+        else:
+            sync_retry.success(business_id, "pull")
+
     except Exception as e:
+        db.rollback()
+        # Includes network failures and receipt failures. Hold the page and
+        # persist a retry budget instead of spinning on the bootstrap marker.
+        if sync_retry.ready(business_id, "pull"):
+            sync_retry.defer(business_id, "pull", reason=str(e)[:500])
         logger.error("[SYNC_WORKER] Pull failed for business_id=%s: %s", business_id, e)
         # Log pull failure
         log = SyncLog(

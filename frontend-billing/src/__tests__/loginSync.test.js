@@ -28,6 +28,22 @@ beforeEach(() => {
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
 describe('Pro login background sync', () => {
+  it('keeps identity checks, provisioning and fallback kickoff on the captured LAN master', async () => {
+    const backend = 'http://192.168.5.25:8001'
+    const fetch = vi.fn(async url => {
+      if (url === 'http://cloud/profile' || url === `${backend}/profile`) return response(profile)
+      if (url === `${backend}/api/sync/cloud-token`) return response({ hosting_mode: 'hybrid', sync_started: false })
+      if (url === `${backend}/api/sync/flush?pull=true`) return response({}, 202)
+      throw new Error(`Wrong backend ${url}`)
+    })
+    vi.stubGlobal('fetch', fetch)
+    expect(await reconcileBizIdOnLogin('lan-local-token', 'cloud-token', { base: backend })).toMatchObject({ accepted: true, pending: true })
+    expect(fetch.mock.calls.map(([url]) => url)).toEqual([
+      'http://cloud/profile', `${backend}/profile`, `${backend}/api/sync/cloud-token`, `${backend}/api/sync/flush?pull=true`,
+    ])
+    expect(fetch.mock.calls[1][1].headers.Authorization).toBe('Bearer lan-local-token')
+    expect(fetch.mock.calls.slice(2).every(([, options]) => options.headers.Authorization === 'Bearer lan-local-token')).toBe(true)
+  })
   it('verifies backend-specific identities and queues restoration without a data popup or bulk transfer', async () => {
     const fetch = transport()
     vi.stubGlobal('fetch', fetch)
@@ -108,6 +124,15 @@ describe('Pro login background sync', () => {
 })
 
 describe('manual background sync request', () => {
+  it('bounds a response whose headers arrived but JSON body never finishes', async () => {
+    vi.useFakeTimers()
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 202, json: () => new Promise(() => {}) })))
+    const pending = expect(requestBackgroundSync('local-token')).rejects.toThrow(/timed out/)
+    await vi.advanceTimersByTimeAsync(10000)
+    await pending
+    expect(events('sync-event').at(-1).detail).toMatchObject({ status: 'failed', accepted: false })
+    expect(events('sync-flushed')).toHaveLength(0)
+  })
   it('treats HTTP 202 as pending rather than completed', async () => {
     vi.stubGlobal('fetch', transport())
     expect(await requestBackgroundSync('local-token')).toMatchObject({ accepted: true, pending: true })

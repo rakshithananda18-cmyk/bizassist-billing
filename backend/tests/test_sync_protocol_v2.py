@@ -27,7 +27,8 @@ from routes.sync_staff import StaffRecord, StaffPushRequest, sync_staff_push
 
 
 @pytest.fixture
-def tenant():
+def tenant(tmp_path, monkeypatch):
+    monkeypatch.setenv("BIZASSIST_DATA_DIR", str(tmp_path))
     pg = bool(os.environ.get("TS_RUNTIME_TEST_DATABASE_URL"))
     engine = create_engine(os.environ["TS_RUNTIME_TEST_DATABASE_URL"]) if pg else create_engine("sqlite:///:memory:")
     factory = sessionmaker(bind=engine)

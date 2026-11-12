@@ -154,6 +154,12 @@ def _tar_log(data: bytes) -> str:
 
 def test_daily_upload_sends_only_local_plus_cloud_and_only_their_lines(tmp_path, monkeypatch):
     hybrid, local = _owner("hybrid"), _owner("local")
+    with SessionLocal() as db:
+        owner = db.get(User, hybrid["id"])
+        settings = json.loads(owner.settings)
+        settings["general"]["diagnostic_upload_enabled"] = True
+        owner.settings = json.dumps(settings)
+        db.commit()
     monkeypatch.chdir(tmp_path)
     (tmp_path / "logs" / "backups").mkdir(parents=True)
     (tmp_path / "logs" / "bizassist.log").write_text(

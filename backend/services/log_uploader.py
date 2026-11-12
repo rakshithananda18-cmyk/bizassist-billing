@@ -96,6 +96,9 @@ def archive_logs(business_id: int) -> Optional[str]:
 
 def upload_logs_to_cloud(business_id: int, file_path: str, message: str = "Scheduled log upload") -> bool:
     """Upload archived logs to the cloud backend."""
+    from services.sync_policy import cloud_egress_allowed
+    if not cloud_egress_allowed(business_id, diagnostics=True):
+        return False
     token = _get_cloud_token(business_id)
     if not token:
         logger.info("[LOG_UPLOADER] No cloud token found for business_id=%s, skipping upload", business_id)
@@ -109,6 +112,8 @@ def upload_logs_to_cloud(business_id: int, file_path: str, message: str = "Sched
             headers = {"Authorization": f"Bearer {token}"}
             
             logger.info("[LOG_UPLOADER] Uploading logs to %s for business %s", url, business_id)
+            if not cloud_egress_allowed(business_id, diagnostics=True):
+                return False
             resp = httpx.post(url, data=data, files=files, headers=headers, timeout=15.0)
     except Exception as e:
         logger.warning("[LOG_UPLOADER] Network error during log upload for business %s: %s", business_id, e)
@@ -171,7 +176,8 @@ def run_daily_log_upload():
             business_id = user.id
             # "Local only" sends nothing, logs included - a cloud token alone
             # is not consent (see syncs_to_cloud).
-            if not syncs_to_cloud(business_id):
+            from services.sync_policy import cloud_egress_allowed
+            if not cloud_egress_allowed(business_id, diagnostics=True):
                 continue
             token = _get_cloud_token(business_id)
             if not token:
@@ -181,6 +187,8 @@ def run_daily_log_upload():
             _bizid = _bizid_for(business_id)
             if _bizid and os.path.exists(backup_dir):
                 for f in os.listdir(backup_dir):
+                    if not cloud_egress_allowed(business_id, diagnostics=True):
+                        break
                     fp = os.path.join(backup_dir, f)
                     if os.path.isfile(fp) and f.startswith(f"{ARCHIVE_PREFIX}{_bizid}_") and f.endswith(".tar.gz"):
                         logger.info("[LOG_UPLOADER] Retrying upload of old archive %s", f)

@@ -182,6 +182,12 @@ describe('buildInvoicePayload (the money contract sent to the backend)', () => {
     expect(p.due_date).toBeNull()
     expect(p.gst_enabled).toBe(true)
   })
+  it('carries the current device counter series even when a saved draft predates device setup', () => {
+    const payload = buildInvoicePayload({ invoiceNo: 'LCL-OW-0001', counterPrefix: 'LCL-OW-0AB-', form, gstEnabled: true })
+    expect(payload.invoice_no).toBe('LCL-OW-0001')
+    expect(payload.counter_prefix).toBe('LCL-OW-0AB')
+    expect(p).not.toHaveProperty('counter_prefix')
+  })
   it('spreads the line discount into an effective per-unit price', () => {
     // (2×100 − 50) / 2 = 75
     expect(p.items[0].price).toBe(75)

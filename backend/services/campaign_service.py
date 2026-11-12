@@ -393,7 +393,8 @@ def redeem_offer(business_id: int, code: str, db: Session) -> dict:
         "granted_at": now.isoformat(),
         "note": offer.description or f"Offer code {offer.code}",
     }
-    owner.settings = json.dumps(settings)
+    from services.settings_store import replace_settings_preserving_consent
+    replace_settings_preserving_consent(db, owner, settings)
     offer.redeemed_count = (offer.redeemed_count or 0) + 1
     db.add(OfferRedemption(offer_id=offer.id, business_id=owner.id, redeemed_at=now))
     db.commit()

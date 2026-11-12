@@ -4,6 +4,14 @@ import httpx
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def hybrid_listener_consent(monkeypatch):
+    # These stream protocol tests model an already-authorized hybrid business.
+    # Local-only boundaries are exercised against real settings separately.
+    from services import sync_policy
+    monkeypatch.setattr(sync_policy, "cloud_egress_allowed", lambda *a, **k: True)
+
+
 @pytest.mark.parametrize("replay", ["complete", "gap"])
 def test_listener_reads_with_dead_socket_timeout_and_pulls_only_for_gap(monkeypatch, replay):
     from services import cloud_listener

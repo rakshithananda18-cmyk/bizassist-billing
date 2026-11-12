@@ -4,7 +4,9 @@
  * Allows user to choose their store username, mandatory phone, category, and business name.
  */
 import React, { useState, useEffect } from 'react'
-import { API_BASE } from '../../config'
+import { API_BASE, CLOUD_URL, IS_LOCAL_APP } from '../../config'
+import { useAuth } from '../../contexts/AuthContext'
+import { boundedJsonFetch } from '../../api/boundedRequest'
 import CustomSelect from '../common/CustomSelect'
 
 const CATEGORIES = [
@@ -19,6 +21,7 @@ const CATEGORIES = [
 ]
 
 export default function GoogleOnboardingModal({ isOpen, initialData, credential, onClose, onSuccess }) {
+  const { googleAuth } = useAuth()
   const [businessName, setBusinessName] = useState('')
   const [category, setCategory] = useState('general')
   const [username, setUsername] = useState('')
@@ -45,7 +48,7 @@ export default function GoogleOnboardingModal({ isOpen, initialData, credential,
     const timer = setTimeout(async () => {
       setCheckingUname(true)
       try {
-        const res = await fetch(`${API_BASE}/api/auth/check-username?username=${encodeURIComponent(clean)}`)
+        const res = await boundedJsonFetch(`${IS_LOCAL_APP ? CLOUD_URL : API_BASE}/api/auth/check-username?username=${encodeURIComponent(clean)}`)
         const data = await res.json()
         setUnameAvailable(data?.available ?? null)
       } catch {
@@ -78,21 +81,13 @@ export default function GoogleOnboardingModal({ isOpen, initialData, credential,
 
     setLoading(true)
     try {
-      const res = await fetch(`${API_BASE}/api/auth/google/register`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      const data = await googleAuth({
           credential,
           username: username.trim(),
           business_name: businessName.trim() || `${username.trim()}'s Store`,
           category,
           phone: phone.trim(),
-        }),
-      })
-      const data = await res.json()
-      if (!res.ok) {
-        throw new Error(data?.detail || 'Registration failed.')
-      }
+        }, true)
 
       if (onSuccess) {
         onSuccess(data)

@@ -115,3 +115,11 @@ logs/
 .codex/
 .migration-venv/
 .vite/
+
+# Installation synchronization locks/retry state (never source or credentials).
+**/.sync-worker.lock
+**/sync_retry.json
+**/sync_retry.lock
+**/cloud_sync_tokens.lock
+**/installation_id
+**/installation_id.lock

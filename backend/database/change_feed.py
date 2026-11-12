@@ -64,19 +64,31 @@ def _install_change_feed(connection):
     Trigger writes are fail-closed: a business mutation cannot commit without
     its event. Existing records are seeded while the same writer locks apply.
     """
-    from database.models import SyncFeedClock, SyncFeedEvent
+    from database.models import SyncFeedClock, SyncFeedEvent, SyncTombstone
     SyncFeedClock.__table__.create(connection, checkfirst=True)
     SyncFeedEvent.__table__.create(connection, checkfirst=True)
+    SyncTombstone.__table__.create(connection, checkfirst=True)
+    from database.sync_map import APPEND_ONLY_DELETE_BLOCKLIST
+    retained = ",".join("'" + name + "'" for name in sorted(APPEND_ONLY_DELETE_BLOCKLIST))
     pg = connection.dialect.name == "postgresql"
     if pg:
         connection.execute(text(f"SET LOCAL lock_timeout = '{_FEED_LOCK_TIMEOUT}'"))
-        _pg_function(connection, "bizassist_feed_emit", "bizassist_feed_emit(integer,text,jsonb,text)", "void", """
+        _pg_function(connection, "bizassist_feed_emit", "bizassist_feed_emit(integer,text,jsonb,text)", "void", f"""
             DECLARE rev bigint;
             BEGIN
               IF bid IS NULL THEN RETURN; END IF;
               INSERT INTO sync_feed_clock(business_id,revision) VALUES(bid,1)
               ON CONFLICT(business_id) DO UPDATE SET revision=sync_feed_clock.revision+1
               RETURNING revision INTO rev;
+              IF op='DELETE' THEN
+                body := body || jsonb_build_object('_sync_deleted_at', clock_timestamp() AT TIME ZONE 'UTC');
+                IF ent NOT IN ({retained}) THEN
+                  INSERT INTO sync_tombstones(business_id,entity,row_uid,deleted_at,needs_upload)
+                  VALUES(bid,ent,COALESCE(body->>'uid',body->>'id'),(body->>'_sync_deleted_at')::timestamp,false)
+                  ON CONFLICT(business_id,entity,row_uid) DO UPDATE SET
+                    deleted_at=GREATEST(sync_tombstones.deleted_at,EXCLUDED.deleted_at);
+                END IF;
+              END IF;
               INSERT INTO sync_feed_events(business_id,revision,entity,row_uid,operation,payload)
               VALUES(bid,rev,ent,COALESCE(body->>'uid',body->>'id'),op,body::text);
             END;
@@ -110,6 +122,8 @@ def _install_change_feed(connection):
             for op in ("INSERT", "UPDATE", "DELETE"):
                 ref = "OLD" if op == "DELETE" else "NEW"
                 body = "json_object(" + ",".join(f"'{c}',{ref}.\"{c}\"" for c in sorted(cols)) + ")"
+                if op == "DELETE":
+                    body = f"json_set({body}, '$._sync_deleted_at', strftime('%Y-%m-%d %H:%M:%f','now'))"
                 statements = []
                 for expr in owner_sql:
                     bid = _sqlite_owner(expr, ref)
@@ -118,6 +132,13 @@ def _install_change_feed(connection):
                         f"UPDATE sync_feed_clock SET revision=revision+1 WHERE business_id={bid};",
                         f"INSERT INTO sync_feed_events(business_id,revision,entity,row_uid,operation,payload) SELECT {bid},revision,'{name}',CAST(COALESCE(json_extract({body},'$.uid'),json_extract({body},'$.id')) AS TEXT),'{op}',{body} FROM sync_feed_clock WHERE business_id={bid};",
                     ]
+                    if op == "DELETE" and name not in APPEND_ONLY_DELETE_BLOCKLIST:
+                        statements += [
+                            f"INSERT INTO sync_tombstones(business_id,entity,row_uid,deleted_at,needs_upload) "
+                            f"SELECT {bid},'{name}',CAST(COALESCE(json_extract({body},'$.uid'),json_extract({body},'$.id')) AS TEXT),"
+                            f"strftime('%Y-%m-%d %H:%M:%f','now'),1 WHERE {bid} IS NOT NULL "
+                            "ON CONFLICT(business_id,entity,row_uid) DO UPDATE SET deleted_at=max(sync_tombstones.deleted_at,excluded.deleted_at),needs_upload=1;"
+                        ]
                 trigger = f"bizassist_feed_{name}_{op.lower()}"
                 timing = "BEFORE" if op == "DELETE" else "AFTER"
                 connection.exec_driver_sql(f'DROP TRIGGER IF EXISTS "{trigger}"')
@@ -192,7 +213,12 @@ def _owner_expressions(name, cols):
         return ["LEAST((body->>'seller_business_id')::integer,(body->>'buyer_business_id')::integer)", "GREATEST((body->>'seller_business_id')::integer,(body->>'buyer_business_id')::integer)"]
     if name in _CHILD:
         parent, fk = _CHILD[name]
-        owners = ("seller_business_id", "buyer_business_id") if parent == "b2b_orders" else ("business_id",)
+        if parent == "b2b_orders":
+            # All shared-row writers acquire the two feed clocks in the same
+            # order, including children; seller-first can invert parent locks.
+            return [f"SELECT {fn}(seller_business_id,buyer_business_id) FROM {parent} WHERE id=(body->>'{fk}')::integer"
+                    for fn in ("LEAST", "GREATEST")]
+        owners = ("business_id",)
         return [f"SELECT {owner} FROM {parent} WHERE id=(body->>'{fk}')::integer" for owner in owners]
     return []
 
@@ -244,6 +270,12 @@ def pull_feed(db, business_id, cursor, limit):
         # Deleted rows carry their original UID and operation explicitly.
         obj = db.query(model).filter(model.uid == event.row_uid).first() if hasattr(model, "uid") else db.get(model, payload.get("id"))
         if obj is not None:
+            current_body = {column.name: getattr(obj, column.name) for column in model.__table__.columns}
+            if business_id not in _owners_for_seed(db, event.entity, current_body):
+                # Historical events retain their original owner. A later owner
+                # reassignment must never turn that event into a read of the
+                # current tenant's private row through its global UID.
+                raise HTTPException(409, "Sync row ownership changed; repair is required before this cursor can advance")
             payload = _serialize_orm_obj(obj, db)
         elif event.operation == "DELETE":
             payload["_sync_deleted"] = True
@@ -251,6 +283,11 @@ def pull_feed(db, business_id, cursor, limit):
             # A later deletion is represented by a tombstone even if its own
             # event is on the following page.
             payload["_sync_deleted"] = True
+        if payload.get("_sync_deleted"):
+            from core.sync.tombstones import get_tombstone
+            marker = get_tombstone(db, business_id, event.entity, event.row_uid)
+            if marker:
+                payload["_sync_deleted_at"] = marker["deleted_at"].isoformat() if hasattr(marker["deleted_at"], "isoformat") else marker["deleted_at"]
         payload["_sync_revision"] = event.revision
         changes.setdefault(event.entity, []).append(payload)
     return {"protocol": 2, "cursor": prefix + str(rows[-1].revision if rows else revision), "changes": changes, "has_more": more, "truncated_tables": [], "failed_tables": [], "pulled_at": None}

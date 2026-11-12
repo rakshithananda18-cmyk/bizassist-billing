@@ -15,7 +15,7 @@ from sqlalchemy.orm import sessionmaker
 
 from database.db import Base
 from database.models import (User, Customer, SyncCursor, SyncQueue, SyncLog, SyncInbox, ConflictLog,
-                             SyncControlOutbox, SyncFeedClock, SyncFeedEvent, TableAlteration)
+                             SyncControlOutbox, SyncFeedClock, SyncFeedEvent, TableAlteration, SyncTombstone)
 from routes import sync as routes
 from services import sync_worker as worker
 from services.dates import utc_now
@@ -23,12 +23,13 @@ from services.dates import utc_now
 
 @pytest.fixture
 def device(tmp_path, monkeypatch):
+    monkeypatch.setenv("BIZASSIST_DATA_DIR", str(tmp_path / "sync-runtime"))
     engine = create_engine(f"sqlite:///{tmp_path / 'test_restore.db'}")
     # Only the real tables exercised by this workflow are needed. Creating the
     # unrelated document/AI/B2B schemas per test makes the suite much slower.
     Base.metadata.create_all(engine, tables=[model.__table__ for model in (
         User, Customer, SyncCursor, SyncQueue, SyncLog, SyncInbox, ConflictLog,
-        SyncControlOutbox, SyncFeedClock, SyncFeedEvent, TableAlteration)])
+        SyncControlOutbox, SyncFeedClock, SyncFeedEvent, TableAlteration, SyncTombstone)])
     sessions = sessionmaker(bind=engine)
     db = sessions()
     owner = User(id=50191, public_id="RESTORE-BUSINESS", username="restore-owner",
@@ -57,6 +58,8 @@ def device(tmp_path, monkeypatch):
     monkeypatch.setattr(worker, "_safe_broadcast", lambda *a, **k: None)
     monkeypatch.setattr(worker, "_heal_unqueued_rows", lambda *a, **k: 0)
     monkeypatch.setattr(worker, "_repair_stuck_child_payloads", lambda *a, **k: 0)
+    from services import sync_retry
+    monkeypatch.setattr(sync_retry, "data_path", lambda name: tmp_path / name)
     from services import cloud_listener, control_outbox
     monkeypatch.setattr(cloud_listener, "start", lambda *a: None)
     monkeypatch.setattr(cloud_listener, "stop", lambda *a: None)
@@ -80,7 +83,11 @@ def device(tmp_path, monkeypatch):
         raise AssertionError(f"Unexpected cloud read: {url}")
 
     monkeypatch.setattr(httpx, "get", cloud_get)
-    monkeypatch.setattr(httpx, "post", Mock(side_effect=AssertionError("Unexpected cloud write")))
+    def cloud_post(url, **kwargs):
+        if url == "https://trusted-cloud.example/api/sync/register-device":
+            return httpx.Response(200, json={"namespace": "TST"})
+        raise AssertionError("Unexpected cloud write")
+    monkeypatch.setattr(httpx, "post", cloud_post)
     env = SimpleNamespace(db=db, sessions=sessions, owner=owner, bid=bid, identity=identity,
                           saved=saved, profile=profile, subscription=subscription,
                           calls=calls, pages=pages, cloud_get=cloud_get)
@@ -99,6 +106,22 @@ def provision(device, enabled=True):
     response = routes.save_cloud_token(routes.CloudTokenBody(token="cloud-issued-test-token", enable_sync=enabled),
                                        tasks, current_user=device.identity, db=device.db)
     return response, tasks
+
+
+def test_reload_can_resume_backend_renewed_credential_without_browser_token(device):
+    tasks = BackgroundTasks()
+    response = routes.resume_device_sync(tasks, current_user=device.identity, db=device.db)
+    assert response["hosting_mode"] == "hybrid" and response["sync_started"] is True
+    assert "token" not in response
+    assert len(tasks.tasks) == 1
+
+
+def test_resume_requires_online_owner_reauthentication_when_backend_proof_missing(device, monkeypatch):
+    monkeypatch.setattr(worker, "ensure_fresh_cloud_token", lambda bid: None)
+    with pytest.raises(HTTPException) as error:
+        routes.resume_device_sync(BackgroundTasks(), current_user=device.identity, db=device.db)
+    assert error.value.status_code == 401
+    assert not error.value.headers  # A cloud setup failure must not invalidate the local login.
 
 
 def settings(device):
@@ -190,7 +213,11 @@ def test_verified_pro_activation_persists_identity_entitlement_then_queues(devic
     response, tasks = provision(device)
     assert response == {"status": "ok", "hosting_mode": "hybrid", "sync_started": True, "initial_restore_pending": True}
     local = settings(device)
-    assert local["general"] == {"hosting_mode": "hybrid", "app_zoom": 90, "sync_bootstrap_pending": True}
+    assert local["general"]["hosting_mode"] == "hybrid"
+    assert local["general"]["app_zoom"] == 90
+    assert local["general"]["sync_bootstrap_pending"] is True
+    assert local["general"]["device_invoice_namespace"] == "TST"
+    assert local["general"]["device_installation_id"]
     assert local["subscription"]["plan"] == "pro"
     assert device.saved == [(device.bid, "cloud-issued-test-token")]
     assert tasks.tasks[0].kwargs == {"pull": True}
@@ -277,7 +304,9 @@ def test_initial_restore_continues_pages_and_never_claims_empty_outbox_means_rea
     run_queued(tasks)
     status = routes.get_queue_depth(current_user=device.identity, db=device.db)
     assert status["pending_count"] == 0
-    assert status["pull"] == {"initialized": False, "initial_restore_pending": True, "has_more": True}
+    assert status["pull"]["initialized"] is False
+    assert status["pull"]["initial_restore_pending"] is True
+    assert status["pull"]["has_more"] is True
     assert device.db.query(Customer).count() == 1
     # The normal sync interval has not elapsed. An initial restore still drains
     # its next bounded page on the next scheduler tick.
@@ -285,11 +314,14 @@ def test_initial_restore_continues_pages_and_never_claims_empty_outbox_means_rea
     device.db.expire_all()
     assert {r.name for r in device.db.query(Customer)} == {"First cloud customer", "Second cloud customer"}
     status = routes.get_queue_depth(current_user=device.identity, db=device.db)
-    assert status["pull"] == {"initialized": True, "initial_restore_pending": False, "has_more": False}
+    assert status["pull"]["initialized"] is True
+    assert status["pull"]["initial_restore_pending"] is False
+    assert status["pull"]["has_more"] is False
+    assert status["pull"]["last_pull_at"]
     assert device.db.query(SyncCursor).one().cursor_value == "feed:v2:812:2"
 
 
-def test_initial_restore_retries_after_a_failed_page_and_process_memory_reset(device):
+def test_initial_restore_retries_after_a_failed_page_and_process_memory_reset(device, monkeypatch):
     _, tasks = provision(device)
     device.pages.append(httpx.Response(503, json={"detail": "Starting"}))
     run_queued(tasks)
@@ -297,6 +329,9 @@ def test_initial_restore_retries_after_a_failed_page_and_process_memory_reset(de
     assert device.db.query(SyncCursor).count() == 0
     worker._LAST_PULL.pop(device.bid, None)
     worker._PULL_MORE_PENDING.discard(device.bid)
+    from services import sync_retry
+    next_attempt = sync_retry.snapshot(device.bid)["pull"]["next_attempt_at"]
+    monkeypatch.setattr(sync_retry.time, "time", lambda: next_attempt + 1)
     device.pages.append(page(1, "Recovered customer"))
     worker.run_hybrid_sync()
     assert settings(device)["general"]["sync_bootstrap_pending"] is False

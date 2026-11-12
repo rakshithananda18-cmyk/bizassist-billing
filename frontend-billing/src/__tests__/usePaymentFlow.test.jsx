@@ -28,6 +28,15 @@ function setup(overrides = {}, invoice = `POS-${++serial}`) {
 beforeEach(() => { configMock.local = true; vi.useFakeTimers(); confirmMock.mockReset().mockResolvedValue('paid'); vi.mocked(printInvoicePdf).mockReset().mockResolvedValue(); vi.mocked(playSuccessChime).mockReset(); vi.spyOn(window, 'print').mockImplementation(() => {}) })
 afterEach(() => { cleanup(); vi.clearAllTimers(); vi.useRealTimers(); vi.restoreAllMocks(); delete window.bizassistDesktop })
 describe('POS invoice save safety', () => {
+  it('sends the current registered device series with a pre-setup cart and prints the server-issued number', async () => {
+    const draftNumber = 'LCL-OW-0001', issuedNumber = 'LCL-OW-0AB-0001'
+    const hook = setup({ counterPrefix: 'LCL-OW-0AB', authFetch: vi.fn(async () => ok(issuedNumber)) }, draftNumber)
+    await act(async () => expect(await hook.result.current.handleSaveInvoice(true, true)).toBe(true))
+    expect(JSON.parse(hook.props.authFetch.mock.calls[0][1].body)).toMatchObject({ invoice_no: draftNumber, counter_prefix: 'LCL-OW-0AB' })
+    expect(hook.props.onReceiptReady).toHaveBeenCalledWith(expect.objectContaining({ invoiceNo: issuedNumber }))
+    expect(hook.props.authFetch).toHaveBeenCalledOnce()
+    expect(hook.props.enqueueOffline).not.toHaveBeenCalled()
+  })
   it('sends successful printing directly to the native dialog without an extra app dialog', async () => {
     const hook = setup()
     await act(async () => hook.result.current.handleSaveInvoice(true, true))

@@ -41,20 +41,8 @@ def syncs_to_cloud(business_id: int) -> bool:
     Local only reaches the cloud through the one-time move when the owner
     switches (routes/data_transfer.py carries the profile and staff too).
     """
-    try:
-        from database.db import SessionLocal
-        from database.models import User
-        with SessionLocal() as s:
-            user = s.query(User).filter(User.id == business_id).first()
-            if user is not None and user.parent_business_id is not None:
-                user = s.query(User).filter(User.id == user.parent_business_id).first()
-            if user is None or not user.settings:
-                return False
-            general = (json.loads(user.settings) or {}).get("general") or {}
-            return general.get("hosting_mode") == "hybrid"
-    except Exception as e:
-        logger.warning("[SYNC] Could not read hosting_mode for biz %s (%s) - nothing sent", business_id, e)
-        return False
+    from services.sync_policy import cloud_egress_allowed
+    return cloud_egress_allowed(business_id)
 
 
 def push_profile_to_cloud(business_id: int, fields: dict, db=None) -> None:

@@ -9,6 +9,7 @@ import { useNavigate, useSearchParams, useLocation } from 'react-router-dom'
 import { API_BASE, IS_LOCAL_APP } from '../config'
 import AppLayout from '../layouts/AppLayout'
 import { useAuth, useBusinessConfig } from '../contexts/AuthContext'
+import { readDeviceSeries } from '../utils/deviceSeries'
 import { useConfirm } from '../contexts/ConfirmContext'
 import { AlertIcon, BillsIcon, CheckIcon, ChevronRightIcon, CloseIcon } from '../components/Icons'
 import { usePageLifecycle } from '../hooks/usePageLifecycle'
@@ -99,7 +100,7 @@ function refocusScanner(ref, delay) {
 export default function Sales(props = {}) {
   const phoneCounter = usePhoneLayout()
   const [mobilePane, setMobilePane] = useState('products')
-  const { authFetch, profile, user, networkMode } = useAuth()
+  const { authFetch, profile, user, networkMode, settings: authSettings } = useAuth()
   // Business-type billing profile (Phase 2) — follows the counter-mode switcher
   // live; FAIL-OPEN (null when offline → no behavior change).
   const { profile: billingProfile } = useBillingProfile()
@@ -778,8 +779,10 @@ export default function Sales(props = {}) {
     // FLASH on cloud bills. Web is ALWAYS cloud; desktop uses its own mode choice.
     const mode = effectiveHostingMode()
     const tag = mode === 'cloud' ? '' : 'LCL-'
-    return `${tag}${counter}-`
-  }, [user?.counter_prefix, user?.role])
+    const namespace = mode === 'cloud' ? null : authSettings?.general?.device_invoice_namespace || settings?.general?.device_invoice_namespace
+      || profile?.device_invoice_namespace || readDeviceSeries(user?.public_id, API_BASE)
+    return `${tag}${counter}${namespace ? `-${namespace}` : ''}-`
+  }, [user?.counter_prefix, user?.role, user?.public_id, authSettings?.general?.device_invoice_namespace, settings?.general?.device_invoice_namespace, profile?.device_invoice_namespace])
 
   const availableCounters = useMemo(() => {
     if ((user?.role || '').toLowerCase() === 'cashier') return []
@@ -1531,6 +1534,7 @@ export default function Sales(props = {}) {
     changeToReturn,
     activeTab,
     activeTabId,
+    counterPrefix: getCounterPrefix().replace(/-$/, ''),
     closeTab,
     setTabs,
     syncTabNames,

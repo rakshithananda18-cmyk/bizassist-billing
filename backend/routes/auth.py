@@ -44,6 +44,11 @@ _sub_sync_next: dict[int, float] = {}  # business_id → earliest next cloud che
 
 def _session_claims(user_row: User, *, sid: str, psid=None, owner=None) -> dict:
     holder = owner or user_row
+    try:
+        general = (json.loads(holder.settings or "{}") or {}).get("general") or {}
+        local_only = general.get("sync_local_only_explicit") is True
+    except (ValueError, TypeError, AttributeError):
+        local_only = True
     claims = {
         "id": user_row.parent_business_id or user_row.id,
         "user_id": user_row.id,
@@ -52,6 +57,7 @@ def _session_claims(user_row: User, *, sid: str, psid=None, owner=None) -> dict:
         "business_name": holder.business_name,
         "role": user_row.role,
         "tv": user_row.token_version or 0,
+        "local_only": local_only if _DB_MODE == "local" else False,
         "sid": sid,
     }
     if psid:
@@ -122,12 +128,14 @@ def reconcile_password(req: ReconcilePasswordRequest, request: Request, db: Sess
     """
     _require_loopback_local(request)
     uname = (req.username or "").strip()
-    user = (db.query(User)
-              .filter(User.username == uname, User.parent_business_id.is_(None))
-              .first())
+    from database.security import find_owner_by_identifier
+    user = find_owner_by_identifier(db, uname)
     if not user:
         raise HTTPException(status_code=404, detail="No such local owner account")
-    cloud_bizid = _confirm_with_cloud(uname, req.password).get("public_id")
+    cloud = _confirm_with_cloud(uname, req.password)
+    if (cloud.get("role") or "").lower() not in {"enterprise", "owner"}:
+        raise HTTPException(status_code=403, detail="Only the verified cloud business owner can update this device's owner password. Nothing was changed.")
+    cloud_bizid = cloud.get("public_id")
     if not cloud_bizid or user.public_id != cloud_bizid:
         raise HTTPException(
             status_code=409,
@@ -150,86 +158,13 @@ class ReclaimLocalRequest(BaseModel):
 
 @router.post("/api/auth/reclaim_local")
 def reclaim_local(req: ReclaimLocalRequest, request: Request, db: Session = Depends(get_db)):
-    """
-    LOCAL-ONLY: re-key an ORPHANED local owner account onto a freshly-minted cloud
-    identity, then log in. This handles re-registering a username whose CLOUD
-    account was deleted — the username is free on the cloud (so cloud signup just
-    succeeded and minted a new BizID), but a stale LOCAL mirror still holds it,
-    which otherwise makes the local /signup return 400 "Username already exists".
-
-    Safe because: (1) it runs only on the LOCAL backend (localhost trust model,
-    single device owner); (2) it is reached ONLY after the cloud accepted a NEW
-    signup for this username, proving the old cloud identity is gone; (3) it
-    re-keys identity (BizID) + password and does NOT create or merge across
-    businesses. When the BizID changes it purges the business's stale local data.
-
-    Point (2) is checked, not assumed: this backend signs in to the cloud with
-    the same credentials (_confirm_with_cloud) and requires the cloud to name
-    the BizID being adopted. Without that, anyone at this computer who knew the
-    owner's username could wipe the business and take over the owner account.
-    """
+    """Compatibility refusal: a new cloud login cannot authorize old-data loss."""
     _require_loopback_local(request)
-    if not (req.public_id or "").strip():
-        raise HTTPException(status_code=400, detail="public_id (new cloud BizID) is required.")
-
-    uname = (req.username or "").strip()
-    user = (db.query(User)
-              .filter(User.username == uname, User.parent_business_id.is_(None))
-              .first())
-    if not user:
-        raise HTTPException(status_code=404, detail="No local account to reclaim.")
-
-    cloud = _confirm_with_cloud(uname, req.password)
-    if cloud.get("public_id") != req.public_id:
-        logger.warning(f"[AUTH] Refused reclaim of '{uname}': the cloud account's BizID is "
-                       f"{cloud.get('public_id')!r}, not the requested {req.public_id!r}.")
-        raise HTTPException(status_code=409, detail="This BizID is not the cloud account's for these credentials. Nothing was changed.")
-
-    old_bizid = user.public_id
-    business_name = cloud.get("business_name") or req.business_name or user.business_name
-    if old_bizid and old_bizid != req.public_id:
-        from services.admin_service import purge_business_data, record_business_tombstone
-        old_name = user.business_name
-        result = purge_business_data(user.id, db, delete_owner=False, delete_staff=True, retire_account=True)
-        record_business_tombstone(db, public_id=old_bizid, username=uname,
-            business_name=old_name, reason="reclaim_rekey")
-        if result.get("identity_retained"):
-            db.flush()
-            user = User(username=uname, role="enterprise")
-            db.add(user)
-    user.public_id = req.public_id
-    user.password = hash_password(req.password)
-    user.business_name = business_name
-    from services.auth import bump_token_version
-    bump_token_version(db, user)
-
-    db.commit()
-    db.refresh(user)
-    logger.warning(
-        f"[AUTH] Reclaimed orphaned local account '{uname}': "
-        f"BizID {old_bizid} → {user.public_id} (cloud account was re-registered)."
-    )
-
-    token = create_access_token({
-        "id": user.id,
-        "user_id": user.id,
-        "username": user.username,
-        "public_id": user.public_id,
-        "business_name": user.business_name,
-        "role": user.role,
-        "tv": user.token_version or 0,
-        "sid": uuid4().hex,
-    })
-    return {
-        "token": token,
-        "id": user.id,
-        "user_id": user.id,
-        "username": user.username,
-        "public_id": user.public_id,
-        "business_name": user.business_name,
-        "role": user.role,
-        "db_mode": _DB_MODE,
-    }
+    raise HTTPException(status_code=409, detail=(
+        "This device already has a different business identity. Automatic replacement "
+        "is disabled and all local records were kept. Sign in to the existing business "
+        "to review its connection or contact support for account recovery."
+    ))
 
 
 class SignupRequest(BaseModel):
@@ -520,7 +455,9 @@ def _start_trial(user: User, phone: Optional[str], db: Session, force: bool = Fa
     }
     s = json.loads(user.settings) if user.settings else {}
     s["subscription"] = sub
-    user.settings = json.dumps(s)
+    from services.settings_store import replace_settings_preserving_consent
+    db.flush()
+    replace_settings_preserving_consent(db, user, s)
     db.flush()
     logger.info(f"[TRIAL] '{user.username}' (BizID {user.public_id}) started a {days}-day Pro trial, ends {sub['expires_at']}.")
     return sub
@@ -857,6 +794,13 @@ def get_profile(current_user: dict = Depends(get_active_user), db: Session = Dep
     user = db.query(User).filter(User.username == current_user.get("username")).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found", headers=SESSION_REJECTION_HEADERS)
+    holder = db.get(User, user.parent_business_id) if user.parent_business_id else user
+    device_namespace = None
+    if holder and db.get_bind().dialect.name == "sqlite":
+        try:
+            device_namespace = ((json.loads(holder.settings or "{}") or {}).get("general") or {}).get("device_invoice_namespace")
+        except (ValueError, TypeError, AttributeError):
+            pass  # Profile remains readable; financial writes fail closed on corrupt settings.
     return {
         "id": user.id,
         "username": user.username,
@@ -871,6 +815,7 @@ def get_profile(current_user: dict = Depends(get_active_user), db: Session = Dep
         "pan": user.pan,
         "logo": user.logo,
         "counter_prefix": user.counter_prefix,
+        "device_invoice_namespace": device_namespace,
         # Premium = active paid plan (admin grant) OR the legacy override column.
         # Staff inherit the owner's plan via _subscription_view's holder resolve.
         "is_premium": _is_premium(user, db),
@@ -1229,10 +1174,11 @@ def _sync_subscription_from_cloud(user: User, db: Session, force: bool = False):
                     if owner:
                         plan_holder = owner
  
-                local_settings = json.loads(plan_holder.settings) if plan_holder.settings else {}
-                local_settings["subscription"] = cloud_sub
-                plan_holder.settings = json.dumps(local_settings)
-                db.add(plan_holder)
+                from services.settings_store import update_settings_atomic
+                def update_subscription(current):
+                    current["subscription"] = cloud_sub
+                    return current
+                update_settings_atomic(db, plan_holder, update_subscription)
                 db.commit()
                 logger.info(f"[SETTINGS] Automatically synced subscription from cloud for business {business_id}: {cloud_sub}")
     except Exception as e:
@@ -1320,6 +1266,9 @@ def update_settings(
 
     current = _get_user_settings(user, db)
 
+    if req.general and "hosting_mode" in req.general and user.parent_business_id is not None:
+        raise HTTPException(403, "Only the business owner can change storage mode.")
+
     # Restrict cashiers from modifying non-general settings
     is_cashier = (current_user.get("role") or "").lower() == "cashier"
     if is_cashier:
@@ -1397,13 +1346,12 @@ def update_settings(
     # repeated Local-only confirmation changes the revision, so a slow login
     # activation cannot re-enable sync after that newer choice in another tab.
     if req.general is not None:
+        marker = req.general.get("hosting_choice_explicit", None)
+        explicit_hosting_choice = marker is True or (marker is None and req.general.get("hosting_mode") == "local")
         req.general = {k: v for k, v in req.general.items()
-                       if k not in {"sync_mode_revision", "sync_bootstrap_pending"}}
-        if "hosting_mode" in req.general and db.get_bind().dialect.name == "sqlite":
-            revision = (current.get("general") or {}).get("sync_mode_revision", 0)
-            if not isinstance(revision, int) or isinstance(revision, bool):
-                revision = 0
-            current.setdefault("general", {})["sync_mode_revision"] = revision + 1
+                       if k not in {"sync_mode_revision", "sync_bootstrap_pending", "device_invoice_namespace", "device_installation_id", "sync_local_only_explicit", "hosting_choice_explicit"}}
+    else:
+        explicit_hosting_choice = False
 
     # Merge each provided section
     for section in ("general", "transactions", "inventory", "print", "labels"):
@@ -1429,8 +1377,49 @@ def update_settings(
     except Exception:
         pass
 
-    user.settings = json.dumps(current)
+    from services.settings_store import update_settings_atomic
+    def merge_current(stored):
+        # Rebuild from the compare-and-set snapshot, never the value read before
+        # a subscription request or another tab committed a consent choice.
+        import copy
+        if user.parent_business_id:
+            # Store only staff overrides. Saving a visual preference must not
+            # freeze default values over the owner's inherited configuration.
+            merged = copy.deepcopy(stored)
+            for section in ("general", "transactions", "inventory", "print", "labels"):
+                patch = getattr(req, section)
+                if patch is not None:
+                    merged.setdefault(section, {}).update(patch)
+            return merged
+        merged = copy.deepcopy(_DEFAULT_SETTINGS)
+        for section, value in stored.items():
+            if isinstance(value, dict) and isinstance(merged.get(section), dict):
+                merged[section].update(value)
+            else:
+                merged[section] = value
+        for section in ("general", "transactions", "inventory", "print", "labels"):
+            patch = getattr(req, section)
+            if patch is not None:
+                if section == "general" and patch.get("hosting_mode") == "hybrid" \
+                        and (stored.get("general") or {}).get("sync_local_only_explicit") is True \
+                        and not explicit_hosting_choice:
+                    patch = {key: value for key, value in patch.items() if key != "hosting_mode"}
+                merged.setdefault(section, {}).update(patch)
+        if req.general is not None and "hosting_mode" in req.general and db.get_bind().dialect.name == "sqlite":
+            revision = (stored.get("general") or {}).get("sync_mode_revision", 0)
+            if not isinstance(revision, int) or isinstance(revision, bool):
+                revision = 0
+            merged.setdefault("general", {})["sync_mode_revision"] = revision + 1
+            if explicit_hosting_choice:
+                merged["general"]["sync_local_only_explicit"] = req.general.get("hosting_mode") == "local"
+        return merged
+    current = update_settings_atomic(db, user, merge_current)
     db.commit()
+    if user.parent_business_id:
+        current = _get_user_settings(user, db)
+    if (current.get("general") or {}).get("hosting_mode") != "hybrid":
+        from services import cloud_listener
+        cloud_listener.stop(user.parent_business_id or user.id)
     logger.info(f"[SETTINGS] Settings successfully updated and committed for user '{user.username}'")
     logger.debug(f"[SETTINGS] New settings structure: {current}")
     resp = dict(current)

@@ -75,6 +75,13 @@ def _device_marker() -> str:
 
 
 def _post_import(records: list, cloud_token: str) -> bool:
+    from services.sync_policy import cloud_egress_allowed
+    bizids = {record.get("bizid") for record in records}
+    if len(bizids) != 1:
+        return False
+    business_id = _business_id_for_bizid(next(iter(bizids)))
+    if business_id is None or not cloud_egress_allowed(business_id, diagnostics=True):
+        return False
     body = json.dumps({"records": records, "relay_device": _device_marker()}).encode()
     req = urllib.request.Request(
         f"{CLOUD_URL}/api/telemetry/import",
@@ -86,6 +93,8 @@ def _post_import(records: list, cloud_token: str) -> bool:
         method="POST",
     )
     try:
+        if not cloud_egress_allowed(business_id, diagnostics=True):
+            return False
         with urllib.request.urlopen(req, timeout=15) as res:
             return 200 <= res.status < 300
     except Exception as e:
@@ -93,14 +102,12 @@ def _post_import(records: list, cloud_token: str) -> bool:
         return False
 
 
-def _cloud_token_for_bizid(bizid: object):
-    """Return the provisioned cloud token for exactly this local business."""
+def _business_id_for_bizid(bizid: object):
     if not isinstance(bizid, str) or not bizid:
         return None
     try:
         from database.db import SessionLocal
         from database.models import User
-        from services.sync_worker import ensure_fresh_cloud_token
 
         db = SessionLocal()
         try:
@@ -108,12 +115,22 @@ def _cloud_token_for_bizid(bizid: object):
                 User.public_id == bizid,
                 User.parent_business_id == None,  # noqa: E711
             ).first()
-            return ensure_fresh_cloud_token(owner.id) if owner else None
+            return owner.id if owner else None
         finally:
             db.close()
     except Exception as exc:
         logger.warning("[RELAY] Could not resolve cloud token for telemetry: %s", exc)
         return None
+
+
+def _cloud_token_for_bizid(bizid: object):
+    """A stored token is identity, never consent to diagnostic exports."""
+    from services.sync_policy import cloud_egress_allowed
+    from services.sync_worker import ensure_fresh_cloud_token
+    business_id = _business_id_for_bizid(bizid)
+    if business_id is None or not cloud_egress_allowed(business_id, diagnostics=True):
+        return None
+    return ensure_fresh_cloud_token(business_id)
 
 
 def run_telemetry_relay():

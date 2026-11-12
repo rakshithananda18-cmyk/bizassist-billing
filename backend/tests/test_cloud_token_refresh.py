@@ -75,7 +75,7 @@ def test_failed_refresh_persistence_keeps_the_previous_token_and_backs_off(monke
     sw.store_cloud_token(BID, old)
     import httpx
     monkeypatch.setattr(httpx, "post", lambda *a, **k: httpx.Response(200, json={"token": "new-cloud-token"}))
-    def denied(*args):
+    def denied(*args, **kwargs):
         raise OSError("Synthetic disk write failure")
     monkeypatch.setattr(sw, "store_cloud_token", denied)
     assert sw.ensure_fresh_cloud_token(BID) == old

@@ -49,6 +49,7 @@ the caller logs it at ERROR. Nothing here swallows an exception quietly.
 """
 import json
 import logging
+from decimal import Decimal, InvalidOperation
 from datetime import datetime, timezone
 
 from sqlalchemy import func
@@ -210,16 +211,29 @@ def payloads_differ(incoming: dict, existing: dict) -> bool:
     columns that always differ, so a no-op re-sync of an unchanged row is not
     flagged as a conflict and does not spam the owner's review list.
 
-    Values are compared as strings because the same value crosses the
-    SQLite↔Postgres boundary in different Python types (``123`` vs ``"123"``,
-    ``Decimal`` vs ``float``) — comparing natively would flag every row.
+    Numeric values use a decimal comparison across ORM/JSON representations
+    (``-4`` / ``-4.0`` / ``Decimal('-4.00')``). Two strings retain their exact
+    identity: a numeric-looking phone, name or UID is not a number.
     """
     for k, v in (incoming or {}).items():
         if k in _CONFLICT_IGNORED_COLUMNS:
             continue
         if k not in (existing or {}):
             continue
-        if str(existing.get(k)) != str(v):
+        previous = existing.get(k)
+        if isinstance(previous, bool) or isinstance(v, bool):
+            if type(previous) is not type(v) or previous != v:
+                return True
+            continue
+        if (isinstance(previous, (int, float, Decimal)) or isinstance(v, (int, float, Decimal))) \
+                and previous is not None and v is not None:
+            try:
+                old_number, new_number = Decimal(str(previous)), Decimal(str(v))
+                if old_number.is_finite() and new_number.is_finite() and old_number == new_number:
+                    continue
+            except (InvalidOperation, ValueError):
+                pass
+        if str(previous) != str(v):
             return True
     return False
 
@@ -242,7 +256,7 @@ def is_financial_overwrite(entity: str, incoming: dict, existing_row,
         return False
     if incoming_updated_at is None or existing_updated_at is None:
         return False
-    if not incoming_updated_at > existing_updated_at:
+    if incoming_updated_at < existing_updated_at:
         return False
     return payloads_differ(incoming, row_to_dict(existing_row))
 
@@ -350,6 +364,53 @@ def reconcile_parent_invoice_of_payment(db, pay) -> bool:
         # payment row exists.
         return False
     return reconcile_invoice_paid_state(db, inv)
+
+
+def reconcile_stock_cache(db, obj) -> bool:
+    """Derive one exact stock bucket from accepted movement identities.
+
+    Legacy stock without any ledger remains a snapshot until it is explicitly
+    migrated. An absent movement history is not proof of a zero balance.
+    """
+    from database.models import Inventory, StockLedger
+    from core.stock.ledger import _refresh_inventory_cache, _project_bucket_rows
+
+    business_id = obj.business_id
+    product_id = getattr(obj, "product_id", None)
+    product_name = getattr(obj, "product_name", None)
+    if product_id is None and not product_name:
+        return False
+    godown_id = getattr(obj, "godown_id", None)
+    batch_no = getattr(obj, "batch_no", None)
+    movements = db.query(func.count(StockLedger.id), func.sum(StockLedger.qty_delta)).filter(
+        StockLedger.business_id == business_id,
+        StockLedger.godown_id == godown_id,
+        StockLedger.batch_no == batch_no,
+    )
+    cache = db.query(Inventory).filter(
+        Inventory.business_id == business_id,
+        Inventory.godown_id == godown_id,
+        Inventory.batch_no == batch_no,
+    )
+    if product_id is not None:
+        movements = movements.filter(StockLedger.product_id == product_id)
+        cache = cache.filter(Inventory.product_id == product_id)
+    else:
+        movements = movements.filter(StockLedger.product_id.is_(None), StockLedger.product_name == product_name)
+        cache = cache.filter(Inventory.product_id.is_(None), Inventory.product_name == product_name)
+    count, balance = movements.one()
+    if not count:
+        return False
+    balance = float(balance or 0.0)
+    rows = cache.all()
+    changed = bool(_project_bucket_rows(rows, balance))
+    if not rows:
+        _refresh_inventory_cache(db, business_id, product_id=product_id,
+                                 product_name=product_name, new_balance=balance,
+                                 godown_id=godown_id, batch_no=batch_no,
+                                 expiry_date=getattr(obj, "expiry_date", None))
+        changed = True
+    return changed
 
 
 # ---------------------------------------------------------------------------
@@ -528,25 +589,41 @@ def run_post_apply(db, entity: str, obj, *, log_prefix: str = "sync") -> ApplyRe
     # ── 1. Paid-state projection ────────────────────────────────────────────
     if entity in PAID_STATE_ENTITIES:
         try:
-            if entity == "invoices":
-                result.reconciled = reconcile_invoice_paid_state(db, obj)
-            else:
-                result.reconciled = reconcile_parent_invoice_of_payment(db, obj)
-            db.flush()
+            with db.begin_nested():
+                if entity == "invoices":
+                    result.reconciled = reconcile_invoice_paid_state(db, obj)
+                else:
+                    result.reconciled = reconcile_parent_invoice_of_payment(db, obj)
+                db.flush()
         except Exception as e:
             logger.error("[SYNC_HOOKS] %s: paid-state reconcile FAILED for %s#%s: %s",
                          log_prefix, entity, result.row_id, e, exc_info=True)
             result.errors.append(f"paid_state: {e}")
 
+    if entity in {"inventory", "stock_ledger"}:
+        try:
+            with db.begin_nested():
+                reconcile_stock_cache(db, obj)
+                db.flush()
+        except Exception as e:
+            logger.error("[SYNC_HOOKS] %s: stock cache reconcile FAILED for %s#%s: %s",
+                         log_prefix, entity, result.row_id, e, exc_info=True)
+            result.errors.append(f"stock_cache: {e}")
+
     # ── 2. Journal re-derivation ────────────────────────────────────────────
     # Runs AFTER the projection so the entry is posted against the corrected
     # amounts — post_sale reads paid_amount to split Cash vs Accounts Receivable,
     # so posting first would book the wrong side of a settled invoice.
-    from core.accounting import repost as _repost
-    rp = _repost.repost_synced_row(db, entity, obj, log_prefix=log_prefix)
-    result.repost = rp
-    if not rp.ok:
-        result.errors.append(f"journal: {rp.error}")
+    try:
+        with db.begin_nested():
+            from core.accounting import repost as _repost
+            rp = _repost.repost_synced_row(db, entity, obj, log_prefix=log_prefix)
+            result.repost = rp
+            if not rp.ok:
+                result.errors.append(f"journal: {rp.error}")
+    except Exception as exc:
+        logger.error("[SYNC_HOOKS] %s: journal repair FAILED for %s#%s: %s", log_prefix, entity, result.row_id, exc)
+        result.errors.append(f"journal: {exc}")
 
     return result
 

@@ -49,11 +49,13 @@ The regression set should cover existing and fresh devices; Pro, expired and loc
 
 Before deploying, run a controlled end-to-end test with a dedicated cloud test business and two local test devices. Compare invoice identities, line items, payment totals, stock movements and cursor/inbox status. Row counts alone are insufficient. Interrupt the network and restart a device mid-restore, then confirm it resumes without duplicates. This local code review does not substitute for that deployment check.
 
-Further hardening should include a dedicated device-setup status screen, token renewal/reauthentication UX, an explicit readiness rule for completing financial transactions during a first restore, device revocation, and operational alerts for an old pending outbox, stuck inbox or repeatedly failing restore. These are separate acceptance criteria; do not label them complete merely because a job was queued.
+The later patch implements inline setup/reauthentication states and first-restore financial readiness. Further work can include a dedicated device-setup screen, device revocation, and operational alerts for an old pending outbox, stuck inbox or repeatedly failing restore. These are separate acceptance criteria; do not label them complete merely because a job was queued.
 
-Google/SSO desktop provisioning is a separate existing gap: its current Login setSession path does not obtain and provision the cloud-issued credential used by this password-login recovery flow. Equivalent verified identity mirroring and bootstrap must be implemented for that path before advertising automatic new-device restoration for every sign-in method. A local-only Google account must not be silently re-keyed to another BizID.
+Original audit gap, now addressed by the verified cloud-first device bridge: the earlier Login setSession path did not obtain and provision the cloud-issued credential used by this password-login recovery flow. The later hardening patch adds verified identity mirroring and bootstrap for this path, with regression coverage. A local-only Google account must not be silently re-keyed to another BizID.
 
 ## Local validation results
+
+A subsequent [scenario/edge-case audit](<D:/Dev Workspace/bizassist-billing/docs/plans/2026-11-12-SYNC-EDGE-CASE-AUDIT.md>) found additional defects outside the original tests, including cross-business fallback matching, ambiguous UID adoption, stock reconciliation, false restore completion, complete-settings writers undoing Local-only, and cloud traffic through auxiliary paths. The implementation contract above describes the intended behaviour; it is not a blanket guarantee that the whole application already satisfies it. The owner subsequently authorized the fixes; the audit now includes an implementation follow-through and deployment checks. The original validation figures below are the earlier baseline, not the result for the later hardening patch.
 
 - Task: 118 tests passed across 26 files; production build passed. The browser checks used the actual app components with an ignored synthetic fixture.
 - Billing: 99 relevant tests passed across 8 files, including login/provision sequencing, hosting choices, stale-session responses, request timeouts, slow status reads, preflight, outbox and halt messages. Production build passed. Existing React test act warnings and the build's large-chunk warning remain visible.
@@ -65,3 +67,10 @@ Google/SSO desktop provisioning is a separate existing gap: its current Login se
 Microsoft documents automatic initial offline download, subsequent delta synchronization and visible progress/error states in [Power Apps offline behaviour](https://learn.microsoft.com/en-us/power-apps/mobile/canvas-mobile-offline-working). This is a useful reference for the proposed product flow.
 
 [Stripe's idempotent request contract](https://docs.stripe.com/api/idempotent_requests) illustrates safe retries without repeating a successful operation. STATER should retain that property through its existing durable record identities and outbox acknowledgements, rather than copying a billing provider's HTTP implementation verbatim.
+
+
+## Authorized hardening follow-through
+
+The E01–E19 fixes are now implemented in the working tree. See the audit's implementation and final validation sections for the current behavior, migration and checked scenarios. The later patch includes verified Google/password/registration mirroring, backend-credential resume, installation-scoped numbering, first-restore financial gating, durable repairs and delete history, consent/credential concurrency guards, stock projection repair and accurate status. The legacy automatic reclaim endpoint now refuses replacement of a different local identity.
+
+This patch requires Alembic `h6_sync_reliability` on the cloud, followed by compatible backend/client rollout. A fresh disposable SQLite upgrade and the targeted regression suites passed. PostgreSQL-only and live two-installation interruption/restart checks remain deployment acceptance work. No production deployment was performed.

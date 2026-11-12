@@ -32,6 +32,7 @@ const SRC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 // Unreachable on purpose. Every entry needs a reason — an allow-list without
 // them silently becomes "the list of things we stopped looking at".
 const ALLOWED_ORPHANS = {
+  'components/hosting/SyncNudgeModal.jsx': 'Manual sync nudge modal pending integration or removal; see 2026-11-12-PRO-SYNC-RELIABILITY-PLAN.md',
   // ── EMPTY, deliberately. All 17 entries were DELETED on 2026-08-03. ───────
   //
   // They were the old B2B module (moved to src/b2b/, with ten 13-line re-export

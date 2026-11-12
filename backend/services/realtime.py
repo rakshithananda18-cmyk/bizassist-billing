@@ -227,6 +227,9 @@ class RealtimeManager:
             # Import here to avoid circular deps and keep startup fast
             import httpx
             from services.sync_worker import _get_cloud_token
+            from services.sync_policy import cloud_egress_allowed
+            if not cloud_egress_allowed(business_id):
+                return
             cloud_token = _get_cloud_token(business_id)
             if not cloud_token:
                 return   # no cloud token — hybrid not configured
@@ -235,6 +238,8 @@ class RealtimeManager:
             relay_payload["relay_source"] = "local"
 
             async with httpx.AsyncClient(timeout=2.0) as client:
+                if not cloud_egress_allowed(business_id):
+                    return
                 await client.post(
                     f"{_CLOUD_URL}/realtime/relay",
                     json=relay_payload,

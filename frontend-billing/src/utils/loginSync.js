@@ -1,19 +1,13 @@
 import { IS_LOCAL_APP, CLOUD_URL, LOCAL_URL } from '../config'
 import { getHostingPreference } from './deviceMode'
 import { logger } from './logger'
+import { boundedJsonFetch } from '../api/boundedRequest'
 
 const REQUEST_TIMEOUT_MS = 10000
 const headersFor = token => ({ 'Content-Type': 'application/json', Authorization: `Bearer ${token}` })
 
 async function boundedFetch(url, options, timeoutMs = REQUEST_TIMEOUT_MS) {
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), timeoutMs)
-  try {
-    return await fetch(url, { ...options, signal: controller.signal })
-  } catch (error) {
-    if (controller.signal.aborted) throw new Error('Cloud sync request timed out. The background service will retry when it can connect.')
-    throw error
-  } finally { clearTimeout(timer) }
+  return boundedJsonFetch(url, options, timeoutMs)
 }
 
 function syncRequestEvent(detail, isCurrent) {
@@ -65,6 +59,7 @@ export async function reconcileBizIdOnLogin(token, cloudToken = null, {
   isCurrent = () => true,
   runModeWrite = operation => operation(),
   source = 'login',
+  base = LOCAL_URL,
 } = {}) {
   const current = () => {
     try {
@@ -84,7 +79,7 @@ export async function reconcileBizIdOnLogin(token, cloudToken = null, {
       return responseBody(response)
     }
     const [cloudProfile, localProfile] = await Promise.all([
-      readProfile(CLOUD_URL, cloudToken), readProfile(LOCAL_URL, token),
+      readProfile(CLOUD_URL, cloudToken), readProfile(base, token),
     ])
     if (!current()) return { skipped: true }
     const cloudBiz = cloudProfile?.public_id
@@ -101,7 +96,7 @@ export async function reconcileBizIdOnLogin(token, cloudToken = null, {
     // land AFTER this activation, even if cloud verification is slow.
     const response = await runModeWrite(() => {
       if (!current()) return null
-      return boundedFetch(`${LOCAL_URL}/api/sync/cloud-token`, {
+      return boundedFetch(`${base}/api/sync/cloud-token`, {
         method: 'POST', headers: headersFor(token),
         body: JSON.stringify({ token: cloudToken, enable_sync: true }),
       }, 20000)
@@ -117,7 +112,7 @@ export async function reconcileBizIdOnLogin(token, cloudToken = null, {
       window.dispatchEvent(new CustomEvent('refresh-settings'))
       return { accepted: true, pending: true }
     }
-    return await requestBackgroundSync(token, { isCurrent: current, source })
+    return await requestBackgroundSync(token, { base, isCurrent: current, source })
   } catch (error) {
     if (!current()) return { skipped: true }
     logger.warn('[LOGIN-SYNC] Background sync could not start:', error?.message || error)

@@ -451,15 +451,17 @@ def create_debit_note(
         PurchaseInvoice.invoice_type == "debit_note", PurchaseInvoice.invoice_number == dn_number).first():
         raise ValueError("This debit-note number already exists for this business")
     if not dn_number:
+        from core.sync.device_series import local_series
+        dn_series = local_series(db, business_id, SEQ.DEBIT_NOTE_SERIES)
         def _dn_series_max():
             rows = (
                 db.query(PurchaseInvoice.invoice_number)
                 .filter(PurchaseInvoice.business_id == business_id,
                         PurchaseInvoice.invoice_type == "debit_note",
-                        PurchaseInvoice.invoice_number.like(SEQ.like_prefix(SEQ.DEBIT_NOTE_SERIES), escape="\\"))
+                        PurchaseInvoice.invoice_number.like(SEQ.like_prefix(dn_series), escape="\\"))
                 .all()
             )
-            return SEQ.max_suffix((r[0] for r in rows), SEQ.DEBIT_NOTE_SERIES)
+            return SEQ.max_suffix((r[0] for r in rows), dn_series)
 
         def _dn_number_taken(num: str) -> bool:
             return (
@@ -471,7 +473,7 @@ def create_debit_note(
             )
 
         dn_number = SEQ.next_number(
-            db, business_id, SEQ.DEBIT_NOTE_SERIES,
+            db, business_id, dn_series,
             scan_max=_dn_series_max,
             is_taken=_dn_number_taken,
         )

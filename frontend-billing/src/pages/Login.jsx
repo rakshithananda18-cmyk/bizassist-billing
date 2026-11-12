@@ -20,7 +20,7 @@ import { renderGoogleButton } from '../utils/googleAuth'
 const RECENT_STAFF_TIMEOUT_MS = 1500
 
 export default function Login() {
-  const { login, staffLogin, setSession } = useAuth()
+  const { login, staffLogin, setSession, googleAuth } = useAuth()
   const navigate  = useNavigate()
   const location = useLocation()
   const lookupRequest = useRef(0)
@@ -45,16 +45,9 @@ export default function Login() {
     setError('')
     setLoading(true)
     try {
-      const res = await fetch(`${API_BASE}/api/auth/google/verify`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ credential }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data?.detail || 'Google sign-in failed.')
+      const data = await googleAuth({ credential })
 
       if (data.action === 'login' && data.token) {
-        setSession(data)
         navigate('/', { replace: true })
       } else if (data.status === 'needs_link') {
         setGoogleLinkCredential(credential)
@@ -78,7 +71,6 @@ export default function Login() {
 
   const handleGoogleRegisterSuccess = (data) => {
     if (data?.token) {
-      setSession(data)
       navigate('/', { replace: true })
     }
   }
@@ -325,13 +317,8 @@ export default function Login() {
     logger.debug('Login submit triggered for username:', loginTarget)
     try {
       if (googleLinkCredential) {
-        const response = await fetch(`${API_BASE}/api/auth/google/verify`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ credential: googleLinkCredential, password }),
-        })
-        const linked = await response.json()
-        if (!response.ok || !linked.token) throw new Error(linked.detail || 'Could not connect your Google sign-in.')
-        setSession(linked)
+        const linked = await googleAuth({ credential: googleLinkCredential, password })
+        if (!linked.token) throw new Error(linked.detail || 'Could not connect your Google sign-in.')
       } else {
         await login(loginTarget, password)
       }

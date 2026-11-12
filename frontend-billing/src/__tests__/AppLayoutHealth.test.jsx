@@ -1,6 +1,6 @@
 import React from 'react'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, useLocation } from 'react-router-dom'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 
 const auth = vi.hoisted(() => ({ value: null }))
@@ -32,6 +32,71 @@ beforeEach(() => {
 })
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks() })
 
+const enableHybrid = () => {
+  localStorage.setItem('bizassist_hosting_mode', 'hybrid')
+  setHostingPreference('owner', 'hybrid')
+  auth.value = { ...auth.value, settings: { general: { hosting_mode: 'hybrid' }, subscription: { plan: 'pro' } } }
+}
+
+it('keeps an unreadable queue visibly unknown instead of presenting an empty or fully synced outbox', async () => {
+  enableHybrid()
+  vi.stubGlobal('fetch', vi.fn(async url => ({ ok: true, status: 200, headers: { get: () => null }, json: async () =>
+    String(url).endsWith('/api/sync/queue-depth')
+      ? { pending_count: null, status_error: 'Outbox could not be read', readiness: { state: 'unknown' }, pull: { initialized: true } }
+      : {} })))
+  render(<MemoryRouter><AppLayout title="Home">Workspace</AppLayout></MemoryRouter>)
+  await waitFor(() => expect(screen.getByRole('button', { name: 'View sync details' })).toHaveTextContent(/Sync status unavailable|Sync status unknown/))
+  fireEvent.click(screen.getByRole('button', { name: 'View sync details' }))
+  expect(screen.queryByText('Fully Synced')).toBeNull()
+  expect(screen.queryByText('No local changes waiting')).toBeNull()
+  expect(screen.queryByText(/0 — no local changes waiting/)).toBeNull()
+})
+
+it('shows the pending cloud restore on Billing while records are still incomplete', async () => {
+  enableHybrid()
+  auth.value.settings.general.sync_bootstrap_pending = true
+  vi.stubGlobal('fetch', vi.fn(async url => ({ ok: true, status: 200, headers: { get: () => null }, json: async () =>
+    String(url).endsWith('/api/sync/queue-depth')
+      ? { pending_count: 0, pull: { initialized: false, initial_restore_pending: true, has_more: true } }
+      : {} })))
+  render(<MemoryRouter initialEntries={['/sales']}><AppLayout title="Billing">Billing workspace</AppLayout></MemoryRouter>)
+  await waitFor(() => expect(screen.getAllByText(/Restoring cloud data|Cloud restore is/).length).toBeGreaterThan(0))
+  expect(screen.getByText('Billing workspace')).toBeInTheDocument()
+  expect(screen.getAllByRole('status').some(element => /restor/i.test(element.textContent))).toBe(true)
+})
+
+it('keeps the first-restore warning after choosing Local-only while the mirror is partial', async () => {
+  auth.value.settings.general.sync_bootstrap_pending = true
+  vi.stubGlobal('fetch', vi.fn(async url => ({ ok: true, status: 200, headers: { get: () => null }, json: async () =>
+    String(url).endsWith('/api/sync/queue-depth')
+      ? { pending_count: 0, pull: { initialized: false, initial_restore_pending: true, has_more: true } }
+      : {} })))
+  render(<MemoryRouter initialEntries={['/sales']}><AppLayout title="Billing">Billing workspace</AppLayout></MemoryRouter>)
+  await waitFor(() => expect(fetch.mock.calls.some(([url]) => String(url).endsWith('/api/sync/queue-depth'))).toBe(true))
+  expect(screen.getAllByRole('status').some(element => /restor/i.test(element.textContent))).toBe(true)
+})
+
+it('clears an earlier kickoff failure only after the worker reports a newer successful outcome', async () => {
+  enableHybrid()
+  let queue = { pending_count: 0, last_status: 'success', last_sync_time: '2020-01-01T00:00:00Z', pull: { initialized: true }, readiness: { state: 'ready' } }
+  let depthReads = 0
+  vi.stubGlobal('fetch', vi.fn(async url => ({ ok: true, status: 200, headers: { get: () => null }, json: async () => {
+    if (String(url).endsWith('/api/sync/queue-depth')) { depthReads++; return queue }
+    return {}
+  } })))
+  render(<MemoryRouter><AppLayout title="Home">Workspace</AppLayout></MemoryRouter>)
+  await waitFor(() => expect(depthReads).toBe(1))
+  act(() => window.dispatchEvent(new CustomEvent('sync-event', { detail: { type: 'sync.trigger', sync_request: true, status: 'failed', error: 'Synthetic kickoff failure' } })))
+  expect(screen.getByRole('button', { name: 'View sync details' })).toHaveTextContent('Sync needs attention')
+  // An old successful run does not erase a failure from the current request.
+  act(() => window.dispatchEvent(new CustomEvent('sync-flushed')))
+  await waitFor(() => expect(depthReads).toBeGreaterThan(1))
+  expect(screen.getByRole('button', { name: 'View sync details' })).toHaveTextContent('Sync needs attention')
+  queue = { ...queue, last_sync_time: new Date(Date.now() + 1000).toISOString() }
+  act(() => window.dispatchEvent(new CustomEvent('sync-flushed')))
+  await waitFor(() => expect(screen.getByRole('button', { name: 'View sync details' })).not.toHaveTextContent('Sync needs attention'))
+})
+
 it('releases Sync now after acceptance even while the following status read is slow', async () => {
   localStorage.setItem('bizassist_hosting_mode', 'hybrid')
   setHostingPreference('owner', 'hybrid')
@@ -50,7 +115,7 @@ it('releases Sync now after acceptance even while the following status read is s
   })))
   render(<MemoryRouter><AppLayout title="Home">Workspace</AppLayout></MemoryRouter>)
   await waitFor(() => expect(depthReads).toBe(1))
-  fireEvent.click(screen.getByRole('button', { name: 'View server and sync health details' }))
+  fireEvent.click(screen.getByRole('button', { name: 'View sync details' }))
   fireEvent.click(screen.getByRole('button', { name: 'Sync now', exact: true }))
   await waitFor(() => expect(depthReads).toBeGreaterThan(1))
   expect(screen.getByRole('button', { name: 'Sync now', exact: true })).toBeEnabled()
@@ -82,23 +147,25 @@ it('does not apply a late previous-business restore response after its JSON fini
   expect(screen.queryAllByText(/Restoring cloud data/)).toHaveLength(0)
 })
 
-it('opens server health in Local mode only when requested and restores keyboard focus on close', async () => {
+it('keeps local sync details free of system checks and restores keyboard focus on close', async () => {
   render(<MemoryRouter><AppLayout title="Home">Workspace</AppLayout></MemoryRouter>)
-  const trigger = screen.getByRole('button', { name: 'View server and sync health details' })
-  expect(trigger).toHaveTextContent('Server health')
+  const trigger = screen.getByRole('button', { name: 'View sync details' })
+  expect(trigger).toHaveTextContent('Local only')
   expect(fetch.mock.calls.filter(([url]) => String(url).endsWith('/health'))).toHaveLength(0)
   fireEvent.click(trigger)
-  const details = screen.getByRole('dialog', { name: 'Server and sync health details' })
+  const details = screen.getByRole('dialog', { name: 'Sync Live details' })
   expect(trigger).toHaveAttribute('aria-expanded', 'true')
   expect(details).toHaveFocus()
-  await screen.findByText('sqlite · Version 1.2.6')
+  expect(screen.queryByText('System check')).not.toBeInTheDocument()
+  expect(screen.queryByText('Network State')).not.toBeInTheDocument()
+  expect(fetch.mock.calls.filter(([url]) => String(url).endsWith('/health'))).toHaveLength(0)
   expect(screen.getByText('Local only — cloud sync paused')).toBeInTheDocument()
   expect(screen.queryByRole('button', { name: 'Sync now', exact: true })).toBeNull()
   vi.spyOn(window.navigator, 'onLine', 'get').mockReturnValue(false)
   fireEvent(window, new Event('offline'))
-  expect(screen.getByText('Network State').nextElementSibling).toHaveTextContent('Offline')
+  expect(trigger).toHaveTextContent('Local only')
   fireEvent.keyDown(document, { key: 'Escape' })
-  await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Server and sync health details' })).toBeNull())
+  await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Sync Live details' })).toBeNull())
   expect(trigger).toHaveFocus()
 })
 
@@ -110,12 +177,39 @@ it('closes health details before dismissing the mobile navigation drawer', async
   render(<MemoryRouter><AppLayout title="Home">Workspace</AppLayout></MemoryRouter>)
   fireEvent.click(screen.getByRole('button', { name: 'Open menu' }))
   await waitFor(() => expect(screen.getByRole('button', { name: 'Close menu' })).toHaveFocus())
-  const trigger = screen.getByRole('button', { name: 'View server and sync health details' })
+  const trigger = screen.getByRole('button', { name: 'View sync details' })
   fireEvent.click(trigger)
-  expect(screen.getByRole('dialog', { name: 'Server and sync health details' })).toBeInTheDocument()
+  expect(screen.getByRole('dialog', { name: 'Sync Live details' })).toBeInTheDocument()
   fireEvent.keyDown(document, { key: 'Escape' })
-  expect(screen.queryByRole('dialog', { name: 'Server and sync health details' })).toBeNull()
+  expect(screen.queryByRole('dialog', { name: 'Sync Live details' })).toBeNull()
   expect(screen.getByRole('dialog', { name: 'Navigation menu' })).toHaveAttribute('aria-modal', 'true')
   expect(document.getElementById('mobile-navigation')).toHaveClass('open')
   expect(trigger).toHaveFocus()
+})
+
+
+it('shows a live connection issue in one line and links owners to Settings for system checks', () => {
+  function CurrentRoute() {
+    const location = useLocation()
+    return <output aria-label="Current route">{location.pathname}{location.search}</output>
+  }
+  render(<MemoryRouter><AppLayout title="Home"><CurrentRoute /></AppLayout></MemoryRouter>)
+  act(() => window.dispatchEvent(new CustomEvent('sync-status-change', { detail: {
+    status: 'error', isOnline: true, error: 'Backend disconnected.\nReconnecting automatically.',
+  } })))
+  const trigger = screen.getByRole('button', { name: 'View sync details' })
+  expect(trigger).toHaveTextContent('Connection issue')
+  fireEvent.click(trigger)
+  const issue = screen.getByText('Backend disconnected. Reconnecting automatically.')
+  expect(issue).toHaveStyle({ whiteSpace: 'nowrap', textOverflow: 'ellipsis' })
+  expect(screen.queryByText('Diagnostic Log:')).not.toBeInTheDocument()
+  expect(screen.queryByText('System check')).not.toBeInTheDocument()
+  expect(fetch.mock.calls.filter(([url]) => String(url).endsWith('/health'))).toHaveLength(0)
+  act(() => window.dispatchEvent(new CustomEvent('sync-status-change', { detail: { status: 'connected', isOnline: true, error: null } })))
+  expect(screen.queryByText('Backend disconnected. Reconnecting automatically.')).not.toBeInTheDocument()
+  expect(trigger).toHaveTextContent('Local only')
+  act(() => window.dispatchEvent(new CustomEvent('sync-status-change', { detail: { status: 'error', isOnline: true, error: 'Backend unavailable' } })))
+  fireEvent.click(screen.getByRole('button', { name: 'Open system health in Settings' }))
+  expect(screen.getByLabelText('Current route')).toHaveTextContent('/settings?tab=ops_health&field=system-health')
+  expect(screen.queryByRole('dialog', { name: 'Sync Live details' })).not.toBeInTheDocument()
 })

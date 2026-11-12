@@ -12,6 +12,7 @@ vi.mock('../contexts/AuthContext', () => ({
 vi.mock('../contexts/LockContext', () => ({ useLock: () => ({ hasLock: false }) }))
 vi.mock('../contexts/ConfirmContext', () => ({ useConfirm: () => async () => true }))
 vi.mock('../components/settings/AppearanceSettings', () => ({ default: () => <div>Appearance preferences</div> }))
+vi.mock('../components/settings/OpsHealthPanel', () => ({ default: () => <div>Business data health</div> }))
 
 import Settings from '../pages/Settings'
 
@@ -20,12 +21,29 @@ beforeEach(() => {
   localStorage.clear()
   state.authFetch.mockReset().mockResolvedValue({ ok: true, json: async () => ({ general: {}, subscription: { plan: 'pro', status: 'active' } }) })
   vi.stubGlobal('matchMedia', vi.fn(query => ({ matches: state.phone && query === 'screen and (max-width: 600px)', media: query, addEventListener() {}, removeEventListener() {} })))
+  vi.stubGlobal('fetch', vi.fn(async url => ({ ok: true, headers: { get: () => null }, json: async () =>
+    String(url).endsWith('/health') ? { status: 'ok', db: 'connected', db_type: 'sqlite' } : [] })))
 })
 afterEach(() => { cleanup(); vi.unstubAllGlobals() })
 
 const mount = (path = '/settings') => render(<MemoryRouter initialEntries={[path]}><Settings /></MemoryRouter>)
 
 describe('Phone Settings navigation', () => {
+  it('keeps system checks in Ops & Health and runs them only when requested', async () => {
+    mount('/settings?tab=ops_health')
+    const check = await screen.findByRole('button', { name: 'Check system' })
+    expect(check).toHaveAttribute('aria-expanded', 'false')
+    expect(fetch.mock.calls.filter(([url]) => String(url).endsWith('/health'))).toHaveLength(0)
+    fireEvent.click(check)
+    expect(await screen.findByText('System check')).toBeVisible()
+    expect(await screen.findByText('sqlite')).toBeVisible()
+    expect(check).toHaveAttribute('aria-expanded', 'true')
+    expect(fetch.mock.calls.some(([url]) => String(url).endsWith('/health'))).toBe(true)
+    fireEvent.click(screen.getByRole('button', { name: 'Hide check' }))
+    expect(screen.queryByText('System check')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Check system' })).toHaveAttribute('aria-expanded', 'false')
+  })
+
   it('shows staff records before the optional add-staff form on a phone', async () => {
     state.authFetch.mockImplementation(async path => ({ ok: true, json: async () => path === '/staff' ? [{ id: 1, username: 'counter_one', phone: '9000000000', role: 'cashier', counter_prefix: 'C1' }] : { general: {}, subscription: { plan: 'pro', status: 'active' } } }))
     mount('/settings?tab=staff')

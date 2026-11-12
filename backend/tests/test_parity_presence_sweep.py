@@ -44,7 +44,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 import pytest
 
-from database.db import SessionLocal
+from database.db import SessionLocal, sync_disabled_var
 from database.models import Base, Customer, Product, SyncInbox, SyncQueue, User
 from services import sync_worker as SW
 from services.dates import utc_now
@@ -82,10 +82,13 @@ def _clean(s):
 
 @pytest.fixture
 def db():
+    # These are published snapshot rows, not newly edited hybrid outbox rows.
+    fixture_sync = sync_disabled_var.set(True)
     s = SessionLocal()
     _clean(s)
     s.add(User(id=BID, username=f"pres_owner_{BID}", email=f"pr{BID}@t.invalid",
-               password="x", public_id=f"BA-PRE{BID}", business_name="Presence Co"))
+               password="x", public_id=f"BA-PRE{BID}", business_name="Presence Co",
+               settings='{"general":{"hosting_mode":"hybrid","device_invoice_namespace":"TST"}}'))
     s.commit()
     try:
         yield s
@@ -93,6 +96,7 @@ def db():
         s.rollback()
         _clean(s)
         s.close()
+        sync_disabled_var.reset(fixture_sync)
 
 
 def _run(db, monkeypatch, changes):

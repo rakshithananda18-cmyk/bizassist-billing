@@ -34,6 +34,7 @@ export async function refreshSession() {
       if (res.status === 401) { unauthorized(); return null }
       if (!res.ok) return null
       const data = await res.json()
+      if (generation !== sessionGeneration || tokenStorage.getItem('billing_token') !== oldToken || (getApiBase() || API_BASE) !== base) return null
       const next = data.token || data.access_token
       if (next && tokenStorage.getItem('billing_token') === oldToken) {
         tokenStorage.setItem('billing_token', next)
@@ -46,20 +47,27 @@ export async function refreshSession() {
   return refreshing
 }
 
-export async function sessionFetch(url, options = {}) {
+export async function sessionFetch(url, options = {}, scope = null) {
   if (isDemoEnvironment()) {
     return handleDemoRequest(url, options)
   }
   const initialToken = tokenStorage.getItem('billing_token')
+  const generation = scope?.generation ?? sessionGeneration
+  const base = scope?.base ?? (getApiBase() || API_BASE)
+  const supplied = new Headers(options.headers || {}).get('Authorization')
+  const current = () => generation === sessionGeneration && (getApiBase() || API_BASE) === base
+    && tokenStorage.getItem('billing_token') === initialToken
+  if (!current() || (supplied && supplied !== `Bearer ${initialToken}`)) throw new DOMException('Session changed', 'AbortError')
   const res = await fetch(url, options)
   // An old in-flight request must never end a newer business's session.
-  if (tokenStorage.getItem('billing_token') !== initialToken) return res
+  if (!current()) return res
   if (isSessionRejection(res, url)) { unauthorized(); return res }
   if (res.status === 401 && isOwnApiResponse(res, url) && !url.endsWith('/auth/refresh')) {
     const next = await refreshSession()
-    if (next) {
+    if (next && generation === sessionGeneration && (getApiBase() || API_BASE) === base && tokenStorage.getItem('billing_token') === next) {
+      if (scope) scope.token = next
       const retried = await fetch(url, { ...options, headers: { ...options.headers, Authorization: `Bearer ${next}` } })
-      if (tokenStorage.getItem('billing_token') === next && isSessionRejection(retried, url)) unauthorized()
+      if (generation === sessionGeneration && (getApiBase() || API_BASE) === base && tokenStorage.getItem('billing_token') === next && isSessionRejection(retried, url)) unauthorized()
       return retried
     }
   }
@@ -67,6 +75,9 @@ export async function sessionFetch(url, options = {}) {
 }
 
 export async function resilientSessionFetch(url, options = {}, { budgetMs = 65000 } = {}) {
+  const scope = { generation: sessionGeneration, base: getApiBase() || API_BASE, token: tokenStorage.getItem('billing_token') }
+  const current = () => scope.generation === sessionGeneration && scope.base === (getApiBase() || API_BASE)
+    && scope.token === tokenStorage.getItem('billing_token')
   const controller = new AbortController()
   const started = Date.now()
   const abort = () => controller.abort()
@@ -77,11 +88,19 @@ export async function resilientSessionFetch(url, options = {}, { budgetMs = 6500
     || new Headers(options.headers || {}).has('X-Client-Request-Id')
   try {
     for (let attempt = 0; ; attempt++) {
+      if (!current()) throw new DOMException('Session changed', 'AbortError')
       let response, networkError
       try {
-        response = await sessionFetch(url, { ...options, signal: controller.signal })
+        const headers = Object.fromEntries(new Headers(options.headers || {}).entries())
+        if (new Headers(options.headers || {}).has('Authorization')) {
+          delete headers.authorization
+          headers.Authorization = `Bearer ${scope.token}`
+        }
+        response = await sessionFetch(url, { ...options, headers, signal: controller.signal }, scope)
+        if (!current()) return response
         if (!safe || attempt >= 3 || ![429, 502, 503, 504].includes(response.status)) return response
       } catch (error) {
+        if (!current()) throw new DOMException('Session changed', 'AbortError')
         if (!safe || attempt >= 3 || controller.signal.aborted) throw error
         networkError = error
       }

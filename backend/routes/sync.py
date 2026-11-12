@@ -16,12 +16,13 @@ import json
 import base64
 from datetime import datetime, timezone, timedelta
 from typing import Any, Optional, List, Dict
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query
 from pydantic import BaseModel
 from sqlalchemy import text, func, or_, and_
 from sqlalchemy.orm import Session
-from sqlalchemy.exc import IntegrityError, InternalError
+from sqlalchemy.exc import IntegrityError, InternalError, DataError, StatementError, DBAPIError
 
 from database.db import get_db, sync_disabled_var
 from services.auth import (
@@ -237,6 +238,70 @@ class CloudTokenBody(BaseModel):
     enable_sync: bool = False
 
 
+@router.get("/api/sync/bootstrap-state")
+def bootstrap_state(current_user: dict = Depends(require_business_owner), db: Session = Depends(get_db)):
+    """Attest an empty new business before permitting an empty local mirror.
+
+    Clients cannot assert this themselves. A populated business must complete
+    restoration; a brand-new Local-only registration has nothing to restore.
+    """
+    business_id = _resolve_business_id_by_username(current_user, db, require_public_id=True)
+    from database.change_feed import _CHILD
+    def owned(query, model, entity):
+        if hasattr(model, "business_id"):
+            return query.filter(model.business_id == business_id)
+        if entity in TWO_SIDED_OWNER_COLUMNS:
+            a, b = TWO_SIDED_OWNER_COLUMNS[entity]
+            return query.filter(or_(getattr(model, a) == business_id, getattr(model, b) == business_id))
+        if entity in _CHILD:
+            parent_entity, fk = _CHILD[entity]
+            parent = _MODEL_MAP[parent_entity]
+            parents = owned(db.query(parent.id), parent, parent_entity)
+            return query.filter(getattr(model, fk).in_(parents))
+        raise HTTPException(503, "Business restore readiness could not be verified.")
+    for entity, model in _MODEL_MAP.items():
+        if owned(db.query(model.id), model, entity).first() is not None:
+            return {"has_business_data": True}
+    return {"has_business_data": False}
+
+
+class RegisterDeviceBody(BaseModel):
+    installation_id: UUID
+
+
+@router.post("/api/sync/register-device")
+def register_device(body: RegisterDeviceBody, current_user: dict = Depends(require_business_owner),
+                    _plan: dict = Depends(require_plan("pro", force_enforcement=True)), db: Session = Depends(get_db)):
+    from core.sync.device_series import allocate_namespace
+    business_id = _resolve_business_id_by_username(current_user, db, require_public_id=True)
+    try:
+        namespace = allocate_namespace(db, business_id, body.installation_id)
+        db.commit()
+        return {"namespace": namespace}
+    except (ValueError, IntegrityError) as exc:
+        db.rollback()
+        raise HTTPException(409, "Device series registration changed concurrently or reached its limit. Retry device setup.") from exc
+
+
+def _register_cloud_device(token, installation):
+    import httpx
+    import re
+    from core.cloud_endpoint import CLOUD_URL
+    try:
+        response = httpx.post(f"{CLOUD_URL}/api/sync/register-device", json={"installation_id": installation},
+                              headers={"Authorization": f"Bearer {token}"}, timeout=5.0)
+        if response.status_code in {401, 403}:
+            raise HTTPException(401, "Sign in again to register this device's billing series.")
+        if response.status_code == 402:
+            raise HTTPException(402, "An active Pro plan is required to register this device.")
+        namespace = response.json().get("namespace") if response.status_code == 200 else None
+        if not isinstance(namespace, str) or not re.fullmatch(r"[0-9A-Z]{3}", namespace):
+            raise HTTPException(503, "The cloud could not register this device's billing series. Update the server and retry setup.")
+        return namespace
+    except (httpx.HTTPError, ValueError, AttributeError):
+        raise HTTPException(503, "Device series registration is temporarily unavailable. Retry cloud setup.") from None
+
+
 def _read_verified_cloud_document(path: str, token: str) -> dict:
     """Only the configured cloud authority may attest a desktop credential."""
     import httpx
@@ -290,6 +355,8 @@ def save_cloud_token(
         initial_mode_revision = initial_general.get("sync_mode_revision", 0)
     except (ValueError, TypeError, AttributeError):
         raise HTTPException(409, "Local business settings could not be read. Nothing was changed.") from None
+    if body.enable_sync and initial_general.get("sync_local_only_explicit") is True:
+        raise HTTPException(409, "Local-only was explicitly selected on this installation. Choose Local + Cloud in Settings to enable sync again.")
 
     # Even a store-only request must not replace this business's working token
     # with a credential belonging to a different tenant or a staff identity.
@@ -300,6 +367,8 @@ def save_cloud_token(
         raise HTTPException(409, "The cloud session belongs to a different business or is not its owner.")
 
     subscription = None
+    device_namespace = None
+    local_installation = None
     if body.enable_sync:
         from types import SimpleNamespace
         from services.admin_service import effective_plan
@@ -309,6 +378,15 @@ def save_cloud_token(
             raise HTTPException(503, "Cloud subscription verification was incomplete. It will be retried.")
         if effective_plan(SimpleNamespace(settings=json.dumps({"subscription": subscription}))) != "pro":
             raise HTTPException(402, "Local + Cloud sync requires an active Pro plan.")
+        from core.sync.device_series import installation_id
+        try:
+            local_installation = installation_id()
+        except OSError:
+            raise HTTPException(503, "The installation identity could not be saved. Check device storage before starting sync.") from None
+        if initial_general.get("device_installation_id") == local_installation and initial_general.get("device_invoice_namespace"):
+            device_namespace = initial_general["device_invoice_namespace"]
+        else:
+            device_namespace = _register_cloud_device(body.token, local_installation)
 
     # Verification performs no local writes. Re-read after the network round
     # trips so unrelated settings saved in the meantime are preserved.
@@ -339,6 +417,8 @@ def save_cloud_token(
             cursor and (cursor.cursor_value or "").startswith("feed:v2:"))
         general["hosting_mode"] = "hybrid"
         general["sync_bootstrap_pending"] = initial_pending
+        general["device_installation_id"] = local_installation
+        general["device_invoice_namespace"] = device_namespace
         settings["subscription"] = subscription
         # A choice from another process/tab must also win after verification.
         # Compare-and-set the complete latest settings instead of overwriting a
@@ -354,6 +434,30 @@ def save_cloud_token(
         return {"status": "ok", "hosting_mode": "hybrid", "sync_started": True,
                 "initial_restore_pending": initial_pending}
     return {"status": "ok"}
+
+
+@router.post("/api/sync/resume")
+def resume_device_sync(background_tasks: BackgroundTasks,
+                       current_user: dict = Depends(require_business_owner), db: Session = Depends(get_db)):
+    """Resume from the backend's renewed credential without exposing it to JS."""
+    if db.get_bind().dialect.name != "sqlite":
+        raise HTTPException(409, "Device sync is available on local installations only.")
+    business_id = _resolve_business_id_by_username(current_user, db, require_public_id=True)
+    owner = db.get(User, business_id)
+    try:
+        general = (json.loads(owner.settings or "{}") or {}).get("general") or {}
+        if not isinstance(general, dict):
+            raise ValueError("Invalid settings")
+    except (AttributeError, ValueError, TypeError):
+        raise HTTPException(409, "Local business settings could not be read. Nothing was changed.") from None
+    if general.get("sync_local_only_explicit") is True:
+        raise HTTPException(409, "Local-only was explicitly selected. Choose Local + Cloud in Settings to resume sync.")
+    from services.sync_worker import ensure_fresh_cloud_token
+    credential = ensure_fresh_cloud_token(business_id)
+    if not credential:
+        raise HTTPException(401, "Sign in online again to reconnect this device's cloud sync.")
+    return save_cloud_token(CloudTokenBody(token=credential, enable_sync=True),
+                            background_tasks, current_user=current_user, db=db)
 
 
 @router.post("/api/sync/heal")
@@ -462,6 +566,8 @@ def push_changes(
     """
     business_id = _resolve_business_id_by_username(current_user, db, require_public_id=True)
     logger.info("sync/push: business_id=%s received %s changes", business_id, len(payload.changes))
+    from core.sync import tombstones
+    tombstones.lock_business(db, business_id)
 
     blocked_delete_entities = sorted({
         change.entity
@@ -517,12 +623,9 @@ def push_changes(
         for change in payload.changes:
             model_cls = _MODEL_MAP.get(change.entity)
             if not model_cls:
-                logger.warning("sync/push: unknown entity %s", change.entity)
-                skipped.append({"entity": change.entity, "row_id": change.entity_id,
-                                "reason": "unknown entity on this server"})
-                continue
+                raise HTTPException(426, "The server needs an update for sync entity: " + change.entity)
 
-            data = change.payload or {}
+            data = dict(change.payload or {})
             if "business_id" in data:
                 data["business_id"] = business_id
 
@@ -540,18 +643,15 @@ def push_changes(
             existing = None
             uid_val = data.get("uid")
 
-            # (Phase C) Prefer uid lookup for synced models, but support legacy
-            # local updates when an id-only payload is received.
+            # Database-local integer IDs never establish cross-device identity.
             if hasattr(model_cls, "uid"):
                 if uid_val:
-                    existing = db.query(model_cls).filter(model_cls.uid == uid_val).first()
-                elif data.get("id") is not None:
-                    existing = db.query(model_cls).filter(model_cls.id == change.entity_id).first()
-                    if existing is None:
-                        logger.warning(
-                            "sync/push: payload without uid for %s will be applied as insert or id-fallback if matched",
-                            change.entity,
-                        )
+                    existing = db.query(model_cls).filter(model_cls.uid == uid_val).populate_existing().with_for_update().first()
+                else:
+                    rejected.append({"entity": change.entity, "row_id": change.entity_id,
+                                     "reason": "A durable UID is required; update or repair the sending device"})
+                    processed_count += 1
+                    continue
                 if "id" in data:
                     del data["id"]
             else:
@@ -567,18 +667,35 @@ def push_changes(
                     raise HTTPException(status_code=403, detail="Cross-business sync mutation denied")
 
             if change.operation == "DELETE":
-                if existing:
-                    db.delete(existing)
+                try:
+                    deleted_at = tombstones.delete_version(data)
+                    if deleted_at is None or deleted_at > utc_now() + timedelta(minutes=5):
+                        raise ValueError("Deletion requires a valid, current version timestamp")
+                    if existing and tombstones.normalized_version(getattr(existing, "updated_at", None)) is not None \
+                            and tombstones.normalized_version(existing.updated_at) > deleted_at:
+                        skipped.append({"entity": change.entity, "row_id": change.entity_id, "reason": "newer record kept; stale deletion"})
+                        continue
+                    with db.begin_nested():
+                        deleted = tombstones.apply_remote_delete(db, business_id, change.entity, uid_val, deleted_at, existing)
+                    if not deleted:
+                        skipped.append({"entity": change.entity, "row_id": change.entity_id, "reason": "newer retained deletion kept"})
+                        continue
                     processed_count += 1
                     ent_name = entity_map.get(change.entity)
                     if ent_name:
                         entities_to_broadcast.add(ent_name)
+                except ValueError as exc:
+                    rejected.append({"entity": change.entity, "row_id": change.entity_id, "reason": str(exc)})
+                    processed_count += 1
                 continue
 
             # INSERT / UPDATE operations
             # Conflict Check: compare updated_at timestamps if available
             local_updated_at_str = data.get("updated_at")
             local_updated_at = _parse_dt(local_updated_at_str)
+            if not tombstones.check_upsert(db, business_id, change.entity, uid_val, local_updated_at):
+                skipped.append({"entity": change.entity, "row_id": change.entity_id, "reason": "retained newer deletion"})
+                continue
 
             # (R-8) Clock-skew guard: a device with its clock set forward >5 min
             # permanently wins all LWW comparisons. Reject such rows on the cloud
@@ -643,46 +760,6 @@ def push_changes(
                                     "reason": "cloud copy is newer (LWW)"})
                     continue
 
-                # (P0) Local-wins on a FINANCIAL row = the previously-SILENT
-                # overwrite. Data still lands (LWW below), but a financial record
-                # being edited on two devices is something the owner must see, so
-                # a review_needed conflict capturing the cloud version is written
-                # BEFORE we clobber it. Guarded to a genuine change (differing
-                # timestamp AND differing content) so normal edit→sync
-                # propagation of an unchanged row doesn't spam the review list.
-                #
-                # (M-8) The predicate and the write now live in the SHARED hooks
-                # module. They used to be inline here, which is exactly why an
-                # overwrite arriving by PULL was never flagged — the same
-                # one-directional blind spot as M-7. Do not re-inline this.
-                _apply_hooks.log_financial_conflict(
-                    db,
-                    business_id=business_id,
-                    entity=change.entity,
-                    entity_id=change.entity_id,
-                    incoming=data,
-                    existing_row=existing,
-                    incoming_updated_at=local_updated_at,
-                    existing_updated_at=cloud_updated_at,
-                    log_prefix="sync/push",
-                )
-
-                # (R-9) Non-financial master-data LWW overwrite — same loss-of-
-                # version risk as financial rows but lower severity. cloud_updated_at
-                # is in scope here (assigned above in this same if-block).
-                _apply_hooks.log_master_data_conflict(
-                    db,
-                    business_id=business_id,
-                    entity=change.entity,
-                    entity_id=change.entity_id,
-                    incoming=data,
-                    existing_row=existing,
-                    incoming_updated_at=local_updated_at,
-                    existing_updated_at=cloud_updated_at,
-                    resolution="local_won",
-                    log_prefix="sync/push",
-                )
-
             # Resolve FKs via the parent's durable uid (shared helper — same logic
             # as the pull-apply worker). If a parent_uid is present but the parent
             # row isn't in this DB yet, the child is DEFERRED rather than written
@@ -690,6 +767,7 @@ def push_changes(
             # a later sync once the parent exists.
             if resolve_parent_fk_uids(db, model_cls, data,
                 business_id=business_id,
+                require_uid=True,
                 log_prefix=f"sync/push[{change.entity}.id={change.entity_id}]",
             ):
                 # -- M-20 (CRITICAL): the row is DEFERRED, the client MUST be told --
@@ -729,18 +807,20 @@ def push_changes(
                 protect_history(change.entity, data, existing)
             except ValueError as exc:
                 rejected.append({"entity": change.entity, "row_id": change.entity_id, "reason": str(exc)})
+                processed_count += 1
+                continue
+            if existing and local_updated_at and _parse_dt(existing.updated_at) == local_updated_at \
+                    and change.entity in _apply_hooks.FINANCIAL_ENTITIES \
+                    and _apply_hooks.payloads_differ(data, _apply_hooks.row_to_dict(existing)):
+                _apply_hooks.log_financial_conflict(db, business_id=business_id,
+                    entity=change.entity, entity_id=change.entity_id, incoming=data,
+                    existing_row=existing, incoming_updated_at=local_updated_at,
+                    existing_updated_at=local_updated_at, log_prefix="sync/push")
+                rejected.append({"entity": change.entity, "row_id": change.entity_id, "reason": "Equal-version financial conflict requires review"})
+                processed_count += 1
                 continue
             # Apply fields to model instance
             target_obj = existing if existing else model_cls()
-
-            for key, val in data.items():
-                if key in model_cls.__table__.columns:
-                    col_type = model_cls.__table__.columns[key].type
-                    # Handle datetime conversions
-                    if hasattr(col_type, "python_type") and col_type.python_type == datetime:
-                        if val:
-                            val = _parse_dt(val)
-                    setattr(target_obj, key, val)
 
             # Per-row SAVEPOINT: one bad row (e.g. a duplicate uid whose data is
             # already on the cloud, or a transient FK) must NOT abort the whole
@@ -750,6 +830,24 @@ def push_changes(
             # data is already present on the destination.
             try:
                 with db.begin_nested():
+                    # Compare resolved local relationships, not source-database IDs.
+                    # Only records ready to apply can produce an overwrite conflict.
+                    if existing and local_updated_at:
+                        cloud_updated_at = _parse_dt(getattr(existing, "updated_at", None))
+                        _apply_hooks.log_financial_conflict(db, business_id=business_id,
+                            entity=change.entity, entity_id=change.entity_id, incoming=data,
+                            existing_row=existing, incoming_updated_at=local_updated_at,
+                            existing_updated_at=cloud_updated_at, log_prefix="sync/push")
+                        _apply_hooks.log_master_data_conflict(db, business_id=business_id,
+                            entity=change.entity, entity_id=change.entity_id, incoming=data,
+                            existing_row=existing, incoming_updated_at=local_updated_at,
+                            existing_updated_at=cloud_updated_at, resolution="local_won", log_prefix="sync/push")
+                    for key, val in data.items():
+                        if key in model_cls.__table__.columns:
+                            col_type = model_cls.__table__.columns[key].type
+                            if hasattr(col_type, "python_type") and col_type.python_type == datetime and val:
+                                val = _parse_dt(val)
+                            setattr(target_obj, key, val)
                     if not existing:
                         db.add(target_obj)
                     db.flush()
@@ -767,11 +865,29 @@ def push_changes(
                         db, change.entity, target_obj, log_prefix="sync/push")
                     if not _hook.ok:
                         apply_failures.append(_hook)
-                processed_count += 1
+                        from core.sync import inbox
+                        receipt = inbox.remember(db, business_id=business_id, entity=change.entity,
+                            record=dict(data, _sync_repair_only=True), reason="hook-failed", error="; ".join(_hook.errors))
+                        if receipt is None:
+                            raise RuntimeError("Derived-state repair could not be retained")
+                        db.flush()
+                if _hook.ok:
+                    processed_count += 1
+                    from database.models import SyncInbox
+                    for repair in db.query(SyncInbox).filter(SyncInbox.business_id == business_id,
+                            SyncInbox.entity == change.entity, SyncInbox.uid == uid_val,
+                            SyncInbox.reason == "hook-failed", SyncInbox.applied_at.is_(None)).all():
+                        repair.applied_at = utc_now()
+                        repair.error = None
+                else:
+                    deferred.append({"entity": change.entity, "row_id": change.entity_id,
+                                     "uid": uid_val, "reason": "Derived financial state needs a successful repair"})
                 ent_name = entity_map.get(change.entity)
                 if ent_name:
                     entities_to_broadcast.add(ent_name)
-            except (IntegrityError, InternalError) as ie:
+            except (IntegrityError, InternalError, DataError, StatementError, ValueError, TypeError) as ie:
+                if isinstance(ie, DBAPIError) and not isinstance(ie, (IntegrityError, InternalError, DataError)):
+                    raise  # Connection/operational failures must retry, never acknowledge unprocessed records.
                 # C-7. A Postgres TRIGGER that fires `RAISE EXCEPTION` — the
                 # line-item overfill guard, database/migration.py:912 — is
                 # SQLSTATE P0001, i.e. psycopg2.errors.RaiseException, which is a
@@ -794,88 +910,17 @@ def push_changes(
                 if isinstance(ie, InternalError) and not str(
                         getattr(ie.orig, "pgcode", "")).startswith("P0"):
                     raise
-                # Most likely a concurrent insert of the same uid (two overlapping
-                # pushes) — the row now EXISTS. Re-fetch by uid and UPDATE it
-                # (merge) so the change actually lands instead of being dropped,
-                # respecting LWW (only overwrite when the incoming row is newer).
-                deduped = "skipped"
-                try:
-                    if uid_val and hasattr(model_cls, "uid"):
-                        dup = db.query(model_cls).filter(model_cls.uid == uid_val).first()
-                        if dup is not None:
-                            inc_dt = _parse_dt(data.get("updated_at"))
-                            cur_dt = _parse_dt(getattr(dup, "updated_at", None)) if hasattr(dup, "updated_at") else None
-                            if (inc_dt is None) or (cur_dt is None) or (inc_dt >= cur_dt):
-                                with db.begin_nested():
-                                    for key, val in data.items():
-                                        if key in model_cls.__table__.columns and key != "id":
-                                            col_type = model_cls.__table__.columns[key].type
-                                            if hasattr(col_type, "python_type") and col_type.python_type == datetime and val:
-                                                val = _parse_dt(val)
-                                            setattr(dup, key, val)
-                                    db.flush()
-                                    # Same shared hooks on the dedupe path — an
-                                    # integrity-deduped row is still an applied
-                                    # row, and skipping them here would leave
-                                    # exactly the invoices that raced looking
-                                    # unpaid.
-                                    _dup_hook = _apply_hooks.run_post_apply(
-                                        db, change.entity, dup, log_prefix="sync/push-dedupe")
-                                    if not _dup_hook.ok:
-                                        apply_failures.append(_dup_hook)
-                                deduped = "updated"
-                            else:
-                                deduped = "kept-newer-cloud"
-                except Exception as ie2:
-                    deduped = "dedupe-failed"
-                    logger.warning("sync/push: dedupe-update failed for %s uid=%s: %s", change.entity, uid_val, ie2)
-
-                if deduped in ("updated", "kept-newer-cloud"):
-                    # A genuine uid collision, resolved. The row IS represented in
-                    # the cloud, so acking it is correct and nothing is lost.
-                    logger.info(
-                        "sync/push: %s.id=%s integrity-deduped by uid (%s): %s",
-                        change.entity, change.entity_id, deduped, getattr(ie, "orig", ie),
-                    )
-                else:
-                    # M-13 — the row was REJECTED, not deduplicated.
-                    #
-                    # `deduped == "skipped"` means the IntegrityError was NOT a uid
-                    # collision: no uid on the payload, the model has no uid column,
-                    # or no existing row carries it. So the constraint that fired was
-                    # something else — a foreign key, one of the N4 money CHECKs, or
-                    # the M-11 one-open-shift index — and the incoming row landed
-                    # NOWHERE.
-                    #
-                    # This used to be `logger.info(...)` followed unconditionally by
-                    # `processed_count += 1`, i.e. the row was acked and the device's
-                    # outbox dropped it forever. That silently discards a LOCAL write
-                    # — the shop's own sale — which is the M-12 defect pointing the
-                    # other way, and the N4 constraints make it far more reachable
-                    # than it used to be.
-                    #
-                    # The ack STAYS: refusing it would stall the outbox behind a row
-                    # that can never apply, which is the same poison-row trade the
-                    # per-row SAVEPOINT and `_PULL_MAX_FAILED_STREAK` already make.
-                    # What changes is that acking is no longer silent — the row is
-                    # recorded for review with its full payload, logged at ERROR, and
-                    # returned to the caller in `rejected`, so the device knows its
-                    # write did not survive.
-                    _apply_hooks.log_apply_failure(
-                        db,
-                        business_id=business_id,
-                        entity=change.entity,
-                        entity_id=change.entity_id,
-                        payload=data,
-                        error=ie,
-                        log_prefix="sync/push",
-                    )
-                    rejected.append({
-                        "entity": change.entity,
-                        "row_id": change.entity_id,
-                        "uid": uid_val,
-                        "reason": str(getattr(ie, "orig", ie)).strip().splitlines()[0],
-                    })
+                # The per-row savepoint has rolled back. Never mutate a second
+                # candidate here: that could bypass ownership/version checks or
+                # put invalid values back into the surrounding transaction.
+                _apply_hooks.log_apply_failure(
+                    db, business_id=business_id, entity=change.entity,
+                    entity_id=change.entity_id, payload=data, error=ie,
+                    log_prefix="sync/push",
+                )
+                rejected.append({"entity": change.entity, "row_id": change.entity_id,
+                                 "uid": uid_val,
+                                 "reason": str(getattr(ie, "orig", ie)).strip().splitlines()[0]})
                 processed_count += 1  # ack either way so it isn't re-sent every cycle
                 continue
 
@@ -1255,6 +1300,7 @@ def get_queue_depth(
     business_id = _resolve_business_id_by_username(current_user, db)
 
     # Query pending items — fetch entity column too for breakdown
+    status_errors = []
     try:
         pending_items = (
             db.query(SyncQueue.entity, SyncQueue.operation)
@@ -1273,7 +1319,8 @@ def get_queue_depth(
         next_entity = pending_items[0].entity if pending_items else None
 
     except Exception:
-        pending_count  = 0
+        status_errors.append("Upload queue could not be read")
+        pending_count  = None
         entity_counts  = {}
         next_entity    = None
 
@@ -1286,6 +1333,7 @@ def get_queue_depth(
             .first()
         )
     except Exception:
+        status_errors.append("Sync history could not be read")
         last_log = None
 
     # Instant Pull state, reported from the listener thread rather than from the
@@ -1305,8 +1353,9 @@ def get_queue_depth(
         from core.sync import inbox as _inbox_mod
         inbox_stats = _inbox_mod.stats(db, business_id)
     except Exception:
-        inbox_stats = {"pending_count": 0, "entity_counts": {},
-                       "stuck_count": 0, "deferred_count": 0, "rejected_count": 0}
+        status_errors.append("Download inbox could not be read")
+        inbox_stats = {"pending_count": None, "entity_counts": {}, "status_error": "Download inbox could not be read",
+                       "stuck_count": None, "deferred_count": None, "rejected_count": None}
 
     from services.control_outbox import control_status
     from services import sync_worker
@@ -1316,19 +1365,39 @@ def get_queue_depth(
         general = (json.loads(owner.settings or "{}").get("general") or {}) if owner else {}
         initial_restore_pending = general.get("sync_bootstrap_pending") is True
     except (ValueError, TypeError, AttributeError):
+        status_errors.append("Business restore settings could not be read")
         initial_restore_pending = True  # Unreadable is not evidence of a completed restore.
-    cursor = db.query(SyncCursor).filter(SyncCursor.business_id == business_id, SyncCursor.entity == "*").first()
+    try:
+        cursor = db.query(SyncCursor).filter(SyncCursor.business_id == business_id, SyncCursor.entity == "*").first()
+        initialized = bool(cursor and (cursor.cursor_value or "").startswith("feed:v2:")) and not initial_restore_pending
+    except Exception:
+        status_errors.append("Download position could not be read")
+        initialized = None
+    try:
+        control = control_status(db, business_id)
+    except Exception:
+        status_errors.append("Account update queue could not be read")
+        control = {"pending": None, "failed": None, "status_error": "Account update queue could not be read"}
+    from services import sync_retry
+    retry_operations = sync_retry.snapshot(business_id)
+    if retry_operations.get("storage", {}).get("blocked"):
+        status_errors.append("Sync retry storage could not be read")
     return {
-        "pull": {"initialized": bool(cursor and (cursor.cursor_value or "").startswith("feed:v2:")) and not initial_restore_pending,
+        "status_error": "; ".join(status_errors) or None,
+        "readiness": {"state": "unknown" if status_errors else "restoring" if initial_restore_pending
+                      else "attention" if inbox_stats.get("pending_count") else "ready"},
+        "retry_operations": retry_operations,
+        "pull": {"initialized": initialized,
+                 "last_pull_at": cursor.updated_at.isoformat() if initialized and cursor.updated_at else None,
                  "initial_restore_pending": initial_restore_pending,
                  "has_more": business_id in sync_worker._PULL_MORE_PENDING},
-        "control_outbox": control_status(db, business_id),
+        "control_outbox": control,
         "pending_count":  pending_count,
         "entity_counts":  entity_counts,   # {"invoices": 3, "customers": 1, ...}
         "inbox":          inbox_stats,
         "next_entity":    next_entity,      # entity currently at front of queue
         "last_sync_time": last_log.synced_at.isoformat() if last_log else None,
-        "last_status":    last_log.status if last_log else "idle",
+        "last_status":    "unknown" if status_errors else last_log.status if last_log else "idle",
         "last_error":     last_log.error  if last_log else None,
         "instant_pull":   instant_pull,
         "halt":           _halt_state(business_id),
@@ -1470,6 +1539,9 @@ def flush_sync_queue(
     """
     from services.sync_worker import trigger_sync_run
     business_id = _resolve_business_id_by_username(current_user, db)
+    from services.sync_policy import cloud_egress_allowed
+    if db.get_bind().dialect.name == "sqlite" and not cloud_egress_allowed(business_id):
+        raise HTTPException(409, "This business is set to Local-only. Enable Local + Cloud before requesting synchronization.")
     background_tasks.add_task(trigger_sync_run, business_id, pull=pull)
     return {"status": "triggered", "business_id": business_id, "pull": pull}
 
@@ -1650,6 +1722,9 @@ def run_parity_check(
     from services.sync_worker import _cloud_parity_check, _LAST_PARITY
 
     business_id = _resolve_business_id_by_username(current_user, db)
+    from services.sync_policy import cloud_egress_allowed
+    if not cloud_egress_allowed(business_id):
+        raise HTTPException(409, "A cloud audit requires Local + Cloud on this device.")
 
     def _run_parity(bid: int):
         # Bypass the rate-limit for a manual trigger

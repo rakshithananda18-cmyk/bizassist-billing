@@ -23,6 +23,7 @@ from services.errors import AskError
 from routes.upload import router as upload_router
 from routes.ai_insights import router as ai_insights_router
 from routes.auth import router as auth_router
+from routes.device_auth import router as device_auth_router
 from routes.admin import router as admin_router
 from routes.chat import router as chat_router
 from routes.alerts import router as alerts_router
@@ -528,6 +529,7 @@ def health_check():
 app.include_router(ask_router)
 app.include_router(telemetry_router)
 app.include_router(auth_router)
+app.include_router(device_auth_router)
 app.include_router(admin_router)
 app.include_router(upload_router)
 app.include_router(ai_insights_router)

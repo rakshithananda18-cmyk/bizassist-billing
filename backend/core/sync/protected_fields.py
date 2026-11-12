@@ -5,6 +5,13 @@ SETTLEMENTS = frozenset({"supplier_payments", "customer_refunds", "customer_cred
 def protect_history(entity, data, existing):
     if existing is None:
         return
+    if entity == "stock_ledger":
+        # A movement's bucket is part of its durable identity. Moving an
+        # accepted movement strands the former bucket's cache, and rewriting
+        # its origin loses the stock trail. Correct it with a new movement.
+        for key in ("product_id", "product_name", "godown_id", "batch_no"):
+            if key in data and data[key] != getattr(existing, key):
+                raise ValueError(f"Immutable stock movement bucket {key}; record a correcting movement")
     if entity in SETTLEMENTS or entity == "document_party_snapshots":
         ignored = {"id", "created_at", "updated_at", "seller_deleted", "buyer_deleted"}
         for column in existing.__table__.columns:

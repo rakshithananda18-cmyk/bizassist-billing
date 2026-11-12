@@ -166,6 +166,22 @@ def record_movement(db, *, business_id: int, movement_type: str, qty_delta: floa
 
 # ── Cache projection (rebuildable; never the source of truth) ────────────────
 
+def _project_bucket_rows(rows, balance):
+    """Project one ledger balance without multiplying duplicate device caches.
+
+    Preserve UIDs and metadata. Stable UID order makes the selected projection
+    independent of the database-local IDs assigned by each installation.
+    """
+    ordered = sorted(rows, key=lambda row: (not bool(row.uid), row.uid or "", row.id or 0))
+    updated = 0
+    for index, row in enumerate(ordered):
+        value = float(balance) if index == 0 else 0.0
+        if row.stock != value:
+            row.stock = value
+            updated += 1
+    return updated
+
+
 def _refresh_inventory_cache(db, business_id: int, *, product_id, product_name, new_balance,
                              godown_id=None, batch_no=None, expiry_date=None) -> None:
     """Keep `inventory.stock` in step with the ledger. Best-effort: a missing
@@ -174,20 +190,21 @@ def _refresh_inventory_cache(db, business_id: int, *, product_id, product_name, 
     if product_id is not None:
         q = q.filter(Inventory.product_id == product_id)
     elif product_name:
-        q = q.filter(Inventory.product_name == product_name)
+        q = q.filter(Inventory.product_id.is_(None), Inventory.product_name == product_name)
     
     q = q.filter(Inventory.godown_id == godown_id)
     q = q.filter(Inventory.batch_no == batch_no)
 
     db.flush()
-    inv = q.with_for_update().first()
-    if inv is not None:
+    rows = q.with_for_update().all()
+    if rows:
         # The cache must preserve the ledger's fractional quantity (kg, metres,
         # litres, etc.). Rounding it to an integer corrupts stock valuation even
         # though the append-only ledger still has the correct amount.
-        inv.stock = float(new_balance)
+        _project_bucket_rows(rows, new_balance)
         if expiry_date:
-            inv.expiry_date = expiry_date
+            for inv in rows:
+                inv.expiry_date = expiry_date
     else:
         # Create it on the fly if product_id is not None
         if product_id is not None:
@@ -226,16 +243,18 @@ def rebuild_inventory_cache(db, business_id: int) -> int:
     is disposable and the ledger is the truth.
     """
     rows = db.query(Inventory).filter(Inventory.business_id == business_id).all()
-    updated = 0
+    buckets = {}
     for inv in rows:
+        key = (inv.product_id, inv.product_name if inv.product_id is None else None, inv.godown_id, inv.batch_no)
+        buckets.setdefault(key, []).append(inv)
+    updated = 0
+    for bucket in buckets.values():
+        inv = bucket[0]
         bal = current_stock(db, business_id,
                             product_id=inv.product_id,
                             product_name=inv.product_name,
                             godown_id=inv.godown_id,
                             batch_no=inv.batch_no,
                             exact_bucket=True)
-        new = float(bal)
-        if inv.stock != new:
-            inv.stock = new
-            updated += 1
+        updated += _project_bucket_rows(bucket, bal)
     return updated

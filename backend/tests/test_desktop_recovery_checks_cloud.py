@@ -5,20 +5,19 @@ Two loopback-only routes act on the claim "the cloud just accepted these
 credentials":
 
   * POST /api/auth/reconcile_password — sets the local owner's password,
-  * POST /api/auth/reclaim_local      — re-keys the owner onto a new BizID and
-                                        PURGES the business's local data.
+  * POST /api/auth/reclaim_local      — refuses legacy identity replacement.
 
 They used to take that claim from the request. On a shared shop computer that
 meant anyone who knew the owner's username — every cashier does, staff sign in
 with it — and the BizID shown on screen could reset the owner's password, or
-wipe the business, with a plain POST. Now the backend signs in to the cloud
-itself (routes.auth._confirm_with_cloud) and nothing changes unless the cloud
-accepts the password and names the same BizID.
+wipe the business, with a plain POST. Password reconciliation now confirms the
+same cloud identity; legacy reclaim always refuses without network access or
+local changes, even when a different cloud account accepts the password.
 """
 import os
 import sys
 import uuid
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 os.environ.setdefault("DATABASE_URL", "sqlite:///./test_bizassist.db")
 os.environ.setdefault("GROQ_API_KEY", "mock_groq_api_key")
@@ -61,7 +60,7 @@ def _cloud(answer):
     def confirm(username, password):
         if isinstance(answer, HTTPException):
             raise answer
-        return answer
+        return {"role": "enterprise", **answer}
     return confirm
 
 
@@ -122,6 +121,12 @@ class TestReconcilePassword:
         assert self._post(uname, "BA-RCN-B1").status_code == 503
         assert _login(uname, OLD_PW) == 200
 
+    def test_cloud_staff_cannot_set_the_local_owner_password(self, monkeypatch):
+        uname = _owner_with_product("BA-RCN-STAFF")
+        monkeypatch.setattr(auth_routes, "_confirm_with_cloud", _cloud({"public_id": "BA-RCN-STAFF", "role": "cashier"}))
+        assert self._post(uname, "BA-RCN-STAFF").status_code == 403
+        assert _login(uname, OLD_PW) == 200
+
     def test_the_cloud_bizid_decides_not_the_request(self, monkeypatch):
         """The request claims the local BizID, but the cloud account is another."""
         uname = _owner_with_product("BA-RCN-C1")
@@ -146,29 +151,65 @@ class TestReclaimLocal:
         return client.post("/api/auth/reclaim_local",
                            json={"username": uname, "password": NEW_PW, "public_id": public_id})
 
+    def _existing_business(self, public_id):
+        """Seed all data formerly purged by the unsafe replacement path."""
+        from database.db import SessionLocal
+        from database.models import Customer, User
+        uname = _owner_with_product(public_id)
+        with SessionLocal() as db:
+            owner = db.query(User).filter(User.username == uname).one()
+            db.add(User(username=f"counter_{uuid.uuid4().hex[:8]}", password=owner.password,
+                        role="cashier", parent_business_id=owner.id, business_name=owner.business_name))
+            db.add(Customer(business_id=owner.id, uid=f"customer-{uuid.uuid4().hex}",
+                            name="Original local customer", phone="12345"))
+            db.commit()
+        return uname
+
+    def _state(self, uname):
+        from database.db import SessionLocal
+        from database.models import Customer, DeletedBusiness, Product, User
+        with SessionLocal() as db:
+            owner_id = db.query(User.id).filter(User.username == uname).scalar()
+            def values(model, condition):
+                return [{column.name: getattr(row, column.name) for column in model.__table__.columns}
+                        for row in db.query(model).filter(condition).order_by(model.id)]
+            return {
+                "users": values(User, (User.id == owner_id) | (User.parent_business_id == owner_id)),
+                "customers": values(Customer, Customer.business_id == owner_id),
+                "products": values(Product, Product.business_id == owner_id),
+                "tombstones": values(DeletedBusiness, DeletedBusiness.username == uname),
+            }
+
     def test_without_the_cloud_password_nothing_is_wiped(self, monkeypatch):
-        uname = _owner_with_product("BA-RCL-A1")
-        monkeypatch.setattr(auth_routes, "_confirm_with_cloud",
-                            _cloud(HTTPException(status_code=401, detail="no")))
-        assert self._post(uname, "BA-ATTACKER").status_code == 401
+        uname = self._existing_business("BA-RCL-A1")
+        before = self._state(uname)
+        confirm = Mock(side_effect=HTTPException(status_code=401, detail="no"))
+        monkeypatch.setattr(auth_routes, "_confirm_with_cloud", confirm)
+        assert self._post(uname, "BA-ATTACKER").status_code == 409
+        confirm.assert_not_called()
+        assert self._state(uname) == before
         assert _login(uname, OLD_PW) == 200
         assert _products_left(uname) == 1, "the business's data must survive a refused reclaim"
 
     def test_a_bizid_the_cloud_does_not_name_is_refused(self, monkeypatch):
-        """Even with the real cloud password, the BizID adopted must be the
-        cloud account's, so a reclaim can't point the business elsewhere."""
-        uname = _owner_with_product("BA-RCL-B1")
-        monkeypatch.setattr(auth_routes, "_confirm_with_cloud", _cloud({"public_id": "BA-RCL-B2"}))
+        uname = self._existing_business("BA-RCL-B1")
+        before = self._state(uname)
+        confirm = Mock(return_value={"public_id": "BA-RCL-B2"})
+        monkeypatch.setattr(auth_routes, "_confirm_with_cloud", confirm)
         assert self._post(uname, "BA-ATTACKER").status_code == 409
+        confirm.assert_not_called()
+        assert self._state(uname) == before
         assert _login(uname, OLD_PW) == 200
         assert _products_left(uname) == 1
 
-    def test_a_real_re_registration_still_reclaims(self, monkeypatch):
-        uname = _owner_with_product("BA-RCL-C1")
-        monkeypatch.setattr(auth_routes, "_confirm_with_cloud",
-                            _cloud({"public_id": "BA-RCL-C2", "business_name": "Sri Lakshmi Pharma"}))
+    def test_valid_new_cloud_identity_still_cannot_replace_local_business(self, monkeypatch):
+        uname = self._existing_business("BA-RCL-C1")
+        before = self._state(uname)
+        confirm = Mock(return_value={"public_id": "BA-RCL-C2", "business_name": "Sri Lakshmi Pharma"})
+        monkeypatch.setattr(auth_routes, "_confirm_with_cloud", confirm)
         r = self._post(uname, "BA-RCL-C2")
-        assert r.status_code == 200, r.text
-        assert r.json()["public_id"] == "BA-RCL-C2"
-        assert r.json()["business_name"] == "Sri Lakshmi Pharma", "the cloud's name, not the request's"
-        assert _products_left(uname) == 0, "a re-keyed business starts clean"
+        assert r.status_code == 409, r.text
+        confirm.assert_not_called()
+        assert self._state(uname) == before
+        assert _login(uname, OLD_PW) == 200 and _login(uname, NEW_PW) == 401
+        assert _products_left(uname) == 1

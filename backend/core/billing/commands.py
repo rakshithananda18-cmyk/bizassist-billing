@@ -265,6 +265,8 @@ def _next_invoice_number(db, business_id: int, counter_prefix: Optional[str] = N
     Not a preview — call ``sequence.peek_number`` for that.
     """
     series = SEQ.normalize_series(counter_prefix)
+    from core.sync.device_series import local_series
+    series = local_series(db, business_id, series)
     return SEQ.next_number(
         db, business_id, series,
         scan_max=lambda: _series_max(db, business_id, series),
@@ -427,7 +429,11 @@ def create_sale_invoice(db, *, business_id: int, lines: list,
         if not math.isfinite(number_value) or number_value < 0:
             raise ValueError(f"Sale {name} must be a finite non-negative value")
 
-    number = (invoice_no or "").strip() or _next_invoice_number(db, business_id, counter_prefix)
+    number = (invoice_no or "").strip()
+    if number and counter_prefix:
+        from core.sync.device_series import local_counter_number
+        number = local_counter_number(db, business_id, number, counter_prefix)
+    number = number or _next_invoice_number(db, business_id, counter_prefix)
 
     # ── Idempotency vs collision ─────────────────────────────────────────────
     existing = (
@@ -1107,9 +1113,11 @@ def create_credit_note(db, *, business_id: int,
     # ``CN`` is its own series, so a return never consumes a sale's number.
     cn_number = (credit_note_no or "").strip()
     if not cn_number:
+        from core.sync.device_series import local_series
+        cn_series = local_series(db, business_id, SEQ.CREDIT_NOTE_SERIES)
         cn_number = SEQ.next_number(
-            db, business_id, SEQ.CREDIT_NOTE_SERIES,
-            scan_max=lambda: _series_max(db, business_id, SEQ.CREDIT_NOTE_SERIES),
+            db, business_id, cn_series,
+            scan_max=lambda: _series_max(db, business_id, cn_series),
             is_taken=lambda num: _invoice_number_taken(db, business_id, num),
         )
 

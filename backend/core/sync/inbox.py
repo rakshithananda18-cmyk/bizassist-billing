@@ -112,7 +112,10 @@ def _next_attempt_at(attempts: int):
 _HELD_OUTCOMES = {
     "deferred":   "parent row not present in this database yet",
     "no-uid":     "row has no uid — cannot be matched safely",
+    "no-identity": "row has no durable identity — cannot be matched safely",
     "clock-skew": "cloud updated_at is >5 min ahead of this machine's clock",
+    "hook-failed": "derived-state invariant repair failed; retry is required",
+    "version-conflict": "different financial values have the same version; owner review is required",
 }
 
 
@@ -301,6 +304,11 @@ def drain(db: Session, business_id: int, apply_row, limit: int = 200) -> Dict[st
             with db.begin_nested():
                 outcome = apply_row(db, row.entity, record)
             if outcome in _HELD_OUTCOMES:
+                if outcome == "hook-failed":
+                    # The base row now exists. Replaying the original payload
+                    # can lose LWW after a successful projection bumped its
+                    # timestamp, falsely finishing an unperformed repair.
+                    row.payload = json.dumps(dict(record, _sync_repair_only=True), default=str)
                 # Still not here. Expected while a backlog drains (a parent in
                 # flight, a clock being corrected); back off rather than spinning
                 # on it every cycle. Record WHICH reason — "deferred" for a
@@ -334,6 +342,7 @@ def drain(db: Session, business_id: int, apply_row, limit: int = 200) -> Dict[st
     except Exception as e:
         db.rollback()
         logger.error("[SYNC_INBOX] biz=%s drain commit failed: %s", business_id, e)
+        raise
 
     if result["applied"] or result["failed"] or result["deferred"]:
         logger.info(

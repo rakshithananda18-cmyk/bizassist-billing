@@ -560,7 +560,8 @@ def create_customer_offer(body: CustomerOfferIn, current_user: dict = Depends(ge
     }
     offers.insert(0, new_offer)
     settings["customer_offers"] = offers[:20]
-    user.settings = json.dumps(settings)
+    from services.settings_store import replace_settings_preserving_consent
+    replace_settings_preserving_consent(db, user, settings)
     db.commit()
     return {"success": True, "offer": new_offer}
 

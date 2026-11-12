@@ -17,6 +17,7 @@ import { reconcileBizIdOnLogin } from '../utils/loginSync'
 import { isUpgradeToPro } from '../utils/planTransition'
 import { discoverLocalBackend, getNetworkMode, clearDiscoveryCache } from '../utils/networkDiscovery'
 import { reconcileDeviceModeOnLogin, getHostingPreference, setHostingPreference } from '../utils/deviceMode'
+import { rememberDeviceSeries } from '../utils/deviceSeries'
 import { syncManager } from '../sync/syncManager'
 import { tokenStorage } from '../utils/tokenStorage'
 import { clearBillingProfileCache } from '../hooks/useBillingProfile'
@@ -24,6 +25,7 @@ import { notifyAiLogout, getAiDashboardUrl } from '../config/aiDashboard'
 import { sessionFetch, resilientSessionFetch, invalidateSessionRefresh } from '../api/session'
 import { readableError } from '../api/httpErrors'
 import { useSessionRefresh } from '../hooks/useSessionRefresh'
+import { boundedJsonFetch, requestBudget } from '../api/boundedRequest'
 import {
   isAuthEntryPath,
   isDemoRequested,
@@ -46,22 +48,7 @@ function clearPreviewTimers() {
 // Authentication is a security boundary, but it must also have a bounded wait.
 // An unavailable local service used to leave the login screen spinning forever.
 const authFetchWithTimeout = async (url, options, timeoutMs = AUTH_REQUEST_TIMEOUT_MS) => {
-  if (typeof AbortController === 'undefined') return fetch(url, options)
-
-  const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), timeoutMs)
-  try {
-    return await fetch(url, { ...options, signal: controller.signal })
-  } catch (err) {
-    if (controller.signal.aborted || err?.name === 'AbortError') {
-      const timeoutError = new Error(`Request timed out after ${Math.ceil(timeoutMs / 1000)} seconds.`)
-      timeoutError.code = 'AUTH_REQUEST_TIMEOUT'
-      throw timeoutError
-    }
-    throw err
-  } finally {
-    clearTimeout(timeout)
-  }
+  return boundedJsonFetch(url, options, timeoutMs)
 }
 
 /**
@@ -151,19 +138,23 @@ function syncScopeFor(user) {
 
 export function AuthProvider({ children }) {
   const authGeneration = useRef(0)
+  const loginGeneration = useRef(0)
+  const syncRecovery = useRef(null)
+  const syncPreparing = useRef(false)
+  const [syncSetup, setSyncSetup] = useState(null)
   const modeGeneration = useRef(0)
   const modeChangePending = useRef(false)
   const modeWrites = useRef(Promise.resolve())
   // An explicit Local save must land after any automatic Pro-mode save that
   // was already in flight. Otherwise a late login request can turn sync back on.
-  const saveHostingMode = useCallback((backend, sessionToken, mode) => {
+  const saveHostingMode = useCallback((backend, sessionToken, mode, explicit = false) => {
     const generation = authGeneration.current
     const save = modeWrites.current.catch(() => {}).then(() => {
       if (generation !== authGeneration.current || tokenStorage.getItem('billing_token') !== sessionToken) return null
       return authFetchWithTimeout(`${backend}/settings`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionToken}` },
-        body: JSON.stringify({ general: { hosting_mode: mode } }),
+        body: JSON.stringify({ general: { hosting_mode: mode, hosting_choice_explicit: explicit } }),
       })
     })
     modeWrites.current = save.catch(() => {})
@@ -242,16 +233,20 @@ export function AuthProvider({ children }) {
   }, [])
 
   const _saveSession = useCallback((data) => {
+    const tok = data.token || data.access_token
+    if (typeof tok !== 'string' || !tok) throw new Error('Sign-in response did not include a valid session. Try again.')
     authGeneration.current++
     invalidateSessionRefresh()
     reportedLoadErrors.current.clear()
     clearPreviewTimers()
     setSettings(null)
     const savedGeneration = authGeneration.current
+    syncRecovery.current = null
+    syncPreparing.current = false
+    setSyncSetup(null)
     setProfile(null)
     syncManager.clearScope()
     clearBillingProfileCache()
-    const tok = data.token || data.access_token
     tokenStorage.setItem('billing_token', tok)
 
     // Auto-resolve user_id / public_id from token payload if not sent in the
@@ -263,6 +258,7 @@ export function AuthProvider({ children }) {
       resolvedUserId = resolvedUserId || decoded?.user_id
       resolvedBizId = resolvedBizId || decoded?.public_id
     }
+    if (decodeToken(tok)?.local_only === true && resolvedBizId) setHostingPreference(resolvedBizId, 'local')
 
     const userObj = {
       id: data.id,
@@ -272,6 +268,13 @@ export function AuthProvider({ children }) {
       business_name: data.business_name,
       role: data.role,
       counter_prefix: data.counter_prefix || null,   // POS counter series for this login (§9.3a)
+    }
+    let previousBizId = null
+    try { previousBizId = JSON.parse(localStorage.getItem('billing_user') || 'null')?.public_id } catch { /* corrupt saved identity is unowned */ }
+    if (!userObj.public_id || previousBizId !== userObj.public_id) {
+      localStorage.removeItem('bizassist_cloud_token')
+      localStorage.removeItem('bizassist_cloud_proof')
+      localStorage.removeItem('bizassist_pending_cloud_proof')
     }
     localStorage.setItem('billing_user', JSON.stringify(userObj))
 
@@ -347,91 +350,264 @@ export function AuthProvider({ children }) {
    * and hand it to the local backend for the hybrid sync worker
    * (POST /api/sync/cloud-token). Best-effort — never blocks or fails login.
    */
-  const _provisionCloudSyncToken = useCallback(async (username, password, localToken, cloudToken = null) => {
-    if (!IS_LOCAL_APP || !localToken) return null
-    if (getHostingPreference() === 'local') return null
-    if (typeof navigator !== 'undefined' && navigator.onLine === false) return null
+  const _provisionCloudSyncToken = useCallback(async (username, password, localToken, cloudToken = null, backend = API_BASE) => {
+    if (!IS_LOCAL_APP || !localToken || getHostingPreference() === 'local') return null
     const generation = authGeneration.current
-    const current = () => generation === authGeneration.current && tokenStorage.getItem('billing_token') === localToken && getHostingPreference() !== 'local'
+    const current = () => generation === authGeneration.current && tokenStorage.getItem('billing_token') === localToken
+      && API_BASE === backend && getHostingPreference() !== 'local'
+    if (!current()) return null
+    const request = requestBudget(25000, current)
+    let publicId
+    const remember = token => {
+      if (!current()) return
+      // Persist only the cloud-issued credential, scoped to the local owner and
+      // backend. Never retain a password for background/reconnect retries.
+      localStorage.setItem('bizassist_cloud_proof', JSON.stringify({ token, publicId, backend }))
+      syncRecovery.current = { localToken, cloudToken: token, backend, generation }
+    }
     try {
-      if (!current()) return null
-      let token = cloudToken
-      if (!token) {
-        const res = await authFetchWithTimeout(`${CLOUD_URL}/login`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+      publicId = decodeToken(localToken)?.public_id || JSON.parse(localStorage.getItem('billing_user') || '{}').public_id
+      let proof = cloudToken
+      if (!proof && username && password && (typeof navigator === 'undefined' || navigator.onLine !== false)) {
+        const res = await request(`${CLOUD_URL}/login`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ username, password }),
         })
-        if (!res.ok) return null
-        token = (await res.json())?.token
+        if (!res.ok) throw new Error('Cloud sign-in is required to finish setting up sync.')
+        proof = (await res.json())?.token
       }
-      if (!token) return null
-      if (!current()) return null
-      const provisioned = await authFetchWithTimeout(`${LOCAL_URL}/api/sync/cloud-token`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localToken}` },
-        body: JSON.stringify({ token }),
-      })
-      if (!provisioned.ok || !current()) return null
-      localStorage.setItem('bizassist_cloud_token', token)
-      logger.info('[SYNC] Cloud sync token provisioned (24h, business-scoped)')
-      window.dispatchEvent(new CustomEvent('refresh-settings'))
-      // Keep the CLOUD record's hosting_mode in step with this device when it's
-      // on Local + Cloud, so the Admin Console shows "Local + Cloud" (the sync
-      // worker moves business data, not the settings JSON). Runs for BOTH paths
-      // that mint a cloud token — signup and the Settings switch → re-login.
-      // Best-effort and informational; never affects the token result.
-      try {
-        const mode = (typeof localStorage !== 'undefined' && localStorage.getItem('bizassist_hosting_mode')) || 'local'
-        if (mode === 'hybrid') {
-          void authFetchWithTimeout(`${CLOUD_URL}/settings`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-            body: JSON.stringify({ general: { hosting_mode: 'hybrid' } }),
-          }).catch(() => {})
+      if (!proof) {
+        const stored = JSON.parse(localStorage.getItem('bizassist_cloud_proof') || 'null')
+        if (stored?.publicId === publicId && stored?.backend === backend) proof = stored.token
+        if (!proof) {
+          const candidate = JSON.parse(localStorage.getItem('bizassist_pending_cloud_proof') || 'null')
+          if (candidate?.publicId === publicId && candidate?.backend === backend) proof = candidate.token
         }
-      } catch { /* informational only */ }
-      return token
+        if (!proof) {
+          // Upgrade existing installations which predate scoped proof storage.
+          // This is only a candidate; its live cloud identity is still verified
+          // below before it can be stored against this local business.
+          const saved = JSON.parse(localStorage.getItem('billing_user') || '{}')
+          if (saved.public_id === publicId) proof = localStorage.getItem('bizassist_cloud_token')
+        }
+      }
+      if (!proof) {
+        if (current()) setSyncSetup({ status: 'reauth_required', error: 'Sign in online again to finish setting up cloud sync.' })
+        return null
+      }
+      if (!current()) return null
+      if (!publicId || typeof proof !== 'string') {
+        setSyncSetup({ status: 'reauth_required', error: 'Sign in to the matching business owner account to finish cloud sync setup.' })
+        return null
+      }
+      // A candidate is never a published cloud session. Retain it so an outage
+      // between login and profile verification can recover without a password.
+      // Every retry must verify its live cloud identity before provisioning.
+      localStorage.setItem('bizassist_pending_cloud_proof', JSON.stringify({ token: proof, publicId, backend }))
+      syncRecovery.current = { localToken, cloudToken: proof, backend, generation }
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) throw new Error('Cloud sync setup is waiting for an internet connection.')
+      const verified = await request(`${CLOUD_URL}/profile`, { headers: { Authorization: `Bearer ${proof}` } })
+      const cloudProfile = await verified.json()
+      if (!current()) return null
+      if (!verified.ok || !publicId || cloudProfile.public_id !== publicId
+          || !['enterprise', 'owner'].includes((cloudProfile.role || '').toLowerCase())) {
+        if ([401, 403].includes(verified.status) || verified.ok) {
+          const stored = JSON.parse(localStorage.getItem('bizassist_cloud_proof') || 'null')
+          if (stored?.token === proof) localStorage.removeItem('bizassist_cloud_proof')
+          const candidate = JSON.parse(localStorage.getItem('bizassist_pending_cloud_proof') || 'null')
+          if (candidate?.token === proof) localStorage.removeItem('bizassist_pending_cloud_proof')
+          if (localStorage.getItem('bizassist_cloud_token') === proof) localStorage.removeItem('bizassist_cloud_token')
+          syncRecovery.current = null
+          setSyncSetup({ status: 'reauth_required', error: verified.ok
+            ? 'The cloud session belongs to a different business or is not its owner. Sign in to the matching owner account.'
+            : cloudProfile.detail || 'Sign in online again to reconnect cloud sync.' })
+          return null
+        }
+        throw new Error(cloudProfile.detail || 'Cloud identity verification is waiting for a connection.')
+      }
+      if (!current()) return null
+      // Only verified same-owner proof is retained for a failed durable save.
+      // Canonical cloud sessions remain unpublished until local acceptance.
+      remember(proof)
+      localStorage.removeItem('bizassist_pending_cloud_proof')
+      const provisioned = await request(`${backend}/api/sync/cloud-token`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localToken}` },
+        body: JSON.stringify({ token: proof }),
+      })
+      if (!provisioned.ok) {
+        const body = await provisioned.json()
+        if (!current()) return null
+        if ([401, 403].includes(provisioned.status)) {
+          localStorage.removeItem('bizassist_cloud_proof')
+          if (current()) setSyncSetup({ status: 'reauth_required', error: body.detail || 'Sign in online again to reconnect cloud sync.' })
+          return null
+        }
+        throw new Error(body.detail || 'Cloud sync setup could not finish. Check the connection and retry.')
+      }
+      if (!current()) return null
+      localStorage.setItem('bizassist_cloud_token', proof)
+      setSyncSetup(null)
+      window.dispatchEvent(new CustomEvent('refresh-settings'))
+      return proof
     } catch (err) {
-      logger.debug('[SYNC] Cloud sync token provisioning skipped:', err?.message)
+      if (current()) setSyncSetup({ status: syncRecovery.current?.cloudToken ? 'pending' : 'reauth_required', error: err?.message || 'Cloud sync setup is waiting.' })
+      logger.debug('[SYNC] Cloud sync setup is pending:', err?.message)
       return null
     }
   }, [])
 
   const _startVerifiedSync = useCallback((localToken, cloudToken, {
-    generation = authGeneration.current,
-    modeEpoch = modeGeneration.current,
-    source = 'login',
+    generation = authGeneration.current, modeEpoch = modeGeneration.current,
+    source = 'login', backend = API_BASE,
   } = {}) => {
-    const backend = API_BASE
     const current = () => generation === authGeneration.current
       && modeEpoch === modeGeneration.current && !modeChangePending.current
       && tokenStorage.getItem('billing_token') === localToken && API_BASE === backend
     return reconcileBizIdOnLogin(localToken, cloudToken, {
-      source, isCurrent: current,
+      base: backend, source, isCurrent: current,
       runModeWrite: operation => {
         const write = modeWrites.current.catch(() => {}).then(() => current() ? operation() : null)
         modeWrites.current = write.catch(() => {})
         return write
       },
+    }).then(result => {
+      if (current() && result.accepted === false) setSyncSetup({ status: 'pending', error: result.error })
+      return result
     })
   }, [])
 
-  const _prepareLoginSync = useCallback((username, password, localToken, cloudToken = null, source = 'login') => {
-    // Capture before provisioning: a delayed cloud reply from an earlier login
-    // must not activate sync for a later account or override Local-only.
-    const fence = { generation: authGeneration.current, modeEpoch: modeGeneration.current, source }
-    return _provisionCloudSyncToken(username, password, localToken, cloudToken)
+  const _prepareLoginSync = useCallback((username, password, localToken, cloudToken = null, source = 'login', backend = API_BASE) => {
+    const fence = { generation: authGeneration.current, modeEpoch: modeGeneration.current, source, backend }
+    syncPreparing.current = true
+    return _provisionCloudSyncToken(username, password, localToken, cloudToken, backend)
       .then(provisioned => _startVerifiedSync(localToken, provisioned, fence))
+      .finally(() => { if (fence.generation === authGeneration.current) syncPreparing.current = false })
   }, [_provisionCloudSyncToken, _startVerifiedSync])
+
+  const retryCloudSync = useCallback(async () => {
+    if (syncPreparing.current) return { skipped: true }
+    const localToken = tokenStorage.getItem('billing_token')
+    const saved = JSON.parse(localStorage.getItem('billing_user') || '{}')
+    if (!localToken || !IS_LOCAL_APP || !['enterprise', 'owner'].includes(saved.role)
+        || getHostingPreference() === 'local' || isCloudEndpoint(API_BASE)) return { skipped: true }
+    const backend = API_BASE, generation = authGeneration.current, modeEpoch = modeGeneration.current
+    const current = () => generation === authGeneration.current && modeEpoch === modeGeneration.current
+      && tokenStorage.getItem('billing_token') === localToken && API_BASE === backend && getHostingPreference() !== 'local'
+    // The backend may have renewed its durable credential since the browser's
+    // last session. Resume it first so an expired browser proof cannot report
+    // a healthy device as requiring reauthentication, or block series setup.
+    syncPreparing.current = true
+    try {
+      const request = requestBudget(30000, current)
+      const response = await request(`${backend}/api/sync/resume`, {
+        method: 'POST', headers: { Authorization: `Bearer ${localToken}` },
+      }, 25000)
+      const body = await response.json()
+      if (!current()) return { skipped: true }
+      if (response.ok && body.hosting_mode === 'hybrid') {
+        setSyncSetup(null)
+        window.dispatchEvent(new CustomEvent('refresh-settings'))
+        window.dispatchEvent(new CustomEvent('sync-event', { detail: { type: 'sync.trigger', sync_request: true,
+          source: 'reconnect', status: 'pending', accepted: true, initial_restore_pending: body.initial_restore_pending === true } }))
+        return { accepted: true, pending: true }
+      }
+      if (response.status === 409 && /Local-only|storage choice|latest choice/i.test(body.detail || '')) {
+        setSyncSetup(null)
+        window.dispatchEvent(new CustomEvent('refresh-settings'))
+        return { skipped: true, reason: 'local_only' }
+      }
+      if (![401, 403, 404].includes(response.status)) {
+        setSyncSetup({ status: 'pending', error: body.detail || 'Cloud sync recovery is waiting for the local service. Retry when it reconnects.' })
+        return { accepted: false }
+      }
+    } catch (error) {
+      if (!current()) return { skipped: true }
+      setSyncSetup({ status: 'pending', error: error.message || 'Cloud sync recovery is waiting for a connection.' })
+      return { accepted: false }
+    } finally {
+      if (generation === authGeneration.current) syncPreparing.current = false
+    }
+    if (!current()) return { skipped: true }
+    return _prepareLoginSync(null, null, localToken, null, 'reconnect', backend)
+  }, [_prepareLoginSync])
+
+  // Reload and reconnect can retry a verified credential whose first durable
+  // save failed. A wholly offline first login needs explicit reauthentication.
+  useEffect(() => {
+    if (!token || !user || isDemoMode) return
+    let stopped = false, running = false
+    const retry = async () => {
+      if (stopped || running) return
+      running = true
+      try { await retryCloudSync() } finally { running = false }
+    }
+    void retry()
+    window.addEventListener('online', retry)
+    return () => { stopped = true; window.removeEventListener('online', retry) }
+  }, [token, user?.public_id, isDemoMode, retryCloudSync])
+
+  const completeCloudSession = useCallback(async (cloudData, { credential = null, backend = API_BASE } = {}) => {
+    if (!IS_LOCAL_APP || isCloudEndpoint(backend)) { _saveSession(cloudData); return cloudData }
+    const generation = authGeneration.current, attempt = ++loginGeneration.current
+    const current = () => generation === authGeneration.current && attempt === loginGeneration.current && API_BASE === backend
+    const request = requestBudget(30000, current)
+    const response = await request(`${backend}/api/auth/device/cloud-session`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: cloudData.token || cloudData.access_token, credential }),
+    })
+    const data = await response.json()
+    if (!response.ok) throw new Error(data.detail || 'Could not set up this device. Retry sign-in.')
+    if (!current()) throw new DOMException('Session changed', 'AbortError')
+    _saveSession(data)
+    void _prepareLoginSync(null, null, data.token || data.access_token, cloudData.token || cloudData.access_token, 'device-restore', backend)
+    return data
+  }, [_saveSession, _prepareLoginSync])
+
+  const googleAuth = useCallback(async (payload, register = false) => {
+    const backend = API_BASE, generation = authGeneration.current
+    const attempt = ++loginGeneration.current
+    const current = () => generation === authGeneration.current && attempt === loginGeneration.current && API_BASE === backend
+    const request = requestBudget(30000, current)
+    // Cloud decides whether this identity already owns a store. A fresh local
+    // lookup cannot decide that an existing cloud owner needs another business.
+    const target = IS_LOCAL_APP && !isCloudEndpoint(backend) ? CLOUD_URL : backend
+    const response = await request(`${target}/api/auth/google/${register ? 'register' : 'verify'}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+    })
+    const data = await response.json()
+    if (!response.ok) throw new Error(data.detail || 'Google sign-in could not finish. Try again.')
+    if (data.status === 'needs_onboarding' && target !== backend) {
+      const discovery = await request(`${backend}/api/auth/device/google-discovery`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ credential: payload.credential }),
+      })
+      const local = await discovery.json()
+      if (!discovery.ok) throw new Error(local.detail || 'Could not verify this device before store setup. Try again.')
+      if (local.local_owner_exists) throw new Error('This Google identity already has a local business. Sign in to that business and review its cloud connection before creating another store.')
+    }
+    if (!data.token && !data.access_token) return data
+    if (target === backend) { _saveSession(data); return data }
+    const mirror = await request(`${backend}/api/auth/device/cloud-session`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: data.token || data.access_token, credential: payload.credential }),
+    })
+    const local = await mirror.json()
+    if (!mirror.ok) throw new Error(local.detail || 'Could not set up this device. Retry Google sign-in.')
+    if (!current()) throw new DOMException('Session changed', 'AbortError')
+    _saveSession(local)
+    void _prepareLoginSync(null, null, local.token || local.access_token, data.token || data.access_token, 'device-restore', backend)
+    return local
+  }, [_saveSession, _prepareLoginSync])
 
   const login = useCallback(async (username, password) => {
     logger.info('Attempting login for username:', username)
+    const backend = API_BASE, generation = authGeneration.current, attempt = ++loginGeneration.current
+    const current = () => generation === authGeneration.current && attempt === loginGeneration.current && API_BASE === backend
+    const request = requestBudget(30000, current)
 
     // 1. Try the platform's primary backend (local on the downloaded app).
     let res
     try {
-      res = await authFetchWithFailover(`${API_BASE}/login`, {
+      res = await authFetchWithFailover(`${backend}/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password }),
@@ -443,15 +619,17 @@ export function AuthProvider({ children }) {
       }
       throw err
     }
+    if (!current()) throw new DOMException('Session changed', 'AbortError')
     if (res.ok) {
       const data = await res.json()
       logger.info('Login successful for user:', data.username, 'role:', data.role)
+      if (!current()) throw new DOMException('Session changed', 'AbortError')
       _saveSession(data)
       // Fire-and-forget: provision the cloud sync token first, then run the
       // BizID identity check WITH that cloud token. Never send a locally
       // signed JWT to the cloud — its JWT_SECRET differs on packaged installs,
       // so the cloud would (correctly) reject it with 401 "Invalid token".
-      _prepareLoginSync(username, password, data.token || data.access_token)
+      _prepareLoginSync(username, password, data.token || data.access_token, null, 'login', backend)
       return
     }
 
@@ -464,23 +642,25 @@ export function AuthProvider({ children }) {
       if (typeof navigator !== 'undefined' && navigator.onLine === false) {
         throw new Error('This account isn’t set up on this device yet. Connect to the internet once to set it up, then it works offline.')
       }
+      let verifiedCloud = false
       try {
-        const cloudRes = await fetch(`${CLOUD_URL}/login`, {
+        const cloudRes = await request(`${CLOUD_URL}/login`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ username, password }),
         })
         if (cloudRes.ok) {
+          verifiedCloud = true
           const cloudData = await cloudRes.json()
           // If this device already holds the same business, update its local
           // password and retry. A 404 merely means this is a fresh device.
-          const reconcileRes = await fetch(`${LOCAL_URL}/api/auth/reconcile_password`, {
+          const reconcileRes = await request(`${backend}/api/auth/reconcile_password`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ username, password, public_id: cloudData.public_id }),
           })
           if (reconcileRes.ok) {
-            const retryRes = await fetch(`${API_BASE}/login`, {
+            const retryRes = await request(`${backend}/login`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ username, password }),
@@ -489,42 +669,22 @@ export function AuthProvider({ children }) {
               const retryData = await retryRes.json()
               logger.info('[LOGIN] Local password reconciled with cloud and login successful.')
               _saveSession(retryData)
-              _prepareLoginSync(username, password, retryData.token || retryData.access_token, cloudData.token)
+              _prepareLoginSync(username, password, retryData.token || retryData.access_token, cloudData.token, 'login', backend)
               return
             }
-          } else {
-            const recErr = await reconcileRes.json().catch(() => ({}))
-            if (recErr.detail && recErr.detail.includes('Identity mismatch')) {
-              const reclaimRes = await fetch(`${LOCAL_URL}/api/auth/reclaim_local`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  username,
-                  password,
-                  public_id: cloudData.public_id,
-                  business_name: cloudData.business_name,
-                }),
-              })
-              if (reclaimRes.ok) {
-                const reclaimData = await reclaimRes.json()
-                logger.info('[LOGIN] Orphan reclaimed onto new cloud BizID — logged in locally.')
-                _saveSession(reclaimData)
-                _prepareLoginSync(username, password, reclaimData.token || reclaimData.access_token, cloudData.token)
-                return
-              }
-              const reclaimErr = await reclaimRes.json().catch(() => ({}))
-              throw new Error(reclaimErr.detail || recErr.detail)
-            }
+          } else if (![403, 404].includes(reconcileRes.status)) {
+            const recErr = await reconcileRes.json()
+            const conflict = new Error(recErr.detail || 'This local business could not be safely matched to the cloud owner. Nothing was replaced.')
+            conflict.status = reconcileRes.status
+            throw conflict
           }
 
           // No verified local owner exists, so create an identity-only mirror.
-          const mirror = await fetch(`${LOCAL_URL}/signup`, {
+          const mirror = await request(`${backend}/api/auth/device/cloud-session`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              username, password,
-              business_name: cloudData.business_name || username,
-              public_id: cloudData.public_id,
+              token: cloudData.token || cloudData.access_token, password,
             }),
           })
           if (mirror.ok) {
@@ -533,19 +693,24 @@ export function AuthProvider({ children }) {
             _saveSession(localData)
             // Provision first, then verify and schedule the durable worker. No
             // popup races a missing cloud token on a fresh installation.
-            _prepareLoginSync(username, password, localData.token || localData.access_token, cloudData.token, 'device-restore')
+            _prepareLoginSync(username, password, localData.token || localData.access_token, cloudData.token, 'device-restore', backend)
             return
           }
           logger.error(`[LOGIN] Cloud login ok but local mirror failed: HTTP ${mirror.status}`)
-          throw new Error('Signed in, but could not set up this device. Please try again.')
+          const mirrorError = await mirror.json()
+          const setupError = new Error(mirrorError.detail || 'Signed in, but could not safely set up this device. Nothing was replaced. Please try again.')
+          setupError.status = mirror.status
+          throw setupError
         }
         // Cloud login also failed → fall through to surface the local error.
       } catch (err) {
         logger.warn('[LOGIN-RECOVERY] Cloud-verified device recovery failed:', err?.message)
+        if (verifiedCloud || err?.code === 'AUTH_REQUEST_TIMEOUT' || err?.name === 'AbortError') throw err
       }
     }
 
     // 3. No fallback applied → surface the original error.
+    if (!current()) throw new DOMException('Session changed', 'AbortError')
     const err = await res.json().catch(() => ({}))
     logger.error('Login request failed with status:', res.status, err.detail)
     throw new Error([400, 401, 403].includes(res.status) ? 'Wrong username or password.' : readableError(res.status, res.headers?.get?.('content-type'), err))
@@ -555,12 +720,15 @@ export function AuthProvider({ children }) {
   // the business owner (owner username + per-business counter/staff name + password).
   const staffLogin = useCallback(async (ownerUsername, staffLoginName, password) => {
     logger.info('Attempting staff login under owner:', ownerUsername, 'as', staffLoginName)
+    const backend = API_BASE, generation = authGeneration.current, attempt = ++loginGeneration.current
+    const current = () => generation === authGeneration.current && attempt === loginGeneration.current && API_BASE === backend
+    const request = requestBudget(30000, current)
     const body = JSON.stringify({ owner_username: ownerUsername, staff_login_name: staffLoginName, password })
 
     // 1. Try the platform's primary backend (local on the desktop app).
     let res
     try {
-      res = await authFetchWithFailover(`${API_BASE}/login/staff`, {
+      res = await authFetchWithFailover(`${backend}/login/staff`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body,
@@ -572,9 +740,11 @@ export function AuthProvider({ children }) {
       }
       throw err
     }
+    if (!current()) throw new DOMException('Session changed', 'AbortError')
     if (res.ok) {
       const data = await res.json()
       logger.info('Staff login successful:', data.username, 'role:', data.role)
+      if (!current()) throw new DOMException('Session changed', 'AbortError')
       _saveSession(data)
       reconcileBizIdOnLogin(data.token || data.access_token)
       return
@@ -591,7 +761,7 @@ export function AuthProvider({ children }) {
     if (IS_LOCAL_APP && CLOUD_URL !== API_BASE &&
         (typeof navigator === 'undefined' || navigator.onLine !== false)) {
       try {
-        const cloudRes = await fetch(`${CLOUD_URL}/login/staff`, {
+        const cloudRes = await request(`${CLOUD_URL}/login/staff`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body,
@@ -610,10 +780,12 @@ export function AuthProvider({ children }) {
         }
       } catch (e) {
         logger.warn('[STAFF] Cloud fallback failed:', e?.message)
+        if (e?.code === 'AUTH_REQUEST_TIMEOUT' || e?.name === 'AbortError') throw e
       }
     }
 
     // 3. No fallback applied → surface the original error.
+    if (!current()) throw new DOMException('Session changed', 'AbortError')
     const err = await res.json().catch(() => ({}))
     logger.error('Staff login failed:', res.status, err.detail)
     throw new Error([400, 401, 403].includes(res.status) ? 'Wrong username or password.' : readableError(res.status, res.headers?.get?.('content-type'), err))
@@ -623,7 +795,7 @@ export function AuthProvider({ children }) {
   const _applyTemplate = useCallback(async (base, tok, template_key) => {
     if (!tok || !template_key) return
     try {
-      const r = await fetch(`${base}/business/setup`, {
+      const r = await authFetchWithTimeout(`${base}/business/setup`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tok}` },
         body: JSON.stringify({ template_key }),
@@ -650,10 +822,10 @@ export function AuthProvider({ children }) {
       })
       if (recovered.ok) return recovered.json()
       if (recovered.status === 401) res = await send()
-      else throw new Error(readableError(recovered.status, recovered.headers?.get?.('content-type'), await recovered.text()))
+      else throw new Error(readableError(recovered.status, recovered.headers?.get?.('content-type'), await recovered.json()))
     }
     if (!res.ok) {
-      const e = new Error(readableError(res.status, res.headers?.get?.('content-type'), await res.text()))
+      const e = new Error(readableError(res.status, res.headers?.get?.('content-type'), await res.json()))
       e.status = res.status
       throw e
     }
@@ -662,6 +834,9 @@ export function AuthProvider({ children }) {
 
   const signup = useCallback(async ({ username, password, business_name, template_key, hosting = 'local', phone = null, email = null }) => {
     logger.info('Attempting signup for username:', username, 'business:', business_name, 'template:', template_key, 'hosting:', hosting)
+    const backend = API_BASE, generation = authGeneration.current, attempt = ++loginGeneration.current
+    const current = () => generation === authGeneration.current && attempt === loginGeneration.current && API_BASE === backend
+    const request = requestBudget(30000, current)
 
     // Cloud-authoritative identity (D9): on the downloaded app we register on the
     // CLOUD first (the single BizID authority), then mirror the account locally
@@ -683,6 +858,7 @@ export function AuthProvider({ children }) {
         }
         throw err
       }
+      if (!current()) throw new DOMException('Session changed', 'AbortError')
       const bizId = cloudData.public_id
       // Local + Cloud is a Pro feature, so it needs the Pro trial the cloud just
       // granted (or not: one trial per phone, or trials switched off). A cloud
@@ -693,43 +869,24 @@ export function AuthProvider({ children }) {
       const fellBackToLocal = hosting === 'hybrid' && trialKnown && !cloudData.trial
       const effectiveHosting = fellBackToLocal ? 'local' : hosting
 
-      // 2. Mirror locally with the SAME BizID, then log in locally (local-first).
-      //    Seed the template ONLY on local (the working copy); the cloud receives
-      //    this data later via backup/push, so seeding it on cloud too would
-      //    create duplicate starter data.
-      let localData
-      let didReclaim = false
-      try {
-        localData = await _doSignup(LOCAL_URL, { username, password, business_name, public_id: bizId, phone, email })
-      } catch (err) {
-        // Local orphan: the cloud accepted this username (so its old cloud account
-        // was deleted → username free on the cloud), but a stale LOCAL mirror still
-        // holds it → the local /signup 400s. Re-key that orphan to the new BizID
-        // instead of failing — the backend verifies the new cloud identity and
-        // purges stale data before rekeying this retired local business.
-        if (err.status === 400) {
-          logger.warn('[SIGNUP] Local username is orphaned — reclaiming it onto the new cloud BizID.')
-          const res = await fetch(`${LOCAL_URL}/api/auth/reclaim_local`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username, password, public_id: bizId, business_name }),
-          })
-          if (!res.ok) {
-            const e = await res.json().catch(() => ({}))
-            throw new Error(e.detail || 'An account with this username already exists on this device and could not be reset.')
-          }
-          localData = await res.json()
-          didReclaim = true
-        } else {
-          throw err
-        }
+      // 2. The local backend verifies the cloud-issued owner before creating
+      // an identity mirror. A username collision is never permission to purge
+      // or re-key an existing local business.
+      const mirrored = await request(`${backend}/api/auth/device/cloud-session`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: cloudData.token || cloudData.access_token, password,
+          local_only: effectiveHosting === 'local' && !fellBackToLocal }),
+      })
+      const localData = await mirrored.json()
+      if (!mirrored.ok) {
+        const error = new Error(localData.detail || 'Your cloud account was created, but this device has a different local business. Nothing was replaced. Sign in to review its connection.')
+        error.status = mirrored.status
+        throw error
       }
-      // Only seed the template on a FRESH local account — a reclaimed orphan may
-      // already have its starter data, and re-seeding would duplicate it.
-      if (!didReclaim) {
-        await _applyTemplate(LOCAL_URL, localData.token || localData.access_token, template_key)
-      }
-      logger.info(`[SIGNUP] Cloud-issued BizID ${bizId} ${didReclaim ? 'reclaimed onto' : 'mirrored to'} local. Logged in locally.`)
+      if (!current()) throw new DOMException('Session changed', 'AbortError')
+      await _applyTemplate(backend, localData.token || localData.access_token, template_key)
+      if (!current()) throw new DOMException('Session changed', 'AbortError')
+      logger.info(`[SIGNUP] Cloud-issued BizID ${bizId} mirrored locally. Logged in locally.`)
       _saveSession(localData)
 
       // Only a choice the owner actually made is an opt-out. A fallback caused
@@ -748,15 +905,14 @@ export function AuthProvider({ children }) {
         const localTok = localData.token || localData.access_token
         if (effectiveHosting === 'hybrid') {
           updateApiBase('hybrid')
-          await fetch(`${LOCAL_URL}/settings`, {
+          await authFetchWithTimeout(`${backend}/settings`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localTok}` },
             body: JSON.stringify({ general: { hosting_mode: 'hybrid' } }),
           }).catch(() => { /* self-heals on next settings fetch */ })
-          // Mint the cloud sync token (best-effort). _provisionCloudSyncToken also
-          // stamps hosting_mode=hybrid on the cloud record when the device is on
-          // Local + Cloud, so the Admin Console reflects it. Never blocks signup.
-          _provisionCloudSyncToken(username, password, localTok)
+          // Verify both identities and register this installation's billing
+          // series before the background worker starts restoring business data.
+          void _prepareLoginSync(username, password, localTok, cloudData.token || cloudData.access_token, 'signup', backend)
         } else {
           updateApiBase('local')
         }
@@ -774,7 +930,7 @@ export function AuthProvider({ children }) {
     _saveSession(data)
     return { hosting: 'cloud', trial: data.trial || null,
       trialUnavailable: Object.prototype.hasOwnProperty.call(data, 'trial') && !data.trial }
-  }, [_saveSession, _applyTemplate, _doSignup, _provisionCloudSyncToken])
+  }, [_saveSession, _applyTemplate, _doSignup, _prepareLoginSync])
 
   const logout = useCallback(async (announce = true) => {
     // A demo can run beside an owner's saved session. Leaving the sample store
@@ -805,6 +961,9 @@ export function AuthProvider({ children }) {
       return
     }
     authGeneration.current++
+    loginGeneration.current++
+    syncRecovery.current = null
+    setSyncSetup(null)
     invalidateSessionRefresh()
     reportedLoadErrors.current.clear()
     clearPreviewTimers()
@@ -859,6 +1018,8 @@ export function AuthProvider({ children }) {
     tokenStorage.removeItem('billing_token')
     localStorage.removeItem('billing_user')
     tokenStorage.removeItem('bizassist_cloud_token')
+    localStorage.removeItem('bizassist_cloud_proof')
+    localStorage.removeItem('bizassist_pending_cloud_proof')
     clearDemoSession()
     setIsDemoMode(false)
     syncManager.clearScope()
@@ -916,7 +1077,7 @@ export function AuthProvider({ children }) {
     //    which meant the sync worker (reads general.hosting_mode from the DB)
     //    never engaged hybrid. Use PUT to match the rest of the app.
     try {
-      const res = await saveHostingMode(API_BASE, token, newMode)
+      const res = await saveHostingMode(API_BASE, token, newMode, true)
       if (!res) return false
       // Pro-gate: the backend refuses to enable hybrid/cloud on a free plan (402).
       // Abort the switch and tell the user — do NOT flip mode, log out, or migrate.
@@ -976,7 +1137,7 @@ export function AuthProvider({ children }) {
     const current = () => generation === authGeneration.current && tokenStorage.getItem('billing_token') === token && API_BASE === backend
     logger.info(`[MODE] Setting hosting mode to "${newMode}" (no logout — same local backend)`)
     try {
-      const res = await saveHostingMode(backend, token, newMode)
+      const res = await saveHostingMode(backend, token, newMode, true)
       if (!res) return false
       // Pro-gate: enabling hybrid on a free plan is refused (402). Abort and tell
       // the user instead of falsely toasting "Local + Cloud enabled". Switching
@@ -1066,6 +1227,7 @@ export function AuthProvider({ children }) {
       if (res.ok) {
         const data = await res.json()
         if (!current()) return
+        rememberDeviceSeries(user?.public_id || data?.public_id, backend, data?.general?.device_invoice_namespace)
         // (§9.3a/b) Reconcile the account's saved `general.hosting_mode` to the
         // REAL mode so it can't drift. A stale value (e.g. 'local' persisted on
         // the account from an earlier desktop switch) otherwise mis-tags cloud
@@ -1097,6 +1259,7 @@ export function AuthProvider({ children }) {
         const planKnown = typeof readPlan === 'string'
         const userPlan = readPlan
         const explicitChoice = getHostingPreference(user?.public_id || user?.username || user?.id)
+          || (data?.general?.sync_local_only_explicit === true ? 'local' : null)
         const realMode = resolveHostingMode({
           isLocalApp: IS_LOCAL_APP,
           plan: userPlan,
@@ -1373,7 +1536,7 @@ export function AuthProvider({ children }) {
       businessConfig, attributesSchema, fetchBusinessConfig, appReady, setAppReady,
       settings, fetchSettings,
       networkMode,   // 'local' | 'cloud' — whether this device is on the same LAN as the owner's backend
-      setSession: _saveSession,
+      setSession: _saveSession, completeCloudSession, googleAuth, retryCloudSync, syncSetup,
       isDemoMode,
       enterDemoMode,
     }}>

@@ -85,12 +85,19 @@ def _make_cloud_invoice(bid, number, total, when):
 
 
 def _push(user, entity, entity_id, payload):
+    # Modern peers identify the same logical record with a durable UID; the
+    # sender's integer key is deliberately never an identity fallback.
+    payload = dict(payload)
+    with SessionLocal() as db:
+        model = {"invoices": Invoice, "customers": Customer}[entity]
+        payload["uid"] = db.get(model, entity_id).uid
     body = {"changes": [{
         "entity": entity, "entity_id": entity_id, "operation": "UPDATE",
         "payload": payload, "created_at": datetime.utcnow().isoformat(),
     }]}
     r = client.post("/api/sync/push", headers=user["headers"], json=body)
     assert r.status_code == 200, r.text
+    assert not r.json().get("rejected"), r.text
     return r
 
 

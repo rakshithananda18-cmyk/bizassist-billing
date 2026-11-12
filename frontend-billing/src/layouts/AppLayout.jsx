@@ -17,7 +17,6 @@ import DesktopDownloadModal from '../components/DesktopDownloadModal'
 import { IS_DESKTOP_APP, openDownloadPage } from '../config/downloadApp'
 import { BuildingMark } from '../components/Logo'
 import PageLoader from '../components/PageLoader'
-import BootHealthCheck from '../components/BootHealthCheck'
 import PageHelp from '../components/PageHelp'
 import UniversalSearch from '../components/UniversalSearch'
 import NotificationBell from '../components/NotificationBell'
@@ -150,7 +149,7 @@ const AUTO_COLLAPSE_ROUTES = ['/settings', '/reports', '/stock', '/purchases']
 const BOTTOM_BAR_ROUTES = ['/', '/sales', '/stock', '/parties', '/reports']
 
 export default function AppLayout({ children, title }) {
-  const { user, logout, profile, token, businessConfig, appReady, setAppReady, settings, fetchSettings, isDemoMode } = useAuth()
+  const { user, logout, profile, token, businessConfig, appReady, setAppReady, settings, fetchSettings, isDemoMode, syncSetup, retryCloudSync } = useAuth()
   const isDemoSession = Boolean(user?.is_demo || isDemoMode)
   const { hasLock, lock, resetInactivityTimer } = useLock()
   const confirm = useConfirm()
@@ -223,7 +222,8 @@ export default function AppLayout({ children, title }) {
     plan: settings?.subscription?.plan,
     savedMode: hostingMode,
     deviceMode,
-    explicitChoice: getHostingPreference(user?.public_id || user?.username || user?.id),
+    explicitChoice: getHostingPreference(user?.public_id || user?.username || user?.id)
+      || (settings?.general?.sync_local_only_explicit === true ? 'local' : null),
     planKnown: typeof settings?.subscription?.plan === 'string',
   })
   const isSyncOn = effectiveMode === 'cloud' || effectiveMode === 'hybrid'
@@ -325,7 +325,7 @@ export default function AppLayout({ children, title }) {
   }, [user, subscription, trialEnded])
 
   const emptyQueueDepth = () => ({
-    pending_count: 0,
+    pending_count: null,
     last_sync_time: null,
     last_status: 'idle',
     last_error: null
@@ -353,6 +353,8 @@ export default function AppLayout({ children, title }) {
     return () => { stopped = true; clearInterval(timer) }
   }, [isDemoSession, token, user?.role, syncBusinessKey, effectiveMode])
   const accountUpdates = queueDepth.control_outbox
+  const queueStatusUnknown = queueDepth.pending_count == null || !!queueDepth.status_error
+    || queueDepth.readiness?.state === 'unknown' || queueDepth.readiness?.status === 'unknown'
   const totalPendingSync = Number(queueDepth.pending_count || 0) + Number(accountUpdates?.pending || 0) + Number(accountUpdates?.failed || 0)
 
   // ── Why sync stopped, from the SERVER ────────────────────────────────────
@@ -394,9 +396,9 @@ export default function AppLayout({ children, title }) {
   const syncRequestFailed = syncRequestStatus?.status === 'failed'
   const syncScopeRef = React.useRef(null)
   syncScopeRef.current = { token, effectiveMode, businessKey: syncBusinessKey }
-  const restoringCloud = isSyncOn && (queueDepth.pull?.initial_restore_pending === true
+  const restoringCloud = (settings?.general?.sync_bootstrap_pending === true && queueDepth.pull?.initialized !== true) || (isSyncOn && (queueDepth.pull?.initial_restore_pending === true
     || queueDepth.pull?.has_more === true
-    || (syncRequestStatus?.initial_restore_pending === true && queueDepth.pull?.initialized !== true))
+    || (syncRequestStatus?.initial_restore_pending === true && queueDepth.pull?.initialized !== true)))
 
   React.useEffect(() => {
     setSyncRequestStatus(null)
@@ -411,11 +413,11 @@ export default function AppLayout({ children, title }) {
   }, [token, syncBusinessKey])
 
   React.useEffect(() => {
-    if (syncRequestStatus?.status !== 'pending' || restoringCloud) return
-    const completedAt = Date.parse(queueDepth.last_sync_time || '')
-    if (queueDepth.last_status === 'success' && Number.isFinite(completedAt)
+    if (!syncRequestStatus || restoringCloud || queueStatusUnknown) return
+    const completedAt = Math.max(Date.parse(queueDepth.last_sync_time || '') || 0, Date.parse(queueDepth.pull?.last_pull_at || '') || 0)
+    if ((queueDepth.last_status === 'success' || (queueDepth.pull?.initialized === true && queueDepth.readiness?.state === 'ready')) && Number.isFinite(completedAt)
         && completedAt >= syncRequestStatus.requestedAt) setSyncRequestStatus(null)
-  }, [syncRequestStatus, restoringCloud, queueDepth.last_status, queueDepth.last_sync_time])
+  }, [syncRequestStatus, restoringCloud, queueStatusUnknown, queueDepth.last_status, queueDepth.last_sync_time, queueDepth.pull?.last_pull_at, queueDepth.pull?.initialized, queueDepth.readiness?.state])
 
   // "Sync now" — the ONLY manual sync control.
   //
@@ -449,12 +451,12 @@ export default function AppLayout({ children, title }) {
 
   React.useEffect(() => {
     setQueueDepth(emptyQueueDepth())
-    if (isDemoSession || effectiveMode !== 'hybrid' || !token) return
+    if (isDemoSession || (effectiveMode !== 'hybrid' && settings?.general?.sync_bootstrap_pending !== true) || !token) return
     let stopped = false
     const backend = API_BASE
     const current = () => !stopped && syncScopeRef.current?.token === token
       && syncScopeRef.current?.businessKey === syncBusinessKey
-      && syncScopeRef.current?.effectiveMode === 'hybrid' && API_BASE === backend
+      && API_BASE === backend
 
     const fetchQueueDepth = async () => {
       try {
@@ -464,8 +466,11 @@ export default function AppLayout({ children, title }) {
         if (res.ok && current()) {
           const data = await res.json()
           if (current()) setQueueDepth(data)
+        } else if (current()) {
+          setQueueDepth(previous => ({ ...previous, pending_count: null, status_error: 'Sync status could not be read. Retry the connection.' }))
         }
       } catch (err) {
+        if (current()) setQueueDepth(previous => ({ ...previous, pending_count: null, status_error: 'Sync status could not be read. Retry the connection.' }))
         logger.error('Failed to fetch sync queue depth:', err)
       }
     }
@@ -502,7 +507,7 @@ export default function AppLayout({ children, title }) {
       window.removeEventListener('sync-flushed', handleSyncFlushed)
       window.removeEventListener('sync-event', handleDataChanged)
     }
-  }, [isDemoSession, effectiveMode, token, syncBusinessKey])
+  }, [isDemoSession, effectiveMode, token, syncBusinessKey, settings?.general?.sync_bootstrap_pending])
 
   // ── Pull countdown tick ───────────────────────────────────────────────────
   // Counts down to the next periodic pull cycle based on pullIntervalSec (default 120s).
@@ -542,6 +547,17 @@ export default function AppLayout({ children, title }) {
       isOnline
     }
   })
+
+  // Keep system details in Settings; surface active connection problems here
+  // through the existing live signals, without another health polling loop.
+  const connectionIssue = syncHealth.isOnline === false
+    ? (isSyncOn ? 'Offline — sync resumes when the connection returns.' : null)
+    : ['error', 'disconnected'].includes(syncHealth.status)
+      ? syncHealth.error || 'Connection interrupted — reconnecting.'
+      : isSyncOn && ['waking', 'busy', 'offline'].includes(cloudStatus?.cloud_state)
+        ? ({ waking: 'Cloud service is starting — retrying.', busy: 'Cloud service is busy — retrying.', offline: 'Cloud service is unreachable — retrying.' })[cloudStatus.cloud_state]
+        : null
+  const connectionIssueLine = connectionIssue ? String(connectionIssue).replace(/\s+/g, ' ').trim() : null
 
   // Live sync progress from SSE sync.progress events
   // { entities: ['invoices','customers'], done: 3, total: 7,
@@ -1316,9 +1332,9 @@ export default function AppLayout({ children, title }) {
                     type="button"
                     ref={syncBtnRef}
                     className={`brand-tag sync-health-pill ${syncHealth.status}`}
-                    aria-label="View server and sync health details"
+                    aria-label="View sync details"
                     aria-expanded={showSyncPopover}
-                    aria-controls="server-sync-health-details"
+                    aria-controls="sync-live-details"
                     aria-haspopup="dialog"
                     onClick={(e) => {
                       e.stopPropagation()
@@ -1337,17 +1353,17 @@ export default function AppLayout({ children, title }) {
                       marginTop: '4px',
                       width: 'fit-content',
                       transition: 'all 0.2s ease',
-                      backgroundColor: effectiveMode === 'local' ? 'var(--bg-3)' : haltTint
+                      backgroundColor: effectiveMode === 'local' ? (connectionIssueLine ? 'rgba(245,158,11,0.1)' : 'var(--bg-3)') : haltTint
                         || (effectiveMode === 'hybrid'
-                            ? (restoringCloud || syncRequestFailed ? 'rgba(245, 158, 11, 0.1)' : queueDepth.last_status === 'failed' && totalPendingSync > 0 ? 'rgba(239, 68, 68, 0.1)' :
+                            ? (restoringCloud || syncRequestFailed || queueStatusUnknown || connectionIssueLine ? 'rgba(245, 158, 11, 0.1)' : queueDepth.last_status === 'failed' && totalPendingSync > 0 ? 'rgba(239, 68, 68, 0.1)' :
                                totalPendingSync > 0 ? 'rgba(245, 158, 11, 0.1)' :
                                !syncHealth.isOnline ? 'rgba(255, 255, 255, 0.05)' : 'rgba(34, 197, 94, 0.1)')
                             : (syncHealth.status === 'connected' ? 'rgba(34, 197, 94, 0.1)' :
                                syncHealth.status === 'connecting' ? 'rgba(245, 158, 11, 0.1)' :
                                'rgba(239, 68, 68, 0.1)')),
-                      color: effectiveMode === 'local' ? 'var(--text-secondary)' : haltTone
+                      color: effectiveMode === 'local' ? (connectionIssueLine ? 'var(--warning)' : 'var(--text-secondary)') : haltTone
                         || (effectiveMode === 'hybrid'
-                            ? (restoringCloud || syncRequestFailed ? 'var(--warning, #f59e0b)' : queueDepth.last_status === 'failed' && totalPendingSync > 0 ? 'var(--danger, #ef4444)' :
+                            ? (restoringCloud || syncRequestFailed || queueStatusUnknown || connectionIssueLine ? 'var(--warning, #f59e0b)' : queueDepth.last_status === 'failed' && totalPendingSync > 0 ? 'var(--danger, #ef4444)' :
                                totalPendingSync > 0 ? 'var(--warning, #f59e0b)' :
                                 !syncHealth.isOnline ? 'var(--sidebar-muted, var(--text-muted))' : 'var(--success, #22c55e)')
                             : (syncHealth.status === 'connected' ? 'var(--success, #22c55e)' :
@@ -1357,10 +1373,10 @@ export default function AppLayout({ children, title }) {
                       textTransform: 'none',
                       letterSpacing: 'normal'
                     }}
-                    title="View server and sync health details"
+                    title={connectionIssueLine || 'View sync details'}
                   >
                     {effectiveMode === 'local' ? (
-                      <><MonitorIcon size={10} /><span>Server health</span></>
+                      <>{connectionIssueLine ? <AlertIcon size={10} /> : <MonitorIcon size={10} />}<span>{connectionIssueLine ? 'Connection issue' : 'Local only'}</span></>
                     ) : haltReason ? (
                       <>
                         <AlertIcon size={10} strokeWidth={2.5} />
@@ -1375,6 +1391,10 @@ export default function AppLayout({ children, title }) {
                       <><AlertIcon size={10} /><span>Sync needs attention</span></>
                     ) : restoringCloud ? (
                       <><span className="sync-spinner-small" /><span>Restoring cloud data</span></>
+                    ) : connectionIssueLine ? (
+                      <><AlertIcon size={10} /><span>Connection issue</span></>
+                    ) : queueStatusUnknown ? (
+                      <><AlertIcon size={10} /><span>Sync status unavailable</span></>
                     ) : effectiveMode === 'hybrid' ? (
                       <>
                         {/* Offline is the highest priority — shown before pending/error */}
@@ -1505,9 +1525,9 @@ export default function AppLayout({ children, title }) {
             {showSyncPopover && (
               <div
                 ref={syncPopoverRef}
-                id="server-sync-health-details"
+                id="sync-live-details"
                 role="dialog"
-                aria-label="Server and sync health details"
+                aria-label="Sync Live details"
                 tabIndex={-1}
                 className="sync-health-popover fade-in"
                 style={{
@@ -1536,7 +1556,7 @@ export default function AppLayout({ children, title }) {
                 }}
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '0.8rem', fontWeight: '700', color: 'var(--text-primary)' }}>Server &amp; Sync Health</span>
+                  <span style={{ fontSize: '0.8rem', fontWeight: '700', color: 'var(--text-primary)' }}>Sync Live</span>
                   <button
                     style={{
                       background: 'none',
@@ -1554,7 +1574,19 @@ export default function AppLayout({ children, title }) {
                   </button>
                 </div>
 
-                <BootHealthCheck />
+                {connectionIssueLine && (
+                  <div role="status" className="sync-connection-issue" style={{ display: 'flex', alignItems: 'center', gap: 7, minWidth: 0, color: 'var(--warning)', fontSize: '0.74rem' }}>
+                    <AlertIcon size={13} style={{ flexShrink: 0 }} />
+                    <span title={connectionIssueLine} style={{ minWidth: 0, flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{connectionIssueLine}</span>
+                    {!isCashier && !isSupplyAdder && (
+                      <button type="button" className="btn btn-ghost btn-sm" aria-label="Open system health in Settings" title="System health in Settings"
+                        style={{ padding: 3, flexShrink: 0, lineHeight: 1 }}
+                        onClick={() => { setShowSyncPopover(false); setMobileMenuOpen(false); navigate('/settings?tab=ops_health&field=system-health') }}>
+                        <SettingsIcon size={13} />
+                      </button>
+                    )}
+                  </div>
+                )}
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.78rem' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
@@ -1570,7 +1602,7 @@ export default function AppLayout({ children, title }) {
                       fontWeight: '700',
                       color: effectiveMode === 'local' ? 'var(--text-muted)' : haltTone
                         || (effectiveMode === 'hybrid'
-                            ? (restoringCloud || syncRequestFailed ? 'var(--warning)' : queueDepth.last_status === 'failed' && totalPendingSync > 0 ? 'var(--danger)' :
+                            ? (restoringCloud || syncRequestFailed || queueStatusUnknown || connectionIssueLine ? 'var(--warning)' : queueDepth.last_status === 'failed' && totalPendingSync > 0 ? 'var(--danger)' :
                                totalPendingSync > 0 ? 'var(--warning)' : 'var(--success)')
                             : (syncHealth.status === 'connected' ? 'var(--success)' :
                                syncHealth.status === 'connecting' ? 'var(--warning)' : 'var(--danger)'))
@@ -1578,17 +1610,10 @@ export default function AppLayout({ children, title }) {
                       {effectiveMode === 'local' ? 'Local only — cloud sync paused' : haltCopy
                         ? haltCopy.title
                         : (effectiveMode === 'hybrid'
-                            ? (syncRequestFailed ? 'Sync needs attention' : restoringCloud ? 'Restoring cloud data' : queueDepth.last_status === 'failed' && totalPendingSync > 0 ? 'Sync Error' :
+                            ? (syncRequestFailed ? 'Sync needs attention' : restoringCloud ? 'Restoring cloud data' : queueStatusUnknown ? 'Sync status unavailable' : queueDepth.last_status === 'failed' && totalPendingSync > 0 ? 'Sync Error' :
                                totalPendingSync > 0 ? 'Syncing...' : 'No local changes waiting')
                             : (syncHealth.status === 'connected' ? 'Connected' :
                                syncHealth.status === 'connecting' ? 'Reconnecting...' : 'Error / Offline'))}
-                    </span>
-                  </div>
-
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: 'var(--text-secondary)' }}>Network State</span>
-                    <span style={{ fontWeight: '600', color: syncHealth.isOnline ? 'var(--success)' : 'var(--danger)' }}>
-                      {syncHealth.isOnline ? 'Online' : 'Offline'}
                     </span>
                   </div>
 
@@ -1636,7 +1661,7 @@ export default function AppLayout({ children, title }) {
                               fontWeight: '600',
                               color: (haltReason && haltReason !== 'auth_expired')
                                 ? haltTone
-                                : (totalPendingSync > 0 ? 'var(--warning)' : 'var(--success)')
+                                : (queueStatusUnknown || totalPendingSync > 0 ? 'var(--warning)' : 'var(--success)')
                             }}>
                               {/* `auth_expired` is deliberately absent: it blocks
                                   the PULL only, so the outbox really is draining
@@ -1644,7 +1669,7 @@ export default function AppLayout({ children, title }) {
                               {haltReason === 'plan_required' ? 'Paused — Pro Required'
                                 : haltReason === 'offline' ? 'Waiting — offline'
                                 : haltReason === 'secret_mismatch' ? 'Held — sign in again'
-                                : (totalPendingSync > 0 ? `${totalPendingSync} pending` : 'Fully Synced')}
+                                : queueStatusUnknown ? 'Status unavailable' : (totalPendingSync > 0 ? `${totalPendingSync} pending` : 'No local changes waiting')}
                             </span>
                           </div>
 
@@ -1837,10 +1862,9 @@ export default function AppLayout({ children, title }) {
                     </div>
                   )}
 
-                  {isSyncOn && cloudStatus?.cloud_state && (
-                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }} title={cloudStatus.cloud_url || undefined}>
-                      <span>Cloud service</span>
-                      <span>{({ online: 'Online', waking: 'Starting…', busy: 'Busy — retrying…', offline: 'Unreachable' })[cloudStatus.cloud_state] || 'Unavailable'}</span>
+                  {isSyncOn && queueStatusUnknown && (
+                    <div role="status" style={{ color: 'var(--warning)', lineHeight: 1.45 }}>
+                      {queueDepth.status_error || 'Sync status is unavailable. Checking again in the background.'}
                     </div>
                   )}
                   {isSyncOn && syncRequestStatus && (
@@ -1985,22 +2009,6 @@ export default function AppLayout({ children, title }) {
                   </div>
                 )}
 
-                {effectiveMode !== 'hybrid' && syncHealth.error && (
-                  <div style={{
-                    backgroundColor: 'rgba(239, 68, 68, 0.05)',
-                    border: '1px solid rgba(239, 68, 68, 0.2)',
-                    borderRadius: 'var(--radius-sm, 4px)',
-                    padding: '8px',
-                    fontSize: '0.75rem',
-                    color: 'var(--danger)',
-                    wordBreak: 'break-word',
-                    lineHeight: '1.3'
-                  }}>
-                    <strong>Diagnostic Log:</strong><br />
-                    {syncHealth.error}
-                  </div>
-                )}
-
                 {effectiveMode === 'hybrid' && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                     {/* ── Live activity strip ──────────────────────────────
@@ -2064,12 +2072,12 @@ export default function AppLayout({ children, title }) {
                       <span style={{
                         fontWeight: 700,
                         fontVariantNumeric: 'tabular-nums',
-                        color: (totalPendingSync || 0) > 0
+                        color: queueStatusUnknown || (totalPendingSync || 0) > 0
                           ? 'var(--warning, #f59e0b)'
                           : 'var(--success, #22c55e)'
                       }}>
-                        {totalPendingSync || 0}
-                        {(totalPendingSync || 0) === 0 && ' — no local changes waiting'}
+                        {queueStatusUnknown ? 'Unknown — retrying' : totalPendingSync || 0}
+                        {!queueStatusUnknown && (totalPendingSync || 0) === 0 && ' — no local changes waiting'}
                       </span>
                     </div>
 
@@ -2908,9 +2916,18 @@ export default function AppLayout({ children, title }) {
               `!isSalesPage`, so search survives on /sales where the sidebar,
               bottom bar and mobile header are all hidden. */}
           <UniversalSearch hideTrigger={location.pathname === '/'} />
-          {restoringCloud && !isSalesPage && (
+          {syncSetup && isSyncOn && getHostingPreference() !== 'local' && ['pending', 'reauth_required'].includes(syncSetup.status) && (
+            <div role="status" style={{ marginBottom: 8, padding: '8px 12px', border: '1px solid var(--border)', borderRadius: 8, background: 'var(--bg-2)', fontSize: 12 }}>
+              {syncSetup.error || 'Cloud sync setup is waiting for a connection.'}{' '}
+              <button type="button" className="btn btn-sm" onClick={() => syncSetup.status === 'reauth_required' ? logout() : retryCloudSync?.()}>
+                {syncSetup.status === 'reauth_required' ? 'Sign in again' : 'Retry setup'}
+              </button>
+            </div>
+          )}
+          {restoringCloud && (
             <div role="status" style={{ marginBottom: 8, padding: '8px 12px', border: '1px solid var(--border)', borderRadius: 8, background: 'var(--bg-2)', color: 'var(--text-secondary)', fontSize: 12, lineHeight: 1.5 }}>
               {syncRequestFailed ? `Cloud restore is waiting: ${syncRequestStatus.error}`
+                : effectiveMode === 'local' ? 'Initial cloud restoration is paused. Enable Local + Cloud to finish restoring this device before billing.'
                 : haltCopy ? `Cloud restore is paused. ${haltCopy.detail}`
                   : 'Restoring cloud data in the background. Keep this device online; records appear as they arrive.'}
             </div>

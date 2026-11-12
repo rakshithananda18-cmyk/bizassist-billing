@@ -122,6 +122,7 @@ class _Listener:
         # cannot change until the plan does, and the scheduler re-evaluates
         # eligibility and calls start() again when it has.
         self.fatal = False
+        self.response = None
 
     # ── state ────────────────────────────────────────────────────────────────
     def snapshot(self) -> Dict[str, Any]:
@@ -141,6 +142,9 @@ class _Listener:
 
         backoff = _RECONNECT_BASE_SEC
         while not self.stop_event.is_set():
+            from services.sync_policy import cloud_egress_allowed
+            if not cloud_egress_allowed(self.business_id):
+                return
             token = _get_cloud_token(self.business_id)
             if not token:
                 # No cloud token yet (provisioned at owner login). Not an error —
@@ -182,6 +186,9 @@ class _Listener:
             backoff = min(backoff * 2, _RECONNECT_MAX_SEC)
 
     def _stream(self, cloud_url: str, token: str):
+        from services.sync_policy import cloud_egress_allowed
+        if not cloud_egress_allowed(self.business_id):
+            return
         self._stream_had_line = False
         self._rotated = False
         headers = {
@@ -198,9 +205,12 @@ class _Listener:
         with httpx.stream(
             "GET", f"{cloud_url}/realtime/events", headers=headers, timeout=timeout
         ) as resp:
+            self.response = resp
+            if self.stop_event.is_set() or not cloud_egress_allowed(self.business_id):
+                return
             if resp.status_code == 401:
                 from services.sync_worker import _invalidate_cloud_token
-                _invalidate_cloud_token(self.business_id)
+                _invalidate_cloud_token(self.business_id, expected_token=token)
                 raise RuntimeError("cloud rejected the sync token (401)")
             if resp.status_code == 402:
                 # Pro plan lapsed cloud-side. Terminal for this listener — see the
@@ -218,7 +228,7 @@ class _Listener:
 
             event_name = None
             for raw in resp.iter_lines():
-                if self.stop_event.is_set():
+                if self.stop_event.is_set() or not cloud_egress_allowed(self.business_id):
                     return
                 if raw and not self._stream_had_line:
                     self._stream_had_line = True
@@ -256,6 +266,9 @@ class _Listener:
                     self._maybe_pull(event)
 
     def _maybe_pull(self, event: Dict[str, Any]):
+        from services.sync_policy import cloud_egress_allowed
+        if self.stop_event.is_set() or not cloud_egress_allowed(self.business_id):
+            return
         now = time.time()
 
         # Our own push, reflected back at us. Acting on it starts the loop
@@ -311,6 +324,10 @@ class _Listener:
 
 def start(business_id: int) -> bool:
     """Ensure a listener thread is running for this business. Idempotent."""
+    from services.sync_policy import cloud_egress_allowed
+    from services.process_lock import acquire_sync_process_lease
+    if not cloud_egress_allowed(business_id) or not acquire_sync_process_lease():
+        return False
     with _lock:
         existing = _listeners.get(business_id)
         if existing and existing.thread and existing.thread.is_alive():
@@ -366,6 +383,12 @@ def stop(business_id: int) -> bool:
             return False
         already = listener.stop_event.is_set()
         listener.stop_event.set()
+        if listener.response is not None:
+            try:
+                listener.response.close()
+            except Exception:
+                logger.debug("[INSTANT_PULL] stream close failed", exc_info=True)
+        listener._mark_disconnected()
         if listener.thread and not listener.thread.is_alive():
             _listeners.pop(business_id, None)
 
@@ -395,3 +418,8 @@ def stop_all():
         _listeners.clear()
     for listener in listeners:
         listener.stop_event.set()
+        if listener.response is not None:
+            try:
+                listener.response.close()
+            except Exception:
+                pass

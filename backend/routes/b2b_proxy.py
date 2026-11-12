@@ -279,7 +279,7 @@ async def b2b_cloud_proxy(request: Request, call_next):
     if upstream.status_code == 401:
         try:
             from services.sync_worker import _invalidate_cloud_token
-            _invalidate_cloud_token(business_id)
+            _invalidate_cloud_token(business_id, expected_token=cloud_token)
         except Exception:
             pass
         if request.method in _READ_METHODS:

@@ -15,7 +15,7 @@ sys.path.insert(0, backend_path)
 from fastapi.testclient import TestClient
 from main_groq import app
 from database.db import SessionLocal
-from database.models import Customer, Product, Invoice, SyncQueue, SyncLog, ConflictLog, User
+from database.models import Customer, Product, Invoice, SyncQueue, SyncLog, ConflictLog, User, SyncTombstone, SyncFeedEvent
 from services.sync_worker import run_hybrid_sync, trigger_sync_run
 
 from tests.signup_fixture import signup_payload
@@ -135,6 +135,15 @@ def test_sync_lifecycle():
             token = sync_disabled_var.set(True)
             try:
                 db.delete(cust)
+                db.commit()
+                # This fixture simulates another database that NEVER held the
+                # customer, not a genuine deletion. Remove only the synthetic
+                # shared-DB delete/feed evidence; real deletes now survive ORM
+                # sync suppression through durable database capture.
+                db.query(SyncTombstone).filter_by(business_id=local_user["bid"], entity="customers",
+                    row_uid=payload_dict["uid"]).delete(synchronize_session=False)
+                db.query(SyncFeedEvent).filter_by(business_id=local_user["bid"], entity="customers",
+                    row_uid=payload_dict["uid"]).delete(synchronize_session=False)
                 db.commit()
             finally:
                 sync_disabled_var.reset(token)

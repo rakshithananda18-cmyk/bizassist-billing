@@ -13,6 +13,7 @@ vi.mock('../config', () => ({
   getAlternateCloudUrl: () => 'http://fallback-backend',
   LOCAL_URL: 'http://local-backend',
   API_BASE: 'http://local-backend',
+  getApiBase: () => 'http://local-backend',
   isLocalHost: (hostname) => true,
   updateApiBase: vi.fn((mode) => {
     localStorage.setItem('bizassist_hosting_mode', mode)
@@ -83,7 +84,7 @@ const AuthTestConsumer = ({ actionRef }) => {
 
 // Global mutable mock states
 let mockSettings = { general: { hosting_mode: 'local' } }
-let mockProfile = { is_premium: true }
+let mockProfile = { public_id: 'BA-NEW', role: 'enterprise', is_premium: true }
 let mockTemplates = []
 let mockStaffCounters = { business_name: 'Store', staff: [] }
 // The cloud's Pro trial: GET /trial-offer (null = an older cloud without it),
@@ -159,9 +160,12 @@ const globalMockFetch = vi.fn(async (url) => {
     })
   }
   if (u.includes('/signup')) {
-    const body = { public_id: 'BA-NEW', token: 'mock-local-token' }
+    const body = { public_id: 'BA-NEW', token: u.startsWith('http://cloud-backend') ? 'mock-cloud-token' : 'mock-local-token' }
     if (u.startsWith('http://cloud-backend') && mockCloudTrial !== undefined) body.trial = mockCloudTrial
     return jsonResponse(body)
+  }
+  if (u.includes('/api/auth/device/cloud-session')) {
+    return jsonResponse({ public_id: 'BA-NEW', token: 'mock-local-token', id: 1, user_id: 1, username: 'owner1', role: 'enterprise', db_mode: 'local' })
   }
   if (u.includes('/login')) {
     if (localStorage.getItem('fail_all_login') === 'true') {
@@ -189,7 +193,7 @@ beforeEach(() => {
   vi.stubGlobal('fetch', globalMockFetch)
 
   mockSettings = { general: { hosting_mode: 'local' } }
-  mockProfile = { is_premium: true }
+  mockProfile = { public_id: 'BA-NEW', role: 'enterprise', is_premium: true }
   mockTemplates = []
   mockStaffCounters = { business_name: 'Store', staff: [] }
   mockTrialOffer = null
@@ -207,6 +211,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  vi.useRealTimers()
   cleanup()
   vi.unstubAllGlobals()
 })
@@ -813,13 +818,13 @@ describe('Cloud-backed owner login background restore', () => {
   const json = (body, status = 200) => ({ ok: status >= 200 && status < 300, status, json: async () => body, clone() { return this } })
   async function mountFreshOwner({ onProvision, onActivate, onLocalMode } = {}) {
     mockSettings = { general: { hosting_mode: 'hybrid' }, subscription: { plan: 'pro' } }
-    mockProfile = { public_id: 'BA-NEW', is_premium: true, plan: 'pro' }
+    mockProfile = { public_id: 'BA-NEW', role: 'enterprise', is_premium: true, plan: 'pro' }
     const fetch = vi.fn((url, options) => {
       const path = String(url)
       if (path === 'http://local-backend/login') return Promise.resolve(json({ detail: 'No local account' }, 401))
       if (path === 'http://cloud-backend/login') return Promise.resolve(json({ token: 'verified-cloud-token', id: 1, username: 'owner1', public_id: 'BA-NEW', role: 'enterprise' }))
       if (path === 'http://local-backend/api/auth/reconcile_local') return Promise.resolve(json({ detail: 'Local account not found' }, 404))
-      if (path === 'http://local-backend/signup') return Promise.resolve(json({ token: 'local-owner-token', id: 2, username: 'owner1', public_id: 'BA-NEW', role: 'enterprise' }))
+      if (path === 'http://local-backend/api/auth/device/cloud-session') return Promise.resolve(json({ token: 'local-owner-token', id: 2, username: 'owner1', public_id: 'BA-NEW', role: 'enterprise' }))
       if (path === 'http://local-backend/api/sync/cloud-token') {
         const body = JSON.parse(options.body)
         if (body.enable_sync) return onActivate?.(body) || Promise.resolve(json({ hosting_mode: 'hybrid', sync_started: true, initial_restore_pending: true }))
@@ -897,6 +902,310 @@ describe('Cloud-backed owner login background restore', () => {
     expect(order.slice(1).every(mode => mode === 'local')).toBe(true)
     expect(getHostingPreference('BA-NEW')).toBe('local')
     expect(auth.current.settings.general.hosting_mode).toBe('local')
+  })
+})
+
+describe('Google owner desktop identity and recoverable sync setup', () => {
+  const json = (body, status = 200) => ({ ok: status >= 200 && status < 300, status, json: async () => body, clone() { return this } })
+  const cloudOwner = { token: 'google-cloud-token', id: 42, user_id: 42, public_id: 'BA-GOOGLE', username: 'google-owner', role: 'enterprise', action: 'login' }
+  const localOwner = { ...cloudOwner, token: 'google-local-token', id: 7, user_id: 7, db_mode: 'local' }
+  async function mountGoogle({ verify = cloudOwner, mirror = localOwner, mirrorStatus = 200, localExists = false, provision, resume = null } = {}) {
+    mockSettings = { general: { hosting_mode: 'hybrid' }, subscription: { plan: 'pro' } }
+    mockProfile = { public_id: cloudOwner.public_id, role: 'enterprise', is_premium: true }
+    const fetch = vi.fn(async (url, options) => {
+      const path = String(url)
+      if (path === 'http://cloud-backend/api/auth/google/verify' || path === 'http://cloud-backend/api/auth/google/register') return json(verify)
+      if (path === 'http://local-backend/api/auth/device/google-discovery') return json({ local_owner_exists: localExists })
+      if (path === 'http://local-backend/api/auth/device/cloud-session') return json(mirror, mirrorStatus)
+      if (path === 'http://local-backend/api/sync/resume') return resume ? resume() : json({ detail: 'No saved cloud credential' }, 401)
+      if (path === 'http://local-backend/api/sync/cloud-token') {
+        if (provision) return provision(JSON.parse(options.body))
+        return json(JSON.parse(options.body).enable_sync ? { hosting_mode: 'hybrid', sync_started: true, initial_restore_pending: true } : { status: 'ok' })
+      }
+      return globalMockFetch(url, options)
+    })
+    vi.stubGlobal('fetch', fetch)
+    const auth = React.createRef()
+    const view = render(<AuthProvider><AuthTestConsumer actionRef={auth} /></AuthProvider>)
+    await waitFor(() => expect(auth.current).not.toBeNull())
+    return { auth, fetch, view }
+  }
+
+  it('discovers the existing cloud Google owner before creating the same-BizID local mirror', async () => {
+    const { auth, fetch } = await mountGoogle()
+    await act(async () => { await auth.current.googleAuth({ credential: 'synthetic-google-credential' }) })
+    await waitFor(() => expect(auth.current.user.public_id).toBe('BA-GOOGLE'))
+    const authRequests = fetch.mock.calls.filter(([url]) => String(url).includes('/api/auth/'))
+    expect(authRequests.map(([url]) => url)).toEqual([
+      'http://cloud-backend/api/auth/google/verify', 'http://local-backend/api/auth/device/cloud-session',
+    ])
+    expect(JSON.parse(authRequests[1][1].body)).toEqual({ token: 'google-cloud-token', credential: 'synthetic-google-credential' })
+    expect(auth.current.user.id).toBe(7)
+    expect(localStorage.getItem('billing_token')).toBe('google-local-token')
+    expect(fetch.mock.calls.some(([url]) => String(url).endsWith('/signup'))).toBe(false)
+  })
+
+  it('creates a new Google owner on cloud first and mirrors the cloud identity instead of registering a second local store', async () => {
+    const { auth, fetch } = await mountGoogle({ verify: { ...cloudOwner, action: 'registered' } })
+    await act(async () => {
+      await auth.current.googleAuth({ credential: 'new-google-credential', username: 'google-owner', business_name: 'Cloud Store', phone: '919999999999' }, true)
+    })
+    const registration = fetch.mock.calls.filter(([url]) => String(url).includes('/google/register'))
+    expect(registration).toHaveLength(1)
+    expect(registration[0][0]).toBe('http://cloud-backend/api/auth/google/register')
+    const mirror = fetch.mock.calls.find(([url]) => String(url).includes('/device/cloud-session'))
+    expect(JSON.parse(mirror[1].body).token).toBe('google-cloud-token')
+    expect(auth.current.user.public_id).toBe(cloudOwner.public_id)
+  })
+
+  it('checks local-only Google ownership before offering new-store onboarding', async () => {
+    const { auth, fetch } = await mountGoogle({ verify: { status: 'needs_onboarding' }, localExists: true })
+    await expect(auth.current.googleAuth({ credential: 'local-only-google-credential' })).rejects.toThrow(/already has a local business/)
+    expect(auth.current.user).toBeNull()
+    expect(fetch.mock.calls.some(([url]) => /google\/register|device\/cloud-session|\/signup$/.test(String(url)))).toBe(false)
+  })
+
+  it('surfaces a local different-BizID conflict without saving a cloud JWT as the local session', async () => {
+    const { auth, fetch } = await mountGoogle({ mirror: { detail: 'An existing local account has a different business identity. Nothing was replaced.' }, mirrorStatus: 409 })
+    await expect(auth.current.googleAuth({ credential: 'synthetic-google-credential' })).rejects.toThrow(/different business identity/)
+    expect(auth.current.user).toBeNull()
+    expect(localStorage.getItem('billing_token')).toBeNull()
+    expect(fetch.mock.calls.some(([url]) => /reclaim_local|\/signup$/.test(String(url)))).toBe(false)
+  })
+
+  it('retries an initially failed credential save on reconnect using retained cloud proof without retaining the password', async () => {
+    let available = false
+    const { auth, fetch } = await mountGoogle({ provision: body => json(body.enable_sync
+      ? { hosting_mode: 'hybrid', sync_started: true }
+      : available ? { status: 'ok' } : { detail: 'Cloud service is starting' }, available ? 200 : 503) })
+    await act(async () => { await auth.current.googleAuth({ credential: 'synthetic-google-credential' }) })
+    await waitFor(() => expect(auth.current.syncSetup?.status).toBe('pending'))
+    expect(JSON.parse(localStorage.getItem('bizassist_cloud_proof'))).toMatchObject({ token: 'google-cloud-token', publicId: 'BA-GOOGLE', backend: 'http://local-backend' })
+    expect(localStorage.getItem('bizassist_cloud_token')).toBeNull()
+    available = true
+    await act(async () => { window.dispatchEvent(new Event('online')) })
+    await waitFor(() => expect(fetch.mock.calls.some(([url, options]) => String(url).endsWith('/api/sync/cloud-token') && JSON.parse(options.body).enable_sync)).toBe(true))
+    await waitFor(() => expect(auth.current.syncSetup).toBeNull())
+    expect(fetch.mock.calls.filter(([url]) => String(url).includes('/google/verify'))).toHaveLength(1)
+    expect(Object.values(localStorage).join(' ')).not.toContain('synthetic-google-credential')
+  })
+
+  it('retries the same account-scoped proof after reloading the local session', async () => {
+    let available = false
+    const { auth, fetch, view } = await mountGoogle({ provision: body => json(body.enable_sync
+      ? { hosting_mode: 'hybrid', sync_started: true }
+      : available ? { status: 'ok' } : { detail: 'Device storage temporarily unavailable' }, available ? 200 : 503) })
+    await act(async () => { await auth.current.googleAuth({ credential: 'synthetic-google-credential' }) })
+    await waitFor(() => expect(auth.current.syncSetup?.status).toBe('pending'))
+    view.unmount()
+    available = true
+    const reloaded = React.createRef()
+    render(<AuthProvider><AuthTestConsumer actionRef={reloaded} /></AuthProvider>)
+    await waitFor(() => expect(fetch.mock.calls.some(([url, options]) => String(url).endsWith('/api/sync/cloud-token') && JSON.parse(options.body).enable_sync)).toBe(true))
+    expect(reloaded.current.user.public_id).toBe('BA-GOOGLE')
+    expect(fetch.mock.calls.filter(([url]) => String(url).includes('/google/verify'))).toHaveLength(1)
+  })
+
+  it('requires online owner reauthentication when local sign-in has no cloud proof to retry', async () => {
+    const { auth, fetch } = await mountGoogle()
+    Object.defineProperty(navigator, 'onLine', { value: false, configurable: true })
+    await act(async () => { auth.current.setSession(localOwner) })
+    await waitFor(() => expect(auth.current.syncSetup?.status).toBe('reauth_required'))
+    expect(auth.current.syncSetup.error).toMatch(/Sign in online again/)
+    Object.defineProperty(navigator, 'onLine', { value: true, configurable: true })
+    await act(async () => { window.dispatchEvent(new Event('online')) })
+    expect(fetch.mock.calls.some(([url]) => String(url).includes('/api/sync/cloud-token'))).toBe(false)
+    expect(fetch.mock.calls.some(([url]) => String(url).endsWith('/login'))).toBe(false)
+    expect(auth.current.user.public_id).toBe('BA-GOOGLE')
+  })
+
+  it.each([
+    { public_id: 'BA-FOREIGN', role: 'enterprise' },
+    { public_id: 'BA-GOOGLE', role: 'cashier' },
+  ])('does not retain or publish proof for a verified foreign/nonowner cloud identity: %j', async cloudProfile => {
+    const { auth, fetch } = await mountGoogle()
+    const transport = fetch.getMockImplementation()
+    fetch.mockImplementation((url, options) => String(url) === 'http://cloud-backend/profile' ? Promise.resolve(json(cloudProfile)) : transport(url, options))
+    await act(async () => { await auth.current.googleAuth({ credential: 'synthetic-google-credential' }) })
+    await waitFor(() => expect(auth.current.syncSetup?.status).toBe('reauth_required'))
+    expect(localStorage.getItem('bizassist_cloud_token')).toBeNull()
+    expect(localStorage.getItem('bizassist_cloud_proof')).toBeNull()
+    expect(localStorage.getItem('bizassist_pending_cloud_proof')).toBeNull()
+    expect(fetch.mock.calls.some(([url]) => String(url).endsWith('/api/sync/cloud-token'))).toBe(false)
+  })
+
+  it('recovers a stalled first cloud-profile verification using a scoped candidate and never publishes it early', async () => {
+    const { auth, fetch } = await mountGoogle()
+    let online = false
+    const transport = fetch.getMockImplementation()
+    fetch.mockImplementation((url, options) => String(url) === 'http://cloud-backend/profile' && !online
+      ? Promise.resolve({ ok: true, status: 200, json: () => new Promise(() => {}) })
+      : transport(url, options))
+    vi.useFakeTimers()
+    await act(async () => { await auth.current.googleAuth({ credential: 'synthetic-google-credential' }) })
+    expect(JSON.parse(localStorage.getItem('bizassist_pending_cloud_proof'))).toMatchObject({ token: 'google-cloud-token', publicId: 'BA-GOOGLE', backend: 'http://local-backend' })
+    expect(localStorage.getItem('bizassist_cloud_token')).toBeNull()
+    await act(async () => { await vi.advanceTimersByTimeAsync(10000) })
+    expect(auth.current.syncSetup?.status).toBe('pending')
+    online = true
+    await act(async () => { window.dispatchEvent(new Event('online')); await vi.advanceTimersByTimeAsync(0) })
+    expect(auth.current.syncSetup).toBeNull()
+    expect(localStorage.getItem('bizassist_pending_cloud_proof')).toBeNull()
+    expect(localStorage.getItem('bizassist_cloud_token')).toBe('google-cloud-token')
+    expect(fetch.mock.calls.filter(([url]) => String(url).includes('/google/verify'))).toHaveLength(1)
+  })
+
+  it('clears a previous business canonical cloud token when a different local session is saved', async () => {
+    const { auth } = await mountGoogle()
+    localStorage.setItem('billing_user', JSON.stringify({ public_id: 'BA-PREVIOUS' }))
+    localStorage.setItem('bizassist_cloud_token', 'previous-account-cloud-token')
+    localStorage.setItem('bizassist_cloud_proof', JSON.stringify({ token: 'previous-account-cloud-token', publicId: 'BA-PREVIOUS', backend: 'http://local-backend' }))
+    await act(async () => { auth.current.setSession(localOwner) })
+    expect(localStorage.getItem('bizassist_cloud_token')).toBeNull()
+    expect(localStorage.getItem('bizassist_cloud_proof')).toBeNull()
+    expect(auth.current.user.public_id).toBe('BA-GOOGLE')
+  })
+
+  it('upgrades a saved Pro session with only a legacy canonical token and no namespace through live identity validation', async () => {
+    localStorage.setItem('billing_token', localOwner.token)
+    localStorage.setItem('billing_user', JSON.stringify(localOwner))
+    localStorage.setItem('bizassist_cloud_token', 'legacy-cloud-token')
+    const { auth, fetch } = await mountGoogle()
+    await waitFor(() => expect(fetch.mock.calls.some(([url, options]) => String(url).endsWith('/api/sync/cloud-token') && JSON.parse(options.body).enable_sync)).toBe(true))
+    expect(auth.current.user.public_id).toBe('BA-GOOGLE')
+    const provision = fetch.mock.calls.find(([url]) => String(url).endsWith('/api/sync/cloud-token'))
+    expect(JSON.parse(provision[1].body).token).toBe('legacy-cloud-token')
+    const cloudCheck = fetch.mock.calls.find(([url, options]) => url === 'http://cloud-backend/profile' && options?.headers?.Authorization === 'Bearer legacy-cloud-token')
+    expect(cloudCheck).toBeDefined()
+    expect(JSON.parse(localStorage.getItem('bizassist_cloud_proof'))).toMatchObject({ token: 'legacy-cloud-token', publicId: 'BA-GOOGLE', backend: 'http://local-backend' })
+  })
+
+  it('resumes a healthy saved device with a backend-renewed credential before considering its expired browser proof', async () => {
+    localStorage.setItem('billing_token', localOwner.token)
+    localStorage.setItem('billing_user', JSON.stringify(localOwner))
+    localStorage.setItem('bizassist_cloud_token', 'expired-browser-token')
+    localStorage.setItem('bizassist_cloud_proof', JSON.stringify({ token: 'expired-browser-token', publicId: 'BA-GOOGLE', backend: 'http://local-backend' }))
+    const resume = vi.fn(() => json({ hosting_mode: 'hybrid', sync_started: true, initial_restore_pending: false }))
+    const { auth, fetch } = await mountGoogle({ resume })
+    await waitFor(() => expect(resume).toHaveBeenCalledOnce())
+    await act(async () => { await Promise.resolve() })
+    expect(auth.current.syncSetup).toBeNull()
+    expect(fetch.mock.calls.some(([url, options]) => url === 'http://cloud-backend/profile' && options?.headers?.Authorization === 'Bearer expired-browser-token')).toBe(false)
+    expect(fetch.mock.calls.some(([url]) => String(url).endsWith('/api/sync/cloud-token'))).toBe(false)
+    expect(fetch.mock.calls.some(([url]) => String(url).endsWith('/login'))).toBe(false)
+  })
+
+  it('does not fall back to browser credentials when resume reports a committed explicit Local-only choice', async () => {
+    localStorage.setItem('billing_token', localOwner.token)
+    localStorage.setItem('billing_user', JSON.stringify(localOwner))
+    localStorage.setItem('bizassist_cloud_token', 'legacy-cloud-token')
+    const resume = vi.fn(() => json({ detail: 'Local-only was explicitly selected. Choose Local + Cloud in Settings to resume sync.' }, 409))
+    const { auth, fetch } = await mountGoogle({ resume })
+    await waitFor(() => expect(resume).toHaveBeenCalledOnce())
+    await act(async () => { await Promise.resolve() })
+    expect(auth.current.syncSetup).toBeNull()
+    expect(fetch.mock.calls.some(([url, options]) => url === 'http://cloud-backend/profile' && options?.headers?.Authorization === 'Bearer legacy-cloud-token')).toBe(false)
+    expect(fetch.mock.calls.some(([url]) => String(url).endsWith('/api/sync/cloud-token'))).toBe(false)
+  })
+
+  it('reports a cloud recovery body timeout accurately while preserving the local login failure boundary', async () => {
+    const { auth, fetch } = await mountGoogle()
+    const transport = fetch.getMockImplementation()
+    fetch.mockImplementation((url, options) => {
+      if (String(url) === 'http://local-backend/login') return Promise.resolve(json({ detail: 'No local account' }, 401))
+      if (String(url) === 'http://cloud-backend/login') return Promise.resolve({ ok: true, status: 200, json: () => new Promise(() => {}) })
+      return transport(url, options)
+    })
+    vi.useFakeTimers()
+    const pending = expect(auth.current.login('google-owner', 'PasswordNeverStored123!')).rejects.toMatchObject({ code: 'AUTH_REQUEST_TIMEOUT' })
+    await act(async () => { await vi.advanceTimersByTimeAsync(10000) })
+    await pending
+    expect(auth.current.user).toBeNull()
+    expect(Object.values(localStorage).join(' ')).not.toContain('PasswordNeverStored123!')
+  })
+
+  it.each([
+    { publicId: 'BA-OTHER', backend: 'http://local-backend' },
+    { publicId: 'BA-GOOGLE', backend: 'http://different-lan-master:8001' },
+  ])('never retries a retained proof belonging to another business or backend: %j', async identity => {
+    const { auth, fetch } = await mountGoogle()
+    localStorage.setItem('bizassist_cloud_proof', JSON.stringify({ token: 'foreign-cloud-token', ...identity }))
+    await act(async () => { auth.current.setSession(localOwner) })
+    await waitFor(() => expect(auth.current.syncSetup?.status).toBe('reauth_required'))
+    expect(fetch.mock.calls.some(([url]) => String(url).includes('/api/sync/cloud-token'))).toBe(false)
+    expect(localStorage.getItem('bizassist_cloud_token')).toBeNull()
+  })
+})
+
+describe('Password and signup business collisions never trigger destructive reclaim', () => {
+  const json = (body, status = 200) => ({ ok: status >= 200 && status < 300, status, json: async () => body, clone() { return this } })
+  async function mountWithTransport(transport) {
+    const fetch = vi.fn((url, options) => transport(String(url), options) || globalMockFetch(url, options))
+    vi.stubGlobal('fetch', fetch)
+    const auth = React.createRef()
+    render(<AuthProvider><AuthTestConsumer actionRef={auth} /></AuthProvider>)
+    await waitFor(() => expect(auth.current).not.toBeNull())
+    return { auth, fetch }
+  }
+
+  it('surfaces password-login BizID mismatch instead of reclaiming the unrelated local owner', async () => {
+    const conflict = 'Identity mismatch: this device belongs to Local A and the cloud account is Business B. Nothing was changed.'
+    const { auth, fetch } = await mountWithTransport(url => {
+      if (url === 'http://local-backend/login') return Promise.resolve(json({ detail: 'Wrong local password' }, 401))
+      if (url === 'http://cloud-backend/login') return Promise.resolve(json({ token: 'cloud-B-token', public_id: 'BA-B', username: 'reused-owner', role: 'enterprise' }))
+      if (url.endsWith('/api/auth/reconcile_password')) return Promise.resolve(json({ detail: conflict }, 409))
+    })
+    await expect(auth.current.login('reused-owner', 'CloudBPassword1!')).rejects.toThrow(conflict)
+    expect(auth.current.user).toBeNull()
+    expect(localStorage.getItem('billing_token')).toBeNull()
+    expect(fetch.mock.calls.some(([url]) => /reclaim_local|\/signup$|device\/cloud-session/.test(String(url)))).toBe(false)
+  })
+
+  it('surfaces a safe bridge collision after a fresh-device password login without disguising it as wrong credentials', async () => {
+    const conflict = 'An existing local account has a different business identity. Nothing was replaced.'
+    const { auth, fetch } = await mountWithTransport(url => {
+      if (url === 'http://local-backend/login') return Promise.resolve(json({ detail: 'Wrong local password' }, 401))
+      if (url === 'http://cloud-backend/login') return Promise.resolve(json({ token: 'cloud-B-token', public_id: 'BA-B', username: 'reused-owner', role: 'enterprise' }))
+      if (url.endsWith('/api/auth/reconcile_password')) return Promise.resolve(json({ detail: 'No local account' }, 404))
+      if (url.endsWith('/api/auth/device/cloud-session')) return Promise.resolve(json({ detail: conflict }, 409))
+    })
+    await expect(auth.current.login('reused-owner', 'CloudBPassword1!')).rejects.toThrow(conflict)
+    expect(auth.current.user).toBeNull()
+    expect(fetch.mock.calls.some(([url]) => /reclaim_local|\/signup$/.test(String(url)))).toBe(false)
+  })
+
+  it('stops signup when the verified new cloud identity collides with an unrelated local owner', async () => {
+    const conflict = 'An existing local account has a different business identity. Nothing was replaced.'
+    const { auth, fetch } = await mountWithTransport(url => {
+      if (url === 'http://cloud-backend/signup') return Promise.resolve(json({ token: 'new-cloud-owner-token', public_id: 'BA-NEW-CLOUD', trial: { days: 14 } }))
+      if (url.endsWith('/api/auth/device/cloud-session')) return Promise.resolve(json({ detail: conflict }, 409))
+    })
+    await expect(auth.current.signup({ username: 'reused-owner', password: 'NewCloudPassword1!', business_name: 'New Cloud Store', hosting: 'hybrid' })).rejects.toThrow(conflict)
+    const mirror = fetch.mock.calls.find(([url]) => String(url).endsWith('/api/auth/device/cloud-session'))
+    expect(JSON.parse(mirror[1].body)).toEqual({ token: 'new-cloud-owner-token', password: 'NewCloudPassword1!', local_only: false })
+    expect(auth.current.user).toBeNull()
+    expect(localStorage.getItem('billing_token')).toBeNull()
+    expect(fetch.mock.calls.some(([url]) => /reclaim_local|local-backend\/signup|\/business\/setup/.test(String(url)))).toBe(false)
+  })
+
+  it('uses the verified bridge for an ordinary new Local-only signup without a local signup or reclaim request', async () => {
+    const { auth, fetch } = await mountWithTransport(() => null)
+    await act(async () => { await auth.current.signup({ username: 'new-owner', password: 'NewCloudPassword1!', business_name: 'New Store', hosting: 'local' }) })
+    expect(auth.current.user.public_id).toBe('BA-NEW')
+    expect(fetch.mock.calls.filter(([url]) => String(url).endsWith('/api/auth/device/cloud-session'))).toHaveLength(1)
+    const bridge = fetch.mock.calls.find(([url]) => String(url).endsWith('/api/auth/device/cloud-session'))
+    expect(JSON.parse(bridge[1].body).local_only).toBe(true)
+    expect(fetch.mock.calls.some(([url]) => /reclaim_local|local-backend\/signup/.test(String(url)))).toBe(false)
+    expect(localStorage.getItem('bizassist_hosting_mode')).toBe('local')
+  })
+
+  it('preserves a cloud signup conflict body after the bounded helper has consumed the response', async () => {
+    const { auth, fetch } = await mountWithTransport(url => {
+      if (url === 'http://cloud-backend/signup') return Promise.resolve(new Response(JSON.stringify({ detail: 'Username already exists' }), { status: 400, headers: { 'Content-Type': 'application/json' } }))
+    })
+    await expect(auth.current.signup({ username: 'existing-owner', password: 'ExistingPassword1!', business_name: 'Existing Store' })).rejects.toThrow('An account with this username already exists. Please log in instead.')
+    expect(fetch.mock.calls.some(([url]) => /reclaim_local|device\/cloud-session/.test(String(url)))).toBe(false)
+    expect(auth.current.user).toBeNull()
   })
 })
 

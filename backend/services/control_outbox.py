@@ -84,9 +84,15 @@ def flush_control_outbox(db: Session, business_id: int) -> dict:
     if not _IS_LOCAL or not is_hybrid_cloud(business_id):
         return {"attempted": 0, "completed": 0, "failed": 0}
     from services.sync_worker import _get_cloud_token, CLOUD_URL
+    from services import sync_retry
+    from services.process_lock import acquire_sync_process_lease
+    if not acquire_sync_process_lease() or not sync_retry.ready(business_id, "control"):
+        return {"attempted": 0, "completed": 0, "failed": 0}
     import httpx
     summary = {"attempted": 0, "completed": 0, "failed": 0}
     for _ in range(20):
+        if not is_hybrid_cloud(business_id):
+            break
         # Never skip a predecessor in backoff. The receiver also checks a
         # contiguous per-device revision, so response loss cannot reorder writes.
         ev = db.query(SyncControlOutbox).filter(SyncControlOutbox.business_id == business_id,
@@ -121,10 +127,19 @@ def flush_control_outbox(db: Session, business_id: int) -> dict:
             route = {"staff_mutation": "staff-push", "profile_update": "profile-push"}.get(ev.event_type)
             if route is None:
                 raise RuntimeError("Unsupported control event")
+            if not is_hybrid_cloud(business_id):
+                ev.lease_id = ev.lease_until = None
+                db.commit()
+                break
             resp = httpx.post(f"{CLOUD_URL}/api/sync/{route}", json=req_json,
                 headers={"Authorization": f"Bearer {token}"}, timeout=8.0)
             if resp.status_code != 200:
+                sync_retry.defer(business_id, "control", resp)
+                if resp.status_code == 401:
+                    from services.sync_worker import _invalidate_cloud_token
+                    _invalidate_cloud_token(business_id, expected_token=token)
                 raise RuntimeError(f"HTTP {resp.status_code}: {resp.text[:150]}")
+            sync_retry.success(business_id, "control")
             db.refresh(ev)
             if ev.lease_id != lease:
                 break
@@ -133,6 +148,8 @@ def flush_control_outbox(db: Session, business_id: int) -> dict:
             db.commit()
             summary["completed"] += 1
         except Exception as exc:
+            if sync_retry.ready(business_id, "control"):
+                sync_retry.defer(business_id, "control", reason=type(exc).__name__)
             db.rollback()
             ev = db.get(SyncControlOutbox, ev.id)
             if ev and ev.lease_id == lease:

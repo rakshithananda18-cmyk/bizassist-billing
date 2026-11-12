@@ -29,6 +29,7 @@ export default function usePaymentFlow({
   changeToReturn,
   activeTab,
   activeTabId,
+  counterPrefix,
   closeTab,
   setTabs,
   syncTabNames,
@@ -311,7 +312,7 @@ export default function usePaymentFlow({
     const clientRequestId = reqIdFor(reqKey)
     let payload
     try {
-      payload = buildInvoicePayload({ invoiceNo: activeTab.name, form: formForSave, gstEnabled: gstAmt > 0, billDiscount: billDiscountAmt, cashDiscount: cashDiscountAmt, paidAmount: paidNow, markPaid: !isCredit })
+      payload = buildInvoicePayload({ invoiceNo: activeTab.name, counterPrefix, form: formForSave, gstEnabled: gstAmt > 0, billDiscount: billDiscountAmt, cashDiscount: cashDiscountAmt, paidAmount: paidNow, markPaid: !isCredit })
     } catch (error) {
       releaseLock()
       setSubmitting(false)
@@ -442,7 +443,7 @@ export default function usePaymentFlow({
       if (_saveLock.get(lockKey) === 'saving') releaseLock()
       setSubmitting(false)
     }
-  }, [form, authFetch, activeTab.name, activeTabId, closeTab, gstAmt, settings, grandTotal, payable, cashDiscountAmt, billDiscountAmt, setAlert, setSubmitting, setDbInvoices, setTabs, syncTabNames, barcodeRef, enqueueOffline, confirm, beginPrintJob])
+  }, [form, authFetch, activeTab.name, activeTabId, counterPrefix, closeTab, gstAmt, settings, grandTotal, payable, cashDiscountAmt, billDiscountAmt, setAlert, setSubmitting, setDbInvoices, setTabs, syncTabNames, barcodeRef, enqueueOffline, confirm, beginPrintJob])
 
   const openPaymentFlow = useCallback((focusTarget = 'amountReceived') => {
     if (form.items.length === 0) return

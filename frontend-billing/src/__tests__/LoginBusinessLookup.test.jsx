@@ -2,7 +2,7 @@ import React from 'react'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { MemoryRouter } from 'react-router-dom'
-const auth = vi.hoisted(() => ({ login: vi.fn(), staffLogin: vi.fn(), setSession: vi.fn(), user: null }))
+const auth = vi.hoisted(() => ({ login: vi.fn(), staffLogin: vi.fn(), setSession: vi.fn(), googleAuth: vi.fn(), user: null }))
 const google = vi.hoisted(() => ({ render: vi.fn() }))
 vi.mock('../contexts/AuthContext', () => ({ useAuth: () => auth }))
 vi.mock('../config', () => ({ API_BASE: 'http://local', CLOUD_URL: 'http://cloud', IS_LOCAL_APP: true }))
@@ -15,7 +15,7 @@ vi.mock('../components/auth/GoogleOnboardingModal', () => ({ default: () => null
 import Login from '../pages/Login'
 const response = body => ({ ok: true, status: 200, json: async () => body })
 const business = (staff = []) => ({ found: true, public_id: 'BA-SHOP', business_name: 'The correct business', has_staff: !!staff.length, staff })
-beforeEach(() => { localStorage.clear(); vi.clearAllMocks(); auth.login.mockResolvedValue({}); auth.staffLogin.mockResolvedValue({}); vi.stubGlobal('fetch', vi.fn()) })
+beforeEach(() => { localStorage.clear(); vi.clearAllMocks(); auth.login.mockResolvedValue({}); auth.staffLogin.mockResolvedValue({}); auth.googleAuth.mockResolvedValue({}); vi.stubGlobal('fetch', vi.fn()) })
 afterEach(() => { cleanup(); vi.unstubAllGlobals() })
 const show = () => render(<MemoryRouter><Login /></MemoryRouter>)
 
@@ -58,15 +58,16 @@ describe('business-first sign-in', () => {
     expect(screen.queryByLabelText('Owner Password')).not.toBeInTheDocument()
   })
   it('confirms an existing password before linking a non-authoritative Google email', async () => {
-    fetch.mockResolvedValueOnce(response({ status: 'needs_link', email: 'owner@example.com', business_name: 'The correct business', public_id: 'BA-SHOP' }))
-      .mockResolvedValueOnce(response({ action: 'login', token: 'verified-session' }))
+    auth.googleAuth
+      .mockResolvedValueOnce({ status: 'needs_link', email: 'owner@example.com', business_name: 'The correct business', public_id: 'BA-SHOP' })
+      .mockResolvedValueOnce({ action: 'login', token: 'verified-session' })
     show()
     const callback = google.render.mock.calls.at(-1)[1].onCredential
     await act(async () => callback('test-google-credential'))
     fireEvent.change(screen.getByLabelText('Owner Password'), { target: { value: 'ExistingPass123!' } })
     fireEvent.click(screen.getByRole('button', { name: 'Sign In as Owner' }))
     await act(async () => {})
-    expect(JSON.parse(fetch.mock.calls[1][1].body)).toEqual({ credential: 'test-google-credential', password: 'ExistingPass123!' })
-    expect(auth.setSession).toHaveBeenCalledWith({ action: 'login', token: 'verified-session' })
+    expect(auth.googleAuth).toHaveBeenNthCalledWith(1, { credential: 'test-google-credential' })
+    expect(auth.googleAuth).toHaveBeenNthCalledWith(2, { credential: 'test-google-credential', password: 'ExistingPass123!' })
   })
 })

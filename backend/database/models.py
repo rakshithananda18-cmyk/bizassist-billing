@@ -1000,6 +1000,31 @@ class SyncInbox(Base):
     )
 
 
+class SyncDeviceNamespace(Base):
+    """Cloud-issued billing series namespace for one independent installation."""
+    __tablename__ = "sync_device_namespaces"
+    id = Column(Integer, primary_key=True)
+    business_id = Column(Integer, nullable=False, index=True)
+    installation_id = Column(String(36), nullable=False)
+    namespace = Column(String(3), nullable=False)
+    __table_args__ = (
+        UniqueConstraint("business_id", "installation_id", name="uq_device_namespace_installation"),
+        UniqueConstraint("business_id", "namespace", name="uq_device_namespace_series"),
+    )
+
+
+class SyncTombstone(Base):
+    """Durable nonfinancial delete versions; stale replay cannot resurrect a row."""
+    __tablename__ = "sync_tombstones"
+    id = Column(Integer, primary_key=True)
+    business_id = Column(Integer, nullable=False, index=True)
+    entity = Column(String(80), nullable=False)
+    row_uid = Column(String(64), nullable=False)
+    deleted_at = Column(DateTime, nullable=False)
+    needs_upload = Column(Boolean, nullable=False, default=False, server_default="0")
+    __table_args__ = (UniqueConstraint("business_id", "entity", "row_uid", name="uq_sync_tombstone_identity"),)
+
+
 class SyncCursor(Base):
     """Durable per-entity pull watermark.
 
@@ -1608,6 +1633,18 @@ def _queue_change(connection, target, operation):
                 "[SYNC_QUEUE] could not check APPEND_ONLY_DELETE_BLOCKLIST for "
                 "%s: %s", tbl, e)
 
+    # Retain delete identity/version even while Local-only. If synchronization
+    # is enabled later, an older cloud snapshot must not resurrect this row.
+    deletion_version = None
+    if operation == "DELETE":
+        from core.sync.tombstones import record_delete
+        owner_id = _get_business_id(target, connection)
+        row_uid = getattr(target, "uid", None)
+        if owner_id is not None and row_uid:
+            deletion_version = utc_now()
+            record_delete(connection, owner_id, tbl, row_uid, deletion_version,
+                          needs_upload=connection.dialect.name == "sqlite")
+
     # 4. Only queue if dialect is sqlite (local client)
     if connection.dialect.name != "sqlite":
         return
@@ -1723,7 +1760,10 @@ def _queue_change(connection, target, operation):
                 "able to apply it.", tbl, entity_id, bid, e, exc_info=True)
     else:
         try:
-            payload = json.dumps({"id": entity_id, "business_id": bid}, default=str)
+            payload = json.dumps({"id": entity_id, "business_id": bid,
+                                  "uid": getattr(target, "uid", None),
+                                  "_sync_deleted_at": deletion_version,
+                                  "updated_at": deletion_version}, default=str)
         except Exception as e:
             _sync_queue_logger().error(
                 "[SYNC_QUEUE] could NOT serialise DELETE of %s#%s for biz=%s: %s",
@@ -1934,7 +1974,7 @@ EXCLUDED_TABLES = {
     "spent_tickets", "revoked_sessions", "platform_settings", "client_log_archives",
     "schema_state", "scheduled_job_runs", "discovery_registrations",
     "sync_control_outbox", "sync_control_origins", "sync_control_receipts", "sync_control_streams",
-    "sync_feed_events", "sync_feed_clock",
+    "sync_feed_events", "sync_feed_clock", "sync_tombstones", "sync_device_namespaces",
     "table_alterations", "action_log", "action_logs", "token_usage",
     "chat_messages", "document_embeddings", "alembic_version",
     "uploaded_files", "sync_queue", "sync_logs", "conflict_logs",
@@ -2216,3 +2256,6 @@ from database.runtime_state import SchemaState, ScheduledJobRun, DiscoveryRegist
 # Install capture on disposable/new schemas as well as migrated installations.
 from database.change_feed import register_metadata_hook
 register_metadata_hook(Base.metadata)
+
+from core.sync.readiness import install_readiness_guard
+install_readiness_guard()

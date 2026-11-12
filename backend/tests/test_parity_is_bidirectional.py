@@ -50,7 +50,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 import pytest
 
-from database.db import SessionLocal
+from database.db import SessionLocal, sync_disabled_var
 from database.models import (
     Base, Invoice, InvoiceLineItem, InvoicePayment, SyncInbox, SyncQueue, User,
 )
@@ -84,11 +84,15 @@ def ensure_schema():
 
 @pytest.fixture
 def db():
+    # Snapshot fixtures model rows that have already synchronized; suppress the
+    # normal hybrid ORM outbox hook while explicit parity repairs remain active.
+    fixture_sync = sync_disabled_var.set(True)
     s = SessionLocal()
     _clean(s)
     # An owner row, one invoice of ₹124, and ONE local payment of ₹124.
     s.add(User(id=BID, username=f"parity_owner_{BID}", email=f"p{BID}@t.invalid",
-               password="x", public_id=f"BA-PAR{BID}", business_name="Parity Co"))
+               password="x", public_id=f"BA-PAR{BID}", business_name="Parity Co",
+               settings=json.dumps({"general": {"hosting_mode": "hybrid", "device_invoice_namespace": "TST"}})))
     s.flush()
     inv = Invoice(business_id=BID, invoice_id="LCL-OW-0037", uid=INV_UID,
                   amount=124.0, total_amount=124.0, paid_amount=124.0,
@@ -108,6 +112,7 @@ def db():
         s.rollback()
         _clean(s)
         s.close()
+        sync_disabled_var.reset(fixture_sync)
 
 
 def _clean(s):

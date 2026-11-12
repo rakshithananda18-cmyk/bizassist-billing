@@ -758,7 +758,8 @@ def set_subscription(business_id: int, body, admin: User, db: Session) -> dict:
         s["subscription"] = {**proposed, "granted_by": admin.username, "granted_at": utc_now().isoformat()}
         labels = {"plan": "Subscription plan", "status": "Subscription status", "expires_at": "Plan expiry", "note": "Subscription note"}
         changes = [f"{labels[key]} updated" for key in changed_keys]
-    target.settings = json.dumps(s)
+    from services.settings_store import replace_settings_preserving_consent
+    replace_settings_preserving_consent(db, target, s)
     db.commit()
     invalidate_user_cache(business_id)
     from services.account_identity import normalize_email
@@ -819,7 +820,8 @@ def totp_setup(admin: User, db: Session) -> dict:
         raise HTTPException(status_code=400, detail="2FA is already enabled — disable it first to re-enroll.")
     secret = generate_secret()
     s["totp"] = {"secret": secret, "enabled": False, "confirmed_at": None}
-    admin.settings = json.dumps(s)
+    from services.settings_store import replace_settings_preserving_consent
+    replace_settings_preserving_consent(db, admin, s)
     db.commit()
     return {"secret": secret,
             "otpauth_uri": provisioning_uri(secret, admin.username),
@@ -839,7 +841,8 @@ def totp_confirm(admin: User, code: str, db: Session) -> dict:
     cfg["enabled"] = True
     cfg["confirmed_at"] = utc_now().isoformat()
     s["totp"] = cfg
-    admin.settings = json.dumps(s)
+    from services.settings_store import replace_settings_preserving_consent
+    replace_settings_preserving_consent(db, admin, s)
     db.commit()
     logger.info("[ADMIN] 2FA enabled for admin '%s'", admin.username)
     return {"status": "success", "message": "2FA enabled — your next login will ask for a code."}
@@ -854,13 +857,15 @@ def totp_disable(admin: User, code: str, db: Session) -> dict:
     if not cfg.get("enabled"):
         # Also clears a stale pending secret.
         s.pop("totp", None)
-        admin.settings = json.dumps(s)
+        from services.settings_store import replace_settings_preserving_consent
+        replace_settings_preserving_consent(db, admin, s)
         db.commit()
         return {"status": "success", "message": "2FA was not enabled."}
     if not verify_code(cfg.get("secret"), code):
         raise HTTPException(status_code=400, detail="Enter a valid current code to disable 2FA.")
     s.pop("totp", None)
-    admin.settings = json.dumps(s)
+    from services.settings_store import replace_settings_preserving_consent
+    replace_settings_preserving_consent(db, admin, s)
     db.commit()
     logger.info("[ADMIN] 2FA disabled for admin '%s'", admin.username)
     return {"status": "success", "message": "2FA disabled."}
@@ -1461,7 +1466,8 @@ def update_merchant(user_id: int, req, db: Session) -> dict:
     if req.hosting_mode is not None and req.hosting_mode != business_hosting_mode(target, db):
         settings = _settings_dict(target)
         settings.setdefault("general", {})["hosting_mode"] = req.hosting_mode
-        target.settings = json.dumps(settings)
+        from services.settings_store import replace_settings_preserving_consent
+        replace_settings_preserving_consent(db, target, settings)
         changes.append(f"Storage setup changed to {req.hosting_mode}")
     if password_changed:
         target.password = hash_password(password)

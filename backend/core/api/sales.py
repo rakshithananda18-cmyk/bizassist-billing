@@ -251,6 +251,8 @@ def next_invoice_number_preview(
     """
     bid = current_user["id"]
     series = SEQ.normalize_series(counter_prefix)
+    from core.sync.device_series import local_series
+    series = local_series(db, bid, series)
     counter = SEQ.current_value(db, bid, series)
     observed = billing._series_max(db, bid, series)
     return {

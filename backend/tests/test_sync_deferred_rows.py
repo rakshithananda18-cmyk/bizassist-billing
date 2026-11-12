@@ -214,7 +214,7 @@ def test_deferred_rows_are_never_discarded():
 
     # And nothing in the worker may delete a queued row on the defer path.
     ack = _ack_block()
-    assert "delete" not in ack.lower()
+    assert ".delete(" not in ack.lower()  # acknowledging a tombstone is not deleting an outbox row
 
 
 def test_the_ui_can_tell_the_three_states_apart():
@@ -492,13 +492,12 @@ def _reconcile(sent, applied, deferred, rejected, skipped):
 
 
 def test_the_cloud_reports_its_deliberate_skips():
-    """LWW cloud-wins and unknown-entity used to `continue` silently, so the
-    device's arithmetic had a permanent unexplained remainder. Every row must
-    land in exactly one bucket."""
+    """LWW decisions are reported; incompatible entities hold the transaction
+    with an upgrade response instead of being silently acknowledged."""
     src = _push_source()
     assert "skipped = []" in src
     assert '"skipped": skipped' in src
-    assert "unknown entity on this server" in src
+    assert 'raise HTTPException(426, "The server needs an update for sync entity: "' in src
     assert "cloud copy is newer (LWW)" in src
     assert "no updated_at; cloud version kept" in src
 

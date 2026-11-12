@@ -44,6 +44,7 @@ import NetworkDiscoverySection from '../components/settings/NetworkDiscoverySect
 import PasscodeModal from '../components/settings/PasscodeModal'
 import HostingModeSection from '../components/settings/HostingModeSection'
 import OpsHealthPanel from '../components/settings/OpsHealthPanel'
+import BootHealthCheck from '../components/BootHealthCheck'
 import DataMigrationSection from '../components/settings/DataMigrationSection'
 import SupportSection from '../components/settings/SupportSection'
 import ActivityFeed from '../components/ActivityFeed'
@@ -123,6 +124,7 @@ function SettingsWorkspace() {
     tabs: cat.ids.map(id => visibleTabs.find(t => t.id === id)).filter(Boolean)
   })).filter(g => g.tabs.length > 0)
   const [showPasscodeModal, setShowPasscodeModal] = useState(false)
+  const [showSystemHealth, setShowSystemHealth] = useState(false)
   const [searchParams, setSearchParams] = useSearchParams()
   const [settingsSearchQuery, setSettingsSearchQuery] = useState('')
   const phoneLayout = usePhoneLayout()
@@ -2505,6 +2507,20 @@ function SettingsWorkspace() {
           {activeTab === 'ops_health' && !isCashier && (
             <>
               <SectionHeader title="System Operations & Data Health" description="Monitor real-time data integrity, resolve sync conflicts, and run one-click self-healing auto-repairs." />
+              <section aria-label="System health" style={{ marginBottom: 20 }}>
+                <SettingRow id="set-system-health" label="System health" description="Check the server, database and device clock when needed.">
+                  <button type="button" className="btn btn-ghost btn-sm"
+                    aria-expanded={showSystemHealth} aria-controls="settings-system-health-results"
+                    onClick={() => setShowSystemHealth(value => !value)}>
+                    {showSystemHealth ? 'Hide check' : 'Check system'}
+                  </button>
+                </SettingRow>
+                {showSystemHealth && (
+                  <div id="settings-system-health-results" style={{ marginTop: 12, width: '100%', maxWidth: 460 }}>
+                    <BootHealthCheck />
+                  </div>
+                )}
+              </section>
               <OpsHealthPanel authFetch={authFetch} />
 
               <div style={{ marginTop: 28 }}>

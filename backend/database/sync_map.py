@@ -275,6 +275,7 @@ def resolve_parent_fk_uids(
     *,
     business_id: Optional[int] = None,
     log_prefix: str = "sync",
+    require_uid: bool = False,
 ) -> bool:
     """(Step 3 / R-3) Resolve a synced row's parent foreign keys from the durable
     parent ``uid`` carried in the payload (``<fk>_uid`` / ``<base>_uid``),
@@ -347,6 +348,10 @@ def resolve_parent_fk_uids(
         if parent_uid_val:
             try:
                 parent_cols = {c.name for c in fk.column.table.columns}
+                if "uid" not in parent_cols:
+                    logger.warning("%s: deferring %s.%s — parent %s requires its portable business identity, not a UID",
+                                   log_prefix, table_name, fk_col, parent_table)
+                    return True
                 query = f'SELECT "{parent_pk}" FROM "{parent_table}" WHERE uid = :uid'
                 params = {"uid": parent_uid_val}
                 # A child UID must resolve only through a parent owned by the
@@ -355,7 +360,11 @@ def resolve_parent_fk_uids(
                 if business_id is not None and "business_id" in parent_cols:
                     query += " AND business_id = :business_id"
                     params["business_id"] = business_id
-                row = db.execute(text(query), params).fetchone()
+                elif business_id is not None and {"seller_business_id", "buyer_business_id"} <= parent_cols:
+                    query += " AND (seller_business_id = :business_id OR buyer_business_id = :business_id)"
+                    params["business_id"] = business_id
+                with db.begin_nested():
+                    row = db.execute(text(query), params).fetchone()
                 if row:
                     data[fk_col] = row[0]
                     continue
@@ -403,7 +412,11 @@ def resolve_parent_fk_uids(
                 )
             )
             if not bizid:
-                continue          # legacy payload or a same-business user FK
+                if require_uid and fk_col in {"seller_business_id", "buyer_business_id", "requested_by_business_id"}:
+                    logger.warning("%s: deferring %s.%s — counterparty BizID is required",
+                                   log_prefix, table_name, fk_col)
+                    return True
+                continue          # same-business actor fields are pinned by the caller
             try:
                 # The stub-or-resolve rule already exists for the data-transfer
                 # path; reusing it keeps ONE definition of what a counterparty
@@ -411,8 +424,9 @@ def resolve_parent_fk_uids(
                 # carrying the real BizID, so a later sync matches the same
                 # identity rather than creating a second one.
                 from core.connection.transfer import _resolve_user
-                resolved = _resolve_user(
-                    db, {}, bizid, data.get(f"{fk_col}_bizname"), create_stub=True)
+                with db.begin_nested():
+                    resolved = _resolve_user(
+                        db, {}, bizid, data.get(f"{fk_col}_bizname"), create_stub=True)
             except Exception as e:
                 logger.warning("%s: BizID resolve failed for %s.%s=%s: %s",
                                log_prefix, table_name, fk_col, bizid, e)
@@ -428,6 +442,14 @@ def resolve_parent_fk_uids(
                 data["buyer_bizid"] = bizid
             continue
 
+        if require_uid:
+            # A matching integer and owner do not prove cross-database identity.
+            # Modern serializers send the parent's UID; legacy records remain
+            # held rather than attaching money/stock to a different local row.
+            logger.warning("%s: deferring %s.%s — durable parent UID is required",
+                           log_prefix, table_name, fk_col)
+            return True
+
         try:
             parent_cols = {c.name for c in fk.column.table.columns}
             q = f'SELECT "{parent_pk}" FROM "{parent_table}" WHERE "{parent_pk}" = :v'
@@ -439,7 +461,12 @@ def resolve_parent_fk_uids(
             if "business_id" in parent_cols and owner_id is not None:
                 q += " AND business_id = :b"
                 params["b"] = owner_id
-            if db.execute(text(q), params).fetchone() is None:
+            elif {"seller_business_id", "buyer_business_id"} <= parent_cols and owner_id is not None:
+                q += " AND (seller_business_id = :b OR buyer_business_id = :b)"
+                params["b"] = owner_id
+            with db.begin_nested():
+                parent_row = db.execute(text(q), params).fetchone()
+            if parent_row is None:
                 if fk.parent.nullable:
                     # Drop the link, keep the row. See the docstring: stranding a
                     # whole invoice because its customer is unresolvable loses a

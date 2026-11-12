@@ -9,7 +9,8 @@ The app entry point mounts the whole ecosystem with a single line —
 That is the "billing is wired from core, not from the entry point" boundary: to
 add a core endpoint, include its router HERE; the entry point doesn't change.
 """
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
+from core.sync.readiness_http import require_financial_ready
 
 from core.api.sales import router as sales_router
 from core.api.business import router as business_router
@@ -34,24 +35,24 @@ from core.api.biz_id import router as biz_id_router
 from core.api.search import router as search_router
 
 core_router = APIRouter()
-core_router.include_router(sales_router)
+core_router.include_router(sales_router, dependencies=[Depends(require_financial_ready)])
 core_router.include_router(business_router)
 core_router.include_router(products_router)
 core_router.include_router(parties_router)
-core_router.include_router(payments_router)
-core_router.include_router(settlements_router)
-core_router.include_router(field_collections_router)
+core_router.include_router(payments_router, dependencies=[Depends(require_financial_ready)])
+core_router.include_router(settlements_router, dependencies=[Depends(require_financial_ready)])
+core_router.include_router(field_collections_router, dependencies=[Depends(require_financial_ready)])
 core_router.include_router(reports_router)
 core_router.include_router(import_router)
-core_router.include_router(purchases_router)
+core_router.include_router(purchases_router, dependencies=[Depends(require_financial_ready)])
 core_router.include_router(connections_router)
 core_router.include_router(connections_router, prefix="/connections")
-core_router.include_router(orders_router)
-core_router.include_router(orders_router, prefix="/connections")
+core_router.include_router(orders_router, dependencies=[Depends(require_financial_ready)])
+core_router.include_router(orders_router, prefix="/connections", dependencies=[Depends(require_financial_ready)])
 core_router.include_router(godowns_router)
-core_router.include_router(transfers_router)
+core_router.include_router(transfers_router, dependencies=[Depends(require_financial_ready)])
 core_router.include_router(staff_router)
-core_router.include_router(period_lock_router)
+core_router.include_router(period_lock_router, dependencies=[Depends(require_financial_ready)])
 core_router.include_router(compliance_router)
 core_router.include_router(sync_router)
 core_router.include_router(realtime_router)
