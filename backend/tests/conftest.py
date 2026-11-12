@@ -89,7 +89,11 @@ else:
     _worker_suffix = _xdist_worker or "serial"
     _test_db_name = (f"test_bizassist_{_test_run_id}_{_worker_suffix}.db" if _test_run_id
                      else f"test_bizassist_{_xdist_worker}.db" if _xdist_worker else "test_bizassist.db")
-    os.environ["DATABASE_URL"] = f"sqlite:///./{_test_db_name}"
+    _root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    _abs_db_path = os.path.join(_root_dir, _test_db_name).replace("\\", "/")
+    os.environ["DATABASE_URL"] = f"sqlite:///{_abs_db_path}"
+    if _xdist_worker:
+        os.environ.setdefault("BIZASSIST_DATA_DIR", os.path.join(_root_dir, f".data_{_xdist_worker}"))
 # Explicit signal for database/db.py's fail-closed guard: even on an odd entry
 # path, this marks the process as a test run so the DB layer refuses any
 # non-test DATABASE_URL.

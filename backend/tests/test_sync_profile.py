@@ -165,7 +165,10 @@ def test_immediate_sync_helper_push(mock_get_token, mock_post):
         push_profile_to_cloud(user["bid"], {"business_name": "Test Push Shop"})
     # Drive the durable worker synchronously: no timing-sensitive daemon sleep.
     with patch("services.control_outbox._IS_LOCAL", True), \
-         patch("services.control_outbox.is_hybrid_cloud", return_value=True), SessionLocal() as db:
+         patch("services.control_outbox.is_hybrid_cloud", return_value=True), \
+         patch("services.process_lock.acquire_sync_process_lease", return_value=True), \
+         patch("services.sync_retry.ready", return_value=True), \
+         SessionLocal() as db:
         from services.control_outbox import flush_control_outbox
         assert flush_control_outbox(db, user["bid"])["completed"] == 1
         mock_post.assert_called_once()

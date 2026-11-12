@@ -8,6 +8,18 @@
 .staff-top .mobile-brand-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .staff-shell > .bottom-bar { display: grid; }
 
+@media screen and (min-width: 601px) {
+  .app-shell > .mobile-header,
+  .app-shell > .mobile-topbar,
+  .app-shell > .mobile-bottombar,
+  .mobile-bottombar,
+  .mobile-header {
+    display: none !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+  }
+}
+
 @media screen and (max-width: 600px) {
   :root {
     --mobile-top-space: calc(70px + env(safe-area-inset-top, 0px));
@@ -125,11 +137,28 @@
     padding: 4px 14px 14px !important; height: calc(100dvh - var(--mobile-top-space) - var(--mobile-bottom-space)) !important;
     min-height: 0 !important; max-width: none; gap: 12px;
   }
-  .app-shell .page-header { padding: 6px 0 8px !important; gap: 8px !important; }
+  .app-shell .page-header {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    padding: 6px 0 8px !important;
+    gap: 8px !important;
+    flex-wrap: wrap !important;
+  }
+  .app-shell .page-header-left {
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+  }
   .app-shell .page-title { font-size: 21px !important; font-weight: 650; }
-  .app-shell .page-subtitle { display: none; }
+  .app-shell .page-subtitle { display: none !important; }
   .app-shell .page-header-actions {
-    flex: 1 1 100% !important; width: 100%; max-width: 100%; min-width: 0;
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    flex: 0 0 auto !important;
+    width: auto !important;
+    margin-left: auto !important;
   }
   .app-shell .page-header-actions > .seg {
     flex: 1 0 100%; width: 100%; max-width: 100%; min-width: 0;
@@ -140,7 +169,20 @@
   .app-shell .page-header-actions > .form-input {
     flex: 1 1 120px; width: auto !important; min-width: 0; max-width: 100%;
   }
-  .page-header-actions .btn { width: auto; flex: 0 1 auto; }
+  .app-shell .page-header:has(.form-input, .seg) .page-header-actions {
+    flex: 1 1 100% !important;
+    width: 100% !important;
+  }
+  .page-header-actions .btn {
+    min-height: 38px !important;
+    height: auto !important;
+    padding: 6px 14px !important;
+    font-size: 13px !important;
+    font-weight: 600 !important;
+    border-radius: 9px !important;
+    width: auto;
+    flex: 0 1 auto;
+  }
   .app-shell .card, .staff-shell .card { padding: 12px; border-radius: 12px; }
   .app-shell .stack, .staff-shell .stack { min-width: 0; }
   .page-content > .stack, .staff-main > .stack { gap: 12px !important; }

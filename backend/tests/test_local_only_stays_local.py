@@ -111,6 +111,10 @@ def test_profile_push_only_for_local_plus_cloud(mode, sent):
     owner = _owner(mode)
     with patch("services.immediate_sync._IS_LOCAL", True), \
          patch("services.immediate_sync.threading.Thread", _RunNow), \
+         patch("services.control_outbox._IS_LOCAL", True), \
+         patch("services.control_outbox.threading.Thread", _RunNow), \
+         patch("services.process_lock.acquire_sync_process_lease", return_value=True), \
+         patch("services.sync_retry.ready", return_value=True), \
          patch("services.sync_worker._get_cloud_token", return_value="cloud-token"), \
          patch("httpx.post", return_value=MagicMock(status_code=200)) as post:
         from services.immediate_sync import push_profile_to_cloud
@@ -122,6 +126,10 @@ def test_profile_push_only_for_local_plus_cloud(mode, sent):
 def test_staff_push_only_for_local_plus_cloud(mode, sent):
     owner = _owner(mode)
     with patch("core.api.staff.threading.Thread", _RunNow), \
+         patch("services.control_outbox._IS_LOCAL", True), \
+         patch("services.control_outbox.threading.Thread", _RunNow), \
+         patch("services.process_lock.acquire_sync_process_lease", return_value=True), \
+         patch("services.sync_retry.ready", return_value=True), \
          patch("services.sync_worker._get_cloud_token", return_value="cloud-token"), \
          patch("httpx.post", return_value=MagicMock(status_code=200, json=lambda: {})) as post:
         from core.api.staff import _push_staff_to_cloud
