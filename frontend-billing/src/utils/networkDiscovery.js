@@ -1,154 +1,127 @@
-/**
- * networkDiscovery.js
- * ====================
- * LAN auto-discovery: finds the owner's local backend on the same WiFi/LAN
- * network so cashier devices connect directly without manual IP config.
- *
- * Flow:
- *  1. Query cloud registry: GET /discover/{biz_id} → list of known local IPs
- *  2. Probe each IP with GET http://x.x.x.x:8001/health (1.5s timeout)
- *  3. If a probe succeeds → same network → return local URL
- *  4. All fail → different network → return null (use cloud)
- *
- * The result is cached in localStorage for 10 minutes. On next open, we try
- * the cached URL first (fast path), then re-run discovery if it fails.
- */
-
+/** LAN discovery supplies a connection hint, never a local authentication session. */
 import { CLOUD_URL, IS_LOCAL_APP } from '../config'
+import { boundedJsonFetch } from '../api/boundedRequest'
 import { logger } from './logger'
 
 const PROBE_TIMEOUT_MS = 1500
+const REGISTRY_TIMEOUT_MS = 4000
 const CACHE_KEY = 'bizassist_discovered_local_url'
-const CACHE_TTL_MS = 10 * 60 * 1000  // 10 minutes
+const CACHE_TTL_MS = 10 * 60 * 1000
+let discoveryGeneration = 0
 
-/**
- * Probe a single backend URL. Returns true if it's reachable and is
- * a local (SQLite) backend for the expected business.
- */
-async function probeLocalUrl(url, expectedBizId = null) {
-  const ctrl = new AbortController()
-  const id = setTimeout(() => ctrl.abort(), PROBE_TIMEOUT_MS)
-  try {
-    const res = await fetch(`${url}/health`, { signal: ctrl.signal, mode: 'cors' })
-    clearTimeout(id)
-    if (!res.ok) return false
-    const data = await res.json()
-    // Must be a local (SQLite) backend — not the cloud endpoint itself
-    if (data.db_type !== 'sqlite') return false
-    // If we know the expected biz local_ip and the response includes local_ip, verify
-    return true
-  } catch {
-    clearTimeout(id)
-    return false
-  }
+function currentBusinessId() {
+  try { return JSON.parse(localStorage.getItem('billing_user') || '{}')?.public_id || null }
+  catch { return null }
 }
 
-/**
- * Try the cached local URL first (fast path on repeat opens).
- * Returns the URL if still reachable, null otherwise.
- */
-async function tryCachedUrl() {
+function removeCache() {
+  try { localStorage.removeItem(CACHE_KEY) } catch { /* storage unavailable */ }
+}
+
+function probeUrl(value) {
+  try {
+    const url = new URL(value)
+    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) return null
+    const loopback = url.hostname === 'localhost' || url.hostname.endsWith('.localhost')
+      || /^127\.\d+\.\d+\.\d+$/.test(url.hostname) || url.hostname === '[::1]'
+    // Secure pages must not attempt blockable HTTP LAN fetches. Loopback is a
+    // potentially trustworthy origin; browser local-network permissions still apply.
+    if (globalThis.location?.protocol === 'https:' && url.protocol === 'http:' && !loopback) return null
+    return url.href.replace(/\/$/, '')
+  } catch { return null }
+}
+
+/** Only return a fresh, transport-compatible hint for this signed-in business. */
+export function getDiscoveredLocalBackend(bizId = currentBusinessId()) {
   try {
     const raw = localStorage.getItem(CACHE_KEY)
     if (!raw) return null
-    const { url, ts } = JSON.parse(raw)
-    if (!url || Date.now() - ts > CACHE_TTL_MS) return null
-    const ok = await probeLocalUrl(url)
-    if (ok) {
-      logger.info('[DISCOVERY] Cached local backend still reachable:', url)
-      return url
+    const entry = JSON.parse(raw)
+    const url = probeUrl(entry?.url)
+    if (!bizId || entry?.bizId !== bizId || !url || !Number.isFinite(entry.ts)
+        || entry.ts > Date.now() || Date.now() - entry.ts >= CACHE_TTL_MS) {
+      removeCache()
+      return null
     }
-    logger.debug('[DISCOVERY] Cached URL no longer reachable, re-discovering...')
-    return null
-  } catch {
-    return null
+    return url
+  } catch { removeCache(); return null }
+}
+
+/** Shared by discovery and the explicit Settings connection check. No credentials are sent. */
+export async function probeLocalBackend(value, { timeoutMs = PROBE_TIMEOUT_MS, signal, expectedBizId = null } = {}) {
+  const url = probeUrl(value)
+  if (!url) return { ok: false, error: 'This connection requires a valid HTTPS local-server address from the web app.' }
+  const started = Date.now()
+  try {
+    const res = await boundedJsonFetch(`${url}/health`, {
+      signal, mode: 'cors', redirect: 'error', credentials: 'omit', cache: 'no-store',
+    }, timeoutMs)
+    if (!res.ok) return { ok: false, error: `HTTP ${res.status}` }
+    const data = await res.json()
+    if (data?.status !== 'ok' || data?.db !== 'connected' || data?.db_type !== 'sqlite') {
+      return { ok: false, error: 'A healthy local database was not verified.' }
+    }
+    const advertisedBizId = data.public_id || data.biz_id
+    if (expectedBizId && advertisedBizId && advertisedBizId !== expectedBizId) {
+      return { ok: false, error: 'The server belongs to a different business.' }
+    }
+    return { ok: true, ms: Date.now() - started, mode: data.mode || 'local', version: data.version || null }
+  } catch (err) {
+    return { ok: false, error: err?.code === 'AUTH_REQUEST_TIMEOUT' ? 'Connection check timed out.' : 'Local server is unreachable.' }
   }
 }
 
-/**
- * Main discovery function. Call once after login.
- *
- * @param {string} bizId - The business's public_id
- * @returns {Promise<string|null>} The local backend URL if found on same LAN, null otherwise
- */
+/** Discover only compatible endpoints; finding one does not change API routing. */
 export async function discoverLocalBackend(bizId) {
-  if (!bizId) return null
+  if (!bizId || IS_LOCAL_APP) return null
+  const generation = ++discoveryGeneration
+  const ownerAtStart = currentBusinessId()
+  if (ownerAtStart && ownerAtStart !== bizId) return null
+  const current = () => generation === discoveryGeneration && currentBusinessId() === ownerAtStart
 
-  // Cashier devices on cloud URL run discovery to find owner's local backend.
-  // On IS_LOCAL_APP, you ARE the owner's backend — no discovery needed.
-  // (Exception: if the local app is in cloud-only mode, skip too.)
-  if (IS_LOCAL_APP) {
-    logger.debug('[DISCOVERY] Skipping — already on local backend')
-    return null
+  const cached = getDiscoveredLocalBackend(bizId)
+  if (cached) {
+    const result = await probeLocalBackend(cached, { expectedBizId: bizId })
+    if (!current()) return null
+    if (result.ok) return cached
+    removeCache()
   }
 
-  // Fast path: check cache first
-  const cached = await tryCachedUrl()
-  if (cached) return cached
-
-  // Fetch known IPs from cloud registry
-  let backends = []
+  let backends
   try {
-    const res = await fetch(`${CLOUD_URL}/discover/${bizId}`, { mode: 'cors' })
-    if (res.ok) {
-      const data = await res.json()
-      backends = data.backends || []
-      logger.info('[DISCOVERY] Found', backends.length, 'registered backend(s) for biz', bizId)
-    }
+    const res = await boundedJsonFetch(`${CLOUD_URL}/discover/${encodeURIComponent(bizId)}`, {
+      mode: 'cors', redirect: 'error', credentials: 'omit', cache: 'no-store',
+    }, REGISTRY_TIMEOUT_MS)
+    if (!current() || !res.ok) return null
+    const data = await res.json()
+    if (!Array.isArray(data?.backends) || (data.biz_id && data.biz_id !== bizId)) return null
+    backends = [...new Set(data.backends.map(backend => probeUrl(backend?.url)).filter(Boolean))].slice(0, 16)
   } catch (err) {
-    logger.debug('[DISCOVERY] Cloud registry unreachable:', err?.message)
+    logger.debug('[DISCOVERY] Cloud registry unavailable:', err?.message)
     return null
   }
-
-  if (backends.length === 0) {
-    logger.debug('[DISCOVERY] No backends registered for biz', bizId)
-    return null
-  }
-
-  // Probe each backend in parallel (sorted by recency — most recent first)
-  const results = await Promise.all(
-    backends.map(async (b) => {
-      const ok = await probeLocalUrl(b.url)
-      logger.debug('[DISCOVERY] Probe', b.url, '→', ok ? 'reachable ✅' : 'unreachable ❌')
-      return ok ? b.url : null
-    })
-  )
-
-  const found = results.find(r => r !== null) || null
-
+  if (!current()) return null
+  const results = await Promise.all(backends.map(async url => {
+    const result = await probeLocalBackend(url, { expectedBizId: bizId })
+    return result.ok ? url : null
+  }))
+  if (!current()) return null
+  const found = results.find(Boolean) || null
   if (found) {
-    // Cache the discovered URL
-    try {
-      localStorage.setItem(CACHE_KEY, JSON.stringify({ url: found, ts: Date.now() }))
-    } catch { /* ignore quota errors */ }
-    logger.info('[DISCOVERY] Same-network local backend discovered:', found)
-  } else {
-    logger.info('[DISCOVERY] No reachable local backend found — using cloud')
+    try { localStorage.setItem(CACHE_KEY, JSON.stringify({ bizId, url: found, ts: Date.now() })) } catch { /* storage unavailable */ }
+    logger.debug('[DISCOVERY] Local server connection hint verified:', found)
   }
-
   return found
 }
 
-/**
- * Get the current network mode based on what URL is being used.
- * 'local' — connected directly to the local backend on LAN
- * 'cloud' — connected via cloud backend (different network or cloud-only)
- */
+/** The web workspace stays cloud-routed; a discovery hint cannot authenticate it locally. */
 export function getNetworkMode() {
-  if (IS_LOCAL_APP) return 'local'
-  try {
-    const raw = localStorage.getItem(CACHE_KEY)
-    if (!raw) return 'cloud'
-    const { url, ts } = JSON.parse(raw)
-    if (url && Date.now() - ts < CACHE_TTL_MS) return 'local'
-  } catch { /* ignore */ }
-  return 'cloud'
+  if (!IS_LOCAL_APP) return 'cloud'
+  try { return localStorage.getItem('bizassist_hosting_mode') === 'cloud' ? 'cloud' : 'local' }
+  catch { return 'local' }
 }
 
-/**
- * Clear the discovery cache (e.g. when the user logs out or
- * when the discovered URL becomes unreachable).
- */
 export function clearDiscoveryCache() {
-  try { localStorage.removeItem(CACHE_KEY) } catch { /* ignore */ }
+  discoveryGeneration++
+  removeCache()
 }

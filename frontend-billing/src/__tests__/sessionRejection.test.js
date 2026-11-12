@@ -3,9 +3,9 @@ import { beforeEach, afterEach, it, expect, vi } from 'vitest'
 import { request } from '../api/client'
 import { getApiBase } from '../config'
 import { tokenStorage } from '../utils/tokenStorage'
-import { refreshSession, resilientSessionFetch, invalidateSessionRefresh } from '../api/session'
+import { refreshSession, sessionFetch, resilientSessionFetch, invalidateSessionRefresh } from '../api/session'
 
-beforeEach(() => { localStorage.clear(); tokenStorage.setItem('billing_token', 'current-session') })
+beforeEach(() => { localStorage.clear(); invalidateSessionRefresh(); tokenStorage.setItem('billing_token', 'current-session') })
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
 const response = (status, body, marker = false) => {
   const res = new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json', ...(marker ? { 'WWW-Authenticate': 'Bearer error="invalid_token"' } : {}) } })
@@ -67,4 +67,86 @@ it('shares an in-flight refresh and rejects marked expired sessions without a re
   await expect(request('GET', '/profile')).rejects.toMatchObject({ status: 401 })
   expect(reject).toHaveBeenCalledOnce()
   window.removeEventListener('auth_unauthorized', reject)
+})
+
+it('announces a burst of current-session rejections once', async () => {
+  vi.stubGlobal('fetch', vi.fn(async () => response(401, { detail: 'Expired' }, true)))
+  const rejected = vi.fn()
+  window.addEventListener('auth_unauthorized', rejected)
+  await Promise.all([
+    sessionFetch(`${getApiBase()}/profile`),
+    sessionFetch(`${getApiBase()}/settings`),
+    sessionFetch(`${getApiBase()}/business/config`),
+  ])
+  expect(rejected).toHaveBeenCalledOnce()
+  tokenStorage.setItem('billing_token', 'new-session')
+  invalidateSessionRefresh()
+  await sessionFetch(`${getApiBase()}/profile`)
+  expect(rejected).toHaveBeenCalledTimes(2)
+  window.removeEventListener('auth_unauthorized', rejected)
+})
+
+it('does not let an old refresh block or clear the new session refresh', async () => {
+  let finishOld, finishNew
+  const fetch = vi.fn()
+    .mockResolvedValueOnce({ ok: true, status: 200, json: () => new Promise(resolve => { finishOld = resolve }) })
+    .mockResolvedValueOnce({ ok: true, status: 200, json: () => new Promise(resolve => { finishNew = resolve }) })
+  vi.stubGlobal('fetch', fetch)
+  const previous = refreshSession()
+  await vi.waitFor(() => expect(finishOld).toBeTypeOf('function'))
+  tokenStorage.setItem('billing_token', 'new-login')
+  invalidateSessionRefresh()
+  const current = refreshSession()
+  await vi.waitFor(() => expect(finishNew).toBeTypeOf('function'))
+  finishOld({ token: 'old-refresh' })
+  expect(await previous).toBeNull()
+  const shared = refreshSession()
+  expect(fetch).toHaveBeenCalledTimes(2)
+  finishNew({ token: 'new-login-refreshed' })
+  expect(await current).toBe('new-login-refreshed')
+  expect(await shared).toBe('new-login-refreshed')
+  expect(tokenStorage.getItem('billing_token')).toBe('new-login-refreshed')
+})
+
+it('bounds a refresh whose response body never completes', async () => {
+  vi.useFakeTimers()
+  vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, json: () => new Promise(() => {}) })))
+  const pending = refreshSession()
+  await vi.advanceTimersByTimeAsync(65000)
+  expect(await pending).toBeNull()
+  expect(tokenStorage.getItem('billing_token')).toBe('current-session')
+})
+
+it('cancels a stale HTTP rejection rather than returning it to a new session', async () => {
+  let respond
+  vi.stubGlobal('fetch', vi.fn(() => new Promise(resolve => { respond = resolve })))
+  const rejected = vi.fn()
+  window.addEventListener('auth_unauthorized', rejected)
+  const pending = sessionFetch(`${getApiBase()}/profile`)
+  tokenStorage.setItem('billing_token', 'new-owner')
+  invalidateSessionRefresh()
+  respond(response(401, { detail: 'Expired' }, true))
+  await expect(pending).rejects.toMatchObject({ name: 'AbortError' })
+  expect(rejected).not.toHaveBeenCalled()
+  window.removeEventListener('auth_unauthorized', rejected)
+})
+
+it('honors the caller deadline while allowing a shared refresh to finish for other requests', async () => {
+  vi.useFakeTimers()
+  let finishRefresh
+  const fetch = vi.fn()
+    .mockResolvedValueOnce(response(401, {}))
+    .mockResolvedValueOnce({ ok: true, status: 200, json: () => new Promise(resolve => { finishRefresh = resolve }) })
+  vi.stubGlobal('fetch', fetch)
+  const request = expect(resilientSessionFetch(`${getApiBase()}/profile`, {
+    headers: { Authorization: 'Bearer current-session' },
+  }, { budgetMs: 1000 })).rejects.toMatchObject({ name: 'AbortError' })
+  await vi.advanceTimersByTimeAsync(0)
+  expect(finishRefresh).toBeTypeOf('function')
+  const shared = refreshSession()
+  await vi.advanceTimersByTimeAsync(1000)
+  await request
+  finishRefresh({ token: 'background-refreshed-session' })
+  expect(await shared).toBe('background-refreshed-session')
+  expect(fetch).toHaveBeenCalledTimes(2)
 })

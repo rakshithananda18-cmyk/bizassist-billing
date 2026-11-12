@@ -335,7 +335,7 @@ export default function AppLayout({ children, title }) {
   const [cloudStatus, setCloudStatus] = React.useState(null)
   React.useEffect(() => {
     setCloudStatus(null)
-    if (isDemoSession || !token || !IS_LOCAL_APP || ['cashier', 'supply_adder'].includes(user?.role)) return
+    if (isDemoSession || !token || !IS_LOCAL_APP || effectiveMode !== 'hybrid' || ['cashier', 'supply_adder'].includes(user?.role)) return
     let stopped = false
     const backend = API_BASE
     const current = () => !stopped && syncScopeRef.current?.token === token
@@ -352,9 +352,10 @@ export default function AppLayout({ children, title }) {
     const timer = setInterval(load, 30000)
     return () => { stopped = true; clearInterval(timer) }
   }, [isDemoSession, token, user?.role, syncBusinessKey, effectiveMode])
-  const accountUpdates = queueDepth.control_outbox
-  const queueStatusUnknown = queueDepth.pending_count == null || !!queueDepth.status_error
-    || queueDepth.readiness?.state === 'unknown' || queueDepth.readiness?.status === 'unknown'
+  const hasLocalQueue = effectiveMode === 'hybrid'
+  const accountUpdates = hasLocalQueue ? queueDepth.control_outbox : null
+  const queueStatusUnknown = hasLocalQueue && (queueDepth.pending_count == null || !!queueDepth.status_error
+    || queueDepth.readiness?.state === 'unknown' || queueDepth.readiness?.status === 'unknown')
   const totalPendingSync = Number(queueDepth.pending_count || 0) + Number(accountUpdates?.pending || 0) + Number(accountUpdates?.failed || 0)
 
   // ── Why sync stopped, from the SERVER ────────────────────────────────────
@@ -370,8 +371,8 @@ export default function AppLayout({ children, title }) {
   // keeping their own copy of these strings is how one surface ends up saying
   // "Sync paused" while the other says "Cloud downloads paused" about the same
   // flag, with nothing in either file to reveal it.
-  const haltReason = resolveHaltReason(queueDepth?.halt?.reason || null,
-                                       { isSyncOn, isFreePlan })
+  const haltReason = hasLocalQueue ? resolveHaltReason(queueDepth?.halt?.reason || null,
+                                       { isSyncOn, isFreePlan }) : null
   const haltCopy = haltReason ? HALT_COPY[haltReason] : null
 
   // One tone for every halt surface. The text was made halt-aware and the colour
@@ -393,12 +394,12 @@ export default function AppLayout({ children, title }) {
   const [nextPullIn, setNextPullIn] = React.useState(null)   // seconds until next auto-pull
   const [syncing, setSyncing] = React.useState(false)        // manual "Sync now" in-flight
   const [syncRequestStatus, setSyncRequestStatus] = React.useState(null)
-  const syncRequestFailed = syncRequestStatus?.status === 'failed'
+  const syncRequestFailed = effectiveMode !== 'cloud' && syncRequestStatus?.status === 'failed'
   const syncScopeRef = React.useRef(null)
   syncScopeRef.current = { token, effectiveMode, businessKey: syncBusinessKey }
-  const restoringCloud = (settings?.general?.sync_bootstrap_pending === true && queueDepth.pull?.initialized !== true) || (isSyncOn && (queueDepth.pull?.initial_restore_pending === true
+  const restoringCloud = effectiveMode !== 'cloud' && ((settings?.general?.sync_bootstrap_pending === true && queueDepth.pull?.initialized !== true) || (isSyncOn && (queueDepth.pull?.initial_restore_pending === true
     || queueDepth.pull?.has_more === true
-    || (syncRequestStatus?.initial_restore_pending === true && queueDepth.pull?.initialized !== true)))
+    || (syncRequestStatus?.initial_restore_pending === true && queueDepth.pull?.initialized !== true))))
 
   React.useEffect(() => {
     setSyncRequestStatus(null)
@@ -451,7 +452,7 @@ export default function AppLayout({ children, title }) {
 
   React.useEffect(() => {
     setQueueDepth(emptyQueueDepth())
-    if (isDemoSession || (effectiveMode !== 'hybrid' && settings?.general?.sync_bootstrap_pending !== true) || !token) return
+    if (isDemoSession || effectiveMode === 'cloud' || (effectiveMode !== 'hybrid' && settings?.general?.sync_bootstrap_pending !== true) || !token) return
     let stopped = false
     const backend = API_BASE
     const current = () => !stopped && syncScopeRef.current?.token === token
@@ -552,7 +553,8 @@ export default function AppLayout({ children, title }) {
   // through the existing live signals, without another health polling loop.
   const connectionIssue = syncHealth.isOnline === false
     ? (isSyncOn ? 'Offline — sync resumes when the connection returns.' : null)
-    : ['error', 'disconnected'].includes(syncHealth.status)
+    : (syncHealth.status === 'error' || (syncHealth.status === 'disconnected'
+        && effectiveMode !== 'local' && (effectiveMode === 'hybrid' || settings?.general?.realtime_sync_global !== false)))
       ? syncHealth.error || 'Connection interrupted — reconnecting.'
       : isSyncOn && ['waking', 'busy', 'offline'].includes(cloudStatus?.cloud_state)
         ? ({ waking: 'Cloud service is starting — retrying.', busy: 'Cloud service is busy — retrying.', offline: 'Cloud service is unreachable — retrying.' })[cloudStatus.cloud_state]
@@ -1352,6 +1354,7 @@ export default function AppLayout({ children, title }) {
                       fontWeight: '600',
                       marginTop: '4px',
                       width: 'fit-content',
+                      maxWidth: '100%', minWidth: 0, whiteSpace: 'nowrap',
                       transition: 'all 0.2s ease',
                       backgroundColor: effectiveMode === 'local' ? (connectionIssueLine ? 'rgba(245,158,11,0.1)' : 'var(--bg-3)') : haltTint
                         || (effectiveMode === 'hybrid'
@@ -1376,42 +1379,42 @@ export default function AppLayout({ children, title }) {
                     title={connectionIssueLine || 'View sync details'}
                   >
                     {effectiveMode === 'local' ? (
-                      <>{connectionIssueLine ? <AlertIcon size={10} /> : <MonitorIcon size={10} />}<span>{connectionIssueLine ? 'Connection issue' : 'Local only'}</span></>
+                      <>{connectionIssueLine ? <AlertIcon size={10} /> : <MonitorIcon size={10} />}<span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{connectionIssueLine ? 'Connection issue' : 'Local only'}</span></>
                     ) : haltReason ? (
                       <>
                         <AlertIcon size={10} strokeWidth={2.5} />
                         {/* The badge names the actual halt. "Sync Paused" for a
                             dead token or an outage told the owner nothing and
                             pointed at the wrong fix. */}
-                        <span>{haltReason === 'plan_required' ? 'Sync Paused'
+                        <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{haltReason === 'plan_required' ? 'Sync Paused'
                              : haltReason === 'offline' ? 'Offline'
                              : 'Sign-in expired'}</span>
                       </>
                     ) : syncRequestFailed ? (
-                      <><AlertIcon size={10} /><span>Sync needs attention</span></>
+                      <><AlertIcon size={10} /><span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Sync needs attention</span></>
                     ) : restoringCloud ? (
-                      <><span className="sync-spinner-small" /><span>Restoring cloud data</span></>
+                      <><span className="sync-spinner-small" /><span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Restoring cloud data</span></>
                     ) : connectionIssueLine ? (
-                      <><AlertIcon size={10} /><span>Connection issue</span></>
+                      <><AlertIcon size={10} /><span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Connection issue</span></>
                     ) : queueStatusUnknown ? (
-                      <><AlertIcon size={10} /><span>Sync status unavailable</span></>
+                      <><AlertIcon size={10} /><span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Sync status unavailable</span></>
                     ) : effectiveMode === 'hybrid' ? (
                       <>
                         {/* Offline is the highest priority — shown before pending/error */}
                         {!syncHealth.isOnline ? (
                           <>
                             <AlertIcon size={10} strokeWidth={2.5} />
-                            <span>Sync Offline</span>
+                            <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Sync Offline</span>
                           </>
                         ) : queueDepth.last_status === 'failed' && totalPendingSync > 0 ? (
                           <>
                             <AlertIcon size={10} strokeWidth={2.5} />
-                            <span>Sync Error</span>
+                            <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Sync Error</span>
                           </>
                         ) : totalPendingSync > 0 ? (
                           <>
                             <span className="sync-spinner-small" />
-                            <span>{totalPendingSync} pending</span>
+                            <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{totalPendingSync} pending</span>
                           </>
                         ) : (
                           <>
@@ -1420,7 +1423,7 @@ export default function AppLayout({ children, title }) {
                             ) : (
                               <CheckIcon size={10} strokeWidth={2.5} />
                             )}
-                            <span>{showRefreshFlash ? 'Sync Refreshed' : 'Sync Live'}</span>
+                            <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{showRefreshFlash ? 'Sync Refreshed' : 'Sync Live'}</span>
                           </>
                         )}
                       </>
@@ -1433,31 +1436,31 @@ export default function AppLayout({ children, title }) {
                             ) : (
                               <CheckIcon size={10} strokeWidth={2.5} />
                             )}
-                            <span>{showRefreshFlash ? 'Sync Refreshed' : 'Sync Live'}</span>
+                            <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{showRefreshFlash ? 'Sync Refreshed' : 'Sync Live'}</span>
                           </>
                         )}
                         {syncHealth.status === 'connecting' && (
                           <>
                             <span className="sync-spinner-small" />
-                            <span>Connecting...</span>
+                            <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Connecting...</span>
                           </>
                         )}
                         {syncHealth.status === 'error' && (
                           <>
                             <AlertIcon size={10} strokeWidth={2.5} />
-                            <span>Sync Error</span>
+                            <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Sync Error</span>
                           </>
                         )}
                         {/* 'offline' is a dedicated status emitted by handleOffline */}
                         {syncHealth.status === 'offline' && (
                           <>
                             <AlertIcon size={10} strokeWidth={2.5} />
-                            <span>Offline</span>
+                            <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Offline</span>
                           </>
                         )}
                         {syncHealth.status === 'disconnected' && (
                           <>
-                            <span>Disconnected</span>
+                            <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>Disconnected</span>
                           </>
                         )}
                       </>
@@ -1862,12 +1865,12 @@ export default function AppLayout({ children, title }) {
                     </div>
                   )}
 
-                  {isSyncOn && queueStatusUnknown && (
-                    <div role="status" style={{ color: 'var(--warning)', lineHeight: 1.45 }}>
+                  {hasLocalQueue && queueStatusUnknown && (
+                    <div role="status" title={queueDepth.status_error || 'Sync status is unavailable. Checking again in the background.'} style={{ color: 'var(--warning)', lineHeight: 1.45, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {queueDepth.status_error || 'Sync status is unavailable. Checking again in the background.'}
                     </div>
                   )}
-                  {isSyncOn && syncRequestStatus && (
+                  {hasLocalQueue && syncRequestStatus && (
                     <div role="status" style={{ padding: '7px 9px', border: '1px solid var(--border)', borderRadius: 6, lineHeight: 1.45, color: syncRequestStatus.status === 'failed' ? 'var(--warning)' : 'var(--text-secondary)' }}>
                       {syncRequestStatus.status === 'failed'
                         ? syncRequestStatus.error || 'Cloud sync could not start. Check the connection and try again.'
@@ -2208,12 +2211,9 @@ export default function AppLayout({ children, title }) {
                     <strong style={{ color: 'var(--text-secondary)' }}>
                       Mode: {effectiveMode === 'cloud' ? 'Cloud only' : 'Local only'}
                     </strong>
-                    <br />
-                    Push / Pull controls and the outbox queue exist only in{' '}
-                    <strong>Local + Cloud (Hybrid)</strong> mode. In{' '}
-                    {effectiveMode === 'cloud' ? 'Cloud-only' : 'Local-only'} mode there is no
-                    local outbox, so nothing is queued for sync. Switch modes in
-                    Settings → Hosting to enable them.
+                    <div>{effectiveMode === 'cloud'
+                      ? 'This workspace uses cloud data directly.'
+                      : 'Cloud sync is paused on this device.'}</div>
 
                     {/* Device override vs account setting. `effectiveMode` follows
                         the device key because getApiBase() routes on it — so when

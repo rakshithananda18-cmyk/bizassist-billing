@@ -7,7 +7,7 @@
 // feature replaced.
 import React from 'react'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import { act, render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 
 const authFetch = vi.fn()
@@ -18,6 +18,7 @@ vi.mock('../contexts/AuthContext', () => ({
 
 import NotificationBell from '../components/NotificationBell'
 import { HALT_COPY } from '../utils/syncHalt'
+import { logger } from '../utils/logger'
 
 const ok = (body) => ({ ok: true, status: 200, json: async () => body })
 // The bell probes queue-depth for the sync halt on every load; tests that
@@ -46,6 +47,18 @@ beforeEach(() => {
 afterEach(() => { vi.clearAllTimers() })
 
 describe('NotificationBell', () => {
+  it.each([new DOMException('Session changed', 'AbortError'), new Error('Session changed')])('silently cancels notification work from an ended session: %s', async error => {
+    const logged = vi.spyOn(logger, 'error').mockImplementation(() => {})
+    try {
+      authFetch.mockRejectedValue(error)
+      draw()
+      await act(async () => { await Promise.resolve() })
+      expect(authFetch).toHaveBeenCalledOnce()
+      expect(authFetch).toHaveBeenCalledWith('/alerts/notifications')
+      expect(logged).not.toHaveBeenCalled()
+      expect(screen.getByRole('button', { name: 'Notifications' })).not.toHaveAttribute('title', 'Notifications could not refresh')
+    } finally { logged.mockRestore() }
+  })
   it('does not claim all-clear after an initial HTTP failure and supports retry', async () => {
     authFetch.mockImplementation(async path => path === '/alerts/notifications'
       ? { ok: false, status: 503 } : ok({ halt: null }))

@@ -4,7 +4,7 @@
  * .github/workflows/release.yml on each tag.
  */
 
-export const CURRENT_RELEASE_VERSION = '1.2.6'
+export const CURRENT_RELEASE_VERSION = '1.2.7'
 
 export const GITHUB_REPO_OWNER = 'rakshithananda18-cmyk'
 export const GITHUB_REPO_NAME = 'bizassist-billing'

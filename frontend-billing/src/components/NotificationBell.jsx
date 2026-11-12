@@ -18,7 +18,7 @@ import { BellIcon, CheckIcon, CloseIcon, WhatsAppOutlineIcon, AlertIcon } from '
  *   - Reminder / Warning (Amber): Invoices overdue, backup reminders, trial countdown.
  *   - Customer Offers (Purple): Active promos with 1-click WhatsApp dispatch.
  *   - Field Team (Sky Blue): Store requests, delivery runs, overdue field tasks.
- *   - Updates (Emerald): What's New v1.2.6 changelog and release notices.
+ *   - Updates (Emerald): What's New v1.2.7 changelog and release notices.
  *
  * Categorized tabs: All | Billing | Field | Offers & Updates.
  */
@@ -139,12 +139,13 @@ export default function NotificationBell({ placement = 'bottom-end', onOpen }) {
         setChecked(true)
       }
     } catch (err) {
-      if (request !== requestRef.current) return
+      if (request !== requestRef.current || err?.name === 'AbortError' || err?.message === 'Session changed') return
       setLoadError(true)
       logger.error('[NOTIFY] could not load notifications:', err)
     } finally {
       if (request === requestRef.current) setLoading(false)
     }
+    if (request !== requestRef.current) return
     try {
       const fetcher = authFetchRef.current || authFetch
       const r = await fetcher('/api/sync/queue-depth')
@@ -543,34 +544,34 @@ export default function NotificationBell({ placement = 'bottom-end', onOpen }) {
             padding: 20, width: '100%', maxWidth: 420, boxShadow: '0 24px 60px rgba(0,0,0,0.4)',
           }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-              <strong style={{ fontSize: '0.96rem', color: 'var(--text-primary)' }}>What&apos;s New in v1.2.6</strong>
+              <strong style={{ fontSize: '0.96rem', color: 'var(--text-primary)' }}>What&apos;s New in v1.2.7</strong>
               <button type="button" onClick={() => setShowChangelog(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
                 <CloseIcon size={16} />
               </button>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: '0.78rem', color: 'var(--text-secondary)', lineHeight: 1.5, marginBottom: 16 }}>
               <div>
-                <strong style={{ color: 'var(--text-primary)' }}>1. Native Desktop Installers (Windows & Mac)</strong>
+                <strong style={{ color: 'var(--text-primary)' }}>1. Resilient Sync & Device Series</strong>
+                <p style={{ margin: '2px 0 0', color: 'var(--text-muted)' }}>
+                  Alembic h6 migration, durable deletion tombstones, and bounded auto-healing background sync.
+                </p>
+              </div>
+              <div>
+                <strong style={{ color: 'var(--text-primary)' }}>2. Unified UI/UX for Billing & Task</strong>
+                <p style={{ margin: '2px 0 0', color: 'var(--text-muted)' }}>
+                  Aligned mobile headers, streamlined sub-pages, 3-column action cards, and mobile bottom navigation.
+                </p>
+              </div>
+              <div>
+                <strong style={{ color: 'var(--text-primary)' }}>3. Native Desktop Installers (Windows & Mac)</strong>
                 <p style={{ margin: '2px 0 0', color: 'var(--text-muted)' }}>
                   One-click native desktop downloads directly in-app for Windows (.exe) and macOS Apple Silicon & Intel (.dmg).
                 </p>
               </div>
               <div>
-                <strong style={{ color: 'var(--text-primary)' }}>2. Frosted Protected Demo Privacy</strong>
+                <strong style={{ color: 'var(--text-primary)' }}>4. Session Replay & Device Security</strong>
                 <p style={{ margin: '2px 0 0', color: 'var(--text-muted)' }}>
-                  Strengthened frosted blur badges and automatic gated routing across restricted demo workspaces.
-                </p>
-              </div>
-              <div>
-                <strong style={{ color: 'var(--text-primary)' }}>3. Brand-Aligned Email Notifications</strong>
-                <p style={{ margin: '2px 0 0', color: 'var(--text-muted)' }}>
-                  Redesigned transactional email templates for welcome onboardings, OTP verification, and security alerts.
-                </p>
-              </div>
-              <div>
-                <strong style={{ color: 'var(--text-primary)' }}>4. High-Resilience Cloud Sync & Offline POS</strong>
-                <p style={{ margin: '2px 0 0', color: 'var(--text-muted)' }}>
-                  Auto-healing for deferred parent records, direct thermal printing, and zero-leak shutdown protection.
+                  Protected account linking, multi-device conflict avoidance, and fail-closed security.
                 </p>
               </div>
             </div>

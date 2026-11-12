@@ -15,7 +15,7 @@ import { resolveHostingMode, shouldPersistMode } from '../utils/resolveHostingMo
 import { logger, setBizId } from '../utils/logger'
 import { reconcileBizIdOnLogin } from '../utils/loginSync'
 import { isUpgradeToPro } from '../utils/planTransition'
-import { discoverLocalBackend, getNetworkMode, clearDiscoveryCache } from '../utils/networkDiscovery'
+import { clearDiscoveryCache } from '../utils/networkDiscovery'
 import { reconcileDeviceModeOnLogin, getHostingPreference, setHostingPreference } from '../utils/deviceMode'
 import { rememberDeviceSeries } from '../utils/deviceSeries'
 import { syncManager } from '../sync/syncManager'
@@ -25,6 +25,7 @@ import { notifyAiLogout, getAiDashboardUrl } from '../config/aiDashboard'
 import { sessionFetch, resilientSessionFetch, invalidateSessionRefresh } from '../api/session'
 import { readableError } from '../api/httpErrors'
 import { useSessionRefresh } from '../hooks/useSessionRefresh'
+import { readSessionClaims, isSessionTokenExpired, SESSION_EXPIRED_NOTICE } from '../utils/sessionExpiry'
 import { boundedJsonFetch, requestBudget } from '../api/boundedRequest'
 import {
   isAuthEntryPath,
@@ -118,17 +119,8 @@ const isCloudEndpoint = (u) =>
 const isSameBackendOrCloudFailover = (a, b) =>
   a === b || (isCloudEndpoint(a) && isCloudEndpoint(b))
 
-function decodeToken(tok) {
-  if (!tok) return null
-  try {
-    const parts = tok.split('.')
-    if (parts.length < 2) return null
-    const payload = JSON.parse(atob(parts[1]))
-    return payload
-  } catch {
-    return null
-  }
-}
+const decodeToken = readSessionClaims
+const isSessionCancellation = error => error?.name === 'AbortError' || error?.message === 'Session changed'
 
 function syncScopeFor(user) {
   const bizId = user?.public_id
@@ -170,7 +162,8 @@ export function AuthProvider({ children }) {
   }
   const demoReq = isDemoRequested()
   const [user, setUser]   = useState(() => demoReq ? DEMO_USER : null)
-  const [token, setToken] = useState(() => demoReq ? DEMO_TOKEN : (tokenStorage.getItem('billing_token') || null))
+  const [token, setToken] = useState(() => demoReq ? DEMO_TOKEN : null)
+  const [sessionNotice, setSessionNotice] = useState(null)
   const [loading, setLoading] = useState(() => !demoReq)
   const [isDemoMode, setIsDemoMode] = useState(() => demoReq)
   const demoSessionRef = useRef(demoReq)
@@ -180,7 +173,7 @@ export function AuthProvider({ children }) {
   const [appReady, setAppReady] = useState(() => isDemoRequested())
   // 'local' — connected to owner's backend on same LAN (fast, offline capable)
   // 'cloud' — connected via cloud (different network or cloud-only mode)
-  const [networkMode, setNetworkMode] = useState(() => getNetworkMode())
+  const [networkMode, setNetworkMode] = useState(() => IS_LOCAL_APP && !isCloudEndpoint(API_BASE) ? 'local' : 'cloud')
 
 
   // Restore session from localStorage/tokenStorage on mount
@@ -204,7 +197,26 @@ export function AuthProvider({ children }) {
 
       const savedUser = localStorage.getItem('billing_user')
       const savedToken = tokenStorage.getItem('billing_token')
-      if (savedUser) {
+      // Do not mount protected pages or start their loaders with an expired
+      // saved web JWT. This is a sign-in UX check; only the server grants access.
+      if (savedToken && !IS_LOCAL_APP && isSessionTokenExpired(savedToken)) {
+        authGeneration.current++
+        invalidateSessionRefresh()
+        tokenStorage.removeItem('billing_token')
+        localStorage.removeItem('billing_user')
+        tokenStorage.removeItem('bizassist_cloud_token')
+        localStorage.removeItem('bizassist_cloud_proof')
+        localStorage.removeItem('bizassist_pending_cloud_proof')
+        syncManager.clearScope()
+        clearBillingProfileCache()
+        setBizId(null)
+        setUser(null)
+        setToken(null)
+        setSessionNotice(SESSION_EXPIRED_NOTICE)
+        setLoading(false)
+        return
+      }
+      if (savedUser && savedToken) {
         let userObj = JSON.parse(savedUser)
         // Ensure user_id / public_id are populated even for old sessions by
         // decoding the token (both are in the JWT payload).
@@ -217,6 +229,7 @@ export function AuthProvider({ children }) {
             logger.info('Auto-healed user session from JWT payload (user_id/public_id).')
           }
         }
+        setToken(savedToken)
         setUser(userObj)
         const restoredScope = syncScopeFor(userObj)
         if (restoredScope) syncManager.setScope(restoredScope)
@@ -224,7 +237,9 @@ export function AuthProvider({ children }) {
         setBizId(userObj.public_id)   // restore [BizId=…] logging context
         logger.info('Session restored successfully for user from tokenStorage')
       } else {
-        logger.debug('No saved session user found.')
+        tokenStorage.removeItem('billing_token')
+        localStorage.removeItem('billing_user')
+        logger.debug('No complete saved session found.')
       }
     } catch (err) {
       logger.error('Failed to restore billing session:', err)
@@ -240,7 +255,7 @@ export function AuthProvider({ children }) {
     reportedLoadErrors.current.clear()
     clearPreviewTimers()
     setSettings(null)
-    const savedGeneration = authGeneration.current
+    setSessionNotice(null)
     syncRecovery.current = null
     syncPreparing.current = false
     setSyncSetup(null)
@@ -317,29 +332,13 @@ export function AuthProvider({ children }) {
       }
     }
 
-    // LAN discovery (non-blocking, cloud URL only): check if the owner's local
-    // backend is reachable on the same WiFi/LAN. If so, switch API_BASE to the
-    // local URL for lower latency and offline capability.
-    // This doesn't block login — it runs in the background after session is saved.
-    const bizId = userObj.public_id || String(userObj.id)
-    discoverLocalBackend(bizId).then(localUrl => {
-      if (savedGeneration !== authGeneration.current) return
-      if (localUrl) {
-        // Same LAN — switch to local backend for all subsequent requests
-        try {
-          localStorage.setItem('bizassist_use_lan_db', 'true')
-          localStorage.setItem('bizassist_local_backend_url', localUrl)
-          updateApiBase(getNetworkMode())
-        } catch { /* ignore */ }
-        setNetworkMode('local')
-        logger.info(`[AUTH] Same-network local backend detected: ${localUrl} — switching API_BASE`)
-      } else {
-        setNetworkMode('cloud')
-      }
-    }).catch(err => {
-      logger.debug('[AUTH] LAN discovery failed:', err?.message)
-      setNetworkMode('cloud')
-    })
+    // Public web stays on its authenticated cloud backend. Discovering a LAN
+    // address is not a local-authentication handoff and cannot change its mode.
+    if (!IS_LOCAL_APP) {
+      localStorage.removeItem('bizassist_use_lan_db')
+      clearDiscoveryCache()
+    }
+    setNetworkMode(IS_LOCAL_APP && !isCloudEndpoint(API_BASE) ? 'local' : 'cloud')
   }, [setNetworkMode])
 
 
@@ -1202,6 +1201,7 @@ export function AuthProvider({ children }) {
         setProfile(data)
       }
     } catch (err) {
+      if (isSessionCancellation(err)) return
       logger.error('Failed to fetch profile:', err)
     }
   }, [token, logout])
@@ -1322,6 +1322,7 @@ export function AuthProvider({ children }) {
         // Only successful same-backend local/hybrid saves update the device key.
       }
     } catch (err) {
+      if (isSessionCancellation(err)) return
       logger.error('Failed to fetch settings in context:', err)
     }
   }, [token, logout, saveHostingMode, profile?.plan, profile?.is_premium, user?.public_id, user?.username, user?.id])
@@ -1364,6 +1365,7 @@ export function AuthProvider({ children }) {
         logger.info('Loaded business config successfully')
       }
     } catch (err) {
+      if (isSessionCancellation(err)) return
       logger.error('Failed to fetch business config:', err)
     }
   }, [token, logout])
@@ -1442,11 +1444,13 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     const handleUnauthorized = () => {
+      if (!tokenStorage.getItem('billing_token')) return
       if (isDemoMode || isDemoRequested() || token === DEMO_TOKEN || user?.is_demo) {
         logger.info('[DEMO] Suppressed unauthorized signal in demo sandbox.')
         return
       }
-      logger.warn('[AuthContext] auth_unauthorized event triggered. Auto-logging out.')
+      logger.info('[AuthContext] Session rejected; returning to sign-in.')
+      setSessionNotice(SESSION_EXPIRED_NOTICE)
       logout(false)
       window.dispatchEvent(new CustomEvent('show_toast', {
         detail: { type: 'error', msg: 'Session expired. Please log in again.' }
@@ -1462,7 +1466,7 @@ export function AuthProvider({ children }) {
   const authFetch = useCallback(async (path, opts = {}) => {
     const backend = API_BASE, generation = authGeneration.current
     const current = () => generation === authGeneration.current && isSameBackendOrCloudFailover(API_BASE, backend)
-    if (!current()) throw new Error('Session changed')
+    if (!current()) throw new DOMException('Session changed', 'AbortError')
     // DELIBERATELY NO ABSOLUTE-URL PASSTHROUGH.
     // A revision that allowed callers to pass a fully-qualified URL here caused
     // a cross-tenant bug: the session token is issued by, and only valid on, the
@@ -1501,6 +1505,7 @@ export function AuthProvider({ children }) {
         headers
       }, { budgetMs: opts.timeoutMs || (apiPath.startsWith('/connections/') && !['GET', 'HEAD'].includes((opts.method || 'GET').toUpperCase()) ? 75000 : 65000) })
     } catch (err) {
+      if (isSessionCancellation(err)) throw err
       logger.error(`authFetch network failure for path: ${path}`, err)
       window.dispatchEvent(new CustomEvent('show_toast', {
         detail: { type: 'error', msg: err.message || 'Network connection failed' }
@@ -1508,7 +1513,7 @@ export function AuthProvider({ children }) {
       throw err
     }
 
-    if (!current()) throw new Error('Session changed')
+    if (!current()) throw new DOMException('Session changed', 'AbortError')
 
 
     if (!res.ok) {
@@ -1532,7 +1537,7 @@ export function AuthProvider({ children }) {
 
   return (
     <AuthContext.Provider value={{
-      user, token, loading, login, staffLogin, logout, signup, switchMode, setHostingMode, authFetch, profile, fetchProfile, setProfile,
+      user, token, loading, sessionNotice, login, staffLogin, logout, signup, switchMode, setHostingMode, authFetch, profile, fetchProfile, setProfile,
       businessConfig, attributesSchema, fetchBusinessConfig, appReady, setAppReady,
       settings, fetchSettings,
       networkMode,   // 'local' | 'cloud' — whether this device is on the same LAN as the owner's backend

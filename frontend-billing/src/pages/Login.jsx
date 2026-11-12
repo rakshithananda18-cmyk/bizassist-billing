@@ -20,7 +20,7 @@ import { renderGoogleButton } from '../utils/googleAuth'
 const RECENT_STAFF_TIMEOUT_MS = 1500
 
 export default function Login() {
-  const { login, staffLogin, setSession, googleAuth } = useAuth()
+  const { login, staffLogin, setSession, googleAuth, sessionNotice } = useAuth()
   const navigate  = useNavigate()
   const location = useLocation()
   const lookupRequest = useRef(0)
@@ -28,7 +28,8 @@ export default function Login() {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [showPw,   setShowPw]   = useState(false)
-  const [error,    setError]    = useState('')
+  const [error,    setError]    = useState(sessionNotice || '')
+  useEffect(() => { if (sessionNotice) setError(sessionNotice) }, [sessionNotice])
   const [loading,  setLoading]  = useState(false)
   const [rememberMe, setRememberMe] = useState(true)
   const [waking, setWaking] = useState(false)

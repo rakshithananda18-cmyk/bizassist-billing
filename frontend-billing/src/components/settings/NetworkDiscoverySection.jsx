@@ -1,67 +1,70 @@
 import React from 'react'
 import { IS_LOCAL_APP } from '../../config'
-import { clearDiscoveryCache } from '../../utils/networkDiscovery'
+import { useAuth } from '../../contexts/AuthContext'
+import { clearDiscoveryCache, getDiscoveredLocalBackend, probeLocalBackend } from '../../utils/networkDiscovery'
 import { SectionHeader } from './SettingsPrimitives'
 
 // ─── Network & Discovery Section ───────────────────────────────────────────────
 export default function NetworkDiscoverySection({ networkMode, navigate }) {
   const isLocal   = IS_LOCAL_APP
-  const [cachedUrl, setCachedUrl]   = React.useState(() => {
-    try {
-      const raw = localStorage.getItem('bizassist_discovered_local_url')
-      if (!raw) return null
-      const { url, ts } = JSON.parse(raw)
-      return (url && Date.now() - ts < 10 * 60 * 1000) ? url : null
-    } catch { return null }
-  })
+  const { user } = useAuth()
+  const businessId = user?.public_id || null
+  const [cachedUrl, setCachedUrl] = React.useState(() => getDiscoveredLocalBackend(businessId))
   const [probing, setProbing] = React.useState(false)
   const [probeResult, setProbeResult] = React.useState(null)
+  const requestRef = React.useRef(0)
+  const controllerRef = React.useRef(null)
+
+  React.useEffect(() => {
+    requestRef.current++
+    controllerRef.current?.abort()
+    setCachedUrl(getDiscoveredLocalBackend(businessId))
+    setProbeResult(null)
+    setProbing(false)
+    return () => { requestRef.current++; controllerRef.current?.abort() }
+  }, [businessId])
 
   const handleTest = async () => {
-    if (!cachedUrl) return
+    if (!cachedUrl || getDiscoveredLocalBackend(businessId) !== cachedUrl) {
+      setCachedUrl(null)
+      setProbeResult(null)
+      return
+    }
+    const request = ++requestRef.current
+    controllerRef.current?.abort()
+    const controller = new AbortController()
+    controllerRef.current = controller
     setProbing(true)
     setProbeResult(null)
     try {
-      const t0 = Date.now()
-      const res = await fetch(`${cachedUrl}/health`, { mode: 'cors', signal: AbortSignal.timeout(3000) })
-      const ms = Date.now() - t0
-      if (res.ok) {
-        const data = await res.json()
-        setProbeResult({ ok: true, ms, mode: data.mode, version: data.version })
-      } else {
-        setProbeResult({ ok: false, error: `HTTP ${res.status}` })
-      }
-    } catch (err) {
-      setProbeResult({ ok: false, error: err?.message || 'Unreachable' })
+      const result = await probeLocalBackend(cachedUrl, { timeoutMs: 3000, signal: controller.signal, expectedBizId: businessId })
+      if (request === requestRef.current) setProbeResult(result)
     } finally {
-      setProbing(false)
+      if (request === requestRef.current) setProbing(false)
     }
   }
 
   const handleClear = () => {
+    requestRef.current++
+    controllerRef.current?.abort()
     clearDiscoveryCache()
     setCachedUrl(null)
     setProbeResult(null)
+    setProbing(false)
     try {
       localStorage.removeItem('bizassist_use_lan_db')
       localStorage.removeItem('bizassist_local_backend_url')
     } catch { /* ignore */ }
   }
 
-  const modeLabel   = isLocal ? 'Owner Device (local backend)' : (networkMode === 'local' ? 'Same LAN — direct local' : 'Cloud — different network')
-  const modeBadge   = isLocal
+  const usesLocalBackend = isLocal && networkMode !== 'cloud'
+  const modeBadge   = usesLocalBackend
     ? { bg: 'rgba(99,102,241,0.12)', color: '#818cf8', label: 'Owner PC', icon: (
         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
           <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
         </svg>
       ) }
-    : networkMode === 'local'
-      ? { bg: 'rgba(34,197,94,0.12)', color: '#22c55e', label: 'LAN', icon: (
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><circle cx="12" cy="20" r="1"/>
-          </svg>
-        ) }
-      : { bg: 'rgba(99,102,241,0.12)', color: '#818cf8', label: 'Cloud', icon: (
+    : { bg: 'rgba(99,102,241,0.12)', color: '#818cf8', label: 'Cloud', icon: (
           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/>
           </svg>
@@ -88,11 +91,9 @@ export default function NetworkDiscoverySection({ networkMode, navigate }) {
           </span>
         </div>
         <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', lineHeight: 1.6, margin: 0 }}>
-          {isLocal
-            ? 'You are on the owner\'s device. The local backend runs on this machine — no discovery needed.'
-            : networkMode === 'local'
-              ? 'This device is on the same WiFi/LAN as the owner\'s machine. All data is fetched directly from the local backend for maximum speed.'
-              : 'This device is on a different network. Data is fetched via the cloud backend. Real-time events are relayed via cloud SSE.'}
+          {usesLocalBackend
+            ? 'This app is connected to the local backend. Local billing works through this server.'
+            : 'This workspace uses the cloud backend. To use a local database, open the downloaded app or your local server address and sign in there.'}
         </p>
       </div>
 
@@ -130,7 +131,7 @@ export default function NetworkDiscoverySection({ networkMode, navigate }) {
                   onClick={handleClear}
                   style={{ fontSize: '0.8rem', padding: '6px 16px' }}
                 >
-                  Clear & Rediscover
+                  Clear saved server
                 </button>
               </div>
 
@@ -153,7 +154,7 @@ export default function NetworkDiscoverySection({ networkMode, navigate }) {
                   )}
                   <span>
                     {probeResult.ok
-                      ? `Reachable — ${probeResult.ms}ms · mode: ${probeResult.mode} · v${probeResult.version}`
+                      ? `Reachable — ${probeResult.ms}ms · mode: ${probeResult.mode}${probeResult.version ? ` · v${probeResult.version}` : ''}`
                       : `Unreachable — ${probeResult.error}`}
                   </span>
                 </div>
@@ -162,11 +163,10 @@ export default function NetworkDiscoverySection({ networkMode, navigate }) {
           ) : (
             <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', lineHeight: 1.6 }}>
               <div style={{ marginBottom: 10 }}>
-                No local backend discovered yet. Discovery runs automatically when you log in.
-                If you're on the same WiFi as the owner's machine, it will be detected within a few seconds.
+                No compatible local server is saved for this business. The web workspace continues to use cloud data.
               </div>
               <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
-                Tip: Make sure the owner's machine is running Stater and is on the same WiFi network.
+                For local billing, open Stater on the owner's machine or its local server address. Secure web pages require a secure LAN connection for server checks.
               </div>
             </div>
           )}
@@ -205,11 +205,10 @@ export default function NetworkDiscoverySection({ networkMode, navigate }) {
         </div>
         <ul style={{ fontSize: '0.77rem', color: 'var(--text-muted)', lineHeight: 1.7, margin: 0, paddingLeft: 20 }}>
           <li>Owner's machine registers its LAN IP with the cloud registry on startup</li>
-          <li>Cashier devices query the registry after login and probe the IP directly</li>
-          <li>If reachable on same WiFi → connects locally (ultra-low latency, offline capable)</li>
-          <li>If not reachable → falls back to cloud backend automatically</li>
-          <li>Works on any WiFi — no router configuration or static IP needed</li>
-          <li>Cross-network cashiers still receive real-time events via cloud SSE relay</li>
+          <li>Server checks use only addresses compatible with this page's connection</li>
+          <li>A discovered server is a connection hint; it does not sign you in or switch the web workspace</li>
+          <li>Open the local app or server address and sign in to use the local database</li>
+          <li>The web workspace continues to use cloud data and real-time cloud events</li>
         </ul>
       </div>
     </>

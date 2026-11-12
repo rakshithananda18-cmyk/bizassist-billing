@@ -38,6 +38,21 @@ const enableHybrid = () => {
   auth.value = { ...auth.value, settings: { general: { hosting_mode: 'hybrid' }, subscription: { plan: 'pro' } } }
 }
 
+it.each(['pro', 'free'])('shows cloud connection status without inventing a local queue failure (%s)', async plan => {
+  localStorage.setItem('bizassist_hosting_mode', 'cloud')
+  auth.value.settings = { general: { hosting_mode: 'hybrid', sync_bootstrap_pending: true }, subscription: { plan } }
+  render(<MemoryRouter><AppLayout title="Dashboard">Cloud workspace</AppLayout></MemoryRouter>)
+  act(() => window.dispatchEvent(new CustomEvent('sync-status-change', { detail: { status: 'connected', isOnline: true, error: null } })))
+  const trigger = screen.getByRole('button', { name: 'View sync details' })
+  await waitFor(() => expect(trigger).toHaveTextContent('Sync Live'))
+  expect(trigger).toHaveStyle({ whiteSpace: 'nowrap' })
+  fireEvent.click(trigger)
+  expect(screen.getByText('Connected')).toBeInTheDocument()
+  expect(screen.getByText('This workspace uses cloud data directly.')).toBeInTheDocument()
+  expect(screen.queryByText(/Sync status is unavailable|Sync status unavailable|Restoring cloud data|Cloud restore is/)).not.toBeInTheDocument()
+  expect(fetch.mock.calls.some(([url]) => /\/api\/sync\/(queue-depth|status)/.test(String(url)))).toBe(false)
+})
+
 it('keeps an unreadable queue visibly unknown instead of presenting an empty or fully synced outbox', async () => {
   enableHybrid()
   vi.stubGlobal('fetch', vi.fn(async url => ({ ok: true, status: 200, headers: { get: () => null }, json: async () =>
@@ -149,6 +164,8 @@ it('does not apply a late previous-business restore response after its JSON fini
 
 it('keeps local sync details free of system checks and restores keyboard focus on close', async () => {
   render(<MemoryRouter><AppLayout title="Home">Workspace</AppLayout></MemoryRouter>)
+  // Local-only deliberately disables the live stream; this is not a connection failure.
+  act(() => window.dispatchEvent(new CustomEvent('sync-status-change', { detail: { status: 'disconnected', error: null, isOnline: true } })))
   const trigger = screen.getByRole('button', { name: 'View sync details' })
   expect(trigger).toHaveTextContent('Local only')
   expect(fetch.mock.calls.filter(([url]) => String(url).endsWith('/health'))).toHaveLength(0)
