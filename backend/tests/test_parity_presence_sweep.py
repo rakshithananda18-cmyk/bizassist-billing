@@ -81,7 +81,9 @@ def _clean(s):
 
 
 @pytest.fixture
-def db():
+def db(tmp_path, monkeypatch):
+    # Keep the real process lease and retry store private to this installation.
+    monkeypatch.setenv("BIZASSIST_DATA_DIR", str(tmp_path / "installation"))
     # These are published snapshot rows, not newly edited hybrid outbox rows.
     fixture_sync = sync_disabled_var.set(True)
     s = SessionLocal()

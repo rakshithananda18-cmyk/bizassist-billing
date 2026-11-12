@@ -83,7 +83,10 @@ def ensure_schema():
 
 
 @pytest.fixture
-def db():
+def db(tmp_path, monkeypatch):
+    # Each snapshot is a separate installation. Real leases and durable retry
+    # budgets must not be inherited from another xdist worker or test case.
+    monkeypatch.setenv("BIZASSIST_DATA_DIR", str(tmp_path / "installation"))
     # Snapshot fixtures model rows that have already synchronized; suppress the
     # normal hybrid ORM outbox hook while explicit parity repairs remain active.
     fixture_sync = sync_disabled_var.set(True)

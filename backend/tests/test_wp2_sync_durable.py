@@ -27,7 +27,8 @@ from services.control_outbox import enqueue_control_event, flush_control_outbox
 
 
 @pytest.fixture
-def test_db():
+def test_db(tmp_path, monkeypatch):
+    monkeypatch.setenv("BIZASSIST_DATA_DIR", str(tmp_path))
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)
     Session = sessionmaker(bind=engine)
@@ -118,7 +119,7 @@ def test_ts02_writes_during_pull_captured_in_next_pull(test_db: Session):
 
 
 # ── TS-05: Durable control-plane outbox ────────────────────────────────────────
-def test_ts05_control_outbox_persistence_and_retry(test_db: Session):
+def test_ts05_control_outbox_persistence_and_retry(test_db: Session, monkeypatch):
     """
     TS-05: Staff and profile mutations are durably persisted in sync_control_outbox.
     When offline/failing, rows remain pending with backoff; on reconnect, flush delivers them.
@@ -162,6 +163,9 @@ def test_ts05_control_outbox_persistence_and_retry(test_db: Session):
     mock_resp = MagicMock(status_code=200, json=lambda: {"upserted": 1, "deleted": 0})
     event.next_attempt_at = utc_now() - timedelta(seconds=1)  # ready to retry
     test_db.commit()
+    from services import sync_retry
+    next_operation_attempt = sync_retry.snapshot(biz_id)["control"]["next_attempt_at"]
+    monkeypatch.setattr(sync_retry.time, "time", lambda: next_operation_attempt + 1)
 
     with patch("services.control_outbox._IS_LOCAL", True), \
          patch("services.control_outbox.is_hybrid_cloud", return_value=True), \

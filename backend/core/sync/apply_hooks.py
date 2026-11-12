@@ -256,7 +256,7 @@ def is_financial_overwrite(entity: str, incoming: dict, existing_row,
         return False
     if incoming_updated_at is None or existing_updated_at is None:
         return False
-    if incoming_updated_at < existing_updated_at:
+    if not incoming_updated_at > existing_updated_at:
         return False
     return payloads_differ(incoming, row_to_dict(existing_row))
 

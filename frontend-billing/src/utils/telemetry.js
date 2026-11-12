@@ -12,6 +12,7 @@
  * No business data — only app diagnostics.
  */
 import { API_BASE } from '../config'
+import { APP_VERSION } from '../config/appVersion'
 import { diagnosticsAllowed, STORAGE_CONSENT_CHANGED, STORAGE_CONSENT_KEY } from './storageConsent'
 
 // Cloud Run Mumbai telemetry endpoint
@@ -61,7 +62,7 @@ function buildBatch(events, persistentDevice = diagnosticsAllowed()) {
   const batch = {
     source: SOURCE,
     device_id: deviceId(persistentDevice),
-    app_version: import.meta.env.VITE_APP_VERSION || 'web',
+    app_version: APP_VERSION,
     platform: 'browser',
     events,
   }
@@ -138,7 +139,7 @@ export function sendDiagnostics(reason = 'manual', extra = {}, { userInitiated =
     payload = {
       reason,
       mode: (typeof localStorage !== 'undefined' && localStorage.getItem('bizassist_hosting_mode')) || 'local',
-      app_version: (typeof window !== 'undefined' && window.__APP_VERSION__) || undefined,
+      app_version: APP_VERSION,
       platform: (typeof navigator !== 'undefined' && navigator.platform) || undefined,
       user_agent: (typeof navigator !== 'undefined' && navigator.userAgent) || undefined,
       url: (typeof location !== 'undefined' && `${location.origin}${location.pathname}`) || undefined,

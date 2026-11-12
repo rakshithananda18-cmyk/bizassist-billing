@@ -4,7 +4,7 @@ import { useAuth } from '../../contexts/AuthContext'
 import { logger } from '../../utils/logger'
 import { IS_LOCAL_APP } from '../../config'
 import { SUPPORT_CONTACTS } from '../../config/supportContacts'
-import { version } from '../../../package.json'
+import { APP_VERSION } from '../../config/appVersion'
 import './support-section.css'
 import usePhoneLayout from '../../hooks/usePhoneLayout'
 import '../../pages/phone-utilities.css'
@@ -69,7 +69,7 @@ export default function SupportSection() {
   const [showDiagnostics, setShowDiagnostics] = useState(false)
 
   const bizId = profile?.biz_id || profile?.public_id || user?.public_id || user?.biz_id || 'Unavailable'
-  const appVersion = `v${version}`
+  const appVersion = `v${APP_VERSION}`
   const hostingLabel = cloudHosted ? 'Cloud' : networkMode === 'hybrid' ? 'Desktop (Local + Cloud)' : 'Desktop (Local)'
   const selectedCategoryObj = CATEGORIES.find(c => c.id === category)
   const formattedMessage = [

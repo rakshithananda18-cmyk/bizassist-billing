@@ -56,6 +56,7 @@ load_dotenv()
 from logging_config import configure_logging, get_logger
 configure_logging()                       # one clean, env-tunable (LOG_LEVEL) config
 logger = get_logger("app")
+from services.release_info import APP_VERSION
 
 # ── Error tracking (optional, env-gated) ─────────────────────────────────────
 # Set SENTRY_DSN to enable. Zero-cost when unset; import is guarded so the
@@ -67,7 +68,7 @@ if _sentry_dsn:
         sentry_sdk.init(
             dsn=_sentry_dsn,
             environment=os.getenv("SENTRY_ENV", "production"),
-            release=os.getenv("APP_VERSION") or None,
+            release=APP_VERSION if APP_VERSION != "unknown" else None,
             traces_sample_rate=float(os.getenv("SENTRY_TRACES_RATE", "0")),
             send_default_pii=False,   # never ship usernames/payloads by default
         )
@@ -471,7 +472,7 @@ def health_check():
     the response without triggering a 5xx alert on a transient DB hiccup.
 
     Response shape:
-      {"status": "ok",    "db": "connected",    "db_type": "sqlite|postgresql", "mode": "local|cloud", "version": "1.0.0"}
+      {"status": "ok", "db": "connected", "db_type": "sqlite|postgresql", "mode": "local|cloud", "version": "<packaged release>"}
       {"status": "error", "db": "disconnected"}
     """
     # Determine DB type and hosting mode from DATABASE_URL
@@ -518,11 +519,11 @@ def health_check():
             "db":      db_status,
             "db_type": db_type,
             "mode":    mode,
-            "version": "1.0.0",
+            "version": APP_VERSION,
             "local_ip": local_ip,
         }
     except Exception:
-        return {"status": "error", "db": "disconnected", "local_ip": local_ip}
+        return {"status": "error", "db": "disconnected", "local_ip": local_ip, "version": APP_VERSION}
 
 
 # ── Routers ───────────────────────────────────────────────────────────────────

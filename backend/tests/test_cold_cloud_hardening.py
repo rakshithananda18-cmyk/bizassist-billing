@@ -13,7 +13,8 @@ def test_retry_after(value, expected):
     assert _parse_retry_after(value, 1000) == expected
 
 
-def test_refresh_starts_twelve_hours_early_and_retries(monkeypatch):
+def test_refresh_starts_twelve_hours_early_and_retries(monkeypatch, tmp_path):
+    monkeypatch.setenv("BIZASSIST_DATA_DIR", str(tmp_path))
     from services import sync_worker as w
     now = w.utc_now()
     w._REFRESH_BACKOFF.clear()
@@ -36,12 +37,16 @@ def test_chunk_id_is_stable_and_payload_bound():
 
 
 @pytest.mark.parametrize("outcome,expected", [("timeout","waking"),("connect","offline"),("html","busy"),(200,"online"),(429,"busy"),(500,"busy"),(502,"busy"),(503,"busy"),(504,"busy")])
-def test_cloud_probe_state_and_retry_after(outcome,expected,monkeypatch):
+def test_cloud_probe_state_and_retry_after(outcome,expected,monkeypatch,tmp_path):
     from services import sync_worker as w
     from types import SimpleNamespace
     from unittest.mock import MagicMock
     import httpx
     bid = 99271
+    monkeypatch.setenv("BIZASSIST_DATA_DIR", str(tmp_path))
+    # This unit supplies a synthetic session; committed consent is exercised
+    # separately by the real-database Local-only boundary tests.
+    monkeypatch.setattr(w, "_hybrid_sync_enabled", lambda requested: requested == bid)
     w._CLOUD_STATE.clear(); w._OFFLINE_STATE.clear(); w._PLAN_BLOCKED.clear()
     monkeypatch.setattr(w,"_heal_unqueued_rows",lambda *args:None)
     monkeypatch.setattr(w,"_repair_stuck_child_payloads",lambda *args:None)
@@ -83,7 +88,7 @@ async def test_b2b_reads_fallback_writes_keep_actionable_error(method,status,mon
     monkeypatch.setattr(p,"_proxy_allowed",lambda:True)
     monkeypatch.setattr(p,"_business_id_from",lambda req:1)
     monkeypatch.setattr(w,"_get_cloud_token",lambda bid:"cloud")
-    monkeypatch.setattr(w,"_invalidate_cloud_token",lambda bid:None)
+    monkeypatch.setattr(w,"_invalidate_cloud_token",lambda bid, **kwargs:None)
     class Client:
         def __init__(self,**kwargs):
             assert kwargs["timeout"] == (p._TIMEOUT if method=="GET" else p._WRITE_TIMEOUT)

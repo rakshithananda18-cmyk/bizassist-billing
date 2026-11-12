@@ -49,7 +49,7 @@ for pkg in ("chromadb", "tiktoken_ext", "onnxruntime", "tokenizers", "transforme
         pass  # optional pkg not installed — skip
 
 # Alembic migrations so the frozen app can migrate the user's DB.
-datas += [("alembic", "alembic"), ("alembic.ini", ".")]
+datas += [("alembic", "alembic"), ("alembic.ini", "."), ("release.json", ".")]
 
 # Business template configs (core/templates/configs/*.json). Without these the
 # packaged app's /business/templates returns nothing and the signup "Business

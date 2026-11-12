@@ -306,8 +306,11 @@ class TestParityDoesNotStarveTheSyncTick:
 class TestInstantPullIgnoresItsOwnEcho:
 
     @pytest.fixture(autouse=True)
-    def _clean(self):
+    def _clean(self, monkeypatch):
         from services import cloud_listener
+        # These tests isolate event coalescing for a synthetic listener. The
+        # real owner-mode/network boundary has its own production-path tests.
+        monkeypatch.setattr("services.sync_policy.cloud_egress_allowed", lambda bid: bid == TEST_USER_ID)
         cloud_listener.stop_all()
         cloud_listener._last_local_push.clear()
         yield

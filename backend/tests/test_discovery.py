@@ -223,6 +223,7 @@ class TestRealtimeRelayEchoSuppression:
         rt._IS_LOCAL_BACKEND = True
 
         with patch("services.sync_worker._get_cloud_token", return_value="test-token"), \
+             patch("services.sync_policy.cloud_egress_allowed", return_value=True), \
              patch("httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
             mock_client.post = AsyncMock(return_value=MagicMock(status_code=200))

@@ -5,6 +5,7 @@ Unit tests for the immediate profile sync endpoint and helper:
   - POST /api/sync/profile-push
   - services.immediate_sync.push_profile_to_cloud
 """
+import json
 import uuid
 import pytest
 from unittest.mock import patch, MagicMock
@@ -150,6 +151,10 @@ def test_legacy_owner_control_peer_requires_upgrade(endpoint, payload):
 @patch("services.sync_worker._get_cloud_token")
 def test_immediate_sync_helper_push(mock_get_token, mock_post):
     user = _signup("Durable profile helper")
+    with SessionLocal() as db:
+        owner = db.get(User, user["bid"])
+        owner.settings = json.dumps({"general": {"hosting_mode": "hybrid"}})
+        db.commit()
     mock_get_token.return_value = "mocked-token-123"
     mock_post.return_value = MagicMock(status_code=200, json=lambda: {"status": "ok", "updated_fields": ["business_name"]})
 
