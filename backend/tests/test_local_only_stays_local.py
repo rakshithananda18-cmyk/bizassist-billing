@@ -187,6 +187,7 @@ def test_daily_upload_sends_only_local_plus_cloud_and_only_their_lines(tmp_path,
 
     tokens = {hybrid["id"]: "tok-hybrid", local["id"]: "tok-local"}
     with patch("services.log_uploader._get_cloud_token", side_effect=lambda bid: tokens.get(bid)), \
+         patch("services.sync_policy.cloud_egress_allowed", side_effect=lambda bid, **kw: bid == hybrid["id"]), \
          patch("services.log_uploader.httpx.post", side_effect=fake_post):
         from services.log_uploader import run_daily_log_upload
         run_daily_log_upload()
