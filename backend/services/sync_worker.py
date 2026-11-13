@@ -43,6 +43,7 @@ from services.auth import create_access_token
 from services.dates import utc_now
 from services import sync_retry
 from services.process_lock import acquire_sync_process_lease, file_lock
+from services.cloud_credential_binding import matches_current_local_owner, owner_claim_public_id
 
 logger = logging.getLogger("bizassist.sync_worker")
 
@@ -728,6 +729,12 @@ def store_cloud_token(business_id: int, token: str, *, expected_token=None) -> b
             raise OSError("Existing cloud credential store could not be read")
         if expected_token is not None and m.get(str(business_id)) != expected_token:
             return False
+        if expected_token is not None:
+            expected_public_id = owner_claim_public_id(expected_token)
+            if (expected_public_id is None
+                    or not matches_current_local_owner(business_id, token, expected_public_id=expected_public_id)):
+                logger.warning("[SYNC_WORKER] Refreshed credential does not match the current business owner; reconnect business %s", business_id)
+                return False
         m[str(business_id)] = token
         if not _save_token_map(m):
             raise OSError("Cloud sync credential could not be saved")
@@ -748,7 +755,13 @@ def store_cloud_token(business_id: int, token: str, *, expected_token=None) -> b
 
 
 def _get_cloud_token(business_id: int) -> Optional[str]:
-    return _load_token_map().get(str(business_id))
+    token = _load_token_map().get(str(business_id))
+    if not token:
+        return None
+    if not matches_current_local_owner(business_id, token):
+        logger.warning("[SYNC_WORKER] Stored cloud credential is not bound to the current local owner; reconnect business %s", business_id)
+        return None
+    return token
 
 
 def _invalidate_cloud_token(business_id: int, *, expected_token=None):
@@ -867,7 +880,7 @@ def ensure_fresh_cloud_token(business_id: int) -> Optional[str]:
         _defer_refresh(business_id)
         logger.info("[SYNC_WORKER] Cloud token refresh deferred for business %s (offline: %s)",
                     business_id, e)
-        return token
+        return _get_cloud_token(business_id)
 
     if resp.status_code == 401:
         # Already expired, or revoked server-side. Nothing to salvage — drop it
@@ -882,7 +895,7 @@ def ensure_fresh_cloud_token(business_id: int) -> Optional[str]:
         _defer_refresh(business_id, resp)
         logger.info("[SYNC_WORKER] Cloud token refresh returned %s for business %s",
                     resp.status_code, business_id)
-        return token
+        return _get_cloud_token(business_id)
 
     try:
         fresh = (resp.json() or {}).get("token")
@@ -891,7 +904,14 @@ def ensure_fresh_cloud_token(business_id: int) -> Optional[str]:
 
     if not fresh:
         _defer_refresh(business_id)
-        return token
+        return _get_cloud_token(business_id)
+
+    previous_public_id = owner_claim_public_id(token)
+    if (previous_public_id is None
+            or not matches_current_local_owner(business_id, fresh, expected_public_id=previous_public_id)):
+        _defer_refresh(business_id)
+        logger.warning("[SYNC_WORKER] Cloud refresh returned an unbound owner credential; keeping the stored credential for business %s", business_id)
+        return _get_cloud_token(business_id)
 
     try:
         stored = store_cloud_token(business_id, fresh, expected_token=token)
@@ -903,7 +923,7 @@ def ensure_fresh_cloud_token(business_id: int) -> Optional[str]:
         # claiming the new credential survived a restart.
         _defer_refresh(business_id)
         logger.warning("[SYNC_WORKER] Could not save refreshed credential for business %s: %s", business_id, exc)
-        return token
+        return _get_cloud_token(business_id)
     _REFRESH_BACKOFF.pop(business_id, None)
     _REFRESH_FAILURES.pop(business_id, None)
     try:
@@ -911,7 +931,7 @@ def ensure_fresh_cloud_token(business_id: int) -> Optional[str]:
     except (OSError, ValueError) as exc:
         logger.warning("[SYNC_WORKER] Refreshed credential saved but retry state could not be cleared: %s", exc)
     logger.info("[SYNC_WORKER] Cloud token refreshed for business %s (slid before expiry)", business_id)
-    return fresh
+    return _get_cloud_token(business_id)
 
 
 def _safe_broadcast(business_id: int, event: dict):

@@ -11,13 +11,14 @@ import sys
 from datetime import timedelta
 
 import httpx
+import jwt
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from database import db as database
 from database.models import Base, User
-from services import sync_policy, sync_retry, sync_worker as worker
+from services import log_uploader, sync_policy, sync_retry, sync_worker as worker
 from services.dates import utc_now
 
 
@@ -33,6 +34,9 @@ def isolated(tmp_path, monkeypatch):
     sessions = sessionmaker(bind=local_engine)
     monkeypatch.setattr(database, "SessionLocal", sessions)
     monkeypatch.setattr(database, "engine", local_engine)
+    # Import the uploader at collection, before replacing the database factory.
+    # Its module-level alias must be restored along with the main factory.
+    monkeypatch.setattr(log_uploader, "SessionLocal", sessions)
     monkeypatch.setattr(worker, "SessionLocal", sessions)
     monkeypatch.setattr(worker, "engine", local_engine)
     guard = database.sync_disabled_var.set(True)
@@ -44,6 +48,14 @@ def isolated(tmp_path, monkeypatch):
     yield sessions
     database.sync_disabled_var.reset(guard)
     local_engine.dispose()
+
+
+def _token(session="fixture", expires_in=timedelta(hours=1)):
+    """A cloud owner ID is independent of this installation's local owner ID."""
+    return jwt.encode({"id": 7700, "user_id": 7700, "public_id": "BA-AUDIT77",
+                       "role": "enterprise", "jti": session,
+                       "exp": utc_now() + expires_in},
+                      "synthetic-cloud-signing-key", algorithm="HS256")
 
 
 def _local(sessions):
@@ -148,41 +160,45 @@ def test_explicit_hybrid_choice_clears_local_only_flag(isolated, monkeypatch):
 
 @pytest.mark.parametrize("status", [200, 401])
 def test_old_refresh_response_cannot_replace_new_login(isolated, monkeypatch, status):
-    worker.store_cloud_token(77, "old-session")
+    old, new = _token("old-session"), _token("new-login")
+    worker.store_cloud_token(77, old)
     monkeypatch.setattr(worker, "_token_expiry", lambda value: utc_now() + timedelta(hours=1))
     def reply(*args, **kwargs):
-        worker.store_cloud_token(77, "new-login")
-        return httpx.Response(status, json={"token": "old-session-refresh"})
+        worker.store_cloud_token(77, new)
+        return httpx.Response(status, json={"token": _token("old-session-refresh")})
     monkeypatch.setattr(worker.httpx, "post", reply)
-    assert worker.ensure_fresh_cloud_token(77) == "new-login"
-    assert worker._get_cloud_token(77) == "new-login"
+    assert worker.ensure_fresh_cloud_token(77) == new
+    assert worker._get_cloud_token(77) == new
 
 
 def test_old_request_invalidation_is_compare_and_set(isolated):
-    worker.store_cloud_token(77, "new-login")
-    assert worker._invalidate_cloud_token(77, expected_token="old-session") is False
-    assert worker._get_cloud_token(77) == "new-login"
-    assert worker._invalidate_cloud_token(77, expected_token="new-login") is True
+    new = _token("new-login")
+    worker.store_cloud_token(77, new)
+    assert worker._invalidate_cloud_token(77, expected_token=_token("old-session")) is False
+    assert worker._get_cloud_token(77) == new
+    assert worker._invalidate_cloud_token(77, expected_token=new) is True
     assert worker._get_cloud_token(77) is None
 
 
 def test_refresh_retry_storage_failure_preserves_token_and_in_memory_budget(isolated, monkeypatch):
-    worker.store_cloud_token(77, "old-session")
+    old = _token("old-session")
+    worker.store_cloud_token(77, old)
     monkeypatch.setattr(worker, "_token_expiry", lambda value: utc_now() + timedelta(hours=1))
     monkeypatch.setattr(worker.httpx, "post", lambda *a, **k: (_ for _ in ()).throw(OSError("offline")))
     monkeypatch.setattr(sync_retry, "defer", lambda *a, **k: (_ for _ in ()).throw(OSError("disk full")))
-    assert worker.ensure_fresh_cloud_token(77) == "old-session"
-    assert worker._get_cloud_token(77) == "old-session"
+    assert worker.ensure_fresh_cloud_token(77) == old
+    assert worker._get_cloud_token(77) == old
     assert worker._REFRESH_BACKOFF[77] > utc_now()
 
 
 def test_saved_refresh_survives_retry_budget_cleanup_failure(isolated, monkeypatch):
-    worker.store_cloud_token(77, "old-session")
+    old, fresh = _token("old-session"), _token("fresh-session")
+    worker.store_cloud_token(77, old)
     monkeypatch.setattr(worker, "_token_expiry", lambda value: utc_now() + timedelta(hours=1))
-    monkeypatch.setattr(worker.httpx, "post", lambda *a, **k: httpx.Response(200, json={"token": "fresh-session"}))
+    monkeypatch.setattr(worker.httpx, "post", lambda *a, **k: httpx.Response(200, json={"token": fresh}))
     monkeypatch.setattr(sync_retry, "success", lambda *a, **k: (_ for _ in ()).throw(OSError("disk full")))
-    assert worker.ensure_fresh_cloud_token(77) == "fresh-session"
-    assert worker._get_cloud_token(77) == "fresh-session"
+    assert worker.ensure_fresh_cloud_token(77) == fresh
+    assert worker._get_cloud_token(77) == fresh
 
 
 def test_whole_settings_writer_cannot_restore_declined_diagnostics(isolated):
@@ -207,7 +223,7 @@ def test_local_only_realtime_never_opens_a_cloud_client(isolated, monkeypatch):
     from services import realtime
     _local(isolated)
     monkeypatch.setattr(realtime, "_IS_LOCAL_BACKEND", True)
-    worker.store_cloud_token(77, "synthetic")
+    worker.store_cloud_token(77, _token())
     monkeypatch.setattr(httpx, "AsyncClient", lambda **kw: pytest.fail("Local-only relay opened client"))
     pending = realtime.realtime_manager._relay_to_cloud(77, {"type": "pos.cart_update", "items": [1]})
     with pytest.raises(StopIteration):
@@ -217,7 +233,7 @@ def test_local_only_realtime_never_opens_a_cloud_client(isolated, monkeypatch):
 def test_realtime_rechecks_consent_after_opening_client(isolated, monkeypatch):
     from services import realtime
     monkeypatch.setattr(realtime, "_IS_LOCAL_BACKEND", True)
-    worker.store_cloud_token(77, "synthetic")
+    worker.store_cloud_token(77, _token())
     class Client:
         def __init__(self, **kwargs):
             pass
@@ -238,7 +254,7 @@ def test_control_flush_stops_between_events_when_local_only_is_committed(isolate
     from database.models import SyncControlOutbox
     from services import control_outbox
     monkeypatch.setattr(control_outbox, "_IS_LOCAL", True)
-    worker.store_cloud_token(77, "synthetic")
+    worker.store_cloud_token(77, _token())
     with isolated() as db:
         control_outbox.enqueue_control_event(db, 77, "profile_update", {"business_name": "First"})
         control_outbox.enqueue_control_event(db, 77, "profile_update", {"business_name": "Second"})
@@ -257,7 +273,7 @@ def test_control_flush_stops_between_events_when_local_only_is_committed(isolate
 
 
 def test_parity_discards_response_and_stops_paging_after_local_only(isolated, monkeypatch):
-    worker.store_cloud_token(77, "synthetic")
+    worker.store_cloud_token(77, _token())
     worker._LAST_PARITY.pop(77, None)
     sent = []
     def reply(*args, **kwargs):
@@ -290,7 +306,7 @@ def test_listener_refuses_local_only_and_stop_closes_active_stream(isolated, mon
 
 
 def test_diagnostics_need_separate_opt_in_and_hybrid(isolated, monkeypatch, tmp_path):
-    from services import telemetry_relay, log_uploader
+    from services import telemetry_relay
     assert sync_policy.cloud_egress_allowed(77)
     assert not sync_policy.cloud_egress_allowed(77, diagnostics=True)
     with isolated() as db:
@@ -325,7 +341,7 @@ def test_retry_after_is_durable_and_specific_to_business_and_operation(isolated,
 
 def test_worker_push_retry_after_holds_queue_and_suppresses_immediate_retry(isolated, monkeypatch):
     from database.models import SyncQueue
-    worker.store_cloud_token(77, "synthetic")
+    worker.store_cloud_token(77, _token())
     for mapping in (worker._CLOUD_STATE, worker._PLAN_BLOCKED, worker._PULL_AUTH_BLOCKED, worker._OFFLINE_STATE):
         mapping.pop(77, None)
     monkeypatch.setattr(worker, "_safe_broadcast", lambda *a, **k: None)

@@ -72,6 +72,7 @@ os.environ.setdefault("CLOUD_API_URL", "http://127.0.0.1:9")
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import pytest
+from tests.test_pro_background_restore import device, provision
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -426,7 +427,8 @@ def test_declining_never_raises_into_the_business_write():
         "the enqueue path must never raise into the caller's transaction")
 
 
-def test_a_queue_row_with_NO_payload_is_dead_lettered_not_pushed():
+@pytest.mark.parametrize("payload", [None, "", "{invalid-json"])
+def test_a_queue_row_with_NO_payload_is_dead_lettered_not_pushed(device, monkeypatch, payload):
     """R-6 GAP, found 2026-07-28.
 
     The corrupt-payload guard was written for `json.loads` failing. A payload
@@ -440,18 +442,22 @@ def test_a_queue_row_with_NO_payload_is_dead_lettered_not_pushed():
     written-down assumption that the worker rebuilt it. It does not. The
     assumption was asserted rather than read.
     """
-    src = _worker_source()
-    blk = src[src.index("payload_dict = None"):]
-    blk = blk[:blk.index("pairs.append(")]
-    assert "if not item.payload:" in blk, (
-        "a NULL payload still falls through to the push as payload: null")
-    assert "No payload: cannot be pushed" in blk
-    # It must dead-letter, exactly like a corrupt payload, not silently skip.
-    guard = blk[blk.index("if not item.payload:"):]
-    guard = guard[:guard.index("if item.payload:")]
-    assert "item.synced_at = utc_now()" in guard
-    assert "continue" in guard
-    assert "logger.warning" in guard
+    import httpx
+    from database.models import SyncQueue
+    from services import sync_worker
+    provision(device)
+    row = SyncQueue(business_id=device.bid, entity="customers", entity_id=900001,
+                    operation="UPDATE", payload=payload)
+    device.db.add(row)
+    device.db.commit()
+    row_id = row.id
+    monkeypatch.setattr(httpx, "post", lambda *args, **kwargs: pytest.fail("Invalid payload was uploaded"))
+    sync_worker._sync_business_impl(device.db, device.owner, force=True)
+    device.db.expire_all()
+    retained = device.db.get(SyncQueue, row_id)
+    assert retained.synced_at is not None
+    assert retained.payload == payload
+    assert ("No payload: cannot be pushed" if not payload else "Corrupt payload:") in retained.error
 
 
 def test_the_requeue_tool_builds_a_real_payload():

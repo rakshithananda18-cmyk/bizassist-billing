@@ -622,6 +622,9 @@ def test_delete_during_push_remains_pending_until_its_own_ack(device, monkeypatc
     import httpx
     from database.models import SyncQueue, SyncTombstone
     provision(device)
+    # Customer deletion traverses its invoice relationship even when no invoice
+    # exists. Exercise the real ORM cascade against a complete local schema.
+    Base.metadata.create_all(device.db.get_bind())
     customer = Customer(business_id=device.bid, name="Remove after pending update")
     device.db.add(customer)
     device.db.commit()

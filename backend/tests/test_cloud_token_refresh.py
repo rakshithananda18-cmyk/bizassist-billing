@@ -23,34 +23,53 @@ if backend_path not in sys.path:
 
 import jwt
 import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 
+from database import db as database
+from database.models import Base, User
 import services.sync_worker as sw
 from services.dates import utc_now
 
 BID = 987654
+PUBLIC_ID = "BA-REFRESH"
+CLOUD_OWNER_ID = 54321
 
 
 def _token(expires_in: timedelta, secret="a-different-secret-than-local") -> str:
     """A token signed with a secret this backend does NOT share — exactly the
     real situation, since the cloud signs with its own JWT_SECRET."""
     return jwt.encode(
-        {"id": BID, "user_id": BID, "exp": utc_now() + expires_in},
+        {"id": CLOUD_OWNER_ID, "user_id": CLOUD_OWNER_ID,
+         "public_id": PUBLIC_ID, "role": "enterprise", "exp": utc_now() + expires_in},
         secret,
         algorithm="HS256",
     )
 
 
 @pytest.fixture(autouse=True)
-def _clean_token_state():
-    sw._REFRESH_BACKOFF.pop(BID, None)
-    m = sw._load_token_map()
-    m.pop(str(BID), None)
-    sw._save_token_map(m)
-    yield
-    sw._REFRESH_BACKOFF.pop(BID, None)
-    m = sw._load_token_map()
-    m.pop(str(BID), None)
-    sw._save_token_map(m)
+def _clean_token_state(tmp_path, monkeypatch):
+    """A real local owner and private installation store for every renewal."""
+    local_engine = create_engine("sqlite://")
+    Base.metadata.create_all(local_engine)
+    sessions = sessionmaker(bind=local_engine)
+    monkeypatch.setenv("BIZASSIST_DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(database, "SessionLocal", sessions)
+    monkeypatch.setattr(database, "engine", local_engine)
+    monkeypatch.setattr(sw, "SessionLocal", sessions)
+    monkeypatch.setattr(sw, "engine", local_engine)
+    monkeypatch.setattr(sw, "_TOKEN_FILE", tmp_path / "cloud_sync_tokens.json")
+    monkeypatch.setattr(sw, "_TOKEN_STORE_LAST_STATE", None)
+    monkeypatch.setattr(sw, "_REFRESH_BACKOFF", {})
+    monkeypatch.setattr(sw, "_REFRESH_FAILURES", {})
+    try:
+        with sessions() as db:
+            db.add(User(id=BID, username="refresh-owner", password="synthetic",
+                        public_id=PUBLIC_ID, role="enterprise"))
+            db.commit()
+        yield
+    finally:
+        local_engine.dispose()
 
 
 # ── Reading expiry ──────────────────────────────────────────────────────────
@@ -74,13 +93,16 @@ def test_failed_refresh_persistence_keeps_the_previous_token_and_backs_off(monke
     old = _token(timedelta(hours=1))
     sw.store_cloud_token(BID, old)
     import httpx
-    monkeypatch.setattr(httpx, "post", lambda *a, **k: httpx.Response(200, json={"token": "new-cloud-token"}))
+    monkeypatch.setattr(httpx, "post", lambda *a, **k: httpx.Response(200, json={"token": _token(timedelta(hours=24))}))
+    attempts = []
     def denied(*args, **kwargs):
+        attempts.append(args)
         raise OSError("Synthetic disk write failure")
     monkeypatch.setattr(sw, "store_cloud_token", denied)
     assert sw.ensure_fresh_cloud_token(BID) == old
     assert sw._get_cloud_token(BID) == old
     assert sw._REFRESH_BACKOFF[BID] > utc_now()
+    assert len(attempts) == 1, "the valid renewed token must reach persistence"
 
 
 # ── When to renew ───────────────────────────────────────────────────────────

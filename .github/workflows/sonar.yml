@@ -108,9 +108,21 @@ jobs:
           distribution: temurin
           java-version: '21'
 
-      # v4 is unsupported. Use the maintained action and our explicit Java21
-      # runtime: the cloud JRE provisioning endpoint returned HTTP403 despite
-      # a configured token. Analysis/upload authentication remains unchanged.
+      - name: Verify scanner Java runtime
+        shell: bash
+        env:
+          SONAR_SCANNER_JAVA_EXE_PATH: ${{ env.JAVA_HOME }}/bin/java
+        run: |
+          test -x "$SONAR_SCANNER_JAVA_EXE_PATH"
+          scanner_java_version=$("$SONAR_SCANNER_JAVA_EXE_PATH" -version 2>&1)
+          printf '%s\n' "$scanner_java_version"
+          if [[ "$scanner_java_version" != *'version "21.'* && "$scanner_java_version" != *'version "21"'* ]]; then
+            echo "::error::The Sonar scanner must use the Java 21 runtime installed above"
+            exit 1
+          fi
+
+      # The CLI bundles Java17 and resets JAVA_HOME inside its launcher. Select
+      # the installed Java21 explicitly for the forked scanner engine as well.
       - name: SonarQube Cloud Scan
         uses: SonarSource/sonarqube-scan-action@v6
         with:
@@ -119,3 +131,4 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: https://sonarcloud.io
+          SONAR_SCANNER_JAVA_EXE_PATH: ${{ env.JAVA_HOME }}/bin/java
