@@ -43,8 +43,11 @@ os.environ.setdefault("CLOUD_API_URL", "http://127.0.0.1:9")
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import pytest
+from sqlalchemy import create_engine, event
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import sessionmaker
 
-from database.db import SessionLocal, sync_disabled_var
+from database.db import sync_disabled_var
 from database.models import Base, Customer, Product, SyncInbox, SyncQueue, User
 from services import sync_worker as SW
 from services.dates import utc_now
@@ -62,15 +65,6 @@ class _FakeResponse:
         return self._payload
 
 
-@pytest.fixture(scope="module", autouse=True)
-def ensure_schema():
-    db = SessionLocal()
-    try:
-        Base.metadata.create_all(bind=db.get_bind())
-    finally:
-        db.close()
-
-
 def _clean(s):
     s.query(Customer).filter(Customer.business_id == BID).delete()
     s.query(Product).filter(Product.business_id == BID).delete()
@@ -86,7 +80,21 @@ def db(tmp_path, monkeypatch):
     monkeypatch.setenv("BIZASSIST_DATA_DIR", str(tmp_path / "installation"))
     # These are published snapshot rows, not newly edited hybrid outbox rows.
     fixture_sync = sync_disabled_var.set(True)
-    s = SessionLocal()
+    # This is the SQLite client side of parity, even when pytest's main DB is
+    # the PostgreSQL destination. Exercise the real policy against that client.
+    client_engine = create_engine(f"sqlite:///{(tmp_path / 'client.sqlite').as_posix()}")
+    @event.listens_for(client_engine, "connect")
+    def enable_foreign_keys(connection, _record):
+        cursor = connection.cursor()
+        try:
+            cursor.execute("PRAGMA foreign_keys=ON")
+        finally:
+            cursor.close()
+    Base.metadata.create_all(client_engine)
+    client_sessions = sessionmaker(bind=client_engine)
+    monkeypatch.setattr(SW, "engine", client_engine)
+    monkeypatch.setattr(SW, "SessionLocal", client_sessions)
+    s = client_sessions()
     _clean(s)
     s.add(User(id=BID, username=f"pres_owner_{BID}", email=f"pr{BID}@t.invalid",
                password="x", public_id=f"BA-PRE{BID}", business_name="Presence Co",
@@ -99,6 +107,15 @@ def db(tmp_path, monkeypatch):
         _clean(s)
         s.close()
         sync_disabled_var.reset(fixture_sync)
+        client_engine.dispose()
+
+
+def test_sqlite_client_rejects_staff_without_parent_business(db):
+    with pytest.raises(IntegrityError, match="FOREIGN KEY"):
+        with db.begin_nested():
+            db.add(User(username="orphan-staff", password="synthetic",
+                        parent_business_id=BID + 100000, role="staff"))
+            db.flush()
 
 
 def _run(db, monkeypatch, changes):

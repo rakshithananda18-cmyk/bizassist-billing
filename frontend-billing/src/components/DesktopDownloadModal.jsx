@@ -1,14 +1,17 @@
 import React, { useState, useEffect } from 'react'
 import Modal from './Modal'
 import {
-  CURRENT_RELEASE_VERSION,
+  FALLBACK_DESKTOP_RELEASE_VERSION,
   WINDOWS_INSTALLER_URL,
   MAC_ARM64_INSTALLER_URL,
   MAC_X64_INSTALLER_URL,
   GITHUB_REPO_OWNER,
   GITHUB_REPO_NAME,
+  resolveDesktopRelease,
+  openDownloadPage,
 } from '../config/downloadApp'
 import { DownloadIcon, CheckIcon, MonitorIcon } from './Icons'
+import { boundedJsonFetch } from '../api/boundedRequest'
 
 function WindowsIcon({ size = 20, className = '' }) {
   return (
@@ -29,7 +32,7 @@ function AppleIcon({ size = 20, className = '' }) {
 export default function DesktopDownloadModal({ open, isOpen, onClose }) {
   const isVisible = open ?? isOpen
   const [downloadUrls, setDownloadUrls] = useState({
-    version: CURRENT_RELEASE_VERSION,
+    version: FALLBACK_DESKTOP_RELEASE_VERSION,
     windows: WINDOWS_INSTALLER_URL,
     macArm: MAC_ARM64_INSTALLER_URL,
     macIntel: MAC_X64_INSTALLER_URL,
@@ -44,23 +47,19 @@ export default function DesktopDownloadModal({ open, isOpen, onClose }) {
   useEffect(() => {
     if (!isVisible) return
     let active = true
+    const controller = new AbortController()
 
     // Fetch latest release metadata from GitHub API in background
-    fetch(`https://api.github.com/repos/${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}/releases/latest`)
+    boundedJsonFetch(`https://api.github.com/repos/${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}/releases/latest`, {
+      signal: controller.signal,
+      credentials: 'omit',
+      headers: { Accept: 'application/vnd.github+json' },
+    }, 8000)
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
-        if (!active || !data || !Array.isArray(data.assets)) return
-        const winAsset = data.assets.find((a) => a.name.endsWith('.exe'))
-        const macArmAsset = data.assets.find((a) => a.name.includes('arm64.dmg'))
-        const macIntelAsset = data.assets.find((a) => a.name.includes('x64.dmg') || (a.name.endsWith('.dmg') && !a.name.includes('arm64')))
-        const ver = data.tag_name ? data.tag_name.replace(/^v/, '') : CURRENT_RELEASE_VERSION
-
-        setDownloadUrls((prev) => ({
-          version: ver,
-          windows: winAsset ? winAsset.browser_download_url : prev.windows,
-          macArm: macArmAsset ? macArmAsset.browser_download_url : prev.macArm,
-          macIntel: macIntelAsset ? macIntelAsset.browser_download_url : prev.macIntel,
-        }))
+        if (!active) return
+        const release = resolveDesktopRelease(data)
+        if (release) setDownloadUrls(release)
       })
       .catch(() => {
         // Fall back gracefully to preconfigured deterministic release URLs
@@ -68,10 +67,15 @@ export default function DesktopDownloadModal({ open, isOpen, onClose }) {
 
     return () => {
       active = false
+      controller.abort()
     }
   }, [isVisible])
 
   const handleDownload = (url, fileName) => {
+    if (!url) {
+      openDownloadPage()
+      return
+    }
     setDownloadSuccess(fileName)
     const link = document.createElement('a')
     link.href = url
@@ -97,7 +101,7 @@ export default function DesktopDownloadModal({ open, isOpen, onClose }) {
       footer={
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', flexWrap: 'wrap', gap: '8px' }}>
           <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
-            v{downloadUrls.version} • Offline-first • Automatic background updates
+            Installer v{downloadUrls.version} • Offline-first • Automatic background updates
           </span>
           <button type="button" className="btn-secondary" onClick={onClose} style={{ padding: '6px 16px', fontSize: '0.85rem' }}>
             Close
@@ -218,7 +222,7 @@ export default function DesktopDownloadModal({ open, isOpen, onClose }) {
               }}
             >
               <DownloadIcon size={16} />
-              <span>Download for Windows (.exe)</span>
+              <span>{downloadUrls.windows ? 'Download for Windows (.exe)' : 'View Windows downloads'}</span>
             </button>
           </div>
 
@@ -306,7 +310,7 @@ export default function DesktopDownloadModal({ open, isOpen, onClose }) {
                 }}
               >
                 <DownloadIcon size={15} />
-                <span>Apple Silicon (M1 / M2 / M3 / M4)</span>
+                <span>{downloadUrls.macArm ? 'Apple Silicon (M1 / M2 / M3 / M4)' : 'Apple Silicon — view releases'}</span>
               </button>
               <button
                 type="button"
@@ -323,7 +327,7 @@ export default function DesktopDownloadModal({ open, isOpen, onClose }) {
                 }}
               >
                 <DownloadIcon size={14} />
-                <span>Intel Mac (.dmg)</span>
+                <span>{downloadUrls.macIntel ? 'Intel Mac (.dmg)' : 'Intel Mac — view releases'}</span>
               </button>
             </div>
           </div>

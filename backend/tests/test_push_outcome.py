@@ -168,14 +168,14 @@ def test_an_unexplained_shortfall_holds_every_row():
     assert o.ack_count == 0
 
 
-def test_an_older_cloud_without_applied_claims_nothing():
-    """`applied` absent means nothing can be concluded, so nothing is claimed
-    (rule 33). It must NOT be read as zero, which would hold every row forever."""
+def test_an_older_cloud_without_applied_keeps_the_entire_chunk():
+    """A response without storage accounting cannot authorize deleting a sale."""
     chunk = rows(("invoices", 1), ("invoices", 2))
     o = PushOutcome(chunk, {"status": "success"})
-    assert o.unaccounted == 0
-    assert not any(o.should_hold("invoices", i) for i in (1, 2))
-    assert o.ack_count == 2
+    assert o.unaccounted == 2
+    assert all(o.should_hold("invoices", i) for i in (1, 2))
+    assert o.ack_count == 0
+    assert "applied" in o.validation_error
 
 
 def test_an_older_cloud_that_defers_without_the_field_still_fails_closed():
@@ -193,13 +193,61 @@ def test_an_empty_chunk_is_clean_and_holds_nothing():
     assert o.is_clean and o.ack_count == 0 and o.unaccounted == 0
 
 
-def test_a_malformed_reply_does_not_crash_and_holds_nothing_it_cannot_name():
-    """A cloud returning junk must not take the worker down; it must also not
-    silently ack. With no `applied`, nothing is claimed either way."""
-    for body in ({}, {"deferred": None}, {"applied": "four"}, None):
+def test_a_malformed_reply_holds_all_rows_without_crashing():
+    for body in ({}, {"deferred": None}, {"applied": "four"}, None, ["invalid"]):
         o = PushOutcome(rows(("invoices", 1)), body)
-        assert o.unaccounted == 0
-        assert o.should_hold("invoices", 1) is False
+        assert o.unaccounted > 0
+        assert o.should_hold("invoices", 1)
+        assert o.ack_count == 0
+
+
+@pytest.mark.parametrize("body", [
+    {"applied": 3},
+    {"applied": -1, "skipped": [{"entity": "invoices", "row_id": 1}, {"entity": "invoices", "row_id": 2}, {"entity": "invoices", "row_id": 3}]},
+    {"applied": True},
+    {"applied": 2, "received": 3},
+    {"applied": 0, "deferred": [{"entity": "invoices", "row_id": 1}] * 2},
+    {"applied": 1, "deferred": [{"entity": "invoices", "row_id": 99}]},
+    {"applied": 1, "deferred": [{"entity": "invoices", "row_id": 1}], "rejected": [{"entity": "invoices", "row_id": 1}]},
+    {"applied": 1, "skipped": [{"entity": "invoices", "row_id": 1}], "rejected": [{"entity": "invoices", "row_id": 1}]},
+    {"applied": 0, "skipped": [{"entity": "invoices", "row_id": 1}] * 2},
+    {"applied": 2, "rejected": [{"entity": "invoices", "row_id": 1}, {"entity": "invoices", "row_id": 2}, {"entity": "invoices", "row_id": 3}]},
+    {"applied": 2, "deferred": {}},
+    {"applied": 1, "deferred": [{"entity": "invoices", "row_id": [1]}]},
+])
+def test_impossible_acknowledgement_keeps_the_entire_chunk(body):
+    chunk = rows(("invoices", 1), ("invoices", 2))
+    outcome = PushOutcome(chunk, body)
+    assert outcome.unaccounted > 0
+    assert outcome.validation_error
+    assert outcome.ack_count == 0
+    assert all(outcome.should_hold(row["entity"], row["entity_id"]) for row in chunk)
+
+
+def test_additive_response_fields_preserve_valid_acknowledgement():
+    outcome = PushOutcome(rows(("invoices", 1)), {
+        "applied": 1, "received": 1, "future_feature": {"details": [1, 2, 3]}})
+    assert outcome.is_clean and outcome.ack_count == 1
+
+
+@pytest.mark.parametrize("body", [
+    reply(applied=0, skipped=[("customers", 5), ("customers", 5)]),
+    reply(applied=1, rejected=[("customers", 5)], skipped=[("customers", 5)]),
+])
+def test_multiple_sent_operations_for_one_row_accept_matching_outcome_counts(body):
+    chunk = [{"entity": "customers", "entity_id": 5, "operation": operation}
+             for operation in ("INSERT", "UPDATE")]
+    outcome = PushOutcome(chunk, body)
+    assert outcome.is_clean and outcome.ack_count == 2
+    assert not outcome.validation_error
+
+
+def test_ambiguous_deferred_operation_holds_all_sent_operations_for_that_row():
+    chunk = [{"entity": "customers", "entity_id": 5, "operation": operation}
+             for operation in ("INSERT", "UPDATE")]
+    outcome = PushOutcome(chunk, reply(applied=1, deferred=[("customers", 5)]))
+    assert not outcome.validation_error and outcome.unaccounted == 0
+    assert outcome.should_hold("customers", 5) and outcome.ack_count == 0
 
 
 # ══════════════════════════════════════════════════════════════════════════════

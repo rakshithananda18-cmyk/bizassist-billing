@@ -19,7 +19,7 @@ import { BellIcon, CheckIcon, CloseIcon, WhatsAppOutlineIcon, AlertIcon } from '
  *   - Reminder / Warning (Amber): Invoices overdue, backup reminders, trial countdown.
  *   - Customer Offers (Purple): Active promos with 1-click WhatsApp dispatch.
  *   - Field Team (Sky Blue): Store requests, delivery runs, overdue field tasks.
- *   - Updates (Emerald): What's New v1.2.7 changelog and release notices.
+ *   - Updates (Emerald): What's New v1.2.8 changelog and release notices.
  *
  * Categorized tabs: All | Billing | Field | Offers & Updates.
  */

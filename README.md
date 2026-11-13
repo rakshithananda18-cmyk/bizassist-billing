@@ -13,7 +13,7 @@ app_port: 7860
 # STATER Bill (BizAssist)
 ### AI-Powered Business Intelligence, POS & Accounting Ecosystem
 
-[![Version](https://img.shields.io/badge/version-1.2.7-blue.svg?style=for-the-badge)](https://github.com/rakshithananda18-cmyk/bizassist-billing)
+[![Version](https://img.shields.io/badge/version-1.2.8-blue.svg?style=for-the-badge)](https://github.com/rakshithananda18-cmyk/bizassist-billing)
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg?style=for-the-badge)](#-running-tests)
 [![Python](https://img.shields.io/badge/Python-3.12-3776AB.svg?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
 [![React](https://img.shields.io/badge/React-18.0-61DAFB.svg?style=for-the-badge&logo=react&logoColor=black)](https://react.dev)
@@ -71,7 +71,7 @@ DATABASE_URL=sqlite:///./bizassist.db
 | Feature Module | Description & Capabilities |
 | :--- | :--- |
 | 🛒 **POS Billing Counter** | Barcode-first scanning, multi-tab carts, keyboard shortcuts, split payments (Cash, UPI QR, Card, Credit). |
-| 💻 **Native Desktop App (v1.2.7)** | Direct in-app downloads for Windows 64-bit (`.exe`) and macOS (`.dmg` for Apple Silicon & Intel) with offline-first billing and ESC/POS thermal printing. |
+| 💻 **Native Desktop App (v1.2.8)** | Direct in-app downloads for Windows 64-bit (`.exe`) and macOS (`.dmg` for Apple Silicon & Intel) with offline-first billing and ESC/POS thermal printing. |
 | 🛠️ **Recovery Checks** | The recovery console (`backend/services/self_healing.py`) diagnoses journal integrity mismatches without re-sealing altered entries, and supports guarded stock, sync outbox and staff-session recovery. |
 | 🏷️ **Dynamic Labels (`useDocLabels`)** | Customize document names (*Sales Invoice*, *Credit Note*, *Debit Note*, *Voucher*). All UI & PDF headers update instantly. |
 | 🔒 **Privacy & Protected Demo Mode** | Frosted blur protection for demo workspace routes and button labels, 1-click KPI blur mode for public counters, passcode lock, and immediate JWT session invalidation (`token_version`). |

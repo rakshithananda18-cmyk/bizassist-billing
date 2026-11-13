@@ -626,7 +626,7 @@ def push_changes(
                 raise HTTPException(426, "The server needs an update for sync entity: " + change.entity)
 
             data = dict(change.payload or {})
-            if "business_id" in data:
+            if hasattr(model_cls, "business_id"):
                 data["business_id"] = business_id
 
             # register_shifts and shift_cash_movements carry a user_id FK to
@@ -647,9 +647,7 @@ def push_changes(
             if hasattr(model_cls, "uid"):
                 if uid_val:
                     existing = db.query(model_cls).filter(model_cls.uid == uid_val).populate_existing().with_for_update().first()
-                elif data.get("id") is not None:
-                    existing = db.query(model_cls).filter(model_cls.id == change.entity_id).first()
-                if existing is None and not uid_val:
+                else:
                     rejected.append({"entity": change.entity, "row_id": change.entity_id,
                                      "reason": "A durable UID is required; update or repair the sending device"})
                     processed_count += 1
@@ -824,12 +822,9 @@ def push_changes(
             # Apply fields to model instance
             target_obj = existing if existing else model_cls()
 
-            # Per-row SAVEPOINT: one bad row (e.g. a duplicate uid whose data is
-            # already on the cloud, or a transient FK) must NOT abort the whole
-            # batch and stall the outbox forever (the "N pending" loop). We roll
-            # back just that row and keep going. A duplicate/integrity row is
-            # ACKed (counted processed) so the client stops re-sending it — its
-            # data is already present on the destination.
+            # Per-row SAVEPOINT: a constraint failure must not abort the batch.
+            # Report the rejected row for review; an integrity failure does not
+            # prove that the sender's data is already on the destination.
             try:
                 with db.begin_nested():
                     # Compare resolved local relationships, not source-database IDs.
@@ -912,47 +907,17 @@ def push_changes(
                 if isinstance(ie, InternalError) and not str(
                         getattr(ie.orig, "pgcode", "")).startswith("P0"):
                     raise
-                deduped = "skipped"
-                try:
-                    if uid_val and hasattr(model_cls, "uid"):
-                        dup = db.query(model_cls).filter(model_cls.uid == uid_val).first()
-                        if dup is not None and _record_belongs_to_business(db, change.entity, dup, business_id):
-                            inc_dt = _parse_dt(data.get("updated_at"))
-                            cur_dt = _parse_dt(getattr(dup, "updated_at", None)) if hasattr(dup, "updated_at") else None
-                            if (inc_dt is None) or (cur_dt is None) or (inc_dt >= cur_dt):
-                                with db.begin_nested():
-                                    for key, val in data.items():
-                                        if key in model_cls.__table__.columns and key != "id":
-                                            col_type = model_cls.__table__.columns[key].type
-                                            if hasattr(col_type, "python_type") and col_type.python_type == datetime and val:
-                                                val = _parse_dt(val)
-                                            setattr(dup, key, val)
-                                    db.flush()
-                                    _dup_hook = _apply_hooks.run_post_apply(
-                                        db, change.entity, dup, log_prefix="sync/push-dedupe")
-                                    if not _dup_hook.ok:
-                                        apply_failures.append(_dup_hook)
-                                deduped = "updated"
-                            else:
-                                deduped = "kept-newer-cloud"
-                except Exception as ie2:
-                    deduped = "dedupe-failed"
-                    logger.warning("sync/push: dedupe-update failed for %s uid=%s: %s", change.entity, uid_val, ie2)
-
-                if deduped in ("updated", "kept-newer-cloud"):
-                    logger.info(
-                        "sync/push: %s.id=%s integrity-deduped by uid (%s): %s",
-                        change.entity, change.entity_id, deduped, getattr(ie, "orig", ie),
-                    )
-                else:
-                    _apply_hooks.log_apply_failure(
-                        db, business_id=business_id, entity=change.entity,
-                        entity_id=change.entity_id, payload=data, error=ie,
-                        log_prefix="sync/push",
-                    )
-                    rejected.append({"entity": change.entity, "row_id": change.entity_id,
-                                     "uid": uid_val,
-                                     "reason": str(getattr(ie, "orig", ie)).strip().splitlines()[0]})
+                # The failed row has rolled back. Updating a second candidate
+                # here would bypass the normal ownership/version/conflict path
+                # and could acknowledge a failed derived-state repair.
+                _apply_hooks.log_apply_failure(
+                    db, business_id=business_id, entity=change.entity,
+                    entity_id=change.entity_id, payload=data, error=ie,
+                    log_prefix="sync/push",
+                )
+                rejected.append({"entity": change.entity, "row_id": change.entity_id,
+                                 "uid": uid_val,
+                                 "reason": str(getattr(ie, "orig", ie)).strip().splitlines()[0]})
                 processed_count += 1  # ack either way so it isn't re-sent every cycle
                 continue
 

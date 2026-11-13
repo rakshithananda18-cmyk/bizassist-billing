@@ -14,6 +14,7 @@ over this env default, so they are unaffected.
 import os
 import sys
 import logging
+import tempfile
 import pytest
 
 
@@ -68,8 +69,9 @@ os.unlink = secure_unlink
 # Parallel runs (pytest-xdist, `pytest -n auto`): each worker gets its OWN test
 # DB file so workers can't clobber each other's rows / fixed business IDs.
 # PYTEST_XDIST_WORKER is set by xdist to gw0, gw1, … per worker; unset for a
-# normal serial run, so serial behaviour is byte-for-byte unchanged. The name
-# still contains "test", satisfying db.py's fail-closed guard.
+# normal serial run. Every resolved SQLite path is absolute so changing the
+# working directory cannot redirect a fixture's connection. The name still
+# contains "test", satisfying db.py's fail-closed guard.
 # Cross-dialect opt-in: set BIZASSIST_TEST_DATABASE_URL to a throwaway Postgres
 # (name must contain "test" for db.py's fail-closed guard) to run the suite
 # against Postgres instead of SQLite — used by the CI "invariants on Postgres"
@@ -82,6 +84,17 @@ if _test_run_id:
     import re
     if not re.fullmatch(r"[A-Za-z0-9_-]+", _test_run_id):
         raise RuntimeError("Invalid isolated test run identifier")
+# Runtime storage contains tokens, process leases and persistent retry budgets.
+# Isolate it just like the database, including serial runs and callers which
+# supply a shared parent directory. A fresh directory prevents a previous run's
+# retry deadline from changing the result of the next run.
+_runtime_parent = os.environ.get("BIZASSIST_DATA_DIR") or None
+if _runtime_parent:
+    os.makedirs(_runtime_parent, exist_ok=True)
+os.environ["BIZASSIST_DATA_DIR"] = tempfile.mkdtemp(
+    prefix="bizassist-tests-",
+    dir=_runtime_parent,
+)
 if _pg_override:
     os.environ["DATABASE_URL"] = _pg_override
     _test_db_name = None  # Postgres: no local file to clean up
@@ -92,8 +105,6 @@ else:
     _root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     _abs_db_path = os.path.join(_root_dir, _test_db_name).replace("\\", "/")
     os.environ["DATABASE_URL"] = f"sqlite:///{_abs_db_path}"
-    if _xdist_worker:
-        os.environ.setdefault("BIZASSIST_DATA_DIR", os.path.join(_root_dir, f".data_{_xdist_worker}"))
 # Explicit signal for database/db.py's fail-closed guard: even on an odd entry
 # path, this marks the process as a test run so the DB layer refuses any
 # non-test DATABASE_URL.
@@ -108,6 +119,7 @@ os.environ.setdefault("JWT_SECRET", "test-only-secret-please-change-0123456789ab
 
 # Clean up test database file immediately on module load to prevent cross-run
 # pollution. Skipped when running against Postgres (no local SQLite file).
+_test_db = None
 if _test_db_name:
     _root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     _test_db = os.path.join(_root_dir, "backend", _test_db_name)
@@ -208,6 +220,8 @@ def _clear_sqlite_sidecars():
     'sqlite3.OperationalError: disk I/O error' during DDL — the flake seen in
     test_phase4_sync setup. Uses the ORIGINAL os.remove (bypasses the guard
     above, which would recurse)."""
+    if _test_db is None:
+        return
     for suffix in ("-wal", "-shm"):
         try:
             _orig_remove(_test_db + suffix)
@@ -238,7 +252,7 @@ def setup_and_dispose_db():
                 # retry path: clear sidecars; on the final attempt drop the DB
                 # file itself and let create_all rebuild from scratch.
                 _clear_sqlite_sidecars()
-                if attempt == 2:
+                if attempt == 2 and _test_db is not None:
                     try:
                         _orig_remove(_test_db)
                     except OSError:

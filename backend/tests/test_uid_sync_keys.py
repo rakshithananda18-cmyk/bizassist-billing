@@ -14,6 +14,7 @@ import os
 import sys
 import uuid
 from datetime import datetime, timedelta
+import pytest
 
 os.environ.setdefault("DATABASE_URL", "sqlite:///./test_bizassist.db")
 os.environ.setdefault("GROQ_API_KEY", "mock_groq_api_key")
@@ -313,7 +314,8 @@ def test_sync_merge_lww_uid():
         db.close()
 
 
-def test_sync_id_fallback():
+@pytest.mark.parametrize("operation", ["INSERT", "UPDATE", "DELETE"])
+def test_sync_uidless_integer_collision_is_rejected(operation):
     uname = f"own_{uuid.uuid4().hex[:8]}"
     r = client.post("/signup", json=signup_payload({
         "username": uname, "password": "TestPass123!", "business_name": "Fallback Shop",
@@ -333,6 +335,7 @@ def test_sync_id_fallback():
         db.add(cust)
         db.commit()
         cust_id = cust.id
+        cust_uid = cust.uid
     finally:
         db.close()
 
@@ -340,12 +343,12 @@ def test_sync_id_fallback():
         "changes": [{
             "entity": "customers",
             "entity_id": cust_id,
-            "operation": "UPDATE",
+            "operation": operation,
             "payload": {
                 "id": cust_id,
                 "business_id": bid,
                 "name": "Bob Legacy Updated",
-                "updated_at": (datetime.utcnow() + timedelta(minutes=5)).isoformat()
+                "updated_at": datetime.utcnow().isoformat()
             },
             "created_at": datetime.utcnow().isoformat()
         }]
@@ -353,13 +356,18 @@ def test_sync_id_fallback():
 
     resp = client.post("/api/sync/push", headers=headers, json=push_body)
     assert resp.status_code == 200, resp.text
+    # The sender's ID may belong to an entirely different row in this DB.
+    # Refuse it explicitly; never infer durable identity from that collision.
     assert resp.json()["applied"] == 1
+    assert len(resp.json()["rejected"]) == 1
+    assert "durable UID" in resp.json()["rejected"][0]["reason"]
 
     db = SessionLocal()
     try:
         cust = db.query(Customer).filter(Customer.id == cust_id).first()
         assert cust is not None
-        assert cust.name == "Bob Legacy Updated"
+        assert cust.name == "Bob Legacy"
+        assert cust.uid == cust_uid
     finally:
         db.close()
 

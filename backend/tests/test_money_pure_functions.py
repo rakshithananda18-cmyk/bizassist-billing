@@ -445,8 +445,8 @@ def test_is_financial_overwrite_requires_every_condition():
     assert apply_hooks.is_financial_overwrite("products", inc, row, newer, older) is False
     # incoming is older → it loses LWW, nothing is overwritten
     assert apply_hooks.is_financial_overwrite("invoices", inc, row, older, newer) is False
-    # identical timestamps prove nothing
-    assert apply_hooks.is_financial_overwrite("invoices", inc, row, newer, newer) is False
+    # differing money values with identical versions still require review
+    assert apply_hooks.is_financial_overwrite("invoices", inc, row, newer, newer) is True
     # an unknown timestamp proves nothing either
     assert apply_hooks.is_financial_overwrite("invoices", inc, row, None, older) is False
     assert apply_hooks.is_financial_overwrite("invoices", inc, row, newer, None) is False
@@ -455,6 +455,8 @@ def test_is_financial_overwrite_requires_every_condition():
     # newer but IDENTICAL → normal propagation, must not spam the review list
     assert apply_hooks.is_financial_overwrite(
         "invoices", {"total_amount": 100}, row, newer, older) is False
+    assert apply_hooks.is_financial_overwrite(
+        "invoices", {"total_amount": 100}, row, newer, newer) is False
 
 
 def test_financial_entities_covers_every_money_table():

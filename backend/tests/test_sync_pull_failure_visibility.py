@@ -40,14 +40,19 @@ os.environ.setdefault("DATABASE_URL", "sqlite:///./test_bizassist.db")
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import inspect
+import json
+from datetime import timedelta
 
 import pytest
-from sqlalchemy import text
+from fastapi import BackgroundTasks
+from sqlalchemy import create_engine, text
+from sqlalchemy.orm import sessionmaker
 
-from database.db import SessionLocal
-from database.models import ConflictLog, User
+from database.db import Base, SessionLocal, sync_disabled_var
+from database.models import ConflictLog, Customer, StockLedger, SyncInbox, User
 from core.sync import apply_hooks
 import services.sync_worker as SW
+from services.dates import utc_now
 
 
 @pytest.fixture()
@@ -255,33 +260,145 @@ def test_the_recorder_lives_in_the_shared_hook_module():
 import routes.sync as RS
 
 
-def test_push_records_rejected_rows_not_just_deduped_ones():
-    src = inspect.getsource(RS)
-    assert "log_apply_failure" in src, (
-        "routes/sync.py no longer records rows the cloud refused to store — a "
-        "rejected push is acked and lost again (M-13)"
-    )
+@pytest.fixture
+def push_db():
+    """Exercise the real apply path without another test's persisted records."""
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    session = sessionmaker(bind=engine)()
+    token = sync_disabled_var.set(True)
+    session.add(User(id=7, username="push-review-owner", public_id="PUSH-REVIEW-BIZ",
+                     role="enterprise", password="synthetic"))
+    session.commit()
+    try:
+        yield session
+    finally:
+        session.close()
+        sync_disabled_var.reset(token)
+        engine.dispose()
 
 
-def test_push_distinguishes_a_real_dedupe_from_a_rejection():
-    """`updated` / `kept-newer-cloud` mean the row IS represented in the cloud, so
-    acking is correct. `skipped` means it is not. Collapsing the two is the bug."""
-    src = inspect.getsource(RS)
-    assert '"updated", "kept-newer-cloud"' in src or \
-           "'updated', 'kept-newer-cloud'" in src, (
-        "the push handler no longer separates a resolved uid collision from an "
-        "outright rejection, so both are treated as success"
-    )
+def _push(db, changes):
+    changes = [dict(change, created_at=utc_now().isoformat()) for change in changes]
+    return RS.push_changes(RS.PushPayload(changes=changes), BackgroundTasks(), db=db,
+        current_user={"id": 7, "user_id": 7, "username": "push-review-owner",
+                      "public_id": "PUSH-REVIEW-BIZ", "role": "enterprise"},
+        _plan={"plan": "pro"})
 
 
-def test_push_reports_rejections_to_the_caller():
-    """An acked row that never stored is the one failure a client cannot detect
-    for itself, so it has to be in the response body."""
-    src = inspect.getsource(RS)
-    assert '"rejected": rejected' in src, (
-        "the push response no longer carries `rejected`, so the device cannot "
-        "learn that its write did not survive"
-    )
+def test_push_constraint_rejection_is_recorded_and_other_rows_commit(push_db):
+    changes = [
+        {"entity": "stock_ledger", "entity_id": 81, "operation": "INSERT", "payload": {
+            "uid": "invalid-movement", "business_id": 7, "product_name": "Rice",
+            "movement_type": "opening", "qty_delta": None, "updated_at": utc_now().isoformat()}},
+        {"entity": "customers", "entity_id": 82, "operation": "INSERT", "payload": {
+            "uid": "valid-customer", "business_id": 7, "name": "Alice",
+            "updated_at": utc_now().isoformat()}},
+    ]
+    result = _push(push_db, changes)
+    assert result["status"] == "success"
+    assert result["received"] == result["applied"] == 2
+    assert len(result["rejected"]) == 1
+    assert result["rejected"][0]["uid"] == "invalid-movement"
+    assert push_db.query(StockLedger).count() == 0
+    assert push_db.query(Customer).one().name == "Alice"
+    review = push_db.query(ConflictLog).one()
+    assert review.resolution == "apply_failed"
+    assert json.loads(review.cloud_payload)["uid"] == "invalid-movement"
+    assert SW.PushOutcome(changes, result).is_clean
+
+
+def test_push_uid_replay_is_idempotent_and_keeps_newer_record(push_db):
+    stamp = utc_now() - timedelta(days=1)
+    change = {"entity": "customers", "entity_id": 9999, "operation": "INSERT", "payload": {
+        "uid": "replayed-customer", "business_id": 7, "name": "Alice", "updated_at": stamp.isoformat()}}
+    for _ in range(2):
+        result = _push(push_db, [change])
+        assert result["applied"] == 1
+        assert not result["rejected"]
+    row = push_db.query(Customer).one()
+    assert row.id != change["entity_id"]
+    assert row.uid == change["payload"]["uid"]
+    older = dict(change, payload=dict(change["payload"], name="Stale name",
+                                     updated_at=(stamp - timedelta(days=1)).isoformat()))
+    result = _push(push_db, [older])
+    assert result["applied"] == 0
+    assert len(result["skipped"]) == 1
+    assert not result["rejected"]
+    assert push_db.query(Customer).one().name == "Alice"
+
+
+@pytest.mark.parametrize("supplied_owner", ["omitted", None, 42])
+def test_push_assigns_verified_business_even_when_payload_omits_owner(push_db, supplied_owner):
+    payload = {"uid": "scoped-insert", "name": "Visible to owner",
+               "updated_at": utc_now().isoformat()}
+    if supplied_owner != "omitted":
+        payload["business_id"] = supplied_owner
+    result = _push(push_db, [{"entity": "customers", "entity_id": 991,
+                             "operation": "INSERT", "payload": payload}])
+    assert result["applied"] == 1
+    assert not result["rejected"]
+    assert push_db.query(Customer).one().business_id == 7
+    pulled = RS.pull_changes(current_user={"username": "push-review-owner",
+        "public_id": "PUSH-REVIEW-BIZ", "role": "enterprise"},
+        _plan={"plan": "pro"}, db=push_db)
+    assert [row["uid"] for row in pulled["changes"]["customers"]] == ["scoped-insert"]
+
+
+def test_push_failed_hook_keeps_repair_and_client_outbox_until_retry(push_db, monkeypatch):
+    change = {"entity": "stock_ledger", "entity_id": 89, "operation": "INSERT", "payload": {
+        "uid": "repair-movement", "business_id": 7, "product_name": "Rice",
+        "movement_type": "opening", "qty_delta": 10, "updated_at": utc_now().isoformat()}}
+    failed = apply_hooks.ApplyResult("stock_ledger", 89)
+    failed.errors.append("Temporary derived-state failure")
+    with monkeypatch.context() as patch:
+        patch.setattr(apply_hooks, "run_post_apply", lambda *args, **kwargs: failed)
+        result = _push(push_db, [change])
+    assert result["applied"] == 0
+    assert len(result["apply_failures"]) == len(result["deferred"]) == 1
+    assert SW.PushOutcome([change], result).should_hold("stock_ledger", 89)
+    repair = push_db.query(SyncInbox).one()
+    assert repair.applied_at is None
+    assert json.loads(repair.payload)["_sync_repair_only"] is True
+    assert push_db.query(StockLedger).one().qty_delta == 10
+    result = _push(push_db, [change])
+    assert result["applied"] == 1
+    assert not result["deferred"]
+    assert push_db.query(StockLedger).count() == 1
+    assert push_db.query(SyncInbox).one().applied_at is not None
+
+
+def test_equal_version_financial_refusal_remains_reviewable(push_db):
+    stamp = utc_now() - timedelta(days=1)
+    row = StockLedger(business_id=7, uid="equal-review", product_name="Rice",
+                      movement_type="opening", qty_delta=10, updated_at=stamp)
+    push_db.add(row)
+    push_db.commit()
+    result = _push(push_db, [{"entity": "stock_ledger", "entity_id": 19, "operation": "UPDATE",
+        "payload": {"uid": row.uid, "qty_delta": 20, "updated_at": stamp.isoformat()}}])
+    assert len(result["rejected"]) == 1
+    assert push_db.query(StockLedger).one().qty_delta == 10
+    review = push_db.query(ConflictLog).one()
+    assert review.resolution == "review_needed"
+    assert json.loads(review.local_payload)["qty_delta"] == 20
+    assert json.loads(review.cloud_payload)["qty_delta"] == 10
+
+
+def test_pulled_equal_version_financial_conflict_is_reviewed_once(push_db):
+    stamp = utc_now() - timedelta(days=1)
+    row = StockLedger(business_id=7, uid="pull-equal-review", product_name="Rice",
+                      movement_type="opening", qty_delta=10, updated_at=stamp)
+    push_db.add(row)
+    push_db.commit()
+    result = SW._apply_pulled_row(push_db, 7, "stock_ledger", StockLedger,
+        {"id": 999, "uid": row.uid, "qty_delta": 20, "updated_at": stamp.isoformat()})
+    push_db.commit()
+    assert result.reason == "version-conflict"
+    assert push_db.query(StockLedger).one().qty_delta == 10
+    review = push_db.query(ConflictLog).one()
+    assert review.resolution == "review_needed"
+    assert json.loads(review.local_payload)["qty_delta"] == 10
+    assert json.loads(review.cloud_payload)["qty_delta"] == 20
 
 
 def test_the_push_client_reads_the_rejected_field():
@@ -292,18 +409,6 @@ def test_the_push_client_reads_the_rejected_field():
         "refused write is invisible on the device too"
     )
     assert "_push_rejected" in src
-
-
-def test_a_200_is_not_treated_as_every_row_stored():
-    """The cloud returns 200 with rejections inside. Checking only the status code
-    is what made the loss silent on the client side."""
-    src = inspect.getsource(SW)
-    idx_status = src.find('resp.json().get("status") != "success"')
-    idx_read = src.find('_push_body.get("rejected")')
-    assert idx_status != -1 and idx_read != -1
-    assert idx_read > idx_status, (
-        "the response body must be inspected for rejections after the status check"
-    )
 
 
 def test_no_stray_non_ascii_in_the_sync_modules():

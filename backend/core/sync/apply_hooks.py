@@ -245,7 +245,7 @@ def is_financial_overwrite(entity: str, incoming: dict, existing_row,
     True only when ALL of these hold:
       · the entity is a money/audit record,
       · we have both timestamps to compare (an unknown one proves nothing),
-      · the incoming version is NEWER, so it is about to win under LWW, and
+      · the incoming version is newer or equal (a differing tie needs review), and
       · the two versions actually differ on a meaningful column.
 
     Pure, so the exact conditions can be tested without two databases — this is
@@ -256,7 +256,7 @@ def is_financial_overwrite(entity: str, incoming: dict, existing_row,
         return False
     if incoming_updated_at is None or existing_updated_at is None:
         return False
-    if not incoming_updated_at > existing_updated_at:
+    if incoming_updated_at < existing_updated_at:
         return False
     return payloads_differ(incoming, row_to_dict(existing_row))
 
@@ -422,13 +422,12 @@ def log_financial_conflict(db, *, business_id: int, entity: str, entity_id,
                            incoming_updated_at, existing_updated_at,
                            log_prefix: str = "sync",
                            incoming_is_local: bool = True) -> bool:
-    """Record a reviewable ConflictLog when a financial row is about to be
-    overwritten by a newer concurrent version. Returns True if one was written.
+    """Record a newer financial overwrite or differing equal-version conflict.
+    Returns True if a reviewable ConflictLog was written.
 
-    Call this BEFORE the overwrite — it snapshots the version that is about to
-    be lost. LWW behaviour is unchanged; the data still lands. All this does is
-    make sure the owner can see that a money record was edited in two places,
-    instead of one version disappearing without trace.
+    Call this before the caller decides whether to apply the incoming version.
+    The caller controls LWW: newer versions may apply; differing ties are held
+    for review. Snapshot both versions so the owner can inspect the conflict.
 
     (M-8) Now shared, so it applies to the PULL direction too. It previously
     lived in ``routes/sync.py``, which meant a financial row clobbered by an
@@ -493,7 +492,7 @@ def log_financial_conflict(db, *, business_id: int, entity: str, entity_id,
         ))
         logger.warning(
             "[SYNC_HOOKS] %s: financial overwrite flagged for review — %s.id=%s "
-            "(incoming %s > existing %s)",
+            "(incoming %s >= existing %s)",
             log_prefix, entity, entity_id, incoming_updated_at, existing_updated_at,
         )
         return True

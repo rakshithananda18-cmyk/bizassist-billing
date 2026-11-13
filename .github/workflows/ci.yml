@@ -18,6 +18,8 @@ jobs:
           python-version: '3.12'
       - name: Reject operational exports in source
         run: python scripts/check_source_hygiene.py
+      - name: Check packaged release versions
+        run: python scripts/check_release_version.py
       - name: Scan secrets with redacted findings
         env:
           SCAN_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}

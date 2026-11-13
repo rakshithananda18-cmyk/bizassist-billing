@@ -1,6 +1,8 @@
 """Run selected existing tests with fresh synthetic DBs and no external access.
 
-Usage from repo root: python <this-file> field|backend <pytest arguments...>
+Usage from repo root: python <this-file> field|backend|backend-pg|backend-rls <pytest arguments...>
+backend-pg requires an explicit loopback BIZASSIST_TEST_DATABASE_URL naming a test DB.
+backend-rls keeps the app on SQLite and uses an explicit loopback TEST_PG_URL.
 This imports no application until environment and network guards are established.
 """
 from pathlib import Path
@@ -8,17 +10,27 @@ import os
 import socket
 import sys
 import tempfile
+from urllib.parse import urlparse
 
 ROOT = Path(__file__).resolve().parents[1]
 kind = sys.argv.pop(1)
-assert kind in {'field', 'backend'}
+assert kind in {'field', 'backend', 'backend-pg', 'backend-rls'}
+pg_url = ''
+if kind in {'backend-pg', 'backend-rls'}:
+    pg_url = os.environ.get('BIZASSIST_TEST_DATABASE_URL' if kind == 'backend-pg' else 'TEST_PG_URL', '')
+    parsed = urlparse(pg_url)
+    if (parsed.scheme not in {'postgresql', 'postgresql+psycopg2'}
+            or parsed.hostname not in {'127.0.0.1', 'localhost', '::1'}
+            or 'test' not in parsed.path.lower() or not parsed.port):
+        raise SystemExit('PostgreSQL tests require an explicit loopback test database and port')
+app_pg_url = pg_url if kind == 'backend-pg' else ''
 work = Path(tempfile.mkdtemp(prefix='remediation_test_', dir=ROOT / 'scratch'))
 tempfile.tempdir = str(work)
 os.environ.update({
     'TEMP': str(work), 'TMP': str(work),
-    'DATABASE_URL': 'sqlite:///' + (work / 'test_review.db').as_posix(),
-    'BIZASSIST_TEST_DATABASE_URL': '', 'TASK_TEST_DATABASE_URL': '',
-    'TASK_TEST_BILLING_SCHEMA': '', 'TASK_RLS_ADMIN_TEST_URL': '', 'TEST_PG_URL': '',
+    'DATABASE_URL': app_pg_url or 'sqlite:///' + (work / 'test_review.db').as_posix(),
+    'BIZASSIST_TEST_DATABASE_URL': app_pg_url, 'TASK_TEST_DATABASE_URL': '',
+    'TASK_TEST_BILLING_SCHEMA': '', 'TASK_RLS_ADMIN_TEST_URL': '', 'TEST_PG_URL': pg_url,
     'JWT_SECRET': 'test-only-secret-please-change-0123456789abcdef',
     'GROQ_API_KEY': 'mock_groq_api_key', 'SENTRY_DSN': '',
     'BIZASSIST_TESTING': '1', 'TASK_PURGE_LOOP': '0', 'TASK_CRON_SECRET': '',
@@ -26,6 +38,9 @@ os.environ.update({
     'CLOUD_API_URL': 'http://127.0.0.1:9', 'CLOUD_URL': 'http://127.0.0.1:9',
     'BIZASSIST_CLOUD_URL': 'http://127.0.0.1:9', 'VITE_API_URL': 'http://127.0.0.1:9',
     'TELEMETRY_ENABLED': '0', 'CHAT_MEMORY_ENABLED': '0', 'ANONYMIZED_TELEMETRY': 'False',
+    # This runner denies external network access. Use real cached model files
+    # without Hub metadata retries; a missing cache remains explicitly unavailable.
+    'HF_HUB_OFFLINE': '1', 'TRANSFORMERS_OFFLINE': '1', 'HF_HUB_DISABLE_TELEMETRY': '1',
     'PYTEST_DISABLE_PLUGIN_AUTOLOAD': '1', 'LOG_LEVEL': 'WARNING', 'LOG_FORMAT': 'text',
     'PYTEST_XDIST_WORKER': 'remed_review_' + work.name,
     'BIZASSIST_TEST_RUN_ID': work.name,

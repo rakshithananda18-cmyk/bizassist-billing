@@ -49,8 +49,11 @@ os.environ.setdefault("CLOUD_API_URL", "http://127.0.0.1:9")
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import pytest
+from sqlalchemy import create_engine, event
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import sessionmaker
 
-from database.db import SessionLocal, sync_disabled_var
+from database.db import sync_disabled_var
 from database.models import (
     Base, Invoice, InvoiceLineItem, InvoicePayment, SyncInbox, SyncQueue, User,
 )
@@ -73,15 +76,6 @@ class _FakeResponse:
         return self._payload
 
 
-@pytest.fixture(scope="module", autouse=True)
-def ensure_schema():
-    db = SessionLocal()
-    try:
-        Base.metadata.create_all(bind=db.get_bind())
-    finally:
-        db.close()
-
-
 @pytest.fixture
 def db(tmp_path, monkeypatch):
     # Each snapshot is a separate installation. Real leases and durable retry
@@ -90,7 +84,21 @@ def db(tmp_path, monkeypatch):
     # Snapshot fixtures model rows that have already synchronized; suppress the
     # normal hybrid ORM outbox hook while explicit parity repairs remain active.
     fixture_sync = sync_disabled_var.set(True)
-    s = SessionLocal()
+    # Parity runs on an installed SQLite client, including when the surrounding
+    # suite tests a PostgreSQL destination. Keep the real dialect/consent guard.
+    client_engine = create_engine(f"sqlite:///{(tmp_path / 'client.sqlite').as_posix()}")
+    @event.listens_for(client_engine, "connect")
+    def enable_foreign_keys(connection, _record):
+        cursor = connection.cursor()
+        try:
+            cursor.execute("PRAGMA foreign_keys=ON")
+        finally:
+            cursor.close()
+    Base.metadata.create_all(client_engine)
+    client_sessions = sessionmaker(bind=client_engine)
+    monkeypatch.setattr(SW, "engine", client_engine)
+    monkeypatch.setattr(SW, "SessionLocal", client_sessions)
+    s = client_sessions()
     _clean(s)
     # An owner row, one invoice of ₹124, and ONE local payment of ₹124.
     s.add(User(id=BID, username=f"parity_owner_{BID}", email=f"p{BID}@t.invalid",
@@ -116,6 +124,15 @@ def db(tmp_path, monkeypatch):
         _clean(s)
         s.close()
         sync_disabled_var.reset(fixture_sync)
+        client_engine.dispose()
+
+
+def test_sqlite_client_rejects_payment_without_parent_invoice(db):
+    with pytest.raises(IntegrityError, match="FOREIGN KEY"):
+        with db.begin_nested():
+            db.add(InvoicePayment(business_id=BID, invoice_id=999999,
+                                  amount_paid=1, payment_mode="Cash"))
+            db.flush()
 
 
 def _clean(s):

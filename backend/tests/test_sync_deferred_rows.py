@@ -262,16 +262,12 @@ class FakeCloud:
 
 
 def _ack(chunk, body):
-    """The worker's ack decision, in the shape the real code now implements."""
-    deferred = body.get("deferred") or []
-    rejected = body.get("rejected") or []
-    defer_keys = {(d["entity"], d["row_id"]) for d in deferred}
-    applied = body.get("applied")
-    unaccounted = (isinstance(applied, int)
-                   and applied + len(deferred) + len(rejected) != len(chunk))
+    """Run the production decision instead of maintaining a second algorithm."""
+    from services.sync_worker import PushOutcome
+    outcome = PushOutcome(chunk, body)
     acked, kept = [], []
     for c in chunk:
-        if (c["entity"], c["entity_id"]) in defer_keys or unaccounted:
+        if outcome.should_hold(c["entity"], c["entity_id"]):
             kept.append(c)
         else:
             acked.append(c)
@@ -319,7 +315,7 @@ def test_a_fully_applied_chunk_still_drains():
 def test_rejected_rows_still_drain():
     chunk = [{"entity": "invoices", "entity_id": 1},
              {"entity": "invoices", "entity_id": 2}]
-    body = {"status": "success", "applied": 1,
+    body = {"status": "success", "applied": 2,
             "rejected": [{"entity": "invoices", "row_id": 2, "reason": "bad"}],
             "deferred": []}
     acked, kept = _ack(chunk, body)
@@ -327,11 +323,11 @@ def test_rejected_rows_still_drain():
     assert len(acked) == 2
 
 
-def test_an_older_cloud_response_drains_as_before():
+def test_an_older_cloud_response_preserves_unproven_rows():
     chunk = [{"entity": "invoices", "entity_id": 1}]
     body = {"status": "success"}          # no applied / deferred / rejected
     acked, kept = _ack(chunk, body)
-    assert acked == chunk and kept == []
+    assert acked == [] and kept == chunk
 
 
 def test_an_older_cloud_shortfall_also_escalates():

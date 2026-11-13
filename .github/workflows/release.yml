@@ -47,6 +47,13 @@ jobs:
           python-version: "3.11"
           cache: pip
 
+      # Validate before any backend or renderer is built. Mutating only the
+      # desktop package after building can publish an installer whose contents
+      # identify themselves as a different release.
+      - name: Validate release version against tag
+        shell: bash
+        run: python scripts/check_release_version.py --expected "$GITHUB_REF_NAME"
+
       # ── 1. Backend → PyInstaller onedir bundle ──────────────────────────
       - name: Install backend deps
         run: |
@@ -96,6 +103,11 @@ jobs:
             sleep 2
             if curl -sf http://127.0.0.1:8009/health > /tmp/health.json; then
               echo "Backend healthy:"; cat /tmp/health.json
+              # Reading through stdin also works with Windows Python under bash.
+              if ! python -c 'import json, sys; expected = json.load(open("backend/release.json"))["version"]; actual = json.load(sys.stdin).get("version"); sys.exit(0 if actual == expected else "Packaged backend release version does not match the source manifest")' < /tmp/health.json; then
+                kill $PID || true
+                exit 1
+              fi
               kill $PID || true
               exit 0
             fi
@@ -123,13 +135,6 @@ jobs:
       - name: Install desktop deps
         working-directory: desktop
         run: npm ci
-
-      - name: Sync app version with tag
-        working-directory: desktop
-        shell: bash
-        # --allow-same-version: tagging v1.0.0 while package.json is already
-        # 1.0.0 must not fail the build ("npm error Version not changed").
-        run: npm version --no-git-tag-version --allow-same-version "${GITHUB_REF_NAME#v}"
 
       - name: Stage renderer dists
         working-directory: desktop

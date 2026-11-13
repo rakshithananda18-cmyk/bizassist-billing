@@ -527,6 +527,127 @@ def test_numeric_wire_representations_are_not_financial_conflicts():
     assert payloads_differ({"active": False}, {"active": 0})
 
 
+@pytest.mark.parametrize("response", [
+    {"status": "success"},
+    {"status": "success", "applied": 2},
+    {"status": "success", "applied": 0, "deferred": [{"entity": "customers", "row_id": 999999}]},
+])
+def test_unverifiable_push_ack_preserves_payload_and_records_recovery_action(device, monkeypatch, response):
+    import httpx
+    from database.models import SyncLog, SyncQueue
+    provision(device)
+    customer = Customer(business_id=device.bid, name="Unacknowledged sale party")
+    device.db.add(customer)
+    device.db.commit()
+    queued = device.db.query(SyncQueue).filter_by(entity="customers").one()
+    original_payload = queued.payload
+    monkeypatch.setattr(httpx, "post", lambda *args, **kwargs: httpx.Response(200, json=response))
+    worker._sync_business_impl(device.db, device.owner, force=True)
+    device.db.expire_all()
+    queued = device.db.get(SyncQueue, queued.id)
+    assert queued.synced_at is None
+    assert queued.payload == original_payload
+    assert "acknowledgement could not be verified" in queued.error
+    assert "Update cloud/device" in queued.error
+    assert device.db.query(SyncLog).filter(SyncLog.status == "failed").count() == 1
+
+
+@pytest.mark.parametrize("cloud_outcome", ["accepted", "deferred", "unavailable"])
+def test_concurrent_local_edit_does_not_inherit_older_push_result(device, monkeypatch, cloud_outcome):
+    import httpx
+    import json
+    from database.models import SyncQueue
+    provision(device)
+    token = sync_disabled_var.set(True)
+    try:
+        customer = Customer(business_id=device.bid, name="Already synchronized")
+        device.db.add(customer)
+        device.db.commit()
+    finally:
+        sync_disabled_var.reset(token)
+    customer.name = "First pending update"
+    device.db.commit()
+    queued = device.db.query(SyncQueue).filter_by(entity="customers").one()
+    queue_id, customer_id = queued.id, customer.id
+    sent = []
+    def reply(url, **kwargs):
+        sent.extend(kwargs["json"]["changes"])
+        with device.sessions() as other:
+            changed = other.get(Customer, customer_id)
+            changed.name = "Second edit while push is in flight"
+            other.commit()
+            assert other.query(SyncQueue).filter_by(entity="customers").one().id == queue_id
+        if cloud_outcome == "unavailable":
+            return httpx.Response(503, json={"detail": "Temporary outage"})
+        if cloud_outcome == "deferred":
+            return httpx.Response(200, json={"status": "success", "applied": 0, "received": 1,
+                "deferred": [{"entity": "customers", "row_id": customer_id}]})
+        return httpx.Response(200, json={"status": "success", "applied": 1, "received": 1})
+    monkeypatch.setattr(httpx, "post", reply)
+    worker._sync_business_impl(device.db, device.owner, force=True)
+    device.db.expire_all()
+    queued = device.db.get(SyncQueue, queue_id)
+    assert sent[0]["payload"]["name"] == "First pending update"
+    assert json.loads(queued.payload)["name"] == "Second edit while push is in flight"
+    assert queued.synced_at is None
+    assert queued.attempts == 0 and queued.next_attempt_at is None
+    assert queued.error is None
+
+
+def test_retry_requested_during_push_is_not_overwritten_by_older_ack(device, monkeypatch):
+    import httpx
+    from database.models import SyncQueue
+    provision(device)
+    device.db.add(Customer(business_id=device.bid, name="Retry this update"))
+    device.db.commit()
+    queued = device.db.query(SyncQueue).filter_by(entity="customers").one()
+    queued.attempts, queued.error = 2, "Previous attempt failed"
+    device.db.commit()
+    queue_id = queued.id
+    def reply(url, **kwargs):
+        with device.sessions() as other:
+            retried = other.get(SyncQueue, queue_id)
+            retried.attempts, retried.error, retried.next_attempt_at = 0, None, None
+            other.commit()
+        return httpx.Response(200, json={"status": "success", "applied": 1})
+    monkeypatch.setattr(httpx, "post", reply)
+    worker._sync_business_impl(device.db, device.owner, force=True)
+    device.db.expire_all()
+    queued = device.db.get(SyncQueue, queue_id)
+    assert queued.synced_at is None
+    assert queued.attempts == 0 and queued.error is None and queued.next_attempt_at is None
+
+
+def test_delete_during_push_remains_pending_until_its_own_ack(device, monkeypatch):
+    import httpx
+    from database.models import SyncQueue, SyncTombstone
+    provision(device)
+    customer = Customer(business_id=device.bid, name="Remove after pending update")
+    device.db.add(customer)
+    device.db.commit()
+    customer_id = customer.id
+    operations = []
+    def reply(url, **kwargs):
+        changes = kwargs["json"]["changes"]
+        operations.extend(change["operation"] for change in changes)
+        if len(operations) == 1:
+            with device.sessions() as other:
+                other.delete(other.get(Customer, customer_id))
+                other.commit()
+        return httpx.Response(200, json={"status": "success", "applied": len(changes)})
+    monkeypatch.setattr(httpx, "post", reply)
+    worker._sync_business_impl(device.db, device.owner, force=True)
+    device.db.expire_all()
+    pending = device.db.query(SyncQueue).filter(SyncQueue.synced_at.is_(None)).all()
+    assert [row.operation for row in pending] == ["DELETE"]
+    assert device.db.query(SyncTombstone).one().needs_upload is True
+    worker._sync_business_impl(device.db, device.owner, force=True)
+    device.db.expire_all()
+    assert operations == ["INSERT", "DELETE"]
+    assert device.db.query(SyncQueue).filter(SyncQueue.synced_at.is_(None)).count() == 0
+    assert device.db.query(SyncTombstone).one().needs_upload is False
+
+
 def test_pending_delete_deduplication_uses_entity_and_uid(isolated_db):
     import json
     from core.sync.tombstones import queue_pending_deletes, record_delete

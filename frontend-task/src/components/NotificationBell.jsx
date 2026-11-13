@@ -12,7 +12,7 @@ import { BellIcon, CheckIcon, CloseIcon, AlertIcon } from './Icons'
  *   - Reminder / Warning (Amber): Pending route check-ins, reminders.
  *   - Field Team (Sky Blue): New shop requirements, stock requests.
  *   - Offers (Purple): Customer deals.
- *   - Updates (Emerald): What's New v1.2.7 changelog.
+ *   - Updates (Emerald): What's New v1.2.8 changelog.
  */
 
 const SEVERITY = {
@@ -341,7 +341,7 @@ export default function NotificationBell({ placement = 'bottom-end', onOpen }) {
             padding: 20, width: '100%', maxWidth: 400, boxShadow: '0 24px 60px rgba(0,0,0,0.4)',
           }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-              <strong style={{ fontSize: '0.96rem', color: 'var(--text-primary)' }}>What&apos;s New in v1.2.7</strong>
+              <strong style={{ fontSize: '0.96rem', color: 'var(--text-primary)' }}>What&apos;s New in v1.2.8</strong>
               <button type="button" onClick={() => setShowChangelog(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
                 <CloseIcon size={16} />
               </button>

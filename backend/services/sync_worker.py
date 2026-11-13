@@ -18,6 +18,7 @@ import time
 import random
 import hashlib
 import math
+from collections import Counter
 from dataclasses import dataclass, asdict
 from email.utils import parsedate_to_datetime
 from datetime import datetime, timedelta, timezone
@@ -407,6 +408,19 @@ def find_unqueued_syncable_rows(db, business_id: int, entities=None, limit=200, 
     return out
 
 
+def _update_outbox_version(db, version, values):
+    """Update only the exact queue version offered to the remote server.
+
+    A producer can refresh a pending payload during the HTTP request. Its newer
+    edit or an operator's retry must not inherit the older request's result.
+    """
+    query = db.query(SyncQueue).filter(SyncQueue.synced_at.is_(None))
+    for key, value in version.items():
+        query = query.filter(getattr(SyncQueue, key) == value)
+    with db.no_autoflush:
+        return query.update(values, synchronize_session=False) == 1
+
+
 class PushOutcome:
     """What the cloud did with a pushed chunk, and what the device must do.
 
@@ -421,14 +435,36 @@ class PushOutcome:
     """
 
     __slots__ = ("deferred", "rejected", "skipped", "applied", "sent",
-                 "unaccounted", "hold_keys")
+                 "unaccounted", "hold_keys", "validation_error", "_sent_keys")
 
     def __init__(self, chunk_changes, body):
-        body = body or {}
+        errors = []
+        if not isinstance(body, dict):
+            errors.append("acknowledgement is not an object")
+            body = {}
         self.sent = len(chunk_changes)
-        self.deferred = body.get("deferred") or []
-        self.rejected = body.get("rejected") or []
-        self.skipped = body.get("skipped") or []
+        self._sent_keys = [(row["entity"], row["entity_id"]) for row in chunk_changes]
+        sent_keys = Counter(self._sent_keys)
+        named_keys = Counter()
+        status_keys = {}
+        for name in ("deferred", "rejected", "skipped"):
+            entries = body.get(name, [])
+            keys = set()
+            if not isinstance(entries, list):
+                errors.append(f"{name} is not a list")
+                entries = []
+            for entry in entries:
+                if (not isinstance(entry, dict) or not isinstance(entry.get("entity"), str)
+                        or type(entry.get("row_id")) is not int):
+                    errors.append(f"{name} contains an invalid row identity")
+                    continue
+                key = (entry["entity"], entry["row_id"])
+                named_keys[key] += 1
+                if named_keys[key] > sent_keys[key]:
+                    errors.append(f"{name} assigns more outcomes than sent rows for an identity")
+                keys.add(key)
+            setattr(self, name, entries)
+            status_keys[name] = keys
         self.applied = body.get("applied")
 
         # THE INVARIANT: received == applied + deferred + skipped.
@@ -438,20 +474,29 @@ class PushOutcome:
         # so adding `rejected` here double-counts and yields an impossible
         # NEGATIVE shortfall (seen in production as "-3 row(s) vanished").
         #
-        # `applied` absent means an older cloud: nothing can be concluded, so
-        # nothing is claimed (rule 33) rather than treating it as zero.
-        if isinstance(self.applied, int):
+        # Missing/malformed counts cannot prove that a sale landed. Keep the
+        # chunk for replay after the cloud/device compatibility issue is fixed.
+        if type(self.applied) is int and self.applied >= 0:
             explained = self.applied + len(self.deferred) + len(self.skipped)
-            self.unaccounted = max(0, self.sent - explained)
+            self.unaccounted = abs(self.sent - explained)
+            if self.unaccounted:
+                errors.append(f"sent {self.sent} rows but the acknowledgement accounts for {explained}")
+            if len(self.rejected) > self.applied:
+                errors.append("rejected rows exceed the processed count")
         else:
-            self.unaccounted = 0
+            self.unaccounted = self.sent
+            errors.append("missing or invalid applied count")
+        if "received" in body and (type(body["received"]) is not int or body["received"] != self.sent):
+            errors.append("received count does not match this chunk")
+        self.validation_error = "; ".join(dict.fromkeys(errors))
+        if errors:
+            self.unaccounted = max(1, self.unaccounted)
 
         # Rows to KEEP queued. Deferred rows always; everything in the chunk if
         # the cloud could not account for some row, because without `deferred`
         # naming them there is no way to know WHICH — and acking the wrong one
         # destroys the last copy of a sale. Fail closed.
-        self.hold_keys = {(d.get("entity"), d.get("row_id"))
-                          for d in self.deferred}
+        self.hold_keys = status_keys["deferred"]
 
     def should_hold(self, entity, row_id) -> bool:
         if self.unaccounted:
@@ -460,8 +505,7 @@ class PushOutcome:
 
     @property
     def ack_count(self) -> int:
-        return sum(1 for _ in ()) if self.unaccounted else (
-            self.sent - len(self.hold_keys))
+        return 0 if self.unaccounted else sum(key not in self.hold_keys for key in self._sent_keys)
 
     @property
     def is_clean(self) -> bool:
@@ -2791,7 +2835,7 @@ def _apply_pulled_row(db, business_id: int, table_name: str, model_cls, record: 
         # any earlier describes a write that may never happen, and any later
         # would snapshot the row after it had already been overwritten.
         if _conflict_pending:
-            if _apply_hooks.log_financial_conflict(
+            if cloud_updated_at != _conflict_local_ts and _apply_hooks.log_financial_conflict(
                 db,
                 business_id=business_id,
                 entity=table_name,
@@ -3058,12 +3102,19 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
         # Build (queue_item -> change) pairs, draining non-syncable / corrupt
         # rows in place so they leave the pending window instead of recycling.
         pairs = []  # list[(SyncQueue, dict)]
+        queued_versions = {}
         for item in queue_items:
+            version = {key: getattr(item, key) for key in (
+                "id", "business_id", "entity", "entity_id", "operation", "payload",
+                "attempts", "error", "next_attempt_at",
+            )}
+            queued_versions[item.id] = version
             # Skip entities that aren't syncable (e.g. `users` — identity is never
             # synced as data). They'd be rejected by the cloud as "unknown entity";
             # mark them done so they drain from the queue instead of recycling.
             if item.entity not in _MODEL_MAP:
-                item.synced_at = utc_now()
+                _update_outbox_version(db, version, {"synced_at": utc_now()})
+                db.expire(item)
                 continue
             payload_dict = None
             if not item.payload:
@@ -3088,8 +3139,10 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
                     "would apply a blank row on the cloud.",
                     item.id, item.entity, item.entity_id,
                 )
-                item.error = "No payload: cannot be pushed"
-                item.synced_at = utc_now()
+                _update_outbox_version(db, version, {
+                    "error": "No payload: cannot be pushed", "synced_at": utc_now(),
+                })
+                db.expire(item)
                 continue
             if item.payload:
                 try:
@@ -3102,8 +3155,10 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
                         "[SYNC_WORKER] Corrupt payload on queue id=%s (%s.%s) — dead-lettering: %s",
                         item.id, item.entity, item.entity_id, e,
                     )
-                    item.error = f"Corrupt payload: {e}"
-                    item.synced_at = utc_now()  # remove from the pending window
+                    _update_outbox_version(db, version, {
+                        "error": f"Corrupt payload: {e}", "synced_at": utc_now(),
+                    })
+                    db.expire(item)
                     continue
             pairs.append((item, {
                 "entity": item.entity,
@@ -3151,8 +3206,19 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
                     headers={**headers, "X-Client-Request-Id": _chunk_request_id(business_id, [it.id for it, _c in chunk], {"changes":chunk_changes})},
                     timeout=_PUSH_TIMEOUT,
                 )
-                if resp.status_code != 200 or resp.json().get("status") != "success":
+                if resp.status_code != 200:
                     raise Exception(f"HTTP {resp.status_code}: {resp.text}")
+                try:
+                    _push_body = resp.json()
+                except ValueError as exc:
+                    raise RuntimeError("Cloud acknowledgement is invalid JSON; update cloud/device sync compatibility; data kept queued") from exc
+                _outcome = PushOutcome(chunk_changes, _push_body)
+                if (not isinstance(_push_body, dict) or _push_body.get("status") != "success"
+                        or _outcome.validation_error):
+                    raise RuntimeError(
+                        "Cloud acknowledgement could not be verified: "
+                        + (_outcome.validation_error or "missing success status")
+                        + ". Update cloud/device sync compatibility; data kept queued")
 
                 # Stamp the echo window BEFORE reading the body. The cloud
                 # broadcasts `sync.trigger` + `sync.pull_ping` for this very push
@@ -3174,7 +3240,6 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
                 # `rejected`. Reading that field is the only way this device can
                 # learn its own write did not survive; ignoring it is what made the
                 # loss silent on this side too.
-                _push_body = resp.json() or {}
                 _rejected = _push_body.get("rejected") or []
                 _pf = _push_body.get("apply_failures") or []
                 if _rejected:
@@ -3307,41 +3372,22 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
                 #
                 # The invariant is therefore exactly:
                 #     received == applied + deferred + skipped
-                _outcome = PushOutcome(chunk_changes, _push_body)
-                _applied = _outcome.applied
                 _skipped = _outcome.skipped
-                if isinstance(_applied, int):
-                    _explained = _applied + len(_deferred) + len(_skipped)
-                    if _skipped:
-                        logger.info(
-                            "[SYNC_WORKER] the cloud SKIPPED %s row(s) for biz=%s "
-                            "deliberately (acked, not an error): %s",
-                            len(_skipped), business_id,
-                            [f"{s.get('entity')}#{s.get('row_id')}: {s.get('reason')}"
-                             for s in _skipped][:10],
-                        )
-                    if _explained != len(chunk_changes):
-                        logger.error(
-                            "[SYNC_WORKER] UNACCOUNTED ROWS for biz=%s: sent %s, "
-                            "cloud applied %s (incl. %s rejected), deferred %s, "
-                            "skipped %s - %s row(s) unexplained. They are being "
-                            "KEPT in the outbox rather than acked.",
-                            business_id, len(chunk_changes), _applied,
-                            len(_rejected), len(_deferred), len(_skipped),
-                            len(chunk_changes) - _explained,
-                        )
-                        # Fail CLOSED: if the cloud cannot account for a row, the
-                        # device keeps its copy. An unexplained row is exactly the
-                        # case where acking destroys the last copy of a sale.
-                        _unaccounted = True
-                        _push_unaccounted += len(chunk_changes) - _explained
-                    else:
-                        _unaccounted = False
-                else:
-                    # An older cloud does not send `applied`. Nothing can be
-                    # concluded, so nothing is claimed (rule 33) — behave as
-                    # before rather than inventing a verdict.
-                    _unaccounted = False
+                if _skipped:
+                    logger.info(
+                        "[SYNC_WORKER] the cloud SKIPPED %s row(s) for biz=%s "
+                        "deliberately (acked, not an error): %s",
+                        len(_skipped), business_id,
+                        [f"{s.get('entity')}#{s.get('row_id')}: {s.get('reason')}"
+                         for s in _skipped][:10],
+                    )
+                if _outcome.unaccounted:
+                    _push_unaccounted += _outcome.unaccounted
+                    logger.error(
+                        "[SYNC_WORKER] UNVERIFIABLE ACK for biz=%s: %s. "
+                        "Update cloud/device sync compatibility; the entire chunk stays queued.",
+                        business_id, _outcome.validation_error,
+                    )
 
                 # Chunk pushed — mark synced ONLY the rows the cloud accounted for
                 # as stored (or explicitly refused). Deferred and unaccounted rows
@@ -3349,24 +3395,36 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
                 now = utc_now()
                 _acked = 0
                 for (it, _c) in chunk:
+                    version = queued_versions[it.id]
                     # ONE decision function, shared with the tests (PushOutcome).
                     if _outcome.should_hold(_c["entity"], _c["entity_id"]):
-                        it.error = ("deferred by cloud: parent not present yet"
-                                    if (_c["entity"], _c["entity_id"]) in _defer_keys
-                                    else "cloud did not account for this row; kept queued")
+                        error = (
+                            "Cloud acknowledgement could not be verified: "
+                            + _outcome.validation_error + ". Update cloud/device sync compatibility; data kept queued"
+                            if _outcome.validation_error else
+                            "deferred by cloud: parent not present yet"
+                        )
                         # Held rows keep synced_at NULL (M-20) but now back off,
                         # so a parent that is never coming costs one push per
                         # backoff interval instead of one per cycle.
-                        it.attempts = (it.attempts or 0) + 1
-                        it.next_attempt_at = now + _push_backoff(it.attempts)
+                        attempts = (version["attempts"] or 0) + 1
+                        _update_outbox_version(db, version, {
+                            "error": error, "attempts": attempts,
+                            "next_attempt_at": now + _push_backoff(attempts),
+                        })
+                        db.expire(it)
                         continue
-                    it.synced_at = now
+                    if not _update_outbox_version(db, version, {
+                        "synced_at": now, "error": None, "attempts": 0, "next_attempt_at": None,
+                    }):
+                        logger.info("[SYNC_WORKER] %s#%s changed during push; newer queue version retained",
+                                    _c["entity"], _c["entity_id"])
+                        db.expire(it)
+                        continue
                     if _c["operation"] == "DELETE":
                         from core.sync.tombstones import acknowledge_delete
                         acknowledge_delete(db, business_id, _c["entity"], _c["payload"])
-                    it.error = None
-                    it.attempts = 0
-                    it.next_attempt_at = None
+                    db.expire(it)
                     _acked += 1
                 db.commit()
                 total_pushed += _acked
@@ -3404,7 +3462,10 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
                         "(free account). Resumes after upgrade + re-login.",
                         business_id,
                     )
-                    chunk[0][0].error = "Cloud sync requires the Pro plan"
+                    _update_outbox_version(db, queued_versions[chunk[0][0].id], {
+                        "error": "Cloud sync requires the Pro plan",
+                    })
+                    db.expire(chunk[0][0])
                     db.add(SyncLog(
                         business_id=business_id,
                         status="failed",
@@ -3433,7 +3494,10 @@ def _sync_business_impl(db: Session, user: User, interval: int = 30, force: bool
                         )
 
                 # Store error on the first still-pending item of this chunk.
-                chunk[0][0].error = f"Push failed: {err_msg}"
+                _update_outbox_version(db, queued_versions[chunk[0][0].id], {
+                    "error": f"Push failed: {err_msg}",
+                })
+                db.expire(chunk[0][0])
                 log = SyncLog(
                     business_id=business_id,
                     status="failed",
