@@ -75,21 +75,21 @@ def test_sqlite_cannot_interpret_a_supplied_connection_uri(operations):
 
 
 def test_postgres_credentials_are_keyword_data_and_cannot_override_server():
-    args = safe.postgres_parameters("postgresql://user:p%40ss%3Bhost%3Devil@db.example:6543/books?sslmode=require")
-    assert args == {"host": "db.example", "port": 6543, "dbname": "books", "user": "user",
-                    "password": "p@ss;host=evil", "sslmode": "require"}
+    args = safe.postgres_parameters("postgresql://postgres:isolated-fixture-only%40ss%3Bhost%3Devil@db.example:6543/books?sslmode=require")
+    assert args == {"host": "db.example", "port": 6543, "dbname": "books", "user": "postgres",
+                    "password": "isolated-fixture-only@ss;host=evil", "sslmode": "require"}
 
 
 @pytest.mark.parametrize("target", [
-    "postgresql://u:p@db.example/books?host=other.example",
-    "postgresql://u:p@db.example/books?sslmode=require&sslmode=disable",
-    "postgresql://u:p@db.example/books?sslmode=disable",
-    "postgresql://u:p@db.example/books?password=other",
-    "postgresql://u:p@db.example/books#extra",
-    "postgresql://u:p@db.example/",
-    "postgresql://u:p@db.example/a/b",
-    "postgresql://u:p@db.example:99999/books",
-    "postgresql://u:p%00bad@db.example/books",
+    "postgresql://postgres:isolated-fixture-only@db.example/books?host=other.example",
+    "postgresql://postgres:isolated-fixture-only@db.example/books?sslmode=require&sslmode=disable",
+    "postgresql://postgres:isolated-fixture-only@db.example/books?sslmode=disable",
+    "postgresql://postgres:isolated-fixture-only@db.example/books?password=other",
+    "postgresql://postgres:isolated-fixture-only@db.example/books#extra",
+    "postgresql://postgres:isolated-fixture-only@db.example/",
+    "postgresql://postgres:isolated-fixture-only@db.example/a/b",
+    "postgresql://postgres:isolated-fixture-only@db.example:99999/books",
+    "postgresql://postgres:isolated-fixture-only%00bad@db.example/books",
     "https://db.example/books",
 ])
 def test_postgres_rejects_ambiguous_or_insecure_connection_options(target):
@@ -98,25 +98,25 @@ def test_postgres_rejects_ambiguous_or_insecure_connection_options(target):
 
 
 def test_local_postgres_can_use_a_development_socket_without_tls():
-    assert safe.postgres_parameters("postgresql://u:p@127.0.0.1/books?sslmode=disable")["sslmode"] == "disable"
-    assert safe.postgres_parameters("postgresql://u:p@db.example/books")["sslmode"] == "require"
+    assert safe.postgres_parameters("postgresql://postgres:isolated-fixture-only@127.0.0.1/books?sslmode=disable")["sslmode"] == "disable"
+    assert safe.postgres_parameters("postgresql://postgres:isolated-fixture-only@db.example/books")["sslmode"] == "require"
 
 
 def test_compat_rejects_unknown_database_protocol_without_echoing_credentials():
     from scripts import _dbcompat as adapter
     with pytest.raises(SystemExit) as rejected:
-        adapter.connect("https://user:synthetic-password@db.example/books")
+        adapter.connect("https://postgres:isolated-fixture-only@db.example/books")
     assert "Unsupported database URL protocol" in str(rejected.value)
-    assert "synthetic-password" not in str(rejected.value)
+    assert "isolated-fixture-only" not in str(rejected.value)
 
 
 def test_actual_postgres_adapter_passes_keywords_instead_of_an_interpreted_dsn(monkeypatch):
     from scripts import _dbcompat as adapter
     received = []
     monkeypatch.setitem(sys.modules, "psycopg2", SimpleNamespace(connect=lambda **kwargs: received.append(kwargs) or SimpleNamespace()))
-    adapter._connect_postgres("postgresql://u:synthetic%3Bhost%3Devil@db.example/books", readonly=False)
-    assert received == [{"host": "db.example", "port": 5432, "dbname": "books", "user": "u",
-                         "password": "synthetic;host=evil", "sslmode": "require"}]
+    adapter._connect_postgres("postgresql://postgres:isolated-fixture-only%3Bhost%3Devil@db.example/books", readonly=False)
+    assert received == [{"host": "db.example", "port": 5432, "dbname": "books", "user": "postgres",
+                         "password": "isolated-fixture-only;host=evil", "sslmode": "require"}]
 
 
 @pytest.mark.parametrize("target", [

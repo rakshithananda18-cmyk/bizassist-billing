@@ -22,6 +22,8 @@ keywords = ["postgresql://", "postgres://"]
 description = "Explicit synthetic examples only; documentation is scanned too"
 regexes = [
     '''postgres(?:ql)?://postgres:(?:pass|isolated-fixture-only)@(?:localhost|127\.0\.0\.1)(?::[0-9]+)?''',
+    '''postgres(?:ql)?://[^:\s]+:[^@\s]+@(?:db\.example|127\.0\.0\.1)(?::[0-9]+)?''',
+    '''https://user:synthetic-password@db\.example''',
     '''(?:dev-test-secret-please-change|test-only-secret-please-change)-0123456789abcdef''',
     '''ci-secret-0123456789abcdef0123456789abcdef''',
     '''cron-secret-0123456789abcdef''',
