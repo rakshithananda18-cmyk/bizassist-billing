@@ -514,8 +514,9 @@ class TestOnlyOwnersGetABizID:
 
         script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..",
                               "scripts", "clear_staff_bizids.py")
+        env = dict(os.environ, BIZASSIST_OPERATIONS_ROOT=str(tmp_path))
         out = subprocess.run([sys.executable, script, "--db", str(db), "--apply"],
-                             capture_output=True, text=True)
+                             capture_output=True, text=True, env=env)
         assert out.returncode == 0, out.stdout + out.stderr
 
         con = sqlite3.connect(db)
