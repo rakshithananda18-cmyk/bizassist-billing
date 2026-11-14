@@ -1,3 +1,4 @@
+import { dismissOnEscape } from '../utils/keyboardActions'
 // components/ImportReviewModal.jsx — the import approval table (column-driven).
 // ======================================================================
 // Owner requirement (2026-07): nothing from a file lands in the DB without a
@@ -89,7 +90,7 @@ export default function ImportReviewModal({
   }
 
   return (
-    <div className="modal-overlay" style={{ zIndex: 3000 }} onClick={e => e.target === e.currentTarget && !committing && onCancel?.()}>
+    <div role="presentation" onKeyDown={dismissOnEscape} className="modal-overlay" style={{ zIndex: 3000 }} onClick={e => e.target === e.currentTarget && !committing && onCancel?.()}>
       <div className="modal" style={{ maxWidth: 1100, width: '96%', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
         <div style={{ padding: '18px 22px', display: 'flex', flexDirection: 'column', gap: 12, minHeight: 0 }}>
           <div>

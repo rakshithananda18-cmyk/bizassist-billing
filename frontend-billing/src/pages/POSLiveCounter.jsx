@@ -1,3 +1,4 @@
+import { activateOnKeyboard } from '../utils/keyboardActions'
 import usePhoneLayout from '../hooks/usePhoneLayout'
 import PhoneRecord from '../components/common/PhoneRecord'
 import './money-phone.css'
@@ -621,7 +622,7 @@ function LiveCounterWorkspace() {
                     <div style={{ fontSize: '0.83rem', lineHeight: 1.6 }}>
                       A counter appears here when a cashier logs in and starts billing.
                       Make sure cashiers have counter prefixes under{' '}
-                      <span
+                      <span role="button" tabIndex={0} onKeyDown={activateOnKeyboard}
                         onClick={() => navigate('/settings')}
                         style={{ color: 'var(--accent)', cursor: 'pointer', textDecoration: 'underline' }}
                       >

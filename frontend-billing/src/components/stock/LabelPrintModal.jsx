@@ -1,3 +1,4 @@
+import { dismissOnEscape } from '../../utils/keyboardActions'
 // components/stock/LabelPrintModal.jsx — barcode label printing.
 // ===============================================================
 // The stock-staff feature the owners asked for: pick products, set how many
@@ -190,7 +191,7 @@ export default function LabelPrintModal({ open, onClose, products = [], preselec
 
   return (
     <>
-      <div className="modal-overlay" style={{ zIndex: 3000 }} onClick={e => e.target === e.currentTarget && onClose?.()}>
+      <div role="presentation" onKeyDown={dismissOnEscape} className="modal-overlay" style={{ zIndex: 3000 }} onClick={e => e.target === e.currentTarget && onClose?.()}>
         <div className="modal" style={{ maxWidth: 760, width: '95%', maxHeight: '88vh', display: 'flex', flexDirection: 'column' }}>
           <div style={{ padding: '18px 22px', display: 'flex', flexDirection: 'column', gap: 12, minHeight: 0 }}>
             <div>

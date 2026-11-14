@@ -1,3 +1,4 @@
+import { runAsync } from '../utils/asyncAction'
 // ============================================================================
 // b2b/useB2BOrders.js
 // ----------------------------------------------------------------------------
@@ -52,7 +53,7 @@ export function useB2BOrders(authFetch, { direction, onError } = {}) {
     }
   }, [authFetch, direction])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => { runAsync(() => load()) }, [load])
 
   const changeStatus = useCallback(async (orderId, status) => {
     try {
@@ -60,7 +61,7 @@ export function useB2BOrders(authFetch, { direction, onError } = {}) {
       // Patch in place first so the row updates instantly, then resync in the
       // background — the seller's transition also mutates stock and invoices.
       setOrders(prev => prev.map(o => (o.id === orderId ? { ...o, ...updated } : o)))
-      load()
+      runAsync(() => load())
       return updated
     } catch (err) {
       onErrorRef.current?.(err.message || 'Failed to update the order status.')

@@ -1,3 +1,5 @@
+import { dismissOnEscape } from '../../utils/keyboardActions'
+import { runAsync } from '../../utils/asyncAction'
 // components/stock/ScanStockInModal.jsx — barcode-scan direct stock-in.
 // =====================================================================
 // The stock team's fastest path (owner req 2026-07): scan a barcode →
@@ -98,7 +100,7 @@ export default function ScanStockInModal({ open, onClose, onStocked, onAddNew, i
   }
 
   return (
-    <div className="modal-overlay" style={{ zIndex: 3000 }} onClick={e => e.target === e.currentTarget && !busy && onClose()}>
+    <div role="presentation" onKeyDown={dismissOnEscape} className="modal-overlay" style={{ zIndex: 3000 }} onClick={e => e.target === e.currentTarget && !busy && onClose()}>
       <div className="modal" style={{ maxWidth: 480, width: '95%' }}>
         <div className="modal-header">
           <span className="modal-title" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
@@ -118,7 +120,7 @@ export default function ScanStockInModal({ open, onClose, onStocked, onAddNew, i
               ref={codeRef} className="form-input" style={{ flex: 1, fontFamily: "'Geist Mono',monospace" }}
               placeholder="Scan barcode…" value={code}
               onChange={e => setCode(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); lookup() } }}
+              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); runAsync(() => lookup()) } }}
             />
             <button className="btn btn-secondary" disabled={busy || !code.trim()} onClick={lookup}>Find</button>
           </div>
@@ -135,13 +137,13 @@ export default function ScanStockInModal({ open, onClose, onStocked, onAddNew, i
                   ref={qtyRef} type="number" min="0" step="any" className="form-input"
                   style={{ width: 110 }} placeholder="Qty"
                   value={qty} onChange={e => setQty(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); stockIn() } }}
+                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); runAsync(() => stockIn()) } }}
                 />
                 <input
                   className="form-input" style={{ flex: 1, minWidth: 160 }}
                   placeholder="Reason / bill no. (required)"
                   value={note} onChange={e => setNote(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); stockIn() } }}
+                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); runAsync(() => stockIn()) } }}
                 />
                 <button className="btn btn-primary" style={{ fontWeight: 700 }} disabled={busy} onClick={stockIn}>
                   {busy ? 'Saving…' : 'Add stock'}

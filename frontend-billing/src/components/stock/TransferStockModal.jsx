@@ -1,3 +1,4 @@
+import { dismissOnEscape } from '../../utils/keyboardActions'
 // ============================================================================
 // TransferStockModal — the godown-to-godown "Transfer Stock" modal, extracted
 // verbatim from pages/Stock.jsx (repo restructure). Form state stays with the
@@ -9,7 +10,7 @@ import { CheckIcon, CloseIcon, SyncIcon } from '../Icons'
 
 export default function TransferStockModal({ transferForm, setTrsfField, products, godowns, onSubmit, submitting, onClose }) {
   return (
-    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+    <div role="presentation" onKeyDown={dismissOnEscape} className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="modal">
         <div className="modal-header">
           <span className="modal-title"><SyncIcon size={14} style={{ marginRight: 6 }} /> Transfer Stock</span>

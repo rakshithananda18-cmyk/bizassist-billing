@@ -1,3 +1,4 @@
+import { runAsync } from '../utils/asyncAction'
 import usePhoneLayout from '../hooks/usePhoneLayout'
 import PhoneRecord from '../components/common/PhoneRecord'
 import './money-phone.css'
@@ -71,7 +72,7 @@ export default function Money() {
   }, [authFetch])
 
   useEffect(() => {
-    loadParties()
+    runAsync(() => loadParties())
     return () => { partiesRequestRef.current++ }
   }, [loadParties, reloadKey, user?.id])
   useEffect(() => { setSelectedParty(null); setCustomers([]) }, [user?.id])

@@ -1,3 +1,5 @@
+import { dismissOnEscape } from '../../utils/keyboardActions'
+import { runAsync } from '../../utils/asyncAction'
 // components/stock/ProductFormModal.jsx — the complete product form.
 // ===================================================================
 // Inventory revamp (owner req 2026-07): the old inline modal exposed a
@@ -162,7 +164,7 @@ export default function ProductFormModal({ open, product, onClose, onSaved, pref
     if (dirty) {
       const ok = await confirm({
         mode: 'discard',
-        entity: isEdit ? (form.name?.trim() || 'this product') : (form.name?.trim() || 'this product'),
+        entity: form.name?.trim() || 'this product',
       })
       if (!ok) return
     }
@@ -389,7 +391,7 @@ export default function ProductFormModal({ open, product, onClose, onSaved, pref
             <div style={{ display: 'flex', gap: 8 }}>
               <input className={inputCls} style={{ flex: 1 }} value={newBarcode}
                 onChange={e => setNewBarcode(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addBarcode() } }}
+                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); runAsync(() => addBarcode()) } }}
                 placeholder="Scan or type another barcode…" />
               <button type="button" className="btn btn-secondary" onClick={addBarcode} disabled={!newBarcode.trim()}>
                 Add barcode
@@ -429,7 +431,7 @@ export default function ProductFormModal({ open, product, onClose, onSaved, pref
   }
 
   return (
-    <div className="modal-overlay" style={{ zIndex: 3000 }} onClick={e => e.target === e.currentTarget && !submitting && attemptClose()}>
+    <div role="presentation" onKeyDown={dismissOnEscape} className="modal-overlay" style={{ zIndex: 3000 }} onClick={e => e.target === e.currentTarget && !submitting && attemptClose()}>
       <div className="modal modal-lg" style={{ maxWidth: 720, width: '95%', maxHeight: '90vh', overflowY: 'auto' }}>
         <div className="modal-header">
           <span className="modal-title" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>

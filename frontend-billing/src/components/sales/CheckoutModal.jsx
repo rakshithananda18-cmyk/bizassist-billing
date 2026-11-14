@@ -1,3 +1,4 @@
+import { runAsync } from '../../utils/asyncAction'
 import React, { useRef, useEffect, useState, useCallback } from 'react'
 import { AlertIcon, CashIcon, CloseIcon, EditIcon, PhoneIcon, PlusIcon, PrinterIcon, UserIcon } from '../../components/Icons'
 import InvoiceBreakdownCard from './InvoiceBreakdownCard'
@@ -375,7 +376,7 @@ export default function CheckoutModal({
         } else if (fieldName === 'price_tier') {
           drawerSaveBtnRef.current?.focus()
         } else if (fieldName === 'save') {
-          handleSaveCustomer(e)
+          runAsync(() => handleSaveCustomer(e))
         } else if (fieldName === 'cancel') {
           setShowCustDrawer(false)
           setTimeout(() => {

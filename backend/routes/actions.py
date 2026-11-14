@@ -20,6 +20,7 @@ Phase-0 write rails (MASTER_REVIEW §3.2 #4, services/action_rails.py):
 """
 import uuid
 import logging
+from services.log_safety import log_value
 from typing import Optional, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -74,7 +75,8 @@ def execute_action(req: ActionRequest,
         ok, reason = verify_confirm_token(req.confirm_token, user_id, req.action, req.params,
                                           state_fp=state_fp)
         if not ok:
-            logger.warning(f"[ACTION] execute refused biz={user_id} action={req.action}: confirm token {reason}")
+            logger.warning("[ACTION] execute refused biz=%s action=%s: confirm token %s",
+                           log_value(user_id), log_value(req.action), log_value(reason))
             # 428 (not 403): this is a missing precondition — preview first —
             # not a role/permission block, which the role tests assert on 403.
             raise HTTPException(status_code=428,

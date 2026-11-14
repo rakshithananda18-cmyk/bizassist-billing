@@ -1,3 +1,4 @@
+import { runAsync } from '../utils/asyncAction'
 // ============================================================================
 // Page: Reports.jsx
 // Description: Financial & Operations Report Hub. Hosts and renders general P&L,
@@ -472,7 +473,7 @@ export default function Reports() {
   }, [searchParams])
 
   useEffect(() => {
-    if (activeReport?.needsParty) loadParties(partyType)
+    if (activeReport?.needsParty) runAsync(() => loadParties(partyType))
   }, [activeReport?.needsParty])
 
   // Range change drops stale report data
@@ -836,7 +837,7 @@ export default function Reports() {
             <div className="reports-canvas-toolbar">
               {phone && <div className="reports-phone-run-bar">
                 <button type="button" className="reports-phone-filter-button" aria-expanded={phoneFiltersOpen} aria-label="Report dates and filters" onClick={() => setPhoneFiltersOpen(open => !open)}><span>Dates & filters</span><small>{shortReportDate(dateRange.from)} – {shortReportDate(dateRange.to)}</small></button>
-                <button type="button" className="btn btn-primary" disabled={!activeReport || generating === activeReport?.id || (activeReport?.needsParty && !partyId)} onClick={() => { handleGenerate(activeReport); setPhoneFiltersOpen(false) }}>{generating === activeReport?.id ? 'Loading…' : reportData ? 'Refresh' : 'Run report'}</button>
+                <button type="button" className="btn btn-primary" disabled={!activeReport || generating === activeReport?.id || (activeReport?.needsParty && !partyId)} onClick={() => { runAsync(() => handleGenerate(activeReport)); setPhoneFiltersOpen(false) }}>{generating === activeReport?.id ? 'Loading…' : reportData ? 'Refresh' : 'Run report'}</button>
                 <PhoneActionMenu label="Report actions" actions={[
                   { label: 'Export CSV', icon: <DownloadIcon size={15} />, disabled: reportData === null, action: triggerExport },
                   { label: 'Full screen view', icon: <ExpandIcon size={15} />, disabled: reportData === null, action: () => setIsFullScreen(true) },

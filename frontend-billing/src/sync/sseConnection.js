@@ -1,5 +1,8 @@
+import { API_BASE } from '../config'
+import { realtimeTarget } from '../utils/trustedBackend'
+
 /** Resume an SSE subscription across platform rotations and transient outages. */
-export function createSseConnection({ fetchTicket, onEvent, onStatus, onGap, random = Math.random }) {
+export function createSseConnection({ fetchTicket, onEvent, onStatus, onGap, baseUrl = API_BASE, random = Math.random }) {
   let source = null, timer = null, degradedTimer = null, stopped = false
   let lastEventId = null, attempt = 0, generation = 0, degraded = false, connected = false
   const closeSource = () => { source?.close(); source = null }
@@ -24,7 +27,7 @@ export function createSseConnection({ fetchTicket, onEvent, onStatus, onGap, ran
     try {
       const target = await fetchTicket(lastEventId)
       if (stopped || run !== generation) return
-      const url = new URL(typeof target === 'string' ? target : target.url, window.location.href)
+      const url = realtimeTarget(typeof target === 'string' ? target : target.url, baseUrl)
       if (lastEventId) url.searchParams.set('last_event_id', lastEventId)
       const es = new EventSource(url.href)
       source = es

@@ -1,3 +1,4 @@
+import { dismissOnEscape } from '../../utils/keyboardActions'
 // ============================================================================
 // LogExpenseModal — the "Log Business Expense" modal, extracted verbatim from
 // pages/Payments.jsx (repo restructure). Form state stays with the page.
@@ -8,7 +9,7 @@ import { CashIcon, CheckIcon, CloseIcon, PhoneIcon, WarehouseIcon } from '../Ico
 
 export default function LogExpenseModal({ expenseForm, setExpenseField, onSubmit, submitting, onClose }) {
   return (
-    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+    <div role="presentation" onKeyDown={dismissOnEscape} className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="modal">
         <div className="modal-header">
           <span className="modal-title"><CashIcon size={16} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Log Business Expense</span>

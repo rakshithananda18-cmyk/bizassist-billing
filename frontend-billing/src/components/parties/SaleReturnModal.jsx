@@ -1,3 +1,4 @@
+import { dismissOnEscape } from '../../utils/keyboardActions'
 // ============================================================================
 // SaleReturnModal — extracted verbatim from pages/Parties.jsx (repo restructure).
 // State and handlers stay with the page and arrive as same-named props.
@@ -14,7 +15,7 @@ const fmt = (n) =>
 export default function SaleReturnModal({ returningInvoice, setReturningInvoice, returnLines, setReturnLines, returnNote, setReturnNote, handleSaveReturn, savingReturn, setShowReturnModal, form }) {
   const label = useDocLabels()
   return (
-        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowReturnModal(false)}>
+        <div role="presentation" onKeyDown={dismissOnEscape} className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowReturnModal(false)}>
           <div className="modal modal-lg" style={{ maxWidth: '850px', width: '95%' }}>
             <div className="modal-header">
               <span className="modal-title"><SyncIcon size={16} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Record Sales Return ({label('sale_return')})</span>

@@ -15,9 +15,11 @@ Architecture:
 """
 from __future__ import annotations
 import logging
+from services.log_safety import log_value
 import time
 import os
-from typing import Dict, List
+from typing import Dict, List, Literal
+from urllib.parse import urlsplit, urlunsplit
 
 import ipaddress
 
@@ -94,11 +96,25 @@ def _persist_enabled():
     return engine.dialect.name == "postgresql" or os.getenv("DISCOVERY_PERSIST") == "1"
 
 
-def _persist_entry(biz_id, ip, port, now):
+def _backend_url(ip, port, scheme="http"):
+    """Describe only a validated LAN service, preserving its actual TLS protocol.
+
+    Legacy desktop servers speak HTTP; advertising HTTPS would not add TLS.
+    TLS-enabled owners may explicitly register HTTPS. Public HTTP is never
+    accepted, and this descriptor does not itself transmit credentials.
+    """
+    if not _is_private_address(ip) or scheme not in {"http", "https"} or not 0 < int(port) < 65536:
+        raise ValueError("Discovery must describe a private HTTP(S) LAN service")
+    host = str(ip).strip().strip("[]")
+    address = f"[{host}]:{int(port)}" if ":" in host else f"{host}:{int(port)}"
+    return urlunsplit((scheme, address, "", "", ""))
+
+
+def _persist_entry(biz_id, ip, port, now, scheme="http"):
     from database.db import SessionLocal
     from sqlalchemy import text
     with SessionLocal() as db:
-        db.execute(text("INSERT INTO discovery_registrations(biz_id,ip,port,url,registered_at,last_seen) VALUES(:b,:ip,:port,:url,:now,:now) ON CONFLICT(biz_id,ip,port) DO UPDATE SET last_seen=excluded.last_seen,url=excluded.url"), {"b":biz_id,"ip":ip,"port":port,"url":f"http://{ip}:{port}","now":now})
+        db.execute(text("INSERT INTO discovery_registrations(biz_id,ip,port,url,registered_at,last_seen) VALUES(:b,:ip,:port,:url,:now,:now) ON CONFLICT(biz_id,ip,port) DO UPDATE SET last_seen=excluded.last_seen,url=excluded.url"), {"b":biz_id,"ip":ip,"port":port,"url":_backend_url(ip,port,scheme),"now":now})
         db.commit()
 
 
@@ -113,7 +129,7 @@ def _prune(biz_id: str) -> None:
         with SessionLocal() as db:
             db.query(DiscoveryRegistration).filter(DiscoveryRegistration.biz_id == biz_id, DiscoveryRegistration.last_seen <= now - _TTL_SECONDS).delete(synchronize_session=False)
             if not _REGISTRY[biz_id]:
-                _REGISTRY[biz_id] = [{"ip":r.ip,"port":r.port,"registered_at":r.registered_at,"last_seen":r.last_seen}
+                _REGISTRY[biz_id] = [{"ip":r.ip,"port":r.port,"scheme":urlsplit(r.url or "").scheme or "http","registered_at":r.registered_at,"last_seen":r.last_seen}
                     for r in db.query(DiscoveryRegistration).filter(DiscoveryRegistration.biz_id == biz_id, DiscoveryRegistration.last_seen > now - _TTL_SECONDS).all()]
             db.commit()
 
@@ -122,6 +138,7 @@ class DiscoverRegisterRequest(BaseModel):
     ip: str
     port: int = 8001
     biz_id: str
+    scheme: Literal["http", "https"] = "http"
 
 
 # ── Routes ─────────────────────────────────────────────────────────────────────
@@ -179,7 +196,7 @@ async def register_local_backend(
     if not _is_private_address(ip):
         logger.warning(
             "[DISCOVER] REJECTED registration of non-private address %s for biz %s "
-            "— only LAN addresses may be advertised (S-2)", ip, req.biz_id,
+            "— only LAN addresses may be advertised (S-2)", log_value(ip), log_value(req.biz_id),
         )
         raise HTTPException(
             status_code=422,
@@ -214,14 +231,15 @@ async def register_local_backend(
     for entry in entries:
         if entry["ip"] == ip and entry["port"] == req.port:
             if _persist_enabled():
-                _persist_entry(biz_id, ip, req.port, now)
+                _persist_entry(biz_id, ip, req.port, now, req.scheme)
             entry["last_seen"] = now
+            entry["scheme"] = req.scheme
             logger.info("[DISCOVER] Renewed registration %s:%d for biz %s", ip, req.port, biz_id)
             return {"status": "renewed", "ip": ip, "port": req.port}
 
     if _persist_enabled():
-        _persist_entry(biz_id, ip, req.port, now)
-    entries.append({"ip": ip, "port": req.port, "registered_at": now, "last_seen": now})
+        _persist_entry(biz_id, ip, req.port, now, req.scheme)
+    entries.append({"ip": ip, "port": req.port, "scheme": req.scheme, "registered_at": now, "last_seen": now})
     logger.info("[DISCOVER] Registered %s:%d for biz %s", ip, req.port, biz_id)
     return {"status": "registered", "ip": ip, "port": req.port}
 
@@ -266,9 +284,9 @@ async def get_local_backends(biz_id: str):
             {
                 "ip": e["ip"],
                 "port": e["port"],
-                "url": f"http://{e['ip']}:{e['port']}",
+                "url": _backend_url(e["ip"], e["port"], e.get("scheme", "http")),
                 "last_seen_ago_s": round(time.time() - e["last_seen"]),
             }
-            for e in sorted_entries
+            for e in sorted_entries if _is_private_address(e.get("ip")) and e.get("scheme", "http") in {"http", "https"}
         ]
     }

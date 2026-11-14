@@ -1,3 +1,4 @@
+import { activateOnKeyboard } from '../utils/keyboardActions'
 // ============================================================================
 // Page: Stock.jsx  [fullscreen POS-style inventory — v2]
 // Description: Inventory & Catalog Manager. Handles product item catalog creation,
@@ -1734,7 +1735,7 @@ export default function Stock({ embedded = false, headerTabs = null, inlinePage 
                       {lowStockItems.map(p => {
                         const st = getStatus(p)
                         return (
-                          <div key={p.id} className="inv-alert-row"
+                          <div role="button" tabIndex={0} onKeyDown={activateOnKeyboard} key={p.id} className="inv-alert-row"
                             style={{ background: st === 'Out' ? 'rgba(239,68,68,.05)' : 'rgba(217,119,6,.04)' }}
                             onClick={() => goIntake(p)}
                             title={`Click to update stock for ${p.name}`}

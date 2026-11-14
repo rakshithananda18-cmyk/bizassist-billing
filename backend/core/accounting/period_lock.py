@@ -16,6 +16,7 @@ All functions are business_id-scoped and compose WITHOUT committing — the call
 (API endpoint / command) owns the commit, exactly like the rest of accounting.
 """
 import logging
+from services.log_safety import log_value
 from typing import Optional
 
 from core.models import PeriodLock
@@ -68,7 +69,7 @@ def assert_period_open(db, business_id, entry_date) -> None:
     d = entry_date or ""
     if d <= locked_through:
         logger.info("[ACCT] blocked post into locked period biz=%s date=%s locked_through=%s",
-                    business_id, entry_date, locked_through)
+                    log_value(business_id), log_value(entry_date), log_value(locked_through))
         raise PeriodLockedError(
             f"The books are locked through {locked_through}. "
             f"Post a reversing entry in the open period instead of changing a closed one.",

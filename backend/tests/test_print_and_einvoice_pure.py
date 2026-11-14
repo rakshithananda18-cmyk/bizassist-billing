@@ -250,8 +250,10 @@ def test_payload_hash_is_stable_across_builds():
     """The e2e "switching templates never mutates the bill" check rests on this."""
     totals = {"subtotal": 200.0, "total": 236.0, "amount_in_words": "irrelevant"}
     lines = [PP._line_out(1, _li())]
-    assert PP._payload_hash("INV-1", totals, lines) == \
-        PP._payload_hash("INV-1", totals, lines)
+    first = PP._payload_hash("INV-1", totals, lines)
+    rebuilt_totals = dict(totals)
+    rebuilt_lines = [dict(line) for line in lines]
+    assert PP._payload_hash("INV-1", rebuilt_totals, rebuilt_lines) == first
 
 
 def test_payload_hash_ignores_float_noise():

@@ -99,9 +99,9 @@ export default function ConfirmChangesModal({
 
   return createPortal(
     <>
-      <div
+      <button type="button" aria-label="Close dialog"
         onClick={onCancel}
-        style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)',
+        style={{ border: 0, padding: 0, position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)',
           backdropFilter: 'blur(3px)', zIndex: 999992, animation: 'ccm-fade-in 0.15s ease' }}
       />
       <div
@@ -117,7 +117,6 @@ export default function ConfirmChangesModal({
           ...(paymentSummary ? { overflowY: 'auto' } : {}),
           animation: 'ccm-slide-in 0.18s cubic-bezier(.34,1.56,.64,1)',
         }}
-        onClick={(e) => e.stopPropagation()}
       >
         {!paymentSummary && <div style={{ width: 44, height: 44, borderRadius: 12, background: ic.bg,
           border: `1px solid ${ic.border}`, display: 'flex', alignItems: 'center',

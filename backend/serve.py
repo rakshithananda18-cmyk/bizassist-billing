@@ -14,7 +14,8 @@ PORT = int(os.environ.get("PORT") or 7860)
 if __name__ == "__main__":
     uvicorn.run(
         APP,
-        host="0.0.0.0",
+        # Container images opt into their public listener via BIND_HOST.
+        host=os.environ.get("BIND_HOST", "127.0.0.1"),
         port=PORT,
         proxy_headers=True,
         forwarded_allow_ips="*"

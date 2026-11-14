@@ -1,3 +1,4 @@
+import { runAsync } from '../../utils/asyncAction'
 // ============================================================================
 // OpsHealthPanel — owner-facing data-health view (Settings → Ops & Health).
 //
@@ -237,7 +238,7 @@ export default function OpsHealthPanel({ authFetch }) {
     }
   }, [authFetch])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => { runAsync(() => load()) }, [load])
 
   // ── LIVE: poll while visible ────────────────────────────────────────────────
   // Paused when the tab is hidden. A background tab polling every 10 s costs the
@@ -248,7 +249,7 @@ export default function OpsHealthPanel({ authFetch }) {
     let timer = null
     const tick = () => {
       if (document.visibilityState === 'visible' && liveRef.current) {
-        load({ silent: true })
+        runAsync(() => load({ silent: true }))
       }
     }
     timer = setInterval(tick, POLL_MS)
@@ -294,7 +295,7 @@ export default function OpsHealthPanel({ authFetch }) {
   // A paused panel is not misleading, because the age label next to the badge
   // keeps counting up and says how stale it is.
   useForegroundRefresh({
-    onResume: () => { if (liveRef.current) load({ silent: true }) },
+    onResume: () => { if (liveRef.current) runAsync(() => load({ silent: true })) },
     staleMs: 15000,
   })
 
@@ -319,7 +320,7 @@ export default function OpsHealthPanel({ authFetch }) {
       const r = await authFetch(`/api/sync/conflicts/${id}/resolve`, { method: 'POST' })
       if (r.ok) {
         setConflicts(prev => prev.filter(c => c.id !== id))
-        load()
+        runAsync(() => load())
       }
     } catch { /* ignore — row stays until next refresh */ }
   }
@@ -332,7 +333,7 @@ export default function OpsHealthPanel({ authFetch }) {
         // The retry schedules a background sync run, so the row's state changes
         // a moment after the response. Refresh twice: once now for the cleared
         // error, once after the run has had time to land.
-        load()
+        runAsync(() => load())
         setTimeout(() => load({ silent: true }), 2500)
       } else {
         setActionMsg(`Failed to retry outbox item #${id}.`)
@@ -349,7 +350,7 @@ export default function OpsHealthPanel({ authFetch }) {
         setActionMsg(`Held row #${id} re-queued — pull run started.`)
         // Same two-stage refresh as the outbox: the retry schedules a background
         // run, so the row's state changes a moment after the response returns.
-        load()
+        runAsync(() => load())
         setTimeout(() => load({ silent: true }), 2500)
       } else {
         setActionMsg(`Failed to retry held row #${id}.`)
@@ -384,7 +385,7 @@ export default function OpsHealthPanel({ authFetch }) {
         setActionMsg(total === 0
           ? 'Auto-Repair complete — no problems found, nothing needed repairing.'
           : `Auto-Repair complete. Repaired ${acct} hash signature(s), ${stock} stock ledger item(s), ${syncRes} sync queue item(s).`)
-        load()
+        runAsync(() => load())
       } else {
         setActionMsg('Auto-Repair encountered a temporary error.')
       }

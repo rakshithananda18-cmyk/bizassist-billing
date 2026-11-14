@@ -8,6 +8,7 @@ import { Component, useCallback, useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
 import { logger } from '../utils/logger'
+import { runAsync } from '../utils/asyncAction'
 import { resolveTemplate, templateOptions, FALLBACK_TEMPLATE } from './registry'
 import PrintPortal, { triggerPrint } from './PrintPortal'
 import { shareInvoice, buildWhatsAppLink, buildPublicInvoiceLink } from './share'
@@ -46,9 +47,7 @@ function deepFreeze(obj) {
 
 /** Fire-and-forget render-lifecycle beacon — never blocks the UI. */
 function beacon(action, fields = {}) {
-  try {
-    api.post('/sales/print-events', { action, ...fields }).catch(() => {})
-  } catch { /* never throw from logging */ }
+  runAsync(() => api.post('/sales/print-events', { action, ...fields }), { notify: false })
 }
 
 /** A crashing template must never blank an invoice: catch the render error,

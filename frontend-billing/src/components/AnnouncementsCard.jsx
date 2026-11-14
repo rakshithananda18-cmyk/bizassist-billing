@@ -1,3 +1,4 @@
+import { runAsync } from '../utils/asyncAction'
 // ============================================================================
 // AnnouncementsCard — in-app announcements + offer redemption (REVIEW_1 §4.3).
 //
@@ -54,7 +55,7 @@ export default function AnnouncementsCard() {
     }
   }, [token, isOwner])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => { runAsync(() => load()) }, [load])
 
   async function dismiss(a) {
     setItems(prev => prev.filter(x => x.id !== a.id))

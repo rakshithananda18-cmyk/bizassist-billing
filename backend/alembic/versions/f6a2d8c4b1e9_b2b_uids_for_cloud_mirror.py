@@ -96,14 +96,9 @@ def upgrade() -> None:
         # NULLs so any row the backfill missed doesn't block the index.
         idx = f"ix_{table}_uid"
         if idx not in _index_names(table):
-            if is_pg:
-                op.execute(sa.text(
-                    f"CREATE UNIQUE INDEX IF NOT EXISTS {idx} ON {table} (uid) WHERE uid IS NOT NULL"
-                ))
-            else:
-                op.execute(sa.text(
-                    f"CREATE UNIQUE INDEX IF NOT EXISTS {idx} ON {table} (uid) WHERE uid IS NOT NULL"
-                ))
+            op.execute(sa.text(
+                f"CREATE UNIQUE INDEX IF NOT EXISTS {idx} ON {table} (uid) WHERE uid IS NOT NULL"
+            ))
 
 
 def downgrade() -> None:

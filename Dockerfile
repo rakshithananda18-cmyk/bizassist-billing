@@ -11,6 +11,7 @@ ENV HOME=/home/user \
     PATH="/home/user/.local/bin:$PATH" \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
+    BIND_HOST=0.0.0.0 \
     HF_HOME=/home/user/.cache/huggingface \
     SENTENCE_TRANSFORMERS_HOME=/home/user/.cache/sentence_transformers \
     HF_HUB_DISABLE_SYMLINKS_WARNING=1 \
@@ -30,9 +31,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
-COPY --chown=user backend/requirements_hf.txt ./
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements_hf.txt
+COPY --chown=user backend/requirements_hf.txt backend/requirements_hf.lock ./
+RUN pip install --no-cache-dir --only-binary=:all: --require-hashes -r requirements_hf.lock
 
 # Pre-bake the embedding model into the image (22MB — avoids cold-start download)
 RUN mkdir -p /home/user/.cache && chown user:user /home/user/.cache

@@ -1,3 +1,4 @@
+import { runAsync } from '../utils/asyncAction'
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { API_BASE, CLOUD_URL, IS_LOCAL_APP } from '../config'
 import { sendDiagnostics } from '../utils/telemetry'
@@ -97,7 +98,7 @@ export default function BootHealthCheck({ auto = true, onClose = null }) {
   }, [])
 
   useEffect(() => {
-    if (auto) run()
+    if (auto) runAsync(() => run())
     return () => {
       requestRef.current += 1
       controllersRef.current.forEach(controller => controller.abort())

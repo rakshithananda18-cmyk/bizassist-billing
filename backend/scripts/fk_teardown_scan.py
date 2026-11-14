@@ -23,8 +23,10 @@ Reads no credentials, writes nothing, opens no network connection.
 """
 
 import os, re, sys
+from pathlib import Path
+from _safe_io import operational_path
 
-B = sys.argv[1]
+B = str(operational_path(sys.argv[1], existing=True, directory=True))
 sys.path.insert(0, B)
 os.environ.setdefault("BIZASSIST_TESTING", "1")
 os.environ.setdefault("DATABASE_URL", "sqlite:////tmp/test_scan2.db")
@@ -51,7 +53,8 @@ findings = []
 for fn in sorted(os.listdir(tests)):
     if not fn.startswith("test_") or not fn.endswith(".py"):
         continue
-    src = open(os.path.join(tests, fn), encoding="utf-8", errors="ignore").read()
+    source = operational_path(Path(tests) / fn, existing=True)
+    src = source.read_text(encoding="utf-8", errors="ignore")
     # every `query(X).…delete(` occurrence, in source order
     deleted = re.findall(r"query\(\s*([A-Za-z_][\w]*)\s*\)[^\n]*?\.delete\(", src)
     deleted += re.findall(r"DELETE\s+FROM\s+(\w+)", src, re.I)

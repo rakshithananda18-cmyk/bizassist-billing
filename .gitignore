@@ -52,6 +52,7 @@ voided_payment_*.json
 .pytest_cache/
 *.egg-info/
 .coverage
+coverage/
 # pytest-cov writes one parallel data file per process (.coverage.<host>.<pid>.<rand>)
 # and leaves them behind whenever the combine step cannot delete them.
 .coverage.*

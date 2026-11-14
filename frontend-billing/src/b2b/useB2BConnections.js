@@ -1,3 +1,4 @@
+import { runAsync } from '../utils/asyncAction'
 // ============================================================================
 // b2b/useB2BConnections.js
 // ----------------------------------------------------------------------------
@@ -51,7 +52,7 @@ export function useB2BConnections(authFetch, { onError, onSuccess } = {}) {
     }
   }, [authFetch])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => { runAsync(() => load()) }, [load])
 
   /** Run a mutation, surface the outcome, then resync. One code path for all
    *  five actions so success/error/busy handling can never drift between them. */

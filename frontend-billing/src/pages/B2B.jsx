@@ -1,3 +1,4 @@
+import { runAsync } from '../utils/asyncAction'
 import './money-phone.css'
 // ============================================================================
 // Page: B2B.jsx — the unified B2B workspace.
@@ -125,8 +126,8 @@ function B2BWorkspace() {
     b2b.fetchMyBizId(authFetch)
       .then(d => { if (!cancelled && d?.public_id) setMyBizId(d.public_id) })
       .catch(err => logger.warn('[B2B] could not load BizID', err))
-    b2b.fetchB2BStatus(authFetch)
-      .then(st => { if (!cancelled) setB2bStatus(st) })
+    runAsync(() => b2b.fetchB2BStatus(authFetch)
+      .then(st => { if (!cancelled) setB2bStatus(st) }))
     return () => { cancelled = true }
   }, [authFetch])
 
@@ -159,7 +160,7 @@ function B2BWorkspace() {
     }
   }, [authFetch, notifyError])
 
-  useEffect(() => { loadCatalog(selectedSupplier) }, [selectedSupplier, loadCatalog])
+  useEffect(() => { runAsync(() => loadCatalog(selectedSupplier)) }, [selectedSupplier, loadCatalog])
 
   /**
    * Manual pull for the Order tab's refresh button.
@@ -201,7 +202,7 @@ function B2BWorkspace() {
         notes,
       })
       notifyOk('Order placed — you can track it under Outgoing Orders.')
-      outgoing.reload()
+      runAsync(() => outgoing.reload())
       goTab('outgoing')
       return true
     } catch (err) {
@@ -220,31 +221,31 @@ function B2BWorkspace() {
     switch (event.type) {
       case 'order.created':
         showToast(`New order from ${event.buyer_name || 'a buyer'} · ${fmt(event.total_amount)}`, 'success')
-        incoming.reload()
+        runAsync(() => incoming.reload())
         break
       case 'order.status':
         showToast(`Order #${event.order_number} → ${event.status}`, 'info')
-        incoming.reload()
-        outgoing.reload()
+        runAsync(() => incoming.reload())
+        runAsync(() => outgoing.reload())
         break
       case 'order.invoiced':
         setJustInvoiced(prev => new Set(prev).add(event.order_number))
         showToast(`Stock auto-received — order #${event.order_number} is in your inventory.`, 'success')
-        outgoing.reload()
+        runAsync(() => outgoing.reload())
         break
       case 'connection.requested':
         showToast(`${event.from_name || 'A business'} wants to connect with you.`, 'info')
-        connections.reload()
+        runAsync(() => connections.reload())
         break
       case 'connection.approved':
         showToast(`${event.from_name || 'They'} approved your connection request.`, 'success')
-        connections.reload()
+        runAsync(() => connections.reload())
         break
       case 'connection.rejected':
-        connections.reload()
+        runAsync(() => connections.reload())
         break
       case 'sync.reconnect':
-        incoming.reload(); outgoing.reload(); connections.reload()
+        runAsync(() => incoming.reload()); runAsync(() => outgoing.reload()); runAsync(() => connections.reload())
         break
       default:
         break
@@ -259,8 +260,8 @@ function B2BWorkspace() {
       if (!realtimeEnabled) return
       const entity = e.detail?.entity
       if (['order', 'party', 'product'].includes(entity) || e.detail?.type === 'sync.reconnect') {
-        incoming.reload()
-        outgoing.reload()
+        runAsync(() => incoming.reload())
+        runAsync(() => outgoing.reload())
       }
     }
     window.addEventListener('sync-event', onSync)
@@ -268,7 +269,7 @@ function B2BWorkspace() {
   }, [realtimeEnabled, incoming, outgoing])
 
   useForegroundRefresh({
-    onResume: () => { incoming.reload(); outgoing.reload(); connections.reload() },
+    onResume: () => { runAsync(() => incoming.reload()); runAsync(() => outgoing.reload()); runAsync(() => connections.reload()) },
   })
 
   // ── Order detail modal ────────────────────────────────────────────────────

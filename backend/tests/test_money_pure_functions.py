@@ -114,7 +114,9 @@ def _hash(**over):
 
 
 def test_chain_hash_is_deterministic():
-    assert _hash() == _hash()
+    first = _hash()
+    assert len(first) == 64
+    assert _hash() == first
 
 
 @pytest.mark.parametrize("field,value", [

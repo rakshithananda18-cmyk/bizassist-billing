@@ -276,7 +276,7 @@ def field_notifications(p: Principal = Depends(require_owner), db: Session = Dep
         "kind": "release_update",
         "category": "updates",
         "severity": "info",
-        "title": "Field Team v1.2.8 Update",
+        "title": "Field Team v1.2.9 Update",
         "detail": "Pro sync reliability, tombstones, and device series tracking with unified mobile UI.",
         "route": "/settings",
         "action": "view_release_notes",

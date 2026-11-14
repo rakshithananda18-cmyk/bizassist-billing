@@ -1,3 +1,4 @@
+import { dismissOnEscape } from '../../utils/keyboardActions'
 // ============================================================================
 // PurchaseReturnModal — extracted verbatim from pages/Purchases.jsx (repo restructure).
 // All state and handlers stay with the page and arrive as same-named props,
@@ -15,7 +16,7 @@ const fmt = (n) =>
 export default function PurchaseReturnModal({ setShowReturnModal, returnStep, setReturnStep, returnSupplier, setReturnSupplier, returnBillId, setReturnBillId, bills, debitNoteNoInput, setDebitNoteNoInput, returnLines, setReturnLines, returnNote, setReturnNote, handleSelectBillNext, confirming, handleSaveReturn }) {
   const label = useDocLabels()
   return (
-        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowReturnModal(false)}>
+        <div role="presentation" onKeyDown={dismissOnEscape} className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowReturnModal(false)}>
           <div className="modal" style={{ maxWidth: returnStep === 'enter_items' ? '850px' : '480px', width: '95%' }}>
             <div className="modal-header">
               <span className="modal-title"><SyncIcon size={16} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Record Purchase Return ({label('purchase_return')})</span>

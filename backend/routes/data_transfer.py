@@ -41,6 +41,7 @@ All table accesses are guarded with `if table_name in _existing_tables(db)`.
 from __future__ import annotations  # PEP 604 (X | Y) on Python 3.9 dev venvs
 
 import logging
+from services.log_safety import log_value
 from datetime import datetime, timezone
 from typing import Any
 from uuid import NAMESPACE_URL, uuid5
@@ -810,7 +811,7 @@ def _import_with_remap(db: Session, table_name: str, rows: list[dict],
             orig = getattr(exc, "orig", exc)
             reason = str(orig).strip().splitlines()[0] if orig else str(exc)
             logger.warning("migrate/import[remap]: row skip in %s (old_id=%s): %s",
-                           table_name, old_id, reason)
+                           log_value(table_name), log_value(old_id), log_value(reason))
             is_overfill_rejection = any(
                 phrase in reason.lower() for phrase in (
                     "overfill guard", "would exceed", "completed document", "completed invoice"
@@ -835,7 +836,7 @@ def _import_with_remap(db: Session, table_name: str, rows: list[dict],
                             if current_sum >= target_total - 1.0:
                                 logger.info(
                                     "migrate/import[remap]: safely ignored overfill phantom line item (old_id=%s) for already complete %s id=%s",
-                                    old_id, parent_table, parent_id
+                                    log_value(old_id), parent_table, log_value(parent_id)
                                 )
                                 continue
                     except Exception:

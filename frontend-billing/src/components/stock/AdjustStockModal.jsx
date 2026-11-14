@@ -1,3 +1,5 @@
+import { dismissOnEscape } from '../../utils/keyboardActions'
+import { newClientRequestId } from '../../sync/uuid'
 // ============================================================================
 // AdjustStockModal — hardened stock adjustment modal (v2).
 //
@@ -36,11 +38,7 @@ export default function AdjustStockModal({
   adjustForm, setAdjField, products, onSubmit, submitting, onClose, authFetch,
 }) {
   // ── Idempotency key — new UUID per modal open ─────────────────────────────
-  const idempotencyKey = useRef(
-    typeof crypto !== 'undefined' && crypto.randomUUID
-      ? crypto.randomUUID()
-      : `adj-${Date.now()}-${Math.random()}`
-  )
+  const idempotencyKey = useRef(newClientRequestId())
 
   // ── Live stock lookup ──────────────────────────────────────────────────────
   const [liveStock, setLiveStock] = useState(null)
@@ -120,7 +118,7 @@ export default function AdjustStockModal({
       : 'var(--success, #22c55e)'
 
   return (
-    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+    <div role="presentation" onKeyDown={dismissOnEscape} className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="modal" style={{ maxWidth: 480 }}>
 
         {/* Header */}

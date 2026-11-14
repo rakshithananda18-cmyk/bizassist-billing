@@ -182,7 +182,7 @@ export default function SyncNudgeModal() {
             }}
           >
             <SyncIcon size={14} />
-            {isPull ? 'Sync Now' : 'Sync Now'}
+            Sync Now
           </button>
         </div>
       </div>

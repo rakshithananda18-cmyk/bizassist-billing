@@ -1,3 +1,5 @@
+import { activateOnKeyboard } from '../utils/keyboardActions'
+import { runAsync } from '../utils/asyncAction'
 // ============================================================================
 // Page: Dashboard.jsx
 // Description: Main Business Owner Dashboard. Renders high-level overview metrics,
@@ -80,7 +82,7 @@ export default function Dashboard() {
     // Keep the chart panel mounted during background refreshes so an explicit
     // temporary privacy reveal lasts for this dashboard visit.
     setLoading(!loadedRef.current)
-    Promise.all([
+    runAsync(() => Promise.all([
       authFetch('/dashboard-summary').then(r => r.ok ? r.json() : undefined).catch(() => undefined),
       // Dashboard only shows the 5 most recent — don't pull the whole history.
       authFetch('/payments?limit=5').then(r => r.ok ? r.json() : undefined).catch(() => undefined),
@@ -96,7 +98,7 @@ export default function Dashboard() {
     }).finally(() => {
       if (scope !== requestScopeRef.current) return
       loadedRef.current = true; setLoading(false); loadingRef.current = false
-    })
+    }))
   }, [authFetch, user?.id, protectTour])
 
   useEffect(() => {
@@ -431,7 +433,7 @@ export default function Dashboard() {
                                }}
                              >
                               <td className="td-mono">
-                                <span
+                                <span role="button" tabIndex={0} onKeyDown={activateOnKeyboard}
                                   onClick={() => setViewingInvoiceNo(inv.invoice_number)}
                                   title="View / print this invoice"
                                   style={{ cursor: 'pointer', color: 'var(--accent)', textDecoration: 'underline' }}

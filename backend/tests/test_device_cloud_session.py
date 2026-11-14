@@ -171,7 +171,10 @@ def test_device_namespace_is_stable_distinct_and_shared_by_lan_clients(device):
     assert local_counter_number(db, 7, f"LCL-OW-{one}-0001", f"LCL-OW-{one}") == f"LCL-OW-{one}-0001"
     # Imported historical documents retain the number that was already issued.
     assert local_counter_number(db, 7, "OLD-0001", None) == "OLD-0001"
-    assert installation_id() == installation_id()
+    registered_installation = installation_id()
+    from services.process_lock import data_path
+    assert data_path("installation_id").read_text(encoding="utf-8").strip() == registered_installation
+    assert installation_id() == registered_installation
 
 
 def test_unregistered_hybrid_device_cannot_issue_in_colliding_series(device):

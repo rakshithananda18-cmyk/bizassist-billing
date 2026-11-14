@@ -146,7 +146,7 @@ export default function OrderDeskTab({
   }, [selectedSupplier, catalogLoading, phone])
 
   const categories = useMemo(
-    () => [...new Set(catalog.map(p => p.category).filter(Boolean))].sort(),
+    () => [...new Set(catalog.map(p => p.category).filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b))),
     [catalog]
   )
 
@@ -545,7 +545,7 @@ export default function OrderDeskTab({
       </aside>
 
       {/* Scrim — click anywhere outside to dismiss the drawer. */}
-      {cartOpen && <div className="b2b-cart-scrim" onClick={() => setCartOpen(false)} />}
+      {cartOpen && <button style={{ border: 0, padding: 0 }} type="button" aria-label="Close dialog" className="b2b-cart-scrim" onClick={() => setCartOpen(false)} />}
     </div>
   )
 }

@@ -1,3 +1,5 @@
+import { dismissOnEscape } from '../../utils/keyboardActions'
+import { runAsync } from '../../utils/asyncAction'
 import usePhoneLayout from '../../hooks/usePhoneLayout'
 import PhoneRecord from '../common/PhoneRecord'
 import '../../pages/money-phone.css'
@@ -62,7 +64,7 @@ function ConfirmModal({ collection, onClose, onDone, onRefresh }) {
   }
 
   return (
-    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+    <div role="presentation" onKeyDown={dismissOnEscape} className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="modal">
         <div className="modal-header">
           <span className="modal-title">Confirm field collection</span>
@@ -136,7 +138,7 @@ export default function FieldCollections() {
       setError(err.detail || err.message || 'Could not load field collections.')
     }
   }, [localSource])
-  useEffect(() => { load() }, [load])
+  useEffect(() => { runAsync(() => load()) }, [load])
 
   if (localSource) return (
     <div className="empty-state card">
@@ -192,11 +194,11 @@ export default function FieldCollections() {
       )}
       {open && (
         <ConfirmModal collection={open} onClose={() => setOpen(null)}
-          onRefresh={() => { setOpen(null); setData(null); load() }}
+          onRefresh={() => { setOpen(null); setData(null); runAsync(() => load()) }}
           onDone={(r) => {
             setOpen(null)
             setNotice(`Recorded ${fmt(r.recorded.reduce((a, p) => a + p.amount, 0))} against ${r.recorded.length} bill(s).`)
-            load()
+            runAsync(() => load())
           }} />
       )}
     </div>

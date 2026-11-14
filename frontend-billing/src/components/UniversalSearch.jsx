@@ -1,3 +1,4 @@
+import { runAsync } from '../utils/asyncAction'
 import React from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate, useLocation } from 'react-router-dom'
@@ -292,7 +293,7 @@ export default function UniversalSearch({ hideTrigger = false }) {
   }, [authFetch])
 
   const go = React.useCallback((item) => {
-    if (item?.ask) { runAsk(item.label); return }   // stays open to show the answer
+    if (item?.ask) { runAsync(() => runAsk(item.label)); return }   // stays open to show the answer
     if (!item?.route) return
     close()
     navigate(item.route)

@@ -12,7 +12,6 @@ Secrets are stored in the admin user's settings JSON under the reserved
 as subscriptions; PUT /settings strips reserved keys so clients can't touch it.
 """
 import base64
-import hashlib
 import hmac
 import secrets
 import struct
@@ -41,7 +40,9 @@ def _hotp(secret: str, counter: int) -> str:
     pad = "=" * (-len(secret) % 8)
     key = base64.b32decode((secret + pad).upper())
     msg = struct.pack(">Q", counter)
-    digest = hmac.new(key, msg, hashlib.sha1).digest()
+    # RFC4226/6238 HMAC-SHA1 is required by existing authenticator enrollments.
+    # This is a keyed MAC, not SHA1 password hashing or a collision-based signature.
+    digest = hmac.digest(key, msg, "sha1")
     offset = digest[-1] & 0x0F
     code = (struct.unpack(">I", digest[offset:offset + 4])[0] & 0x7FFFFFFF) % (10 ** DIGITS)
     return str(code).zfill(DIGITS)

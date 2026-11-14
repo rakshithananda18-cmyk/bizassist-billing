@@ -1,3 +1,4 @@
+import { runAsync } from '../../utils/asyncAction'
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { CLOUD_URL, LOCAL_URL } from '../../config'
 import { logger } from '../../utils/logger'
@@ -394,7 +395,7 @@ export default function BackupModal({ token, direction = 'both', onComplete, onE
                 // inserts what is missing — a completed leg re-imports nothing.
                 setStatuses(STEPS.map((_, i) => (i === 0 ? 'active' : 'pending')))
                 setErrorMsg(null); setProgress(0); setResults({})
-                run()
+                runAsync(() => run())
               }}
                 style={{ padding: '8px 18px', borderRadius: 8, background: 'var(--accent-solid, var(--accent))', color: 'var(--accent-foreground, #fff)', border: 'none', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                 <SyncIcon size={14} /> Retry

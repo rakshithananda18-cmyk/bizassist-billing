@@ -437,7 +437,8 @@ def main() -> int:
     else:
         export_path = os.path.join(os.path.dirname(os.path.abspath(target)),
                                    f"phantom_line_items_export_{stamp}.json")
-    with open(export_path, "w", encoding="utf-8") as f:
+    from _safe_io import open_export
+    with open_export(export_path) as f:
         # `con.label` and NOT the raw target: a Postgres DSN carries the
         # password, and this file is written to disk and often pasted into a
         # ticket. Redacted at the source in _dbcompat so no caller can leak it.

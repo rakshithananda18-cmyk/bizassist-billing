@@ -39,13 +39,14 @@ def _resolve_db(argv):
         return argv[argv.index("--db") + 1]
     return _DEFAULT_DB
 
+from _safe_io import sqlite_connection
 DB = _resolve_db(sys.argv)
 if not os.path.exists(DB):
     sys.exit(f"database not found: {DB}\n"
              f"Pass --db <path> explicitly. Refusing to create or guess one — a "
              f"repair script that silently opens the wrong database reports "
              f"'nothing to repair' and is believed.")
-c = sqlite3.connect(DB)
+c = sqlite_connection(DB, readonly=False)
 c.row_factory = sqlite3.Row
 
 # All rows inserted Jul 17

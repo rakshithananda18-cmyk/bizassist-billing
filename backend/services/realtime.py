@@ -66,6 +66,7 @@ class RealtimeManager:
         self._sequences = defaultdict(int)
         self._history = defaultdict(lambda: deque(maxlen=max(1, int(os.getenv("SSE_REPLAY_BUFFER", "256")))))
         self._queue_sequences = {}
+        self._relay_tasks = set()
         # Maps business_id -> Set of asyncio.Queue
         self.connections: Dict[int, Set[asyncio.Queue]] = {}
         # The main server event loop. Subscriber queues are bound to it, so any
@@ -77,6 +78,13 @@ class RealtimeManager:
         """Record the main event loop. Called once from the app lifespan startup."""
         self._loop = loop
         logger.info("[REALTIME] Main event loop registered for cross-thread broadcasts.")
+
+    def _relay_completed(self, task) -> None:
+        self._relay_tasks.discard(task)
+        if not task.cancelled():
+            error = task.exception()
+            if error is not None:
+                logger.warning("[REALTIME] Background relay failed (%s)", type(error).__name__)
 
     def broadcast_threadsafe(self, business_id: int, event: Dict[str, Any]) -> bool:
         """
@@ -172,7 +180,9 @@ class RealtimeManager:
         # Only fires on local backends; cloud-connected clients receive the event
         # via cloud SSE even when on a different network than the owner.
         if any(event_type.startswith(p) for p in _RELAY_PREFIXES):
-            asyncio.ensure_future(self._relay_to_cloud(business_id, event))
+            relay = asyncio.ensure_future(self._relay_to_cloud(business_id, event))
+            self._relay_tasks.add(relay)
+            relay.add_done_callback(self._relay_completed)
 
         if business_id not in self.connections:
             return

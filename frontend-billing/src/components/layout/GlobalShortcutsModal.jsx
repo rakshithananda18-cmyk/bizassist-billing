@@ -50,7 +50,6 @@ export default function GlobalShortcutsModal({ open: controlledOpen, onClose: co
         e.preventDefault()
         if (isControlled) {
           if (isOpen) controlledClose?.()
-          else controlledClose?.() // Or trigger open if controlled
         } else {
           setInternalOpen(prev => !prev)
         }

@@ -1,3 +1,5 @@
+import { dismissOnEscape } from '../../utils/keyboardActions'
+import { runAsync } from '../../utils/asyncAction'
 // src/components/parties/PartyCreditDrawer.jsx
 // Party Credit & Statement Drawer — customer/supplier ledger, credit dues, and statement sharing.
 import React, { useState, useEffect, useCallback, useRef } from 'react'
@@ -52,7 +54,7 @@ export default function PartyCreditDrawer({
   }, [party, partyType, dateRange, authFetch])
 
   useEffect(() => {
-    fetchLedger()
+    runAsync(() => fetchLedger())
     return () => { requestRef.current += 1 }
   }, [fetchLedger])
 
@@ -79,7 +81,7 @@ export default function PartyCreditDrawer({
   }
 
   return (
-    <div
+    <div role="presentation" onKeyDown={dismissOnEscape}
       className="drawer-overlay"
       style={{
         position: 'fixed',

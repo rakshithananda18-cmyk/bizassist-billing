@@ -1,3 +1,4 @@
+import { dismissOnEscape } from '../../utils/keyboardActions'
 // ============================================================================
 // PurchaseDetailModal — extracted verbatim from pages/Purchases.jsx (repo restructure).
 // All state and handlers stay with the page and arrive as same-named props,
@@ -14,7 +15,7 @@ const fmt = (n) =>
 export default function PurchaseDetailModal({ selectedDetail, setShowDetailModal }) {
   const label = useDocLabels()
   return (
-        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowDetailModal(false)}>
+        <div role="presentation" onKeyDown={dismissOnEscape} className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowDetailModal(false)}>
           <div data-tour="purchase-detail" className="modal" style={{ maxWidth: '750px', width: '95%' }}>
             <div className="modal-header">
               <span className="modal-title">

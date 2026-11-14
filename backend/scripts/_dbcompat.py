@@ -53,6 +53,10 @@ from __future__ import annotations
 
 import os
 import sys
+if __package__:
+    from ._safe_io import postgres_parameters, sqlite_connection
+else:
+    from _safe_io import postgres_parameters, sqlite_connection
 
 SQLITE = "sqlite"
 POSTGRES = "postgresql"
@@ -424,6 +428,8 @@ def connect(target: str, *, readonly: bool = True) -> Conn:
         sys.exit(_placeholder_message(target))
     if is_postgres_target(target):
         return _connect_postgres(target, readonly)
+    if "://" in str(target):
+        sys.exit("Unsupported database URL protocol; use a SQLite filename or PostgreSQL URL")
     return _connect_sqlite(target, readonly)
 
 
@@ -477,10 +483,7 @@ def _connect_sqlite(path: str, readonly: bool) -> Conn:
             f"Pass --db <path-or-postgres-url>. Refusing to guess or create "
             f"one — a money script that opens the wrong database reports "
             f"'nothing to repair' and is believed.")
-    if readonly:
-        raw = sqlite3.connect(_readonly_uri(path), uri=True)
-    else:
-        raw = sqlite3.connect(path)
+    raw = sqlite_connection(path, readonly=readonly)
     return Conn(raw, SQLITE, os.path.abspath(path), readonly)
 
 
@@ -607,6 +610,7 @@ def _connect_postgres(url: str, readonly: bool) -> Conn:
         sys.exit(_placeholder_message(url))
 
     url = _with_sslmode(url.replace("postgresql+psycopg2://", "postgresql://"))
+    params = postgres_parameters(url)
 
     # Read-only as a STARTUP option, not just a SET — the transaction-pooler
     # problem.
@@ -623,11 +627,11 @@ def _connect_postgres(url: str, readonly: bool) -> Conn:
     # client carries it. Falls back to the plain URL if the server rejects the
     # option, because being unable to connect at all is worse — and the SET+SHOW
     # check below still runs either way.
-    startup = None if "options=" in url else "-c default_transaction_read_only=on"
+    startup = (str(params.pop("options", "")) + " -c default_transaction_read_only=on").strip() if readonly else None
     raw = None
     if readonly and startup:
         try:
-            raw = psycopg2.connect(url, options=startup)
+            raw = psycopg2.connect(**params, options=startup)
         except Exception as e:
             # Only an option-related rejection is worth retrying without it.
             # Anything else (bad host, bad password, paused project) is the real
@@ -636,7 +640,7 @@ def _connect_postgres(url: str, readonly: bool) -> Conn:
                 _fail_connect(url, e)
     if raw is None:
         try:
-            raw = psycopg2.connect(url)
+            raw = psycopg2.connect(**params)
         except Exception as e:
             _fail_connect(url, e)
 

@@ -17,6 +17,7 @@ Money math lives here and is fully unit-tested. Routes stay thin.
 """
 import json
 import logging
+from services.log_safety import log_value
 import math
 import re
 from decimal import Decimal, ROUND_HALF_UP
@@ -955,7 +956,7 @@ def settle_customer_dues(db, *, business_id: int, customer_id: int,
             advance = _round2(amount - applied_total) if amount > applied_total + 0.005 else 0.0
             credit_balance = _round2(cust.credit_balance or 0.0)
             logger.info("[BILLING] settle idempotent hit — key=%s biz=%s cust=%s",
-                        idempotency_key, business_id, customer_id)
+                        log_value(idempotency_key), log_value(business_id), log_value(customer_id))
             return {
                 "allocations": allocations, "advance": advance,
                 "total_applied": applied_total, "amount": amount,

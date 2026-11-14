@@ -140,6 +140,7 @@ export function useRealtimeLeader(token, settings, user) {
       if (!isCurrentLeader || !navigator.onLine) return
       emitStatus('connecting')
       esRef.current = createSseConnection({
+        baseUrl: API_BASE,
         fetchTicket: async () => {
           const response = await fetch(`${API_BASE}/realtime/ticket`, {
             method: 'POST', headers: { Authorization: `Bearer ${token}` },

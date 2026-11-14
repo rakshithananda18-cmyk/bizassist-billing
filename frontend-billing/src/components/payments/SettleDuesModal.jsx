@@ -1,3 +1,4 @@
+import { dismissOnEscape } from '../../utils/keyboardActions'
 // ============================================================================
 // SettleDuesModal — owner-only "customer pays a lump sum" flow.
 // Applies one receipt across the customer's outstanding invoices oldest-first
@@ -140,7 +141,7 @@ export default function SettleDuesModal({ authFetch, onClose, onDone, presetCust
   }
 
   return (
-    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+    <div role="presentation" onKeyDown={dismissOnEscape} className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="modal" style={{ maxWidth: 560 }}>
         <div className="modal-header">
           <span className="modal-title">Settle Customer Dues</span>

@@ -1,3 +1,5 @@
+import { dismissOnEscape } from '../../utils/keyboardActions'
+import { runAsync } from '../../utils/asyncAction'
 // src/components/sales/ShiftModals.jsx
 // ====================================
 // Shift & Cash-Drawer Management (plan Phase 3 + 3b).
@@ -81,7 +83,7 @@ export function OpenShiftModal({ open, onOpened, authFetch, operatorName }) {
 
   return (
     <div className="modal-overlay" style={{ zIndex: 3000 }}>
-      <div className="modal" style={{ maxWidth: 420 }} onKeyDown={e => { if (e.key === 'Enter') submit() }}>
+      <div className="modal" style={{ maxWidth: 420 }} onKeyDown={e => { if (e.key === 'Enter') runAsync(() => submit()) }}>
         <div style={{ padding: '20px 22px' }}>
           <h3 style={{ margin: 0, fontSize: '1.05rem' }}>Open Register Shift</h3>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.82rem', marginTop: 8 }}>
@@ -196,7 +198,7 @@ export function CashMovementModal({ open, onClose, onRecorded, authFetch }) {
   }
 
   return (
-    <div className="modal-overlay" style={{ zIndex: 3000 }} onClick={e => { if (e.target === e.currentTarget && !submitting) onClose?.() }}>
+    <div role="presentation" onKeyDown={dismissOnEscape} className="modal-overlay" style={{ zIndex: 3000 }} onClick={e => { if (e.target === e.currentTarget && !submitting) onClose?.() }}>
       <div className="modal" style={{ maxWidth: 420 }}>
         <div style={{ padding: '20px 22px' }}>
           <h3 style={{ margin: 0, fontSize: '1.05rem' }}>Cash In / Out</h3>
@@ -336,7 +338,7 @@ export function CloseShiftModal({ open, onClose, onClosed, onSummary, authFetch,
   }
 
   return (
-    <div className="modal-overlay" style={{ zIndex: 3000 }} onClick={e => { if (e.target === e.currentTarget && !submitting) onClose?.() }}>
+    <div role="presentation" onKeyDown={dismissOnEscape} className="modal-overlay" style={{ zIndex: 3000 }} onClick={e => { if (e.target === e.currentTarget && !submitting) onClose?.() }}>
       <div className="modal" style={{ maxWidth: 480 }}>
         <div style={{ padding: '20px 22px' }}>
           <h3 style={{ margin: 0, fontSize: '1.05rem' }}>

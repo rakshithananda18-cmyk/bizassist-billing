@@ -1,3 +1,4 @@
+import { dismissOnEscape, activateOnKeyboard } from '../../utils/keyboardActions'
 // ============================================================================
 // PurchaseOcrModal — extracted verbatim from pages/Purchases.jsx (repo restructure).
 // All state and handlers stay with the page and arrive as same-named props,
@@ -12,7 +13,7 @@ const fmt = (n) =>
 
 export default function PurchaseOcrModal({ setShowModal, step, setStep, dragOver, setDragOver, handleFileDrop, fileRef, file, setFile, extracted, handleHeaderChange, handleItemChange, handleRemoveItem, catalogProducts, uploading, handleUpload, confirming, handleConfirm }) {
   return (
-        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowModal(false)}>
+        <div role="presentation" onKeyDown={dismissOnEscape} className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowModal(false)}>
           <div className="modal" style={{ maxWidth: step === 'review' ? '1200px' : '520px', width: '95%' }}>
             <div className="modal-header">
               <span className="modal-title">
@@ -25,7 +26,7 @@ export default function PurchaseOcrModal({ setShowModal, step, setStep, dragOver
               {step === 'upload' ? (
                 <>
                   {/* Drag-drop zone */}
-                  <div
+                  <div role="button" tabIndex={0} onKeyDown={activateOnKeyboard}
                     onDragOver={e => { e.preventDefault(); setDragOver(true) }}
                     onDragLeave={() => setDragOver(false)}
                     onDrop={handleFileDrop}

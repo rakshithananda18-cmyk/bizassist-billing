@@ -1,3 +1,4 @@
+import { runAsync } from '../utils/asyncAction'
 // src/hooks/useBillingProfile.js — the billing-counter profile (plan Phase 2).
 // ============================================================================
 // Fetches GET /business/billing-profile (entry mode, customer gating, line
@@ -106,7 +107,7 @@ export function useBillingProfile(mode = null) {
         if (alive) setLoading(false)
       }
     }
-    load()
+    runAsync(() => load())
     return () => { alive = false }
   }, [effective, cacheKey, session])
 

@@ -31,7 +31,7 @@ def _cache_salt(user_id: int, route: str, user_query: str, topic: str,
     """
     day = day or date.today().isoformat()
     disc = _cache_disc(route, user_query, topic, handler_key, is_writing)
-    return hashlib.md5(f"{user_id}:{day}:{disc}".encode("utf-8")).hexdigest()
+    return hashlib.sha256(f"v2:{user_id}:{day}:{disc}".encode("utf-8")).hexdigest()
 
 
 def _cache_disc(route: str, user_query: str, topic: str, handler_key, is_writing: bool) -> str:

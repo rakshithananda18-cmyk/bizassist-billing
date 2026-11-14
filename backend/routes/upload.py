@@ -1,6 +1,7 @@
 import hashlib
 import io
 import logging
+from services.log_safety import log_value
 from services.context_cache import invalidate_user_cache
 from services.column_mapper import normalize_dataframe
 from fastapi import (
@@ -584,7 +585,8 @@ async def _process_zip_upload(zip_bytes: bytes, business_id: int, zip_filename: 
                 detail="ZIP contains an oversized or over-compressed PDF.",
             )
 
-    logger.info(f"[ZIP] Processing {len(pdf_infos)} PDF(s) from '{zip_filename}' for user {business_id}.")
+    logger.info("[ZIP] Processing %s PDF(s) from %s for business %s",
+                len(pdf_infos), log_value(zip_filename), log_value(business_id))
 
     results    = []
     total_rows = 0

@@ -1,3 +1,4 @@
+import { runAsync } from '../utils/asyncAction'
 import React, { useState, useEffect, useRef, useLayoutEffect, useMemo, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
@@ -19,7 +20,7 @@ import { BellIcon, CheckIcon, CloseIcon, WhatsAppOutlineIcon, AlertIcon } from '
  *   - Reminder / Warning (Amber): Invoices overdue, backup reminders, trial countdown.
  *   - Customer Offers (Purple): Active promos with 1-click WhatsApp dispatch.
  *   - Field Team (Sky Blue): Store requests, delivery runs, overdue field tasks.
- *   - Updates (Emerald): What's New v1.2.8 changelog and release notices.
+ *   - Updates (Emerald): What's New v1.2.9 changelog and release notices.
  *
  * Categorized tabs: All | Billing | Field | Offers & Updates.
  */
@@ -162,7 +163,7 @@ export default function NotificationBell({ placement = 'bottom-end', onOpen }) {
   }, [authFetch])
 
   useEffect(() => {
-    load()
+    runAsync(() => load())
     const t = setInterval(load, POLL_MS)
 
     // Event-driven reactive update on data changes (SSE real-time events, syncs, background flush, focus)
@@ -178,7 +179,7 @@ export default function NotificationBell({ placement = 'bottom-end', onOpen }) {
       debounceTimer = setTimeout(load, 300)
     }
     const handleFocus = () => {
-      if (document.visibilityState === 'visible') load()
+      if (document.visibilityState === 'visible') runAsync(() => load())
     }
 
     window.addEventListener('sync-event', handleDataEvent)
@@ -294,7 +295,7 @@ export default function NotificationBell({ placement = 'bottom-end', onOpen }) {
         type="button"
         onClick={() => {
           setOpen(o => !o)
-          if (!open) { onOpen?.(); load() }
+          if (!open) { onOpen?.(); runAsync(() => load()) }
         }}
         aria-label={count ? `${count} notification${count === 1 ? '' : 's'}` : 'Notifications'}
         aria-expanded={open}

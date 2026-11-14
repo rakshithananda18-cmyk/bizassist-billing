@@ -47,6 +47,12 @@ import audit_money_integrity as AUDIT
 import repair_line_items_by_invariant as RLI
 
 
+@pytest.fixture(autouse=True)
+def _trusted_fixture_operations_root(tmp_path, monkeypatch):
+    # Every CLI test explicitly authorizes its disposable evidence/DB directory.
+    monkeypatch.setenv("BIZASSIST_OPERATIONS_ROOT", str(tmp_path))
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # 1. Placeholder / percent translation
 # ══════════════════════════════════════════════════════════════════════════════
@@ -644,13 +650,13 @@ def _all_scripts():
     drifts, and the drift is invisible: a new script is not *failing* the gate,
     it is simply absent from it.
 
-    `_dbcompat.py` is excluded because it IS the portability layer — its
-    `sqlite3.connect` calls are the implementation of the rule, not a breach.
+    `_dbcompat.py` and `_safe_io.py` implement the portability and filesystem
+    boundary adapters; their connection calls are the rule's implementation.
     """
     return sorted(
         os.path.join(_SCRIPTS_DIR, f)
         for f in os.listdir(_SCRIPTS_DIR)
-        if f.endswith(".py") and f != "_dbcompat.py"
+        if f.endswith(".py") and f not in {"_dbcompat.py", "_safe_io.py"}
     )
 
 
@@ -727,7 +733,7 @@ def test_every_exemption_names_a_script_that_exists():
 def test_the_gate_covers_every_script_in_the_directory():
     """The C-10 property itself: coverage is derived, never maintained by hand."""
     on_disk = {f for f in os.listdir(_SCRIPTS_DIR)
-               if f.endswith(".py") and f != "_dbcompat.py"}
+               if f.endswith(".py") and f not in {"_dbcompat.py", "_safe_io.py"}}
     assert {os.path.basename(p) for p in _SCRIPTS} == on_disk
     assert len(on_disk) > 8, (
         "the walk found no more than the 8 hand-listed scripts — if scripts/ "
@@ -892,7 +898,9 @@ def test_no_script_opens_sqlite_directly(path):
     Python's `datetime.strftime` from SQLite's `strftime()`, and a gate that
     fires on correct code is a gate people switch off.
     """
-    hits = _scan(path, r"sqlite3\.connect")
+    # sqlite_connection is the guarded SQLite-only adapter; it does not make a
+    # one-engine script portable. Existing SQLite-only declarations still apply.
+    hits = _scan(path, r"(?:sqlite3\.connect|sqlite_connection\()")
     name = os.path.basename(path)
     if name in _SQLITE_ONLY_BY_DESIGN:
         # Self-cleaning: once a listed script stops opening sqlite3 directly,

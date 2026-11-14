@@ -141,6 +141,7 @@ def purge_archived(db, max_id: int) -> int:
 #   TELEMETRY_ARCHIVE_S3_BUCKET     bucket name (enables the feature)
 #   TELEMETRY_ARCHIVE_S3_PREFIX     key prefix (default "telemetry/")
 #   TELEMETRY_ARCHIVE_S3_ENDPOINT   custom endpoint (R2/Supabase); omit for AWS
+#   TELEMETRY_ARCHIVE_S3_EXPECTED_OWNER  expected bucket account (required)
 #   AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY / AWS_DEFAULT_REGION  standard creds
 
 def _archive_bucket() -> str:
@@ -153,6 +154,10 @@ def upload_archive_to_object_storage(data: bytes, filename: str) -> bool:
     bucket = _archive_bucket()
     if not bucket:
         return False
+    owner = os.getenv("TELEMETRY_ARCHIVE_S3_EXPECTED_OWNER", "").strip()
+    if not owner or not owner.isascii() or not owner.replace("-", "").isalnum():
+        logger.warning("[TELEMETRY-MAINT] expected object-storage bucket owner is required; archive not uploaded")
+        return False
     try:
         import boto3  # optional dependency; only needed if the feature is on
     except Exception:
@@ -164,6 +169,7 @@ def upload_archive_to_object_storage(data: bytes, filename: str) -> bool:
         key = f"{prefix.rstrip('/')}/{filename}"
         client = boto3.client("s3", endpoint_url=endpoint)
         client.put_object(Bucket=bucket, Key=key, Body=data,
+                          ExpectedBucketOwner=owner,
                           ContentType="application/gzip")
         logger.info("[TELEMETRY-MAINT] archived %s bytes to s3://%s/%s", len(data), bucket, key)
         return True

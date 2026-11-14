@@ -1,6 +1,7 @@
 import sqlite3, sys, os, json
+from _safe_io import sqlite_connection
 db = sys.argv[1] if len(sys.argv) > 1 else "bizassist.db"
-c = sqlite3.connect(f"file:{os.path.abspath(db)}?mode=ro", uri=True)
+c = sqlite_connection(db, readonly=True)
 c.row_factory = sqlite3.Row
 print(f"{'qid':>5} {'entity':<18}{'row':>5} {'synced':<8}{'payload':>9}  uid / error")
 for r in c.execute("SELECT id,entity,entity_id,synced_at,payload,error FROM sync_queue "

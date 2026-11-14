@@ -14,6 +14,8 @@
 import { API_BASE } from '../config'
 import { APP_VERSION } from '../config/appVersion'
 import { diagnosticsAllowed, STORAGE_CONSENT_CHANGED, STORAGE_CONSENT_KEY } from './storageConsent'
+import { newClientRequestId } from '../sync/uuid'
+import { telemetryTarget } from './trustedBackend'
 
 // Cloud Run Mumbai telemetry endpoint
 const CLOUD_URL = import.meta.env.VITE_CLOUD_TELEMETRY_URL || 'https://staterbill-api-1076771386585.asia-south1.run.app'
@@ -29,11 +31,11 @@ let timer = null
 let installed = false
 
 function deviceId(persistent = true) {
-  if (!persistent) return 'web-oneoff-' + (globalThis.crypto?.randomUUID?.() || Math.random().toString(36).slice(2))
   try {
+    if (!persistent) return 'web-oneoff-' + newClientRequestId()
     let id = localStorage.getItem('web_device_id')
     if (!id) {
-      id = 'web-' + (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2))
+      id = 'web-' + newClientRequestId()
       localStorage.setItem('web_device_id', id)
     }
     return id
@@ -72,11 +74,13 @@ function buildBatch(events, persistentDevice = diagnosticsAllowed()) {
 }
 
 function post(base, body, useBeacon = false) {
-  const url = `${base}/api/telemetry/log`
+  const target = telemetryTarget(base)
+  if (!target) return
+  const url = target.href
   // Cross-origin here means: the dev server (:5174) talking to the local backend
   // (:8001), or any origin talking to the cloud.
   const crossOrigin = typeof window !== 'undefined' &&
-    !String(base).startsWith(window.location.origin)
+    target.origin !== window.location.origin
 
   try {
     // `navigator.sendBeacon` ALWAYS uses credentials mode "include". The API

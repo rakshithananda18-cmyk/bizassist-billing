@@ -1,3 +1,4 @@
+import { runAsync } from '../utils/asyncAction'
 import { planGate, previewTimerKey } from '../utils/planGates'
 import React from 'react'
 import { createPortal } from 'react-dom'
@@ -348,7 +349,7 @@ export default function AppLayout({ children, title }) {
         if (current()) setCloudStatus(data)
       } catch { /* existing sync diagnostics remain available */ }
     }
-    load()
+    runAsync(() => load())
     const timer = setInterval(load, 30000)
     return () => { stopped = true; clearInterval(timer) }
   }, [isDemoSession, token, user?.role, syncBusinessKey, effectiveMode])
@@ -480,7 +481,7 @@ export default function AppLayout({ children, title }) {
     // Poll every 30s (reduced from 10s) — the 'sync-flushed' event triggers an
     // immediate refresh after a manual flush so the counter doesn't feel stale.
     const interval = setInterval(fetchQueueDepth, 30000)
-    const handleSyncFlushed = () => { fetchQueueDepth() }
+    const handleSyncFlushed = () => { runAsync(() => fetchQueueDepth()) }
     window.addEventListener('sync-flushed', handleSyncFlushed)
 
     // A sale (or any local write) queues outbox rows immediately, but the panel
@@ -2136,10 +2137,10 @@ export default function AppLayout({ children, title }) {
                         // does nothing for a dead token, and an outage needs no
                         // action at all — offering the wrong one is what made
                         // the 401 loop unreadable.
-                        if (haltReason === 'plan_required') handleCheckPlan(e)
+                        if (haltReason === 'plan_required') runAsync(() => handleCheckPlan(e))
                         else if (haltReason === 'protocol_upgrade_required') setShowDownloadModal(true)
                         else if (haltReason === 'auth_expired' || haltReason === 'secret_mismatch') logout()
-                        else handleSyncNow()
+                        else runAsync(() => handleSyncNow())
                       }}
                       // NOT disabled while offline. The worker re-probes on its
                       // own interval and this panel polls every 30s, so after
@@ -2828,7 +2829,7 @@ export default function AppLayout({ children, title }) {
 
             {/* Profile Dropdown positioned below avatar on mobile */}
             {showProfileMenu && (
-              <div id="mobile-account-menu" className="profile-menu mobile-dropdown" ref={profileMenuRef} onClick={e => e.stopPropagation()} onMouseDown={e => e.stopPropagation()}>
+              <div id="mobile-account-menu" className="profile-menu mobile-dropdown" ref={profileMenuRef}  onMouseDown={e => e.stopPropagation()}>
                 <div className="profile-menu-header">
                   <div className="profile-menu-biz">{profile?.business_name || user?.username || 'Stater User'}</div>
                   <div className="profile-menu-sub">Enterprise Account</div>

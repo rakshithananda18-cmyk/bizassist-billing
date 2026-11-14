@@ -1,3 +1,4 @@
+import { dismissOnEscape } from '../../utils/keyboardActions'
 // ============================================================================
 // OrderDetailModal — extracted verbatim from pages/B2BOrders.jsx (repo restructure).
 // State and handlers stay with the page and arrive as same-named props.
@@ -12,7 +13,7 @@ const fmt = (n) =>
 
 export default function OrderDetailModal({ selectedOrder, setSelectedOrder, activeTab, notes, handleStatusChange }) {
   return (
-          <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setSelectedOrder(null)}>
+          <div role="presentation" onKeyDown={dismissOnEscape} className="modal-overlay" onClick={e => e.target === e.currentTarget && setSelectedOrder(null)}>
             <div className="modal modal-lg">
               <div className="modal-header">
                 <div>

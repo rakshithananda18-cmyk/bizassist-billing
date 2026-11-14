@@ -1,3 +1,4 @@
+import { dismissOnEscape } from '../../utils/keyboardActions'
 import PhoneRecord from '../../components/common/PhoneRecord'
 import usePhoneLayout from '../../hooks/usePhoneLayout'
 import '../../pages/money-phone.css'
@@ -99,7 +100,7 @@ function PolicyModal({ conn, onClose, onSave, saving }) {
   })
 
   return (
-    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+    <div role="presentation" onKeyDown={dismissOnEscape} className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="modal">
         <div className="modal-header">
           <span className="modal-title">Policy · {conn.counterparty_name || conn.buyer_name}</span>
@@ -165,7 +166,7 @@ function PolicyModal({ conn, onClose, onSave, saving }) {
 // ── Revoke confirmation ──────────────────────────────────────────────────────
 function RevokeModal({ conn, onClose, onConfirm, busy }) {
   return (
-    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+    <div role="presentation" onKeyDown={dismissOnEscape} className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="modal">
         <div className="modal-header" style={{ borderBottomColor: 'rgba(239, 68, 68, 0.2)' }}>
           <span className="modal-title" style={{ color: 'var(--danger)' }}>

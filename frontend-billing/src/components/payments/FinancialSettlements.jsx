@@ -1,3 +1,4 @@
+import { runAsync } from '../../utils/asyncAction'
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { readAllPages, readList } from '../../utils/readPages'
 import { paymentIntent } from '../../utils/paymentIntent'
@@ -42,7 +43,7 @@ export default function FinancialSettlements({ authFetch, onChanged }) {
   }, [authFetch, mode])
 
   useEffect(() => {
-    if (open) load()
+    if (open) runAsync(() => load())
     return () => { generation.current++ }
   }, [open, load])
 
@@ -112,7 +113,7 @@ export default function FinancialSettlements({ authFetch, onChanged }) {
           </select></label>}
           <label>Date <input aria-label="Settlement date" type="date" value={form.date} onChange={event => setField('date', event.target.value)} required disabled={busy} /></label>
           <label>Note <input aria-label="Settlement note" value={form.note} onChange={event => setField('note', event.target.value)} disabled={busy} /></label>
-          <button className="btn btn-primary" disabled={busy || !source || (mode === 'allocate' && !target)}>{busy ? 'Recording…' : modes[mode].label}</button>
+          <button type="submit" className="btn btn-primary" disabled={busy || !source || (mode === 'allocate' && !target)}>{busy ? 'Recording…' : modes[mode].label}</button>
         </form>}
         <h3 style={{ marginTop: 18 }}>Recorded settlements</h3>
         {!error && !history.length && <p>No recorded settlements of this type.</p>}

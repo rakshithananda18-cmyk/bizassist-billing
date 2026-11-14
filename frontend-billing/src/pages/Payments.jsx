@@ -1,3 +1,4 @@
+import { runAsync } from '../utils/asyncAction'
 import useInvoiceActions from '../hooks/useInvoiceActions'
 import usePhoneLayout from '../hooks/usePhoneLayout'
 import PhoneRecord from '../components/common/PhoneRecord'
@@ -697,7 +698,7 @@ export default function Payments({ embedded = false, headerTabs = null, inlinePa
                     [...payments, ...pendingDues].map(p =>
                       p.party_name || p.customer_name || p.supplier_name || p.customer || ''
                     ).filter(Boolean)
-                  )].sort().map(name => ({ value: name, label: name })),
+                  )].sort((a, b) => String(a).localeCompare(String(b))).map(name => ({ value: name, label: name })),
                 ],
               },
               {
@@ -1549,7 +1550,7 @@ export default function Payments({ embedded = false, headerTabs = null, inlinePa
           presetCustomerName={settlePreset?.customerName ?? null}
           presetOutstanding={settlePreset?.outstanding ?? null}
           onClose={() => { setShowSettleModal(false); setSettlePreset(null) }}
-          onDone={() => { load(); setSettlePreset(null) }}
+          onDone={() => { runAsync(() => load()); setSettlePreset(null) }}
         />
       )}
 

@@ -1,3 +1,4 @@
+import { dismissOnEscape } from '../../utils/keyboardActions'
 // components/sales/ShiftSummary.jsx — printable end-of-shift summary.
 // ====================================================================
 // Shown after CloseShiftModal (and reusable anywhere a closed shift row is
@@ -194,7 +195,7 @@ export default function ShiftSummaryModal({ shift, onClose, authFetch, operatorN
   return (
     <>
       {/* Screen modal */}
-      <div className="modal-overlay" style={{ zIndex: 3100 }} onClick={e => e.target === e.currentTarget && onClose?.()}>
+      <div role="presentation" onKeyDown={dismissOnEscape} className="modal-overlay" style={{ zIndex: 3100 }} onClick={e => e.target === e.currentTarget && onClose?.()}>
         <div className="modal" style={{ maxWidth: 640, width: '95%', maxHeight: '88vh', overflowY: 'auto' }}>
           <div style={{ padding: '18px 22px', background: '#fff', color: '#111', borderRadius: 'inherit' }}>
             <SummaryBody shift={shift} invoices={invoices} businessName={businessName} operatorName={operatorName} />

@@ -624,8 +624,8 @@ def create_sale_invoice_frontend(
             logger.warning(
                 "[SALES] biz=%s: customer_id=%s does not belong to this business "
                 "(or no longer exists) — writing the invoice WITHOUT the link "
-                "rather than a dangling one. name kept: %r",
-                bid, customer_id, req.customer,
+                "rather than a dangling one. customer name provided: %s",
+                int(bid), int(customer_id), bool(req.customer),
             )
             customer_id = None
 

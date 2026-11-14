@@ -13,6 +13,31 @@ import multiprocessing
 import os
 import sys
 from pathlib import Path
+import tempfile
+
+
+def _write_private_secret(base: Path, filename: str, data: bytes) -> None:
+    """Persist fixed secret filenames atomically inside the selected data folder."""
+    root = base.resolve(strict=True)
+    if filename not in {"jwt-secret", "jwt-secret.dpapi"}:
+        raise ValueError("Unsupported secret filename")
+    target = root / filename
+    if target.is_symlink():
+        raise OSError("Refusing a symlink for a local secret file")
+    temporary = None
+    try:
+        # NamedTemporaryFile creates a private file (0600 on POSIX). Replacing
+        # within this same directory never follows a destination file symlink.
+        with tempfile.NamedTemporaryFile(dir=root, prefix=".jwt-secret-", delete=False) as stream:
+            temporary = Path(stream.name)
+            stream.write(data)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, target)
+        temporary = None
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
 
 
 def _read_wrapped_secret(wrapped_file: Path) -> str | None:
@@ -21,8 +46,8 @@ def _read_wrapped_secret(wrapped_file: Path) -> str | None:
     None covers the cases that matter: a different Windows user, a reinstalled
     profile, a data directory restored onto another machine. The caller mints a
     fresh secret — which costs everyone a re-login and nothing else, because this
-    secret signs SESSIONS, not data. (Hybrid installs take their secret from
-    `.env` above and never reach this path at all.)
+    secret signs local SESSIONS, not business data. Cloud synchronization uses
+    separate business-bound cloud-issued credentials, never this signing key.
     """
     if not wrapped_file.exists():
         return None
@@ -54,18 +79,18 @@ def _persist_secret(base: Path, secret: str) -> None:
 
     blob = dpapi.protect(secret.encode("utf-8"))
     if blob is None:
-        legacy_file.write_text(secret, encoding="utf-8")
+        _write_private_secret(base, "jwt-secret", secret.encode("utf-8"))
         if dpapi.available():
             print("[server_entry] DPAPI refused to wrap jwt-secret; it is on "
                   "disk in PLAINTEXT.", file=sys.stderr)
         return
 
-    wrapped_file.write_bytes(blob)
+    _write_private_secret(base, "jwt-secret.dpapi", blob)
     # Verify before destroying the only other copy.
     if _read_wrapped_secret(wrapped_file) != secret:
         print("[server_entry] jwt-secret.dpapi did not read back correctly — "
               "keeping the plaintext file.", file=sys.stderr)
-        legacy_file.write_text(secret, encoding="utf-8")
+        _write_private_secret(base, "jwt-secret", secret.encode("utf-8"))
         return
     if legacy_file.exists():
         legacy_file.unlink()
@@ -79,19 +104,16 @@ def _ensure_jwt_secret(data_dir: str | None) -> None:
     .env (secrets never go inside the exe), so resolve one at runtime:
 
       1. Already in the environment → use it.
-      2. .env in the data dir → loaded (lets users share the cloud's secret,
-         REQUIRED for hybrid sync: local-signed tokens must verify on the cloud).
+       2. .env in the data dir → loaded (an optional local installation secret).
       3. <data_dir>/jwt-secret.dpapi → unwrapped via Windows DPAPI.
       4. <data_dir>/jwt-secret → LEGACY plaintext. Read, re-persisted wrapped,
          and the plaintext deleted.
       5. Otherwise generate once and persist (wrapped where possible) so local
-         sessions survive restarts. (Hybrid sync will 401 until the user drops
-         the shared secret into .env — local & cloud-mode use is unaffected.)
+       sessions survive restarts. Cloud sync is linked separately at owner login.
 
     WHY WRAPPED (C-1 §7). This file used to be written in cleartext next to
-    `bizassist.db`. On a hybrid install the secret it holds SIGNS TOKENS THE
-    CLOUD ACCEPTS, so a copy of this one file is a copy of the shop's cloud
-    identity — a worse leak than the price book the encryption work is about.
+    `bizassist.db`. It authorizes local sessions and must stay private to this
+    installation. It must never be shared with or copied from the cloud signer.
     DPAPI binds it to this Windows user on this machine, so a copied data
     directory is useless. It does NOT defend against anything running as that
     same user; see docs/DECISION_LOCAL_DB_ENCRYPTION_2026-08-03.md §1.

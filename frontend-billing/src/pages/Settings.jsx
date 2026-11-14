@@ -1,3 +1,4 @@
+import { runAsync } from '../utils/asyncAction'
 // ============================================================================
 // Page: Settings.jsx
 // Description: Application Settings Orchestrator. Manages store configurations,
@@ -491,13 +492,13 @@ function SettingsWorkspace() {
 
   const handleAddBusinessType = () => {
     if (!addTypeKey || bizTypes.includes(addTypeKey)) return
-    saveBusinessTypes([...bizTypes, addTypeKey])
+    runAsync(() => saveBusinessTypes([...bizTypes, addTypeKey]))
     setAddTypeKey('')
   }
 
   const handleRemoveBusinessType = (key) => {
     if (key === bizTypes[0]) return   // primary is changed via the selector above
-    saveBusinessTypes(bizTypes.filter(k => k !== key))
+    runAsync(() => saveBusinessTypes(bizTypes.filter(k => k !== key)))
   }
 
   // ============================================================================

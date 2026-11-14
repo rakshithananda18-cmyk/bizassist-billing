@@ -12,7 +12,7 @@ beforeEach(() => {
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals() })
 it('rotates quietly, resumes the last id and refreshes only on a replay gap', async () => {
   const onGap = vi.fn(), onStatus = vi.fn(), onEvent = vi.fn()
-  const connection = createSseConnection({ fetchTicket: async () => 'https://api.test/realtime/events?ticket=fresh', onGap, onStatus, onEvent, random: () => 0.5 })
+  const connection = createSseConnection({ fetchTicket: async () => 'http://localhost:8001/realtime/events?ticket=fresh', onGap, onStatus, onEvent, random: () => 0.5 })
   await vi.advanceTimersByTimeAsync(0)
   streams[0].events.hello({ data: '{"replay":"none"}' })
   streams[0].onmessage({ data: '{"entity":"product"}', lastEventId: 'epoch-12' })
@@ -38,11 +38,23 @@ it('shows degradation only after thirty seconds and cancels delayed work on tear
   expect(vi.getTimerCount()).toBe(0)
 })
 it('retains the hello cursor when a gap is followed by a silent disconnect', async () => {
-  const connection = createSseConnection({ fetchTicket: async () => 'https://api.test/realtime/events?ticket=fresh', random: () => 0.5 })
+  const connection = createSseConnection({ fetchTicket: async () => 'http://localhost:8001/realtime/events?ticket=fresh', random: () => 0.5 })
   await vi.advanceTimersByTimeAsync(0)
   streams[0].events.hello({ data: '{"replay":"gap","cursor":"new-epoch-47"}' })
   streams[0].onerror()
   await vi.advanceTimersByTimeAsync(1000)
   expect(streams[1].url).toContain('last_event_id=new-epoch-47')
   connection.close()
+})
+
+it.each([
+  'https://attacker.example/realtime/events?ticket=private',
+  'http://localhost:8001/another-route?ticket=private',
+  'http://user:pass@localhost:8001/realtime/events?ticket=private',
+])('does not create an EventSource for untrusted ticket target %s', async target => {
+  const connection = createSseConnection({ baseUrl: 'http://localhost:8001', fetchTicket: async () => target })
+  await vi.advanceTimersByTimeAsync(0)
+  expect(streams).toHaveLength(0)
+  connection.close()
+  expect(vi.getTimerCount()).toBe(0)
 })

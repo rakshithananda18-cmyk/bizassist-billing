@@ -1,3 +1,4 @@
+import { dismissOnEscape } from '../../utils/keyboardActions'
 // components/stock/BulkAddProductsModal.jsx — Smart dual-mode product manager.
 // =============================================================================
 // Mode A — "Add Products":  spreadsheet-style table for adding many new products
@@ -341,7 +342,7 @@ export default function BulkAddProductsModal({ open, onClose, onSaved, existingP
   // ─────────────────────── RENDER ─────────────────────────────
 
   return (
-    <div
+    <div role="presentation" onKeyDown={dismissOnEscape}
       className="modal-overlay"
       style={{ zIndex: 3000 }}
       onClick={e => e.target === e.currentTarget && !addSaving && !stockSaving && onClose()}

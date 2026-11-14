@@ -1,3 +1,4 @@
+import { dismissOnEscape } from '../../utils/keyboardActions'
 // ============================================================================
 // RecordPaymentModal — the "Record Payment" modal, extracted verbatim from
 // pages/Payments.jsx (repo restructure). Form state stays with the page.
@@ -8,7 +9,7 @@ import { BillsIcon, CashIcon, CheckIcon, CloseIcon, PhoneIcon, WarehouseIcon } f
 
 export default function RecordPaymentModal({ form, setField, onSubmit, submitting, onClose }) {
   return (
-    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+    <div role="presentation" onKeyDown={dismissOnEscape} className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="modal">
         <div className="modal-header">
           <span className="modal-title">💳 Record Payment</span>

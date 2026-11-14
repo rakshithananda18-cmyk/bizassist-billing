@@ -1,3 +1,4 @@
+import { runAsync } from '../../utils/asyncAction'
 // components/common/BulkPreviewModal.jsx — the approve step for bulk actions.
 // ============================================================================
 // Owns the whole preview → confirm → execute round trip against the action
@@ -69,7 +70,7 @@ export default function BulkPreviewModal({ request, authFetch, onClose, onDone }
 
   useEffect(() => {
     if (!request) { setPreview(null); setError(null); setDrifted(false); return }
-    loadPreview()
+    runAsync(() => loadPreview())
   }, [request, loadPreview])
 
   const confirm = useCallback(async () => {
@@ -129,16 +130,15 @@ export default function BulkPreviewModal({ request, authFetch, onClose, onDone }
 
   return createPortal(
     <>
-      <div
+      <button type="button" aria-label="Close dialog"
         onClick={busy ? undefined : onClose}
-        style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)',
+        style={{ border: 0, padding: 0, position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)',
           backdropFilter: 'blur(3px)', zIndex: 999992 }}
       />
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby="bpm-title"
-        onClick={e => e.stopPropagation()}
         style={{
           position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
           zIndex: 999993, width: 'min(520px, calc(100vw - 32px))',

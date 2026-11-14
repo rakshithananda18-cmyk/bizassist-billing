@@ -47,6 +47,13 @@
         }
 
         .right { text-align: right; }
+        .label-value th {
+            border: none;
+            background: transparent;
+            font: inherit;
+            text-align: left;
+            vertical-align: top;
+        }
         .bold { font-weight: 700; }
         .label {
             font-size: 10px;
@@ -117,12 +124,12 @@
             {% if gst and buyer.state %}<div>State: {{ buyer.state }} ({{ buyer.state_code }})</div>{% endif %}
         </div>
         <div class="flex-1" style="padding: 6px 10px; font-size: 12px;">
-            <table style="border: none;">
-                <tr><td style="border: none; padding: 0 8px 0 0;">Invoice No.</td><td style="border: none; padding: 0;" class="bold">{{ invoice.number }}</td></tr>
-                <tr><td style="border: none; padding: 0 8px 0 0;">Date</td><td style="border: none; padding: 0;" class="bold">{{ invoice.date }}{% if invoice.time %} &middot; {{ invoice.time }}{% endif %}</td></tr>
-                {% if invoice.due_date %}<tr><td style="border: none; padding: 0 8px 0 0;">Due Date</td><td style="border: none; padding: 0;">{{ invoice.due_date }}</td></tr>{% endif %}
-                {% if gst and invoice.place_of_supply %}<tr><td style="border: none; padding: 0 8px 0 0;">Place of Supply</td><td style="border: none; padding: 0;">{{ invoice.place_of_supply }}</td></tr>{% endif %}
-                {% if gst and invoice.reverse_charge %}<tr><td style="border: none; padding: 0 8px 0 0;">Reverse Charge</td><td style="border: none; padding: 0;">Yes</td></tr>{% endif %}
+            <table class="label-value" style="border: none;">
+                <tr><th scope="row" style="border: none; padding: 0 8px 0 0;">Invoice No.</th><td style="border: none; padding: 0;" class="bold">{{ invoice.number }}</td></tr>
+                <tr><th scope="row" style="border: none; padding: 0 8px 0 0;">Date</th><td style="border: none; padding: 0;" class="bold">{{ invoice.date }}{% if invoice.time %} &middot; {{ invoice.time }}{% endif %}</td></tr>
+                {% if invoice.due_date %}<tr><th scope="row" style="border: none; padding: 0 8px 0 0;">Due Date</th><td style="border: none; padding: 0;">{{ invoice.due_date }}</td></tr>{% endif %}
+                {% if gst and invoice.place_of_supply %}<tr><th scope="row" style="border: none; padding: 0 8px 0 0;">Place of Supply</th><td style="border: none; padding: 0;">{{ invoice.place_of_supply }}</td></tr>{% endif %}
+                {% if gst and invoice.reverse_charge %}<tr><th scope="row" style="border: none; padding: 0 8px 0 0;">Reverse Charge</th><td style="border: none; padding: 0;">Yes</td></tr>{% endif %}
             </table>
         </div>
     </div>
@@ -223,11 +230,11 @@
         </div>
 
         <div class="flex-1" style="padding: 6px 10px;">
-            <table style="border: none;">
+            <table class="label-value" style="border: none;">
                 <!-- Row helper macro -->
                 {% macro summary_row(k, v, big=False) %}
                 <tr>
-                    <td style="border: none; padding: 2px 4px; {% if big %}font-weight: 800; font-size: 13px; border-top: 1px solid #000;{% endif %}">{{ k }}</td>
+                    <th scope="row" style="border: none; padding: 2px 4px; {% if big %}font-weight: 800; font-size: 13px; border-top: 1px solid #000;{% endif %}">{{ k }}</th>
                     <td style="border: none; padding: 2px 4px; text-align: right; {% if big %}font-weight: 800; font-size: 13px; border-top: 1px solid #000;{% endif %}">{{ v }}</td>
                 </tr>
                 {% endmacro %}

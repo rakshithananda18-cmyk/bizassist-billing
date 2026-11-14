@@ -29,9 +29,9 @@ export default function UnsavedChangesModal({ blocker, message }) {
   return createPortal(
     <>
       {/* Backdrop */}
-      <div
+      <button type="button" aria-label="Close dialog"
         onClick={() => blocker.reset()}
-        style={{
+        style={{ border: 0, padding: 0,
           position: 'fixed', inset: 0,
           background: 'rgba(0,0,0,0.45)',
           backdropFilter: 'blur(3px)',

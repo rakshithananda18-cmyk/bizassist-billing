@@ -8,7 +8,9 @@ intent the user actually wanted, which creates an instant per-query override.
   GET  /feedback/intents   -> the list of correctable intents (for the UI picker)
 """
 from services.dates import utc_now
+from services.log_safety import log_value
 import logging
+import anyio
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -106,8 +108,10 @@ async def _store_bounded_log_upload(upload: UploadFile, destination: Path) -> No
     controlled.  Do not use ``copyfileobj`` here: it has no byte ceiling.
     """
     total = 0
+    created = False
     try:
-        with destination.open("xb") as out:
+        async with await anyio.open_file(destination, "xb") as out:
+            created = True
             while True:
                 chunk = await upload.read(_UPLOAD_CHUNK_BYTES)
                 if not chunk:
@@ -118,12 +122,16 @@ async def _store_bounded_log_upload(upload: UploadFile, destination: Path) -> No
                         status_code=413,
                         detail="Support log archive exceeds the 5 MB limit.",
                     )
-                out.write(chunk)
-    except Exception:
-        try:
-            destination.unlink(missing_ok=True)
-        except OSError:
-            pass
+                await out.write(chunk)
+    except BaseException:
+        # Do not remove an existing file if exclusive creation itself failed.
+        # A cancelled request must still remove the partial archive it created.
+        if created:
+            with anyio.CancelScope(shield=True):
+                try:
+                    await anyio.Path(destination).unlink(missing_ok=True)
+                except OSError:
+                    pass
         raise
 
 @router.post("/feedback/submit")
@@ -163,7 +171,7 @@ async def submit_merchant_feedback(
         archive_path = None
         if attach_logs:
             from services.log_uploader import archive_logs
-            archive_path = archive_logs(business_id)
+            archive_path = await anyio.to_thread.run_sync(archive_logs, business_id)
             
         from services.sync_worker import _get_cloud_token, CLOUD_URL
         token = _get_cloud_token(business_id)
@@ -178,26 +186,35 @@ async def submit_merchant_feedback(
             data = {"message": message, "attach_logs": "true" if attach_logs else "false"}
             
             files = None
-            if archive_path and os.path.exists(archive_path):
-                f = open(archive_path, "rb")
-                files = {"file": (os.path.basename(archive_path), f, "application/gzip")}
-                
-            resp = httpx.post(url, data=data, files=files, headers=headers, timeout=30.0)
-            
-            if files:
-                f.close()
+            if archive_path and await anyio.Path(archive_path).is_file():
+                async with await anyio.open_file(archive_path, "rb") as stream:
+                    archive = await stream.read(_MAX_FEEDBACK_UPLOAD_BYTES + 1)
+                if len(archive) > _MAX_FEEDBACK_UPLOAD_BYTES:
+                    raise HTTPException(413, "Support log archive exceeds the 5 MB limit.")
+                files = {"file": (os.path.basename(archive_path), archive, "application/gzip")}
+
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                resp = await client.post(url, data=data, files=files, headers=headers)
+
+            if files and resp.status_code == 200:
                 try:
-                    os.remove(archive_path)
-                except Exception:
+                    await anyio.Path(archive_path).unlink(missing_ok=True)
+                except OSError:
                     pass
                     
             if resp.status_code == 200:
                 return {"ok": True, "message": "Feedback and logs submitted to cloud successfully."}
             else:
-                raise HTTPException(status_code=resp.status_code, detail=f"Cloud upload failed: {resp.text}")
+                # Cloud credentials are independent of the local sign-in.
+                # Do not turn a cloud rejection into a local-session 401/403.
+                if resp.status_code in {401, 403}:
+                    raise HTTPException(502, "Reconnect your cloud account before sending feedback.")
+                raise HTTPException(status_code=resp.status_code, detail="Cloud feedback upload was not accepted. Retry when connected.")
+        except HTTPException:
+            raise
         except Exception as e:
-            logger.error("Failed to forward feedback to cloud: %s", e)
-            raise HTTPException(status_code=500, detail=f"Failed to submit feedback: {e}")
+            logger.error("Failed to forward feedback to cloud (%s)", type(e).__name__)
+            raise HTTPException(status_code=503, detail="Cloud feedback is temporarily unavailable. Retry when connected.") from None
             
     else:
         # ── CLOUD RECEIVER BEHAVIOR ──
@@ -210,7 +227,7 @@ async def submit_merchant_feedback(
             log_file_path = None
             if file:
                 upload_dir = os.path.join("logs", "remote_clients", str(business_id))
-                os.makedirs(upload_dir, exist_ok=True)
+                await anyio.Path(upload_dir).mkdir(parents=True, exist_ok=True)
                 
                 timestamp = utc_now().strftime("%Y%m%d_%H%M%S")
                 # Never use a client filename as a path component.  The random
@@ -232,11 +249,12 @@ async def submit_merchant_feedback(
             db.flush()
             if log_file_path:
                 from services.client_log_archives import store_archive
-                store_archive(db, business_id=business_id, filename=filename, content=dest_path.read_bytes(), feedback_id=feedback_row.id, kind="daily" if message.startswith("Scheduled") else "feedback")
+                content = await anyio.Path(dest_path).read_bytes()
+                store_archive(db, business_id=business_id, filename=filename, content=content, feedback_id=feedback_row.id, kind="daily" if message.startswith("Scheduled") else "feedback")
             db.commit()
             if log_file_path:
                 try:
-                    dest_path.unlink(missing_ok=True)
+                    await anyio.Path(dest_path).unlink(missing_ok=True)
                 except OSError:
                     pass
             return {"ok": True, "message": "Feedback received successfully."}
@@ -258,24 +276,31 @@ def _on_cloud_db() -> bool:
 
 
 @router.get("/diagnostics/logs")
-def download_diagnostics_logs(current_user: dict = Depends(restrict_cashier)):
+def download_diagnostics_logs(current_user: dict = Depends(require_business_owner)):
     """Build and stream a .tar.gz of THIS backend's diagnostic logs so the user
     can download them (Settings → "Download logs") and share them for debugging.
 
     Collects, if present: the app log file (LOG_FILE env, else logs/bizassist.log)
     and its rotations. The Admin Console's audit log is never included.
 
-    Owners only. On a desktop that is the owner's own computer's log. On the
-    cloud the log covers EVERY customer's requests (and every sign-in typed),
-    so there only the platform admin may download it.
+    Owners receive only this business's tagged records, including on a shared
+    LAN installation. Only platform admins may download a complete server log.
     """
     import io, os, glob, tarfile
     from fastapi.responses import StreamingResponse
 
     if _on_cloud_db() and (current_user.get("role") or "").lower() != "admin":
         logger.warning("[DIAG] refused cloud log download for '%s' (role=%s)",
-                       current_user.get("username"), current_user.get("role"))
+                       log_value(current_user.get("username")), log_value(current_user.get("role")))
         raise HTTPException(status_code=403, detail="The cloud server's logs cover every business; only the platform admin can download them.")
+
+    is_admin = (current_user.get("role") or "").lower() == "admin"
+    bizid = current_user.get("public_id")
+    if not is_admin and not bizid:
+        from core.identity import bizid_for
+        bizid = bizid_for(current_user.get("id"))
+        if not bizid:
+            raise HTTPException(403, "A business identity is required to download diagnostics.")
 
     candidates = []
     log_file = os.getenv("LOG_FILE") or os.path.join("logs", "bizassist.log")
@@ -284,17 +309,29 @@ def download_diagnostics_logs(current_user: dict = Depends(restrict_cashier)):
     existing = [p for p in dict.fromkeys(candidates) if os.path.isfile(p)]
 
     buf = io.BytesIO()
+    served = 0
     with tarfile.open(fileobj=buf, mode="w:gz") as tar:
         if existing:
             for p in existing:
                 try:
-                    tar.add(p, arcname=os.path.basename(p))
+                    if is_admin:
+                        tar.add(p, arcname=os.path.basename(p))
+                    else:
+                        from services.log_uploader import filter_log_for
+                        with open(p, encoding="utf-8", errors="replace") as stream:
+                            content = "".join(filter_log_for(bizid, stream)).encode("utf-8")
+                        if not content:
+                            continue
+                        info = tarfile.TarInfo(name=os.path.basename(p))
+                        info.size = len(content)
+                        tar.addfile(info, io.BytesIO(content))
+                    served += 1
                 except Exception as ex:
-                    logger.warning("diagnostics: could not add %s: %s", p, ex)
-        else:
+                    logger.warning("diagnostics: could not add %s (%s)", log_value(p), type(ex).__name__)
+        if not served:
             # Never hand back an empty/confusing archive — include a note.
             note = (
-                "No on-disk log file was found on this backend.\n"
+                "No matching diagnostic log entries were found on this backend.\n"
                 "On the desktop app, backend logs are also captured in the app's "
                 "Electron log (main.log) under %APPDATA%\\<app>\\logs.\n"
             ).encode("utf-8")
@@ -304,7 +341,7 @@ def download_diagnostics_logs(current_user: dict = Depends(restrict_cashier)):
     buf.seek(0)
 
     fname = f"bizassist-logs-{utc_now().strftime('%Y%m%d-%H%M%S')}.tar.gz"
-    logger.info("[DIAGNOSTICS] Served %d log file(s) to user '%s'", len(existing), current_user.get("username"))
+    logger.info("[DIAGNOSTICS] Served %d log file(s) to user '%s'", served, log_value(current_user.get("username")))
     return StreamingResponse(
         buf,
         media_type="application/gzip",

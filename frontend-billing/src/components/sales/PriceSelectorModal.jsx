@@ -1,3 +1,4 @@
+import { dismissOnEscape } from '../../utils/keyboardActions'
 // ============================================================================
 // PriceSelectorModal — "multiple prices found" picker for a cart line,
 // extracted verbatim from pages/Sales.jsx (repo restructure).
@@ -11,13 +12,14 @@ import TourPrivatePreview from '../../demo/TourPrivatePreview'
 export default function PriceSelectorModal({ productName, options, selectedIndex, onHoverIndex, onSelect, onClose, protectTour = false }) {
   const firstPrivateIndex = options.findIndex(option => option.label !== 'Standard Price')
   return (
-    <div
+    <div role="presentation" onKeyDown={dismissOnEscape}
       className="modal-overlay"
-      onClick={onClose}
+      onClick={event => { if (event.target === event.currentTarget) onClose(event) }}
       style={{ zIndex: 2010 }}
     >
       <div
         className="modal"
+        role="dialog" aria-modal="true" aria-label={`Select price for ${productName}`}
         style={{
           maxWidth: '580px',
           background: 'var(--glass-bg)',
@@ -27,7 +29,6 @@ export default function PriceSelectorModal({ productName, options, selectedIndex
           color: 'var(--text-primary)',
           boxShadow: 'var(--shadow-lg)'
         }}
-        onClick={e => e.stopPropagation()}
       >
         <div className="modal-header" style={{ borderBottom: '1px solid var(--border)' }}>
           <span className="modal-title" style={{ fontSize: '1.1rem', fontWeight: 800, display: 'inline-flex', alignItems: 'center', gap: '6px', color: 'var(--text-primary)' }}>

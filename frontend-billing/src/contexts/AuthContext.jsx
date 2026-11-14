@@ -1,3 +1,5 @@
+import { runAsync } from '../utils/asyncAction'
+import { newClientRequestId } from '../sync/uuid'
 import React, { useContext, useState, useEffect, useCallback, useRef } from 'react'
 import { authContext as AuthContext } from './contextIdentity'
 import {
@@ -628,7 +630,7 @@ export function AuthProvider({ children }) {
       // BizID identity check WITH that cloud token. Never send a locally
       // signed JWT to the cloud — its JWT_SECRET differs on packaged installs,
       // so the cloud would (correctly) reject it with 401 "Invalid token".
-      _prepareLoginSync(username, password, data.token || data.access_token, null, 'login', backend)
+      runAsync(() => _prepareLoginSync(username, password, data.token || data.access_token, null, 'login', backend), { notify: false })
       return
     }
 
@@ -668,7 +670,7 @@ export function AuthProvider({ children }) {
               const retryData = await retryRes.json()
               logger.info('[LOGIN] Local password reconciled with cloud and login successful.')
               _saveSession(retryData)
-              _prepareLoginSync(username, password, retryData.token || retryData.access_token, cloudData.token, 'login', backend)
+              runAsync(() => _prepareLoginSync(username, password, retryData.token || retryData.access_token, cloudData.token, 'login', backend), { notify: false })
               return
             }
           } else if (![403, 404].includes(reconcileRes.status)) {
@@ -692,7 +694,7 @@ export function AuthProvider({ children }) {
             _saveSession(localData)
             // Provision first, then verify and schedule the durable worker. No
             // popup races a missing cloud token on a fresh installation.
-            _prepareLoginSync(username, password, localData.token || localData.access_token, cloudData.token, 'device-restore', backend)
+            runAsync(() => _prepareLoginSync(username, password, localData.token || localData.access_token, cloudData.token, 'device-restore', backend), { notify: false })
             return
           }
           logger.error(`[LOGIN] Cloud login ok but local mirror failed: HTTP ${mirror.status}`)
@@ -807,7 +809,7 @@ export function AuthProvider({ children }) {
   }, [])
 
   const _doSignup = useCallback(async (base, body) => {
-    const requestId = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`
+    const requestId = newClientRequestId()
     const send = () => authFetchWithFailover(`${base}/signup`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Client-Request-Id': requestId }, body: JSON.stringify(body),
     })
@@ -1035,7 +1037,7 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     if (isDemoMode || user?.is_demo || token === DEMO_TOKEN) return
     const changed = event => {
-      if (token && (event.key === 'billing_token' || event.key === 'billing_user') && !event.newValue) logout(false)
+      if (token && (event.key === 'billing_token' || event.key === 'billing_user') && !event.newValue) runAsync(() => logout(false), { notify: false })
       else if (event.key === 'billing_token' && event.newValue) {
         try {
           const saved = JSON.parse(localStorage.getItem('billing_user') || 'null')
@@ -1049,7 +1051,7 @@ export function AuthProvider({ children }) {
     try {
       if (typeof BroadcastChannel !== 'undefined') {
         channel = new BroadcastChannel('bizassist_auth_channel')
-        channel.onmessage = event => { if (event.data?.type === 'LOGOUT') logout(false) }
+        channel.onmessage = event => { if (event.data?.type === 'LOGOUT') runAsync(() => logout(false), { notify: false }) }
       }
     } catch { /* storage events remain available */ }
     return () => { window.removeEventListener('storage', changed); channel?.close() }
@@ -1439,7 +1441,7 @@ export function AuthProvider({ children }) {
 
     let cloudTok = null
     try { cloudTok = localStorage.getItem('bizassist_cloud_token') } catch { /* ignore */ }
-    _startVerifiedSync(token, cloudTok)
+    runAsync(() => _startVerifiedSync(token, cloudTok), { notify: false })
   }, [settings?.subscription?.plan, token, _startVerifiedSync])
 
   useEffect(() => {
@@ -1451,7 +1453,7 @@ export function AuthProvider({ children }) {
       }
       logger.info('[AuthContext] Session rejected; returning to sign-in.')
       setSessionNotice(SESSION_EXPIRED_NOTICE)
-      logout(false)
+      runAsync(() => logout(false), { notify: false })
       window.dispatchEvent(new CustomEvent('show_toast', {
         detail: { type: 'error', msg: 'Session expired. Please log in again.' }
       }))

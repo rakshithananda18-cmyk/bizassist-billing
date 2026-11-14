@@ -1,3 +1,4 @@
+import { runAsync } from '../utils/asyncAction'
 // ============================================================================
 // Page: Sales.jsx
 // Description: POS Counter Orchestrator. Manages multi-tab active carts, product
@@ -180,7 +181,7 @@ export default function Sales(props = {}) {
     }
   }, [authFetch, isLiveView])
 
-  useEffect(() => { refreshShift() }, [refreshShift])
+  useEffect(() => { runAsync(() => refreshShift()) }, [refreshShift])
 
   // ============================================================================
   // ── 4. OFFLINE SYNC OUTBOX BINDINGS ──
@@ -835,7 +836,7 @@ export default function Sales(props = {}) {
     }
   }, [authFetch, getCounterPrefix])
 
-  useEffect(() => { refreshSeriesFloor() }, [refreshSeriesFloor])
+  useEffect(() => { runAsync(() => refreshSeriesFloor()) }, [refreshSeriesFloor])
 
   const syncTabNames = useCallback((currentTabs, existingInvoices) =>
     syncTabNamesFor(currentTabs, existingInvoices, getCounterPrefix(), seriesFloorRef.current),
@@ -1861,14 +1862,14 @@ export default function Sales(props = {}) {
         }
       }
       if (selectedIndex !== -1 && currentFiltered[selectedIndex]) {
-        addProductToCart(currentFiltered[selectedIndex])
+        runAsync(() => addProductToCart(currentFiltered[selectedIndex]))
       } else if (searchQuery.trim()) {
         const code = searchQuery.trim()
         const exactMatch = products.find(p => p.barcode === code || (p.sku && p.sku === code))
         if (exactMatch) {
           addProductToCart(exactMatch)
         } else if (currentFiltered.length > 0) {
-          addProductToCart(currentFiltered[0])
+          runAsync(() => addProductToCart(currentFiltered[0]))
         } else {
           addCustomItemToCart()
           setForm(f => {
@@ -2340,7 +2341,7 @@ export default function Sales(props = {}) {
           open={showCashMovementModal}
           authFetch={authFetch}
           onClose={() => setShowCashMovementModal(false)}
-          onRecorded={() => { setShowCashMovementModal(false); refreshShift() }}
+          onRecorded={() => { setShowCashMovementModal(false); runAsync(() => refreshShift()) }}
         />
 
         {isLiveView && (

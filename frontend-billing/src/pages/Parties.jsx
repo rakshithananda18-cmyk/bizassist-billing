@@ -1,3 +1,4 @@
+import { runAsync } from '../utils/asyncAction'
 import usePhoneLayout from '../hooks/usePhoneLayout'
 import PhoneRecord from '../components/common/PhoneRecord'
 import './money-phone.css'
@@ -336,7 +337,7 @@ export default function Parties({ embedded = false, headerTabs = null, inlinePag
       })
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || 'Update failed')
       setAlert({ type: 'success', msg: `${p.name} ${next ? 'reactivated' : 'deactivated'}.` })
-      load()
+      runAsync(() => load())
     } catch (e) {
       setAlert({ type: 'danger', msg: e.message })
     }

@@ -1,3 +1,4 @@
+import { dismissOnEscape } from '../../utils/keyboardActions'
 import React, { useState, useEffect } from 'react'
 import MockPosAnimation from './MockPosAnimation'
 import { BuildingMark } from '../Logo'
@@ -115,7 +116,7 @@ export default function SmartHelpCenterModal({
   const isBillingRoute = resolvedRoute === '/' || resolvedRoute === '/billing' || resolvedRoute === '/sales'
 
   return (
-    <div
+    <div role="presentation" onKeyDown={dismissOnEscape}
       onClick={e => e.target === e.currentTarget && onClose()}
       style={{
         position: 'fixed',

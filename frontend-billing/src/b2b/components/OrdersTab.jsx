@@ -1,3 +1,4 @@
+import { dismissOnEscape } from '../../utils/keyboardActions'
 import usePhoneLayout from '../../hooks/usePhoneLayout'
 import PhoneRecord from '../../components/common/PhoneRecord'
 import '../../pages/money-phone.css'
@@ -379,7 +380,7 @@ export default function OrdersTab({
           </PhoneRecord>;
         })}
       </div> : fullScreen ? (
-        <div className="table-fullscreen-overlay" onClick={e => { if (e.target === e.currentTarget) setFullScreen(false) }}>
+        <div role="presentation" onKeyDown={dismissOnEscape} className="table-fullscreen-overlay" onClick={e => { if (e.target === e.currentTarget) setFullScreen(false) }}>
           <div className="table-fullscreen-panel">
             <div className="table-fullscreen-header">
               <h3>{title}<span style={{ color: 'var(--text-muted)', fontWeight: 500 }}> · {displayOrders.length} shown</span></h3>
@@ -398,8 +399,8 @@ export default function OrdersTab({
 
       {/* ── Filter Modal ─────────────────────────────────────────────────── */}
       {showFilterModal && (
-        <div className="modal-backdrop" onClick={() => setShowFilterModal(false)}>
-          <div className="modal" style={{ maxWidth: 440 }} onClick={e => e.stopPropagation()}>
+        <div role="presentation" onKeyDown={dismissOnEscape} className="modal-backdrop" onClick={event => { if (event.target === event.currentTarget) setShowFilterModal(false) }}>
+          <div className="modal" style={{ maxWidth: 440 }} >
             <div className="modal-header">
               <span className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <FilterIcon size={16} /> Filter {title}

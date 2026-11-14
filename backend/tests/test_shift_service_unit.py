@@ -637,7 +637,9 @@ def test_tally_has_no_side_effects(db, biz):
 def test_tally_is_deterministic(db, biz):
     sh = S.open_shift(db, business_id=biz["bid"], user_id=biz["uid"], opening_cash=77.77)
     _receipt(db, biz, sh, 22.23, "cash")
-    assert S.compute_tally(db, sh) == S.compute_tally(db, sh)
+    first = S.compute_tally(db, sh)
+    db.expire_all()
+    assert S.compute_tally(db, sh) == first
 
 
 # ── close_shift ──────────────────────────────────────────────────────────────

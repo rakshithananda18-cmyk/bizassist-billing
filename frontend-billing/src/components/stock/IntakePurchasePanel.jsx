@@ -1,3 +1,4 @@
+import { activateOnKeyboard } from '../../utils/keyboardActions'
 // components/stock/IntakePurchasePanel.jsx
 // ============================================================================
 // The right-side panel for Stock Intake: collapsible, themed, vertically
@@ -222,7 +223,7 @@ export default function IntakePurchasePanel({ rows = [], authFetch, distributor:
           {vendorQuery.trim() && (
             <div style={{ position: 'absolute', zIndex: 20, left: 0, right: 0, background: 'var(--bg-3)', border: '1px solid var(--border)', borderRadius: 6, marginTop: 2, maxHeight: 160, overflowY: 'auto', boxShadow: 'var(--shadow-md)' }}>
               {vfiltered.map((v) => (
-                <div key={v.id} onClick={() => pickVendor(v)}
+                <div role="button" tabIndex={0} onKeyDown={activateOnKeyboard} key={v.id} onClick={() => pickVendor(v)}
                   style={{ padding: '6px 9px', cursor: 'pointer', fontSize: '0.78rem', borderBottom: '1px solid var(--border)' }}>
                   {v.name}{v.gstin ? <span style={{ color: 'var(--text-muted)', fontSize: '0.66rem' }}> · {v.gstin}</span> : ''}
                 </div>

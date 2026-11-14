@@ -23,7 +23,8 @@ def invoke_cron(job: str, x_cron_secret: str = Header(default="")):
     try:
         status = cron_runner.run(job, period)
     except Exception:
-        logger.exception("Scheduled job %s failed", job)
+        # Log the registered handler name, not the incoming URL segment.
+        logger.exception("Scheduled handler %s failed", cron_runner.JOBS[job][0].__name__)
         raise HTTPException(500, "Scheduled job failed; it will be retried")
     body = {"status":status,"job":job,"period":period}
     return JSONResponse(body, status_code=503 if status == "partial" else 409 if status == "busy" else 200,

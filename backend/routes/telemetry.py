@@ -17,6 +17,7 @@ Disable anytime with env TELEMETRY_ENABLED=0 (e.g. after the testing phase).
 """
 
 import json
+import anyio
 import logging
 import os
 import re
@@ -28,6 +29,7 @@ from fastapi import APIRouter, Header, HTTPException, Request
 from pydantic import BaseModel, Field
 from services.auth import get_active_user
 from services.dates import utc_now
+from services.log_safety import log_value
 
 router = APIRouter()
 logger = logging.getLogger("bizassist.telemetry")
@@ -128,6 +130,8 @@ def _jsonl_path() -> Path:
 
 def _safe_bizid(bizid: str) -> Optional[str]:
     """Sanitize the client-supplied bizid before it becomes a folder name."""
+    if not isinstance(bizid, str):
+        return None
     token = re.sub(r"[^A-Za-z0-9_\-]", "", (bizid or ""))[:64]
     return token or None
 
@@ -228,15 +232,15 @@ async def ingest_telemetry(
             record["payload"] = payload_str
         # Client-reported errors should not masquerade as server failures.
         log_fn = {"error": logger.warning, "warn": logger.info}.get(ev.level, logger.info)
-        log_fn("[TELEMETRY][CLIENT:%s] %s: %s", ev.level, ev.event, payload_str or "")
+        log_fn("[TELEMETRY][CLIENT:%s] %s: %s", log_value(ev.level), log_value(ev.event), log_value(payload_str or ""))
         db_records.append(record)
         try:
             data = json.dumps(record, default=str, ensure_ascii=False) + "\n"
-            with _jsonl_path().open("a", encoding="utf-8") as f:
-                f.write(data)
+            async with await anyio.open_file(_jsonl_path(), "a", encoding="utf-8") as f:
+                await f.write(data)
             if bizid:
-                with _business_jsonl_path(bizid).open("a", encoding="utf-8") as f:
-                    f.write(data)
+                async with await anyio.open_file(_business_jsonl_path(bizid), "a", encoding="utf-8") as f:
+                    await f.write(data)
         except Exception:
             pass  # read-only FS (HF) — DB persistence below remains best-effort
 
@@ -296,11 +300,11 @@ async def import_telemetry(
         db_records.append(rec)
         try:
             data = json.dumps(rec, default=str, ensure_ascii=False) + "\n"
-            with _jsonl_path().open("a", encoding="utf-8") as f:
-                f.write(data)
+            async with await anyio.open_file(_jsonl_path(), "a", encoding="utf-8") as f:
+                await f.write(data)
             if bizid:
-                with _business_jsonl_path(bizid).open("a", encoding="utf-8") as f:
-                    f.write(data)
+                async with await anyio.open_file(_business_jsonl_path(bizid), "a", encoding="utf-8") as f:
+                    await f.write(data)
             accepted += 1
         except Exception:
             pass

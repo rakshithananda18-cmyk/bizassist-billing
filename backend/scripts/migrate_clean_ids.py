@@ -89,6 +89,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from _dbcompat import out, use_utf8_stdout  # noqa: E402
+from _safe_io import database_target, migration_origin, open_export
 
 try:
     import requests
@@ -115,8 +116,9 @@ def _tok(var: str) -> str:
 
 
 def _export(url: str, token: str) -> dict:
-    r = requests.get(f"{url.rstrip('/')}/api/data-transfer/export",
-                     headers={"Authorization": f"Bearer {token}"}, timeout=TIMEOUT)
+    origin = migration_origin(url)
+    r = requests.get(f"{origin}/api/data-transfer/export",
+                     headers={"Authorization": f"Bearer {token}"}, timeout=TIMEOUT, allow_redirects=False)
     if not r.ok:
         sys.exit(f"\n  export failed: HTTP {r.status_code} {r.text[:300]}")
     return r.json()
@@ -190,6 +192,10 @@ def main() -> int:
                     help="also write the source export to this file, so the migration "
                          "is inspectable and re-runnable without re-reading the source")
     args = ap.parse_args()
+    args.source_url = migration_origin(args.source_url)
+    args.dest_url = migration_origin(args.dest_url)
+    if args.dest_db:
+        args.dest_db = database_target(args.dest_db)
 
     # Checked before anything is read, so the run cannot get as far as importing
     # and only then discover it has nowhere to post the journals.
@@ -214,7 +220,8 @@ def main() -> int:
     out(f"  tables with rows    : {len(cb)}   total rows: {sum(cb.values())}")
 
     if args.dump:
-        Path(args.dump).write_text(json.dumps(before, indent=1, default=str), encoding="utf-8")
+        with open_export(args.dump) as export:
+            json.dump(before, export, indent=1, default=str)
         out(f"  written to {args.dump}")
 
     out("\nChecking the destination is fresh…")
@@ -241,7 +248,7 @@ def main() -> int:
     r = requests.post(
         f"{args.dest_url.rstrip('/')}/api/data-transfer/import?remap_ids=true",
         headers={"Authorization": f"Bearer {dst_tok}", "Content-Type": "application/json"},
-        json={"tables": before.get("tables") or {}}, timeout=TIMEOUT)
+        json={"tables": before.get("tables") or {}}, timeout=TIMEOUT, allow_redirects=False)
     if not r.ok:
         out(f"\n  import FAILED: HTTP {r.status_code} {r.text[:400]}")
         return 1
@@ -258,7 +265,7 @@ def main() -> int:
         out("\nBackfilling journals on the destination "
             "(journal_entries/_lines are not carried by the export)…")
         script = Path(__file__).resolve().parent / "backfill_journals.py"
-        p = subprocess.run([sys.executable, str(script), "--apply", "--db", args.dest_db],
+        p = subprocess.run([sys.executable, str(script), "--apply", f"--db={args.dest_db}"],
                            capture_output=True, text=True, timeout=TIMEOUT)
         out((p.stdout or "")[-1500:])
         if p.returncode != 0:

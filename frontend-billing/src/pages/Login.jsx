@@ -1,3 +1,4 @@
+import { runAsync } from '../utils/asyncAction'
 // ============================================================================
 // Page: Login.jsx
 // Description: User session authentication page. Supports merchant owner credentials
@@ -184,10 +185,10 @@ export default function Login() {
 
   useEffect(() => {
     if (view === 'standard' && standardStep === 'username' && googleBtnRef.current) {
-      renderGoogleButton(googleBtnRef.current, {
+      runAsync(() => renderGoogleButton(googleBtnRef.current, {
         onCredential: handleGoogleCredential,
         text: 'signin_with',
-      })
+      }))
     }
   }, [view, standardStep])
 

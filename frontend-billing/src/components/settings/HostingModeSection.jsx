@@ -1,3 +1,4 @@
+import { activateOnKeyboard } from '../../utils/keyboardActions'
 import React, { useState, useEffect } from 'react'
 import { IS_LOCAL_APP, updateApiBase } from '../../config'
 import { formatIST } from '../../utils/format'
@@ -253,7 +254,7 @@ export default function HostingModeSection({ currentMode, onModeChange, token, i
         {CARDS.map(({ mode, icon, title, desc, badges }) => {
           const state = cardState(mode)
           return (
-            <div
+            <div role="button" tabIndex={0} onKeyDown={activateOnKeyboard}
               key={mode}
               className={`hm-card${state === 'active' ? ' hm-card--active' : ''}${state === 'locked' ? ' hm-card--locked' : ''}${state === 'unavailable' ? ' hm-card--unavailable' : ''}`}
               onClick={() => handleCardClick(mode)}
@@ -434,8 +435,8 @@ export default function HostingModeSection({ currentMode, onModeChange, token, i
             try {
               const stamps = ['cloud-to-local', 'local-to-cloud']
                 .map(d => localStorage.getItem(`bizassist_last_sync_${d}`))
-                .filter(Boolean)
-                .sort()
+                .filter(value => value && Number.isFinite(Date.parse(value)))
+                .sort((a, b) => Date.parse(a) - Date.parse(b))
               if (!stamps.length) return 'Never synced'
               return `Last synced: ${formatIST(stamps[stamps.length - 1])}`
             } catch { return '' }

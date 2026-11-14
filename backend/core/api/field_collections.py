@@ -7,6 +7,7 @@ POST /field-collections/{task_uid}/confirm record them as payments (owner only)
 The logic lives in core/field_team.py; this is the HTTP shell.
 """
 import logging
+from services.log_safety import log_value
 from typing import List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
@@ -57,6 +58,6 @@ def confirm_field_collection(task_uid: str, req: ConfirmRequest, background_task
         db.rollback()
         raise HTTPException(status_code=422, detail=str(e))
     logger.info("[PAYMENT] field collection %s confirmed biz=%s bills=%s total=%s",
-                task_uid, bid, len(out["recorded"]), out["confirmed_total"])
+                log_value(task_uid), log_value(bid), len(out["recorded"]), log_value(out["confirmed_total"]))
     background_tasks.add_task(realtime_manager.broadcast, bid, {"type": "sync.trigger", "entity": "payment"})
     return out

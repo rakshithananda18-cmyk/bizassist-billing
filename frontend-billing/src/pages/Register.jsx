@@ -1,3 +1,4 @@
+import { runAsync } from '../utils/asyncAction'
 // ============================================================================
 // Page: Register.jsx
 // Description: Merchant sign-up page. Handles creating new business owner accounts
@@ -102,11 +103,11 @@ export default function Register() {
       const width = Math.floor(container.getBoundingClientRect().width)
       if (!width || width === renderedWidth) return
       renderedWidth = width
-      renderGoogleButton(container, {
+      runAsync(() => renderGoogleButton(container, {
         onCredential: handleGoogleCredential,
         text: 'signup_with',
         width: Math.min(width, 340),
-      })
+      }))
     }
     renderButton()
     const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(renderButton) : null
@@ -188,7 +189,7 @@ export default function Register() {
       const data = await res.json()
       return Array.isArray(data?.templates) && data.templates.length ? data.templates : null
     }
-    ;(async () => {
+    ;runAsync(() => (async () => {
       try {
         const t = await fetchTemplates(API_BASE)
         if (t) { setTemplates(t); return }
@@ -206,7 +207,7 @@ export default function Register() {
           setTemplates(FALLBACK_TEMPLATES)
         }
       }
-    })()
+    })())
   }, [])
 
   // Live password validation checks

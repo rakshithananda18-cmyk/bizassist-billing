@@ -1,3 +1,6 @@
+import { activateOnKeyboard } from '../../utils/keyboardActions'
+import { newClientRequestId } from '../../sync/uuid'
+import { runAsync } from '../../utils/asyncAction'
 // components/stock/StockIntakeSheet.jsx
 // ============================================================================
 // The unified stock intake surface — a POS-style fullscreen panel embedded
@@ -87,14 +90,12 @@ const todayISO = () => new Date().toISOString().slice(0, 10)
 
 // Default row for a NEW product (not yet in catalogue)
 const BLANK_NEW_ROW = (barcode = '') => ({
-  _key: Math.random(),
+  _key: newClientRequestId(),
   _type: 'new',          // 'new' | 'existing'
   _open: !!barcode,      // auto-expand if barcode came from scan
   _status: null,         // null | 'saving' | 'ok' | error string
   // Idempotency key — generated once per row so network retries don't double-count
-  _idempotency_key: typeof crypto !== 'undefined' && crypto.randomUUID
-    ? crypto.randomUUID()
-    : `row-${Date.now()}-${Math.random()}`,
+  _idempotency_key: newClientRequestId(),
   // product fields (for new)
   name: '', barcode, sku: '', category: '', unit: 'pcs',
   hsn_sac: '', brand: '', description: '',
@@ -115,16 +116,14 @@ const BLANK_NEW_ROW = (barcode = '') => ({
 
 // Row seeded from an existing product
 const ROW_FROM_PRODUCT = (product) => ({
-  _key: Math.random(),
+  _key: newClientRequestId(),
   _type: 'existing',
   _open: false,
   _status: null,
   _product: product,
   _price_mode: 'update',    // 'update' = overwrite product price | 'new_batch' = keep old price
   // Idempotency key — generated once per row so network retries don't double-count
-  _idempotency_key: typeof crypto !== 'undefined' && crypto.randomUUID
-    ? crypto.randomUUID()
-    : `row-${Date.now()}-${Math.random()}`,
+  _idempotency_key: newClientRequestId(),
   product_id: product.id,
   name: product.name || '',
   barcode: product.barcode || '',
@@ -946,7 +945,7 @@ export default function StockIntakeSheet({ products = [], onSaved, onExit, prefi
             type="file"
             accept=".pdf,.png,.jpg,.jpeg,.webp,.csv"
             style={{ display: 'none' }}
-            onChange={e => { handleFileUpload(e.target.files?.[0]); e.target.value = '' }}
+            onChange={e => { runAsync(() => handleFileUpload(e.target.files?.[0])); e.target.value = '' }}
           />
           <button
             className="btn btn-secondary btn-sm"
@@ -1533,7 +1532,7 @@ export default function StockIntakeSheet({ products = [], onSaved, onExit, prefi
 
         {isSidebarCollapsed && rows.length > 0 && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <div
+            <div role="button" tabIndex={0} onKeyDown={activateOnKeyboard}
               onClick={() => setIsSidebarCollapsed(false)}
               style={{
                 display: 'flex', alignItems: 'center', gap: 14,

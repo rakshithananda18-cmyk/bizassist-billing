@@ -14,10 +14,23 @@ const PREFIX = '[BizAssist:Billing]'
 
 let _bizId = null
 /** Set the current BizID (public_id, e.g. "BA-JABXGD"); pass null on logout. */
-export function setBizId(id) { _bizId = id || null }
+export function setBizId(id) {
+  _bizId = typeof id === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(id) ? id : null
+}
 export function getBizId() { return _bizId }
 
 const tag = () => `[BizId=${_bizId || '-'}]`
+
+export function sanitizeLogValue(value) {
+  if (value == null || typeof value === 'number' || typeof value === 'boolean') return value
+  let text
+  try {
+    text = typeof value === 'string' ? value : value instanceof Error
+      ? value.stack || value.message : JSON.stringify(value)
+  } catch { text = '[unreadable log value]' }
+  return String(text).replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/g,
+    char => `\\u${char.charCodeAt(0).toString(16).padStart(4, '0')}`).slice(0, 2000)
+}
 
 // Fire-and-forget forward of warn/error to the telemetry pipeline. Never throws
 // and never recurses back into the logger.
@@ -58,18 +71,18 @@ function forward(level, args) {
 export const logger = {
   debug: (...args) => {
     if (import.meta.env.DEV) {
-      console.log(`%c${PREFIX} [DEBUG] ${tag()}`, 'color: #8b93b8; font-weight: 600;', ...args)
+      console.log(`%c${PREFIX} [DEBUG] ${tag()}`, 'color: #8b93b8; font-weight: 600;', ...args.map(sanitizeLogValue))
     }
   },
   info: (...args) => {
-    console.log(`%c${PREFIX} [INFO] ${tag()}`, 'color: #6c63ff; font-weight: bold;', ...args)
+    console.log(`%c${PREFIX} [INFO] ${tag()}`, 'color: #6c63ff; font-weight: bold;', ...args.map(sanitizeLogValue))
   },
   warn: (...args) => {
-    console.warn(`%c${PREFIX} [WARN] ${tag()}`, 'color: #f59e0b; font-weight: bold;', ...args)
-    forward('warn', args)
+    console.warn(`%c${PREFIX} [WARN] ${tag()}`, 'color: #f59e0b; font-weight: bold;', ...args.map(sanitizeLogValue))
+    forward('warn', args.map(sanitizeLogValue))
   },
   error: (...args) => {
-    console.error(`%c${PREFIX} [ERROR] ${tag()}`, 'color: #ef4444; font-weight: bold;', ...args)
-    forward('error', args)
+    console.error(`%c${PREFIX} [ERROR] ${tag()}`, 'color: #ef4444; font-weight: bold;', ...args.map(sanitizeLogValue))
+    forward('error', args.map(sanitizeLogValue))
   }
 }

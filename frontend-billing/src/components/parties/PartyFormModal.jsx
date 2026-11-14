@@ -1,3 +1,4 @@
+import { dismissOnEscape } from '../../utils/keyboardActions'
 // ============================================================================
 // PartyFormModal — extracted verbatim from pages/Parties.jsx (repo restructure).
 // State and handlers stay with the page and arrive as same-named props.
@@ -8,7 +9,7 @@ import { CheckIcon, CloseIcon, HandshakeIcon, UserIcon, WarehouseIcon } from '..
 
 export default function PartyFormModal({ form, setField, handleSubmit, submitting, setShowModal }) {
   return (
-        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowModal(false)}>
+        <div role="presentation" onKeyDown={dismissOnEscape} className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowModal(false)}>
           <div className="modal modal-lg">
             <div className="modal-header">
               <span className="modal-title"><HandshakeIcon size={16} style={{ marginRight: 6, display: 'inline-block', verticalAlign: 'middle' }} /> Add Party</span>

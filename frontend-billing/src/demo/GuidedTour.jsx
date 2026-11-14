@@ -1,3 +1,4 @@
+import { runAsync } from '../utils/asyncAction'
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
@@ -226,13 +227,13 @@ export default function GuidedTour() {
       }
       if (command === 'chapter') {
         chapterIndex = guidedTourSteps.findIndex(item => item.id === chapter)
-        run(chapterIndex)
+        runAsync(() => run(chapterIndex))
       } else if (command === 'restart') {
         playing.current = true
-        run(0, true)
+        runAsync(() => run(0, true))
       } else if (command === 'play') {
         playing.current = true
-        if (!running) run(report.complete ? 0 : chapterIndex, report.complete || chapterIndex === 0)
+        if (!running) runAsync(() => run(report.complete ? 0 : chapterIndex, report.complete || chapterIndex === 0))
       }
       update({})
     }

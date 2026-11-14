@@ -148,7 +148,10 @@ def run_telemetry_relay():
         return       # nothing new
 
     try:
-        with _TELEMETRY_FILE.open("r", encoding="utf-8", errors="replace") as f:
+        # Keep physical CRLF bytes when calculating the partial-line cursor.
+        # Universal-newline translation would make a Windows byte offset drift
+        # backwards, replaying already delivered diagnostics on every retry.
+        with _TELEMETRY_FILE.open("r", encoding="utf-8", errors="replace", newline="") as f:
             f.seek(offset)
             chunk = f.read()
             new_offset = f.tell()

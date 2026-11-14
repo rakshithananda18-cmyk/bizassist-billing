@@ -1,3 +1,5 @@
+import { dismissOnEscape } from '../utils/keyboardActions'
+import { runAsync } from '../utils/asyncAction'
 // ============================================================================
 // ActivityFeed.jsx — Revamped Business Activity & Audit Log for Settings
 // Master-detail aligned, real-time audit trail with filtering, diffs, and search.
@@ -85,7 +87,7 @@ function DetailModal({ item, onClose }) {
   const changed = item.changes && Object.keys(item.changes).length > 0
   const values = item.new_values || item.old_values || {}
   return createPortal(
-    <div className="modal-overlay" style={{ zIndex: 3400 }} onClick={e => e.target === e.currentTarget && onClose()}>
+    <div role="presentation" onKeyDown={dismissOnEscape} className="modal-overlay" style={{ zIndex: 3400 }} onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="modal" role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}
         ref={dialogRef} onKeyDown={handleKey} style={{ maxWidth: 580, width: '95%', maxHeight: '86vh', display: 'flex', flexDirection: 'column' }}>
         <div style={{ padding: '18px 22px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
@@ -202,7 +204,7 @@ export default function ActivityFeed() {
   }, [authFetch, pageSize])
 
   useEffect(() => {
-    load(category, 0)
+    runAsync(() => load(category, 0))
     return () => { ++requestRef.current; abortRef.current?.abort() }
   }, [category, load])
 

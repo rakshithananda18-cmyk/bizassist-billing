@@ -188,9 +188,10 @@ GROUPS = [
 
 
 def _connect(path):
+    from _safe_io import sqlite_connection
     if not os.path.exists(path):
         sys.exit(f"database not found: {path}")
-    c = sqlite3.connect(path)
+    c = sqlite_connection(path, readonly=False)
     c.row_factory = sqlite3.Row
     return c
 
@@ -265,7 +266,8 @@ def main():
         return 0
 
     # Export BEFORE writing, so the action is reversible.
-    with open(export_path, "w", encoding="utf-8") as f:
+    from _safe_io import open_export
+    with open_export(export_path) as f:
         json.dump(export, f, indent=2, default=str)
     print(f"  export written: {export_path}\n")
 

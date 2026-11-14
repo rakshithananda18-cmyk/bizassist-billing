@@ -224,8 +224,10 @@ def main() -> int:
         # Default to the CURRENT DIRECTORY, not next to the script. A backup
         # written into `backend/scripts/` lands inside the repo and is one
         # `git add -A` away from a customer's payment history being committed.
+        import hashlib
+        uid_fingerprint = hashlib.sha256(args.uid.encode("utf-8")).hexdigest()[:12]
         export_path = args.export or os.path.abspath(
-            f"voided_payment_{args.uid[:8]}_"
+            f"voided_payment_{uid_fingerprint}_"
             f"{datetime.now(timezone.utc):%Y%m%d-%H%M%S}.json")
 
         if not args.apply:
@@ -258,7 +260,8 @@ def main() -> int:
                 "idempotency_key, uid, created_at, updated_at) VALUES (...)"
             ),
         }
-        with open(export_path, "w", encoding="utf-8") as fh:
+        from _safe_io import open_export
+        with open_export(export_path) as fh:
             json.dump(payload, fh, indent=2, default=str)
         out(f"\n  exported the row to {export_path}")
 

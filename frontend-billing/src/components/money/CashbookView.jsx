@@ -1,3 +1,4 @@
+import { runAsync } from '../../utils/asyncAction'
 import usePhoneLayout from '../../hooks/usePhoneLayout'
 import PhoneRecord from '../common/PhoneRecord'
 import '../../pages/money-phone.css'
@@ -20,7 +21,7 @@ export default function CashbookView({ authFetch, reloadKey = 0 }) {
 
   const load = useCallback(() => {
     setLoading(true)
-    Promise.all([
+    runAsync(() => Promise.all([
       authFetch('/payments').then(r => r.ok ? r.json() : []).catch(() => []),
       authFetch('/billing/expenses').then(r => r.ok ? r.json() : []).catch(() => []),
     ]).then(([pays, exps]) => {
@@ -36,7 +37,7 @@ export default function CashbookView({ authFetch, reloadKey = 0 }) {
       }))
       const all = [...p, ...e].sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')))
       setRows(all)
-    }).finally(() => setLoading(false))
+    }).finally(() => setLoading(false)))
   }, [authFetch])
 
   useEffect(() => { load() }, [load, reloadKey])
